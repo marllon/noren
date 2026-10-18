@@ -7,3 +7,5 @@ dist/
 dist-demo/
 test-results/
 playwright-report/
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/icons/

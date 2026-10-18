@@ -1,4 +1,5 @@
 import type { Clock } from "./clock";
+import { DEFAULT_PROFILE_ID, createEmptySpace, createPane, createTab } from "./factories";
 import { createSequentialIds, type IdGenerator } from "./ids";
 import type { Workspace } from "./types";
 
@@ -18,39 +19,14 @@ export function createDefaultWorkspace(options: DefaultWorkspaceOptions = {}): W
   const spaceId = newId();
   const itemId = newId();
   const paneId = newId();
+  const item = createTab(itemId, createPane(paneId, options.profileId ?? DEFAULT_PROFILE_ID), now);
   return {
     version: 1,
     spaces: [
       {
-        id: spaceId,
-        name: "Main",
-        icon: "terminal",
-        color: "#6b8afd",
-        modIds: [],
-        defaults: { env: {} },
-        aiEnabled: true,
-        saveScrollback: true,
-        pinned: [],
+        ...createEmptySpace(spaceId, "Main"),
         tree: [{ kind: "item", id: itemId }],
-        items: {
-          [itemId]: {
-            id: itemId,
-            titleLocked: false,
-            layout: {
-              kind: "pane",
-              pane: {
-                id: paneId,
-                type: "terminal",
-                profileId: options.profileId ?? "default",
-                status: "idle",
-                unread: false,
-                bell: false,
-              },
-            },
-            focusedPaneId: paneId,
-            lastActivityAt: now,
-          },
-        },
+        items: { [itemId]: item },
       },
     ],
     activeSpaceId: spaceId,

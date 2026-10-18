@@ -8,14 +8,18 @@ export type {
   ShellProfile,
   Unsubscribe,
 } from "./backend";
+export type { Action, ActionType, Placement, ReducerContext, SpaceItemsFate } from "./actions";
 export { ManualClock } from "./clock";
 export type { Clock } from "./clock";
 export { createDefaultWorkspace } from "./default-workspace";
 export type { DefaultWorkspaceOptions } from "./default-workspace";
+export { DEFAULT_PROFILE_ID } from "./factories";
 export { createSequentialIds } from "./ids";
 export type { IdGenerator } from "./ids";
 export { SIZE_SUM_TOLERANCE, checkInvariants } from "./invariants";
 export type { InvariantOptions, Violation, ViolationCode } from "./invariants";
+export { reduce } from "./reducer";
+export { liveSessionIds } from "./sessions";
 export { DEFAULT_MAX_PANES, MAX_CLOSED, MAX_GROUP_DEPTH } from "./types";
 export type {
   ArchivedItem,

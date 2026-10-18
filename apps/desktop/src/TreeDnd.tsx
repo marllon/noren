@@ -18,13 +18,25 @@ import type {
 } from "@dnd-kit/core";
 import { createContext, useContext, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from "react";
+import { treeGroups } from "@noren/model";
 import type { Action, Id, Space } from "@noren/model";
-import { dropAction, dropSlots, resolveDrop } from "./sidebar-drop";
-import type { DragSource, DropTarget } from "./sidebar-drop";
+import {
+  FAVORITES_DROP_ID,
+  PINNED_DROP_ID,
+  dropAction,
+  dropSlots,
+  outsideAction,
+  outsideId,
+  outsideOf,
+  resolveDrop,
+} from "./sidebar-drop";
+import type { DragSource, DropTarget, OutsideDrop } from "./sidebar-drop";
 import type { TreeRow } from "./sidebar-tree";
+import { spaceItemIds } from "./workspace-store";
 
-// Drag and drop of the sidebar tree on top of @dnd-kit. The library only moves the pointer (or the
-// keyboard cursor) around and reports which row is under it; what that means is `sidebar-drop.ts`.
+// Drag and drop of the sidebar on top of @dnd-kit. The library only moves the pointer (or the
+// keyboard cursor) around and reports which droppable is under it; what that means is
+// `sidebar-drop.ts`. One context covers the tree, the space icons and the Pinned and Favorites zones.
 
 /** How far (px) the pointer travels before a press becomes a drag, so clicks stay clicks. */
 const ACTIVATION_DISTANCE = 6;
@@ -36,12 +48,24 @@ const INSTRUCTIONS =
   "To move this item, press Space. Use the up and down arrow keys to choose a place, Space to drop it there, or Escape to cancel.";
 
 interface DragState {
+  /** The place in the tree the dragged row would land in. */
   target: DropTarget | null;
+  /** The space icon or zone under the pointer, when dropping there would change something. */
+  outside: OutsideDrop | null;
+  /** Whether a drag is under way (the Pinned and Favorites zones only show then). */
+  dragging: boolean;
 }
 
-const DragStateContext = createContext<DragState>({ target: null });
+const DragStateContext = createContext<DragState>({
+  target: null,
+  outside: null,
+  dragging: false,
+});
 
-/** Where the pointer is, or the middle of the dragged row when the keyboard drives. */
+/**
+ * Where the pointer is, or the middle of the dragged row when the keyboard drives. The space icons
+ * and the zones (prefixed ids) are tried before the rows, which have no prefix.
+ */
 const rowCollision: CollisionDetection = ({
   collisionRect,
   droppableRects,
@@ -50,7 +74,12 @@ const rowCollision: CollisionDetection = ({
 }) => {
   const x = pointerCoordinates?.x ?? collisionRect.left + collisionRect.width / 2;
   const y = pointerCoordinates?.y ?? collisionRect.top + collisionRect.height / 2;
-  for (const container of droppableContainers) {
+  const isOutside = (id: string | number) => outsideOf(String(id)) !== undefined;
+  const ordered = [
+    ...droppableContainers.filter((container) => isOutside(container.id)),
+    ...droppableContainers.filter((container) => !isOutside(container.id)),
+  ];
+  for (const container of ordered) {
     const rect = droppableRects.get(container.id);
     if (!rect || container.disabled) continue;
     // One pixel of slack covers the gap between rows.
@@ -73,6 +102,13 @@ function sourceOf(data: unknown): DragSource | undefined {
   return (kind === "item" || kind === "group") && typeof id === "string" ? { kind, id } : undefined;
 }
 
+const sameOutside = (a: OutsideDrop | null, b: OutsideDrop | null): boolean =>
+  a === b ||
+  (a !== null &&
+    b !== null &&
+    a.kind === b.kind &&
+    (a.kind !== "space" || (b.kind === "space" && a.spaceId === b.spaceId)));
+
 const sameTarget = (a: DropTarget | null, b: DropTarget | null): boolean =>
   a === b ||
   (a !== null &&
@@ -82,38 +118,77 @@ const sameTarget = (a: DropTarget | null, b: DropTarget | null): boolean =>
     a.groupId === b.groupId &&
     a.index === b.index);
 
+/** Where a drag event currently points: a place in the tree, or a space icon or zone. */
+interface Place {
+  target: DropTarget | null;
+  outside: OutsideDrop | null;
+}
+
+const NOWHERE: Place = { target: null, outside: null };
+
 interface TreeDndProps {
+  /** Every space: a tab can be dropped on the icon of any of them. */
+  spaces: readonly Space[];
+  /** The global favorites. */
+  favorites: readonly Id[];
+  /** The active space, the one whose tree is on screen. */
   space: Space;
   rows: readonly TreeRow[];
-  /** The name of a tab or group, for what is read aloud. */
-  labelOf(id: Id): string;
-  /** A drop that changes the tree. */
+  /** A drop that changes the workspace. */
   onAction(action: Action): void;
   children: ReactNode;
 }
 
-/** Wraps the tree with the drag sensors and keeps the place the dragged row would land in. */
-export function TreeDnd({ space, rows, labelOf, onAction, children }: TreeDndProps) {
-  const [target, setTarget] = useState<DropTarget | null>(null);
+/**
+ * Owns the one `DndContext` of the sidebar: it wraps the tree, the space icons and the Pinned and
+ * Favorites zones, and keeps the place the dragged row would land in.
+ */
+export function TreeDnd({ spaces, favorites, space, rows, onAction, children }: TreeDndProps) {
+  const [place, setPlace] = useState<Place>(NOWHERE);
   const [status, setStatus] = useState("");
   const [dragging, setDragging] = useState<Id | null>(null);
+  const { target, outside } = place;
 
-  const describe = (place: DropTarget | null): string => {
-    if (!place) return "No change at this spot.";
-    const name = labelOf(place.rowId);
-    if (place.edge === "inside") return `Into group ${name}.`;
-    return place.edge === "before" ? `Before ${name}.` : `After ${name}.`;
+  const order = spaceItemIds(space);
+  /** The name of a tab or group, for what is read aloud and shown on the ghost. */
+  const labelOf = (id: Id): string => {
+    const item = space.items[id];
+    if (item) return item.title ?? `Tab ${order.indexOf(id) + 1}`;
+    return treeGroups(space.tree).find((group) => group.id === id)?.name ?? id;
+  };
+
+  const describe = ({ target: spot, outside: away }: Place): string => {
+    if (away) {
+      if (away.kind === "pinned") return "Pin this tab.";
+      if (away.kind === "favorites") return "Add this tab to the favorites.";
+      const name = spaces.find((candidate) => candidate.id === away.spaceId)?.name ?? away.spaceId;
+      return `Move to space ${name}.`;
+    }
+    if (!spot) return "No change at this spot.";
+    const name = labelOf(spot.rowId);
+    if (spot.edge === "inside") return `Into group ${name}.`;
+    return spot.edge === "before" ? `Before ${name}.` : `After ${name}.`;
   };
 
   /** The place under the pointer or keyboard cursor, from the data of a drag event. */
-  const targetOf = (event: DragMoveEvent | DragEndEvent): DropTarget | null => {
+  const placeOf = (event: DragMoveEvent | DragEndEvent): Place => {
     const source = sourceOf(event.active.data.current);
     const collision = event.collisions?.[0];
-    const { y, top, height } = (collision?.data ?? {}) as Record<string, unknown>;
-    if (!source || !collision) return null;
-    if (typeof y !== "number" || typeof top !== "number" || typeof height !== "number") return null;
+    if (!source || !collision) return NOWHERE;
+    const away = outsideOf(String(collision.id));
+    if (away) {
+      const valid = outsideAction(spaces, favorites, source, away) !== undefined;
+      return { target: null, outside: valid ? away : null };
+    }
+    const { y, top, height } = (collision.data ?? {}) as Record<string, unknown>;
+    if (typeof y !== "number" || typeof top !== "number" || typeof height !== "number") {
+      return NOWHERE;
+    }
     const fraction = height > 0 ? Math.min(1, Math.max(0, (y - top) / height)) : 0.5;
-    return resolveDrop(space, rows, source, String(collision.id), fraction) ?? null;
+    return {
+      target: resolveDrop(space, rows, source, String(collision.id), fraction) ?? null,
+      outside: null,
+    };
   };
 
   const keyboardCoordinates: KeyboardCoordinateGetter = (
@@ -126,15 +201,51 @@ export function TreeDnd({ space, rows, labelOf, onAction, children }: TreeDndPro
     const source = sourceOf(context.active?.data.current);
     const { collisionRect, droppableRects } = context;
     if (!source || !collisionRect) return undefined;
-    const middle = collisionRect.top + collisionRect.height / 2;
-    // Step to the next place the rule allows, in the direction of the arrow.
-    const spots = dropSlots(space, rows, source).flatMap((slot) => {
+    const middle = {
+      x: collisionRect.left + collisionRect.width / 2,
+      y: collisionRect.top + collisionRect.height / 2,
+    };
+    // The places outside the tree come after the rows: Pinned, Favorites, then the space icons.
+    const away = [
+      PINNED_DROP_ID,
+      FAVORITES_DROP_ID,
+      ...spaces.map((candidate) => outsideId({ kind: "space", spaceId: candidate.id })),
+    ].flatMap((id) => {
+      const drop = outsideOf(id);
+      const rect = droppableRects.get(id);
+      if (!drop || !rect || !outsideAction(spaces, favorites, source, drop)) return [];
+      return [{ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }];
+    });
+    const centered = (spot: { x: number; y: number }) => ({
+      x: spot.x - collisionRect.width / 2,
+      y: spot.y - collisionRect.height / 2,
+    });
+    // The rows keep the column the row was picked up in.
+    const column = context.active?.rect.current.initial?.left ?? currentCoordinates.x;
+    const rowSpots = dropSlots(space, rows, source).flatMap((slot) => {
       const rect = droppableRects.get(slot.rowId);
       return rect ? [rect.top + slot.fraction * rect.height] : [];
     });
-    const next = down ? spots.find((y) => y > middle + 1) : spots.findLast((y) => y < middle - 1);
-    if (next === undefined) return undefined;
-    return { x: currentCoordinates.x, y: next - collisionRect.height / 2 };
+    const onRow = (y: number | undefined) =>
+      y === undefined ? undefined : { x: column, y: y - collisionRect.height / 2 };
+
+    const at = away.findIndex(
+      (spot) => Math.abs(spot.x - middle.x) < 1 && Math.abs(spot.y - middle.y) < 1,
+    );
+    if (at >= 0) {
+      const neighbor = away[down ? at + 1 : at - 1];
+      if (neighbor) return centered(neighbor);
+      return down ? undefined : onRow(rowSpots.at(-1));
+    }
+    // Step to the next place the rule allows, in the direction of the arrow.
+    const next = down
+      ? rowSpots.find((y) => y > middle.y + 1)
+      : rowSpots.findLast((y) => y < middle.y - 1);
+    if (next === undefined) {
+      const first = down ? away[0] : undefined;
+      return first ? centered(first) : undefined;
+    }
+    return onRow(next);
   };
 
   const sensors = useSensors(
@@ -154,38 +265,38 @@ export function TreeDnd({ space, rows, labelOf, onAction, children }: TreeDndPro
     onDragCancel: ({ active }) => `Move of ${labelOf(String(active.id))} cancelled.`,
   };
 
-  const update = (next: DropTarget | null) => {
-    setTarget((current) => (sameTarget(current, next) ? current : next));
+  const onDragMove = (event: DragMoveEvent) => {
+    const next = placeOf(event);
+    if (sameTarget(target, next.target) && sameOutside(outside, next.outside)) return;
+    setPlace(next);
     setStatus(describe(next));
   };
 
-  const onDragMove = (event: DragMoveEvent) => {
-    const next = targetOf(event);
-    if (!sameTarget(target, next)) update(next);
+  const clear = () => {
+    setDragging(null);
+    setPlace(NOWHERE);
+    setStatus("");
   };
 
   const onDragEnd = (event: DragEndEvent) => {
     const source = sourceOf(event.active.data.current);
-    const place = targetOf(event);
+    const landing = placeOf(event);
     clear();
-    const action = source && place ? dropAction(space, source, place) : undefined;
+    if (!source) return;
+    let action: Action | undefined;
+    if (landing.outside) action = outsideAction(spaces, favorites, source, landing.outside);
+    else if (landing.target) action = dropAction(space, source, landing.target);
     if (action) onAction(action);
   };
 
   const onDragStart = (event: DragStartEvent) => {
     setDragging(String(event.active.id));
-    setTarget(null);
-    setStatus("");
-  };
-
-  const clear = () => {
-    setDragging(null);
-    setTarget(null);
+    setPlace(NOWHERE);
     setStatus("");
   };
 
   return (
-    <DragStateContext value={{ target }}>
+    <DragStateContext value={{ target, outside, dragging: dragging !== null }}>
       <DndContext
         sensors={sensors}
         collisionDetection={rowCollision}
@@ -274,5 +385,52 @@ export function DragRow({ id, kind, style, children }: DragRowProps) {
         />
       )}
     </li>
+  );
+}
+
+/** What a space icon or a zone needs to be a drop place outside the tree. */
+export interface OutsideDropHandle {
+  ref(node: HTMLElement | null): void;
+  /** The dragged tab would land here if dropped now. */
+  over: boolean;
+}
+
+/** Makes an element a drop place outside the tree; `over` follows the same rule the drop uses. */
+export function useOutsideDrop(drop: OutsideDrop): OutsideDropHandle {
+  const { outside } = useContext(DragStateContext);
+  const { setNodeRef } = useDroppable({ id: outsideId(drop) });
+  return { ref: setNodeRef, over: sameOutside(outside, drop) };
+}
+
+function DropZone({ drop, label }: { drop: OutsideDrop; label: string }) {
+  const zone = useOutsideDrop(drop);
+  return (
+    <div
+      ref={zone.ref}
+      className="drop-zone"
+      data-nr-part={drop.kind === "pinned" ? "drop-pinned" : "drop-favorites"}
+      data-nr-state={zone.over ? "over" : undefined}
+    >
+      {label}
+    </div>
+  );
+}
+
+/**
+ * The Pinned and Favorites drop zones. They cover whatever is under them and only show while a
+ * drag is under way, so the sidebar at rest looks the same as before.
+ */
+export function DropZones() {
+  const { dragging } = useContext(DragStateContext);
+  return (
+    <div
+      className="drop-zones"
+      data-nr-part="drop-zones"
+      data-nr-state={dragging ? "dragging" : undefined}
+      aria-hidden="true"
+    >
+      <DropZone drop={{ kind: "pinned" }} label="Pinned" />
+      <DropZone drop={{ kind: "favorites" }} label="Favorites" />
+    </div>
   );
 }

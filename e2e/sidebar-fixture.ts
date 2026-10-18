@@ -40,9 +40,24 @@ export const FAKE_HOME = "/home/fake";
 /**
  * A saved workspace for the sidebar: one pinned tab, a group of three tabs and two loose ones, with
  * folders, a git branch, an unread tab and a tab with a bell. The tab "build" has no flags: the
- * tests make it fail by running `exit 2` in it.
+ * tests make it fail by running `exit 2` in it. `secondSpace` adds the space "Other" with one tab
+ * ("elsewhere"), for the tests that drop a tab on another space.
  */
-export function sidebarState(): string {
+export function sidebarState(options: { secondSpace?: boolean } = {}): string {
+  const second = {
+    id: "s2",
+    name: "Other",
+    icon: "folder",
+    color: "#e0a458",
+    modIds: [],
+    defaults: { env: {} },
+    aiEnabled: true,
+    saveScrollback: true,
+    pinned: [],
+    tree: [{ kind: "item", id: "j1" }],
+    items: { j1: tab("j1", "elsewhere", { id: "q1" }) },
+    activeItemId: "j1",
+  };
   return JSON.stringify({
     version: 2,
     activeSpaceId: "s1",
@@ -95,16 +110,20 @@ export function sidebarState(): string {
         },
         activeItemId: "i2",
       },
+      ...(options.secondSpace ? [second] : []),
     ],
   });
 }
 
 /** Seeds the saved workspace before the page loads; it only writes when nothing is saved yet. */
-export async function seedSidebarState(page: Page): Promise<void> {
+export async function seedSidebarState(
+  page: Page,
+  options: { secondSpace?: boolean } = {},
+): Promise<void> {
   await page.addInitScript(
     ({ key, state }) => {
       if (window.localStorage.getItem(key) === null) window.localStorage.setItem(key, state);
     },
-    { key: WEB_STATE_KEY, state: sidebarState() },
+    { key: WEB_STATE_KEY, state: sidebarState(options) },
   );
 }

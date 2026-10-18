@@ -23,6 +23,7 @@ import type { SpaceFormValues } from "./SpaceDialog";
 import { SpaceMenu } from "./SpaceMenu";
 import type { MenuPoint } from "./SpaceMenu";
 import { SpaceSwitcher } from "./SpaceSwitcher";
+import { DropZones, TreeDnd } from "./TreeDnd";
 import { createWheelGesture, spaceShortcutIndex, wheelTravel } from "./spaces";
 import { TerminalView } from "./TerminalView";
 import { applySpaceColor, applyTheme, terminalTheme } from "./theme";
@@ -381,42 +382,52 @@ function Shell({ store }: { store: WorkspaceStore }) {
   return (
     <div className="app-body">
       <aside ref={sidebarRef} className="sidebar" data-nr-part="sidebar" aria-label="Sidebar">
-        <SidebarTree
+        <TreeDnd
+          spaces={workspace.spaces}
+          favorites={workspace.favorites}
           space={space}
           rows={rows}
-          activeId={activeId}
-          selected={selected}
-          editing={editingHere}
-          home={home}
-          onItemClick={onItemClick}
-          onItemMenu={(itemId, point) => {
-            const targets = menuTargets(selected, itemId);
-            if (targets.length === 1 && !selected.includes(itemId)) clearSelection();
-            setOverlay({ kind: "item-menu", targets, point });
-          }}
-          onGroupMenu={(groupId, point) => setOverlay({ kind: "group-menu", groupId, point })}
-          onToggleGroup={(group) =>
-            dispatch({
-              type: "group/set-collapsed",
-              groupId: group.id,
-              collapsed: !group.collapsed,
-            })
-          }
-          onStartEdit={setEditing}
-          onCommitEdit={onCommitEdit}
-          onCancelEdit={onCancelEdit}
-          onMove={dispatch}
-        />
-        <button type="button" className="new-tab" onClick={() => newTab()}>
-          New tab
-        </button>
-        <SpaceSwitcher
-          spaces={workspace.spaces}
-          activeSpaceId={space.id}
-          onActivate={activateSpace}
-          onNewSpace={() => setOverlay({ kind: "new" })}
-          onMenu={(spaceId, point) => setOverlay({ kind: "menu", spaceId, point })}
-        />
+          onAction={dispatch}
+        >
+          <SidebarTree
+            space={space}
+            rows={rows}
+            activeId={activeId}
+            selected={selected}
+            editing={editingHere}
+            home={home}
+            onItemClick={onItemClick}
+            onItemMenu={(itemId, point) => {
+              const targets = menuTargets(selected, itemId);
+              if (targets.length === 1 && !selected.includes(itemId)) clearSelection();
+              setOverlay({ kind: "item-menu", targets, point });
+            }}
+            onGroupMenu={(groupId, point) => setOverlay({ kind: "group-menu", groupId, point })}
+            onToggleGroup={(group) =>
+              dispatch({
+                type: "group/set-collapsed",
+                groupId: group.id,
+                collapsed: !group.collapsed,
+              })
+            }
+            onStartEdit={setEditing}
+            onCommitEdit={onCommitEdit}
+            onCancelEdit={onCancelEdit}
+          />
+          <div className="sidebar-foot">
+            <button type="button" className="new-tab" onClick={() => newTab()}>
+              New tab
+            </button>
+            <DropZones />
+          </div>
+          <SpaceSwitcher
+            spaces={workspace.spaces}
+            activeSpaceId={space.id}
+            onActivate={activateSpace}
+            onNewSpace={() => setOverlay({ kind: "new" })}
+            onMenu={(spaceId, point) => setOverlay({ kind: "menu", spaceId, point })}
+          />
+        </TreeDnd>
       </aside>
       <section className="content" aria-label="Content">
         {workspace.spaces.map((s) => (

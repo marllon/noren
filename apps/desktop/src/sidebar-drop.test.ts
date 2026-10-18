@@ -1,7 +1,17 @@
 import { FakeBackend, createSequentialIds, restoreWorkspace } from "@noren/model";
-import type { Id, Node, Space } from "@noren/model";
+import type { Action, Id, Node, Space } from "@noren/model";
 import { describe, expect, it } from "vitest";
-import { dropAction, dropSlots, resolveDrop } from "./sidebar-drop";
+import {
+  FAVORITES_DROP_ID,
+  PINNED_DROP_ID,
+  SPACE_DROP_PREFIX,
+  dropAction,
+  dropSlots,
+  outsideAction,
+  outsideId,
+  outsideOf,
+  resolveDrop,
+} from "./sidebar-drop";
 import type { DragSource } from "./sidebar-drop";
 import { visibleRows } from "./sidebar-tree";
 import { activeSpaceOf, createWorkspaceStore, spaceItemIds } from "./workspace-store";
@@ -201,5 +211,97 @@ describe("dropSlots", () => {
     expect(places).toContainEqual([groupId, 0]);
     expect(places).toContainEqual([groupId, 1]);
     expect(places).toContainEqual([groupId, 2]);
+  });
+});
+
+describe("drops outside the tree", () => {
+  /** Two spaces: the first holds five tabs, the second one tab; the first stays active. */
+  async function twoSpaces() {
+    const opened = await openStore();
+    opened.store.getState().createSpace({ name: "Other" });
+    const [first, second] = opened.store.getState().workspace.spaces as [Space, Space];
+    opened.store.getState().activateSpace(first.id);
+    const action = (source: Id, drop: Parameters<typeof outsideAction>[3]) => {
+      const { workspace } = opened.store.getState();
+      return outsideAction(
+        workspace.spaces,
+        workspace.favorites,
+        { kind: "item", id: source },
+        drop,
+      );
+    };
+    return { ...opened, first: first.id, second: second.id, action };
+  }
+
+  it("maps droppable ids to places and back", () => {
+    expect(outsideOf(`${SPACE_DROP_PREFIX}s2`)).toEqual({ kind: "space", spaceId: "s2" });
+    expect(outsideOf(PINNED_DROP_ID)).toEqual({ kind: "pinned" });
+    expect(outsideOf(FAVORITES_DROP_ID)).toEqual({ kind: "favorites" });
+    expect(outsideOf("i1")).toBeUndefined();
+    for (const drop of [
+      { kind: "space", spaceId: "s9" },
+      { kind: "pinned" },
+      { kind: "favorites" },
+    ] as const) {
+      expect(outsideOf(outsideId(drop))).toEqual(drop);
+    }
+  });
+
+  it("moves a tab to another space, which stays inactive", async () => {
+    const { store, ids, first, second, action } = await twoSpaces();
+    const [a] = ids;
+    const move = action(a, { kind: "space", spaceId: second });
+    expect(move).toEqual({ type: "item/move", itemId: a, spaceId: second });
+    store.getState().dispatch(move as Action);
+    const { workspace } = store.getState();
+    expect(workspace.activeSpaceId).toBe(first);
+    expect(workspace.spaces.find((s) => s.id === first)?.items[a]).toBeUndefined();
+    expect(workspace.spaces.find((s) => s.id === second)?.items[a]).toBeDefined();
+  });
+
+  it("does nothing when the tab already lives in the target space", async () => {
+    const { ids, first, action } = await twoSpaces();
+    expect(action(ids[0], { kind: "space", spaceId: first })).toBeUndefined();
+    expect(action(ids[0], { kind: "space", spaceId: "missing" })).toBeUndefined();
+  });
+
+  it("pins a tab, and does nothing for one that is already pinned", async () => {
+    const { store, ids, space, action } = await twoSpaces();
+    const [a] = ids;
+    const pin = action(a, { kind: "pinned" });
+    expect(pin).toEqual({ type: "item/pin", itemId: a });
+    store.getState().dispatch(pin as Action);
+    expect(space().pinned).toEqual([a]);
+    expect(action(a, { kind: "pinned" })).toBeUndefined();
+  });
+
+  it("favorites a tab, and does nothing for one that is already a favorite", async () => {
+    const { store, ids, action } = await twoSpaces();
+    const [a] = ids;
+    const favorite = action(a, { kind: "favorites" });
+    expect(favorite).toEqual({ type: "item/favorite", itemId: a });
+    store.getState().dispatch(favorite as Action);
+    expect(store.getState().workspace.favorites).toEqual([a]);
+    expect(action(a, { kind: "favorites" })).toBeUndefined();
+  });
+
+  it("only tabs go outside the tree", async () => {
+    const { store, ids, second } = await twoSpaces();
+    const groupId = store.getState().groupItems([ids[1], ids[2]], "Work");
+    const { workspace } = store.getState();
+    for (const drop of [
+      { kind: "space", spaceId: second },
+      { kind: "pinned" },
+      { kind: "favorites" },
+    ] as const) {
+      expect(
+        outsideAction(
+          workspace.spaces,
+          workspace.favorites,
+          { kind: "group", id: groupId ?? "" },
+          drop,
+        ),
+      ).toBeUndefined();
+    }
   });
 });

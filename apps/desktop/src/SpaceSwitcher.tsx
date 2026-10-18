@@ -3,6 +3,7 @@ import type { Id, Space } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
 import { SpaceIcon } from "./SpaceIcon";
 import type { MenuPoint } from "./SpaceMenu";
+import { useOutsideDrop } from "./TreeDnd";
 
 interface SpaceSwitcherProps {
   spaces: readonly Space[];
@@ -11,6 +12,38 @@ interface SpaceSwitcherProps {
   onNewSpace(): void;
   /** Asks for the menu of a space: right click on its icon, or the "..." button for the active one. */
   onMenu(spaceId: Id, point: MenuPoint): void;
+}
+
+interface SpaceButtonProps {
+  space: Space;
+  index: number;
+  active: boolean;
+  onActivate(spaceId: Id): void;
+  onMenu(spaceId: Id, point: MenuPoint): void;
+}
+
+/** The icon of a space; a tab dragged over it (from another space) is dropped into that space. */
+function SpaceButton({ space, index, active, onActivate, onMenu }: SpaceButtonProps) {
+  const drop = useOutsideDrop({ kind: "space", spaceId: space.id });
+  return (
+    <button
+      ref={drop.ref}
+      type="button"
+      className="space-button"
+      data-nr-state={drop.over ? "drop-target" : active ? "active" : undefined}
+      aria-current={active ? "true" : undefined}
+      aria-label={space.name}
+      title={index < 9 ? `${space.name} (Ctrl+Alt+${index + 1})` : space.name}
+      style={{ "--nr-space-color": space.color } as React.CSSProperties}
+      onClick={() => onActivate(space.id)}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onMenu(space.id, menuPoint(event));
+      }}
+    >
+      <SpaceIcon name={space.icon} color={space.color} />
+    </button>
+  );
 }
 
 /** Icons of the spaces at the foot of the sidebar: click one to switch, plus a button for a new one. */
@@ -23,28 +56,16 @@ export function SpaceSwitcher({
 }: SpaceSwitcherProps) {
   return (
     <nav className="space-switcher" data-nr-part="space-switcher" aria-label="Spaces">
-      {spaces.map((space, index) => {
-        const active = space.id === activeSpaceId;
-        return (
-          <button
-            key={space.id}
-            type="button"
-            className="space-button"
-            data-nr-state={active ? "active" : undefined}
-            aria-current={active ? "true" : undefined}
-            aria-label={space.name}
-            title={index < 9 ? `${space.name} (Ctrl+Alt+${index + 1})` : space.name}
-            style={{ "--nr-space-color": space.color } as React.CSSProperties}
-            onClick={() => onActivate(space.id)}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              onMenu(space.id, menuPoint(event));
-            }}
-          >
-            <SpaceIcon name={space.icon} color={space.color} />
-          </button>
-        );
-      })}
+      {spaces.map((space, index) => (
+        <SpaceButton
+          key={space.id}
+          space={space}
+          index={index}
+          active={space.id === activeSpaceId}
+          onActivate={onActivate}
+          onMenu={onMenu}
+        />
+      ))}
       <button
         type="button"
         className="space-button space-add"

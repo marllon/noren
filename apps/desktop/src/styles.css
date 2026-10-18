@@ -384,6 +384,42 @@ body {
   border-radius: calc(var(--nr-radius) * 0.6);
 }
 
+/* The Pinned and Favorites zones cover the "New tab" button, and only while a tab is being dragged. */
+.sidebar-foot {
+  position: relative;
+}
+
+.drop-zones {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+  visibility: hidden;
+}
+
+.drop-zones[data-nr-state="dragging"] {
+  visibility: visible;
+}
+
+.drop-zone {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--nr-border);
+  border-radius: calc(var(--nr-radius) * 0.6);
+  background: var(--nr-surface);
+  color: var(--nr-muted);
+  font-size: 12px;
+}
+
+.drop-zone[data-nr-state="over"] {
+  border: 1px solid var(--nr-accent);
+  background: color-mix(in srgb, var(--nr-accent) 22%, var(--nr-surface));
+  color: var(--nr-text);
+}
+
 .group-dot {
   flex: none;
   width: 8px;
@@ -501,6 +537,11 @@ body {
 .space-button[data-nr-state="active"] {
   border-color: var(--nr-space-color);
   background: color-mix(in srgb, var(--nr-space-color) 16%, var(--nr-surface));
+}
+
+.space-button[data-nr-state="drop-target"] {
+  border-color: var(--nr-accent);
+  background: color-mix(in srgb, var(--nr-accent) 22%, var(--nr-surface));
 }
 
 .space-glyph {

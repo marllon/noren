@@ -4,7 +4,7 @@ import type { TreeRow } from "./sidebar-tree";
 // Where a dragged tab or group lands in the sidebar tree. Everything here is pure: the drag layer
 // only measures the pointer and asks, and the answer is an `Action` for the reducer.
 
-/** What is being dragged. Pinned tabs are not draggable yet (they belong to NOR-F4-04b). */
+/** What is being dragged. Pinned tabs sit still: they are not draggable. */
 export interface DragSource {
   kind: "item" | "group";
   id: Id;
@@ -208,4 +208,61 @@ export function dropSlots(space: Space, rows: readonly TreeRow[], source: DragSo
     }
   }
   return slots;
+}
+
+// Drops outside the tree: on the icon of another space, on the Pinned zone or on the Favorites zone.
+
+/** Prefix of the droppable id of a space icon; the rest is the space id. */
+export const SPACE_DROP_PREFIX = "space:";
+export const PINNED_DROP_ID = "zone:pinned";
+export const FAVORITES_DROP_ID = "zone:favorites";
+
+/** A place outside the tree where a tab can be dropped. */
+export type OutsideDrop =
+  { kind: "space"; spaceId: Id } | { kind: "pinned" } | { kind: "favorites" };
+
+/** The droppable id of an outside place (the inverse of `outsideOf`). */
+export function outsideId(drop: OutsideDrop): string {
+  if (drop.kind === "space") return `${SPACE_DROP_PREFIX}${drop.spaceId}`;
+  return drop.kind === "pinned" ? PINNED_DROP_ID : FAVORITES_DROP_ID;
+}
+
+/** The outside place a droppable id stands for; undefined for a row of the tree. */
+export function outsideOf(id: string): OutsideDrop | undefined {
+  if (id === PINNED_DROP_ID) return { kind: "pinned" };
+  if (id === FAVORITES_DROP_ID) return { kind: "favorites" };
+  return id.startsWith(SPACE_DROP_PREFIX)
+    ? { kind: "space", spaceId: id.slice(SPACE_DROP_PREFIX.length) }
+    : undefined;
+}
+
+/**
+ * The action that carries out dropping a tab outside the tree, or undefined when nothing would
+ * change (same space, already pinned, already a favorite) or the source is not a tab.
+ *
+ * - on another space: the tab goes to the end of that space's tree (the active space stays);
+ * - on Pinned: the tab is pinned in its own space;
+ * - on Favorites: the tab becomes a favorite (global, it stays where it is).
+ */
+export function outsideAction(
+  spaces: readonly Space[],
+  favorites: readonly Id[],
+  source: DragSource,
+  drop: OutsideDrop,
+): Action | undefined {
+  if (source.kind !== "item") return undefined;
+  const home = spaces.find((space) => Object.hasOwn(space.items, source.id));
+  if (!home) return undefined;
+  switch (drop.kind) {
+    case "space":
+      return drop.spaceId !== home.id && spaces.some((space) => space.id === drop.spaceId)
+        ? { type: "item/move", itemId: source.id, spaceId: drop.spaceId }
+        : undefined;
+    case "pinned":
+      return home.pinned.includes(source.id) ? undefined : { type: "item/pin", itemId: source.id };
+    case "favorites":
+      return favorites.includes(source.id)
+        ? undefined
+        : { type: "item/favorite", itemId: source.id };
+  }
 }

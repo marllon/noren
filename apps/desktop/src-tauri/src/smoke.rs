@@ -112,7 +112,7 @@ fn check_session(app: &AppHandle, deadline: Instant) -> Result<(), String> {
         }
         Ok(())
     });
-    let (id, profile) = bridge::create_session(app, &state, None, 120, 30, output)?;
+    let (id, profile) = bridge::create_session(app, &state, None, None, None, 120, 30, output)?;
     print_line(&format!(
         "SMOKE session {id} started with profile {profile}"
     ));

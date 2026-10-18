@@ -19,8 +19,12 @@ fn main() {
             bridge::session_write,
             bridge::session_resize,
             bridge::session_kill,
+            bridge::state_load,
+            bridge::state_save,
+            bridge::state_quarantine,
         ])
         .setup(move |app| {
+            app.manage(bridge::state_store(app.handle())?);
             if smoke {
                 smoke::arm(app);
             }

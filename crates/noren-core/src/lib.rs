@@ -2,11 +2,13 @@
 
 pub mod profiles;
 pub mod pty;
+pub mod store;
 
 pub use profiles::{
     Platform, ProbeEnv, Profile, ProfileSet, SystemEnv, detect_profiles, detect_system_profiles,
 };
 pub use pty::{ExitInfo, PtyError, SessionEvent, SessionId, SessionManager, SpawnSpec};
+pub use store::{StateStore, StoreError};
 
 /// Returns the product name.
 pub fn name() -> &'static str {

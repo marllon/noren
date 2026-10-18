@@ -8,17 +8,21 @@
     "node": ">=24"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json && pnpm -r --if-present typecheck",
+    "typecheck": "tsc -p tsconfig.json && tsc -p e2e/tsconfig.json && pnpm -r --if-present typecheck",
     "lint": "eslint .",
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "rust:check": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace",
     "smoke": "node scripts/smoke.mjs",
-    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm rust:check"
+    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm rust:check",
+    "e2e": "pnpm --filter @noren/desktop build && playwright test -c e2e/playwright.config.ts --grep-invert @visual",
+    "e2e:visual": "playwright test -c e2e/playwright.config.ts --grep @visual --pass-with-no-tests"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^24.19.2",
     "eslint": "^9.39.5",
     "globals": "^17.0.0",
     "prettier": "^3.0.0",

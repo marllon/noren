@@ -420,6 +420,69 @@ body {
   color: var(--nr-text);
 }
 
+/* The Favorites grid at the top of the sidebar (global) and the Pinned list above the tree. They are real drop places; "over" is a frame that adds no size, so nothing moves. */
+.favorites {
+  flex: none;
+  border-radius: calc(var(--nr-radius) * 0.6);
+}
+
+.favorites-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 36px);
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.favorite-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: calc(var(--nr-radius) * 0.8);
+  background: color-mix(in srgb, var(--nr-favorite-color) 18%, var(--nr-surface));
+  color: var(--nr-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.favorite-button:hover {
+  background: color-mix(in srgb, var(--nr-favorite-color) 32%, var(--nr-surface));
+}
+
+.favorite-button[data-nr-state="active"] {
+  border-color: var(--nr-favorite-color);
+}
+
+.favorites[data-nr-state="over"],
+.pinned[data-nr-state="over"] {
+  background: color-mix(in srgb, var(--nr-accent) 14%, transparent);
+  box-shadow: inset 0 0 0 2px var(--nr-accent);
+}
+
+.pinned {
+  border-radius: calc(var(--nr-radius) * 0.6);
+}
+
+.pinned-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pinned-list > li {
+  position: relative;
+}
+
 .group-dot {
   flex: none;
   width: 8px;

@@ -36,7 +36,7 @@ import { spaceItemIds } from "./workspace-store";
 
 // Drag and drop of the sidebar on top of @dnd-kit. The library only moves the pointer (or the
 // keyboard cursor) around and reports which droppable is under it; what that means is
-// `sidebar-drop.ts`. One context covers the tree, the space icons and the Pinned and Favorites zones.
+// `sidebar-drop.ts`. One context covers the tree, the space icons, the Pinned list and the Favorites grid.
 
 /** How far (px) the pointer travels before a press becomes a drag, so clicks stay clicks. */
 const ACTIVATION_DISTANCE = 6;
@@ -52,7 +52,7 @@ interface DragState {
   target: DropTarget | null;
   /** The space icon or zone under the pointer, when dropping there would change something. */
   outside: OutsideDrop | null;
-  /** Whether a drag is under way (the Pinned and Favorites zones only show then). */
+  /** Whether a drag is under way (the empty-state drop zones only show then). */
   dragging: boolean;
 }
 
@@ -140,8 +140,8 @@ interface TreeDndProps {
 }
 
 /**
- * Owns the one `DndContext` of the sidebar: it wraps the tree, the space icons and the Pinned and
- * Favorites zones, and keeps the place the dragged row would land in.
+ * Owns the one `DndContext` of the sidebar: it wraps the tree, the Pinned list, the Favorites grid
+ * and the space icons, and keeps the place the dragged row would land in.
  */
 export function TreeDnd({ spaces, favorites, space, rows, onAction, children }: TreeDndProps) {
   const [place, setPlace] = useState<Place>(NOWHERE);
@@ -388,7 +388,7 @@ export function DragRow({ id, kind, style, children }: DragRowProps) {
   );
 }
 
-/** What a space icon or a zone needs to be a drop place outside the tree. */
+/** What a space icon, the Pinned list, the Favorites grid or a zone needs to be a drop place outside the tree. */
 export interface OutsideDropHandle {
   ref(node: HTMLElement | null): void;
   /** The dragged tab would land here if dropped now. */
@@ -416,12 +416,27 @@ function DropZone({ drop, label }: { drop: OutsideDrop; label: string }) {
   );
 }
 
+/** Whether a drag is under way (what the empty-state drop zones wait for). */
+export function useDragging(): boolean {
+  return useContext(DragStateContext).dragging;
+}
+
+interface DropZonesProps {
+  /** The Pinned list is empty, so it has no drop place of its own: offer a zone instead. */
+  pinned: boolean;
+  /** The Favorites grid is empty (and so not on screen): offer a zone instead. */
+  favorites: boolean;
+}
+
 /**
- * The Pinned and Favorites drop zones. They cover whatever is under them and only show while a
- * drag is under way, so the sidebar at rest looks the same as before.
+ * Stand-ins for the Pinned list and the Favorites grid while they are empty. Those two are real
+ * drop places only when they hold something, because an empty one takes no room, and making room
+ * at the start of a drag would move every row under the pointer. The zones cover the "New tab"
+ * button and only show while a drag is under way, so the sidebar at rest looks the same.
  */
-export function DropZones() {
-  const { dragging } = useContext(DragStateContext);
+export function DropZones({ pinned, favorites }: DropZonesProps) {
+  const dragging = useDragging();
+  if (!pinned && !favorites) return null;
   return (
     <div
       className="drop-zones"
@@ -429,8 +444,8 @@ export function DropZones() {
       data-nr-state={dragging ? "dragging" : undefined}
       aria-hidden="true"
     >
-      <DropZone drop={{ kind: "pinned" }} label="Pinned" />
-      <DropZone drop={{ kind: "favorites" }} label="Favorites" />
+      {pinned && <DropZone drop={{ kind: "pinned" }} label="Pinned" />}
+      {favorites && <DropZone drop={{ kind: "favorites" }} label="Favorites" />}
     </div>
   );
 }

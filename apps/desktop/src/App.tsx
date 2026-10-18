@@ -8,6 +8,9 @@ import { insideTauri } from "./backend";
 import { backend, booted } from "./boot";
 import { loadHome } from "./home";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { FavoritesGrid } from "./FavoritesGrid";
+import { resolveFavorites } from "./favorites";
+import type { ResolvedFavorite } from "./favorites";
 import {
   clickSelection,
   menuTargets,
@@ -28,7 +31,7 @@ import { createWheelGesture, spaceShortcutIndex, wheelTravel } from "./spaces";
 import { TerminalView } from "./TerminalView";
 import { applySpaceColor, applyTheme, terminalTheme } from "./theme";
 import { TitleBar } from "./TitleBar";
-import { GroupContextMenu, ItemContextMenu } from "./TreeMenus";
+import { FavoriteContextMenu, GroupContextMenu, ItemContextMenu } from "./TreeMenus";
 import { useTheme } from "./use-theme";
 import type { TerminalHandle } from "./TerminalView";
 import {
@@ -104,6 +107,7 @@ function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTermi
 type Overlay =
   | { kind: "item-menu"; targets: Id[]; point: MenuPoint }
   | { kind: "group-menu"; groupId: Id; point: MenuPoint }
+  | { kind: "favorite-menu"; itemId: Id; point: MenuPoint }
   | { kind: "menu"; spaceId: Id; point: MenuPoint }
   | { kind: "new" }
   | { kind: "edit"; spaceId: Id }
@@ -148,6 +152,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const spaceColor = space.color;
   const itemIds = spaceItemIds(space);
   const rows = visibleRows(space);
+  const favorites = resolveFavorites(workspace.spaces, workspace.favorites);
   const order = visibleItemIds(rows);
   // A selection belongs to the space it was made in and only counts tabs that are on screen.
   const selected = selection.spaceId === space.id ? visibleSelection(selection, order) : [];
@@ -290,6 +295,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
     handles.current.set(paneId, handle);
   };
 
+  /** A tile of the Favorites grid: show the space that owns the tab, then the tab. */
+  const onOpenFavorite = (favorite: ResolvedFavorite) => {
+    dispatch({ type: "space/activate", spaceId: favorite.spaceId });
+    dispatch({ type: "space/set-active-item", spaceId: favorite.spaceId, itemId: favorite.id });
+  };
+
   const close = () => setOverlay(null);
   const overlaySpace =
     overlay?.kind === "menu" || overlay?.kind === "edit" || overlay?.kind === "delete"
@@ -314,6 +325,18 @@ function Shell({ store }: { store: WorkspaceStore }) {
         }}
         onRename={(itemId) => startEdit({ kind: "item", id: itemId })}
         onGrouped={(groupId) => setEditing({ kind: "group", id: groupId })}
+      />
+    );
+  } else if (
+    overlay?.kind === "favorite-menu" &&
+    favorites.some((favorite) => favorite.id === overlay.itemId)
+  ) {
+    overlayNode = (
+      <FavoriteContextMenu
+        store={store}
+        itemId={overlay.itemId}
+        point={overlay.point}
+        onClose={close}
       />
     );
   } else if (overlayGroup !== undefined && overlay?.kind === "group-menu") {
@@ -389,6 +412,16 @@ function Shell({ store }: { store: WorkspaceStore }) {
           rows={rows}
           onAction={dispatch}
         >
+          {favorites.length > 0 && (
+            <FavoritesGrid
+              favorites={favorites}
+              active={{ spaceId: space.id, itemId: activeId }}
+              onOpen={onOpenFavorite}
+              onMenu={(favorite, point) =>
+                setOverlay({ kind: "favorite-menu", itemId: favorite.id, point })
+              }
+            />
+          )}
           <SidebarTree
             space={space}
             rows={rows}
@@ -418,7 +451,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
             <button type="button" className="new-tab" onClick={() => newTab()}>
               New tab
             </button>
-            <DropZones />
+            <DropZones pinned={space.pinned.length === 0} favorites={favorites.length === 0} />
           </div>
           <SpaceSwitcher
             spaces={workspace.spaces}

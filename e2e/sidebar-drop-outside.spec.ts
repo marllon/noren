@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { seedSidebarState } from "./sidebar-fixture";
 
-// Dropping a tab outside the tree: on the icon of another space, on Pinned and on Favorites.
+// Dropping a tab outside the tree: on the icon of another space, on the Pinned list and on the
+// Favorites grid (an empty grid is not on screen, so the zone over "New tab" stands in for it).
 // The seeded sidebar: pinned "notes", the group "Work" (api, build, logs), "deploy", "scratch", and
 // the space "Other" with the tab "elsewhere".
 
@@ -15,8 +16,9 @@ const spaceButton = (page: Page, name: string) =>
     name,
     exact: true,
   });
-const pinnedZone = (page: Page) => page.locator('[data-nr-part="drop-pinned"]');
+const pinnedList = (page: Page) => page.locator('[data-nr-part="pinned-list"]');
 const favoritesZone = (page: Page) => page.locator('[data-nr-part="drop-favorites"]');
+const favoritesGrid = (page: Page) => page.locator('[data-nr-part="favorites"]');
 
 /** The rows top to bottom as `name@depth`, groups included. */
 async function rows(page: Page): Promise<string[]> {
@@ -68,14 +70,17 @@ test.beforeEach(async ({ page }) => {
 
 const START = ["notes@0", "Work@0", "api@1", "build@1", "logs@1", "deploy@0", "scratch@0"];
 
-test("the Pinned and Favorites zones only show while a tab is dragged", async ({ page }) => {
-  await expect(pinnedZone(page)).toBeHidden();
+test("the zone for the empty Favorites grid only shows while a tab is dragged", async ({
+  page,
+}) => {
+  // Pinned holds "notes", so its list is a drop place of its own and needs no zone.
+  await expect(pinnedList(page)).toBeVisible();
+  await expect(page.locator('[data-nr-part="drop-pinned"]')).toHaveCount(0);
+  await expect(favoritesGrid(page)).toHaveCount(0);
   await expect(favoritesZone(page)).toBeHidden();
   await dragTo(page, row(page, "scratch"), row(page, "deploy"));
-  await expect(pinnedZone(page)).toBeVisible();
   await expect(favoritesZone(page)).toBeVisible();
   await page.mouse.up();
-  await expect(pinnedZone(page)).toBeHidden();
   await expect(favoritesZone(page)).toBeHidden();
 });
 
@@ -112,8 +117,8 @@ test("a tab dropped on the icon of its own space changes nothing", async ({ page
 });
 
 test("dropping a tab on Pinned pins it, and it stays pinned after a reload", async ({ page }) => {
-  await dragTo(page, row(page, "scratch"), pinnedZone(page));
-  await expect(pinnedZone(page)).toHaveAttribute("data-nr-state", "over");
+  await dragTo(page, row(page, "scratch"), pinnedList(page));
+  await expect(pinnedList(page)).toHaveAttribute("data-nr-state", "over");
   await page.mouse.up();
   await expect(row(page, "scratch")).toHaveAttribute("data-nr-pinned", "true");
   expect(await rows(page)).toEqual([
@@ -140,16 +145,19 @@ test("dropping a tab on Favorites makes it a favorite, and it stays one after a 
   await expect(favoritesZone(page)).toHaveAttribute("data-nr-state", "over");
   await page.mouse.up();
   await expect.poll(async () => (await saved(page)).favorites).toEqual(["i6"]);
-  // A favorite stays where it is; the grid of favorites is a later task.
+  // A favorite stays where it is in the tree, and now the grid shows it.
   expect(await rows(page)).toEqual(START);
+  await expect(
+    favoritesGrid(page).getByRole("button", { name: "scratch", exact: true }),
+  ).toBeVisible();
 
   await page.reload();
   await expect(row(page, "api")).toBeVisible();
   expect((await saved(page)).favorites).toEqual(["i6"]);
 
-  // A tab that is already a favorite does not light the zone up again.
-  await dragTo(page, row(page, "scratch"), favoritesZone(page));
-  await expect(favoritesZone(page)).not.toHaveAttribute("data-nr-state", "over");
+  // A tab that is already a favorite does not light the grid up again.
+  await dragTo(page, row(page, "scratch"), favoritesGrid(page));
+  await expect(favoritesGrid(page)).not.toHaveAttribute("data-nr-state", "over");
   await page.mouse.up();
   expect((await saved(page)).favorites).toEqual(["i6"]);
 });
@@ -161,9 +169,10 @@ test("the keyboard reaches Pinned, Favorites and the other space after the last 
   await pickUp(page, "scratch");
   await page.keyboard.press("ArrowDown");
   await expect(status).toHaveText("Pin this tab.");
-  await expect(pinnedZone(page)).toHaveAttribute("data-nr-state", "over");
+  await expect(pinnedList(page)).toHaveAttribute("data-nr-state", "over");
   await page.keyboard.press("ArrowDown");
   await expect(status).toHaveText("Add this tab to the favorites.");
+  await expect(favoritesZone(page)).toHaveAttribute("data-nr-state", "over");
   await page.keyboard.press("ArrowDown");
   await expect(status).toHaveText("Move to space Other.");
   await expect(spaceButton(page, "Other")).toHaveAttribute("data-nr-state", "drop-target");

@@ -97,6 +97,27 @@ export function ItemContextMenu({
   );
 }
 
+interface FavoriteContextMenuProps {
+  store: WorkspaceStore;
+  itemId: Id;
+  point: MenuPoint;
+  onClose(): void;
+}
+
+/** What a right click on a tile of the Favorites grid offers. */
+export function FavoriteContextMenu({ store, itemId, point, onClose }: FavoriteContextMenuProps) {
+  const entries: MenuEntry[] = [
+    {
+      label: "Remove from favorites",
+      onSelect: () => {
+        onClose();
+        store.getState().dispatch({ type: "item/unfavorite", itemId });
+      },
+    },
+  ];
+  return <ContextMenu label="Favorite options" point={point} entries={entries} onClose={onClose} />;
+}
+
 interface GroupContextMenuProps {
   store: WorkspaceStore;
   group: GroupNode;

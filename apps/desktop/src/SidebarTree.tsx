@@ -8,7 +8,7 @@ import {
   Pin,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
-import type { KeyboardEvent, MouseEvent } from "react";
+import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import type { GroupNode, Id, Space } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
 import {
@@ -22,7 +22,7 @@ import {
 } from "./pane-info";
 import type { MenuPoint } from "./SpaceMenu";
 import type { ClickModifiers, TreeRow } from "./sidebar-tree";
-import { DRAG_HELP_ID, DragRow } from "./TreeDnd";
+import { DRAG_HELP_ID, DragRow, useOutsideDrop } from "./TreeDnd";
 import type { DragHandle } from "./TreeDnd";
 import { spaceItemIds } from "./workspace-store";
 
@@ -104,8 +104,28 @@ function InlineName({ label, initial, onCommit, onCancel }: InlineNameProps) {
 }
 
 /**
- * The tree of the active space: pinned tabs first, then tabs and groups (groups fold away). It must
- * sit inside the `TreeDnd` of the sidebar, which owns the drag and drop.
+ * The pinned tabs of the space as a list of their own above the tree; also the place a tab is
+ * dropped to pin it. It is only rendered when something is pinned (the drop zone stands in then).
+ */
+function PinnedList({ children }: { children: ReactNode }) {
+  const drop = useOutsideDrop({ kind: "pinned" });
+  return (
+    <li
+      ref={drop.ref}
+      className="pinned"
+      data-nr-part="pinned-list"
+      data-nr-state={drop.over ? "over" : undefined}
+    >
+      <ul className="pinned-list" aria-label="Pinned">
+        {children}
+      </ul>
+    </li>
+  );
+}
+
+/**
+ * The tabs of the active space: the pinned list first, then tabs and groups (groups fold away). It
+ * must sit inside the `TreeDnd` of the sidebar, which owns the drag and drop.
  */
 export function SidebarTree({
   space,
@@ -134,195 +154,196 @@ export function SidebarTree({
     onStartEdit(edit);
   };
 
-  return (
-    <ul key={space.id} className="tab-list" aria-label="Tabs" aria-describedby={DRAG_HELP_ID}>
-      {rows.map((row) => {
-        const indent = { marginInlineStart: row.depth * 14 };
-        if (row.kind === "group") {
-          const { group, count } = row;
-          const edit: Editing = { kind: "group", id: group.id };
-          if (editing?.kind === "group" && editing.id === group.id) {
-            return (
-              <li key={group.id} style={indent}>
-                <InlineName
-                  label="Group name"
-                  initial={group.name}
-                  onCommit={(value, restoreFocus) => onCommitEdit(edit, value, restoreFocus)}
-                  onCancel={onCancelEdit}
-                />
-              </li>
-            );
-          }
-          return (
-            <DragRow key={group.id} id={group.id} kind="group" style={indent}>
-              {(drag) => (
-                <button
-                  type="button"
-                  className="group-button"
-                  data-nr-part="group"
-                  data-nr-state={group.collapsed ? "collapsed" : "expanded"}
-                  data-row-id={group.id}
-                  data-nr-depth={row.depth}
-                  aria-label={group.name}
-                  aria-expanded={!group.collapsed}
-                  {...drag.buttonProps}
-                  onClick={() => onToggleGroup(group)}
-                  onDoubleClick={() => onStartEdit(edit)}
-                  onKeyDown={(event) => {
-                    drag.onKeyDown(event);
-                    onRenameKey(event, edit);
-                  }}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    onGroupMenu(group.id, menuPoint(event));
-                  }}
-                >
-                  {group.collapsed ? (
-                    <ChevronRight size={14} aria-hidden="true" />
-                  ) : (
-                    <ChevronDown size={14} aria-hidden="true" />
-                  )}
-                  <span
-                    className="group-dot"
-                    style={{ background: group.color }}
-                    aria-hidden="true"
-                  />
-                  <span className="group-name">{group.name}</span>
-                  <span
-                    className="group-count"
-                    data-nr-part="group-count"
-                    title={count === 1 ? "1 tab" : `${count} tabs`}
-                  >
-                    {count}
-                  </span>
-                </button>
-              )}
-            </DragRow>
-          );
-        }
-
-        const item = space.items[row.id];
-        if (!item) return null;
-        const label = item.title ?? `Tab ${order.indexOf(row.id) + 1}`;
-        const edit: Editing = { kind: "item", id: row.id };
-        if (editing?.kind === "item" && editing.id === row.id) {
-          return (
-            <li key={row.id} style={indent}>
-              <InlineName
-                label="Tab name"
-                initial={label}
-                onCommit={(value, restoreFocus) => onCommitEdit(edit, value, restoreFocus)}
-                onCancel={onCancelEdit}
-              />
-            </li>
-          );
-        }
-        const isActive = row.id === activeId;
-        const summary = summarizeItem(item, space.defaults.cwd);
-        const cwdText = summary.cwd !== undefined ? shortCwd(summary.cwd, home) : "";
-        const hasMeta = cwdText !== "" || summary.gitBranch !== undefined;
-        // The button is named by the title alone; the rest is read as its description.
-        const words = [
-          ...indicatorLabels(summary),
-          ...(cwdText !== "" ? [`Folder ${cwdText}`] : []),
-          ...(summary.gitBranch !== undefined ? [`Branch ${summary.gitBranch}`] : []),
-        ];
-        const descriptionId = `tab-info-${row.id}`;
-        // Pinned tabs sit still: they are not dragged, but a tab can be dropped on the Pinned zone.
-        const content = (drag?: DragHandle) => (
-          <>
+  const renderRow = (row: TreeRow) => {
+    const indent = { marginInlineStart: row.depth * 14 };
+    if (row.kind === "group") {
+      const { group, count } = row;
+      const edit: Editing = { kind: "group", id: group.id };
+      if (editing?.kind === "group" && editing.id === group.id) {
+        return (
+          <li key={group.id} style={indent}>
+            <InlineName
+              label="Group name"
+              initial={group.name}
+              onCommit={(value, restoreFocus) => onCommitEdit(edit, value, restoreFocus)}
+              onCancel={onCancelEdit}
+            />
+          </li>
+        );
+      }
+      return (
+        <DragRow key={group.id} id={group.id} kind="group" style={indent}>
+          {(drag) => (
             <button
               type="button"
-              className="tab-button"
-              data-nr-part="item"
-              data-nr-state={isActive ? "active" : undefined}
-              data-nr-selected={selected.includes(row.id) ? "true" : undefined}
-              data-nr-pinned={row.pinned ? "true" : undefined}
-              data-row-id={row.id}
+              className="group-button"
+              data-nr-part="group"
+              data-nr-state={group.collapsed ? "collapsed" : "expanded"}
+              data-row-id={group.id}
               data-nr-depth={row.depth}
-              aria-current={isActive ? "true" : undefined}
-              aria-label={label}
-              aria-describedby={words.length > 0 ? descriptionId : undefined}
-              {...drag?.buttonProps}
-              onClick={(event) => onItemClick(row.id, modifiersOf(event))}
+              aria-label={group.name}
+              aria-expanded={!group.collapsed}
+              {...drag.buttonProps}
+              onClick={() => onToggleGroup(group)}
               onDoubleClick={() => onStartEdit(edit)}
               onKeyDown={(event) => {
-                drag?.onKeyDown(event);
+                drag.onKeyDown(event);
                 onRenameKey(event, edit);
               }}
               onContextMenu={(event) => {
                 event.preventDefault();
-                onItemMenu(row.id, menuPoint(event));
+                onGroupMenu(group.id, menuPoint(event));
               }}
             >
-              <span className="tab-line">
-                {row.pinned && <Pin size={12} aria-hidden="true" />}
-                <span className="tab-title" data-nr-part="item-title">
-                  {label}
-                </span>
-                <span className="tab-badges" aria-hidden="true">
-                  {summary.running && (
-                    <span className="tab-badge" data-nr-indicator="running" title={RUNNING_LABEL}>
-                      <LoaderCircle size={12} className="spin" aria-hidden="true" />
-                    </span>
-                  )}
-                  {summary.failed !== undefined && (
-                    <span
-                      className="tab-badge"
-                      data-nr-indicator="failed"
-                      title={failureLabel(summary.failed)}
-                    >
-                      <CircleAlert size={12} aria-hidden="true" />
-                    </span>
-                  )}
-                  {summary.unread && (
-                    <span className="tab-badge" data-nr-indicator="unread" title={UNREAD_LABEL}>
-                      <span className="unread-dot" />
-                    </span>
-                  )}
-                  {summary.bell && (
-                    <span className="tab-badge" data-nr-indicator="bell" title={BELL_LABEL}>
-                      <Bell size={12} aria-hidden="true" />
-                    </span>
-                  )}
-                </span>
+              {group.collapsed ? (
+                <ChevronRight size={14} aria-hidden="true" />
+              ) : (
+                <ChevronDown size={14} aria-hidden="true" />
+              )}
+              <span className="group-dot" style={{ background: group.color }} aria-hidden="true" />
+              <span className="group-name">{group.name}</span>
+              <span
+                className="group-count"
+                data-nr-part="group-count"
+                title={count === 1 ? "1 tab" : `${count} tabs`}
+              >
+                {count}
               </span>
-              {hasMeta && (
-                <span className="tab-meta" data-nr-part="item-meta" aria-hidden="true">
-                  {cwdText !== "" && (
-                    <span className="tab-cwd" data-nr-part="item-cwd" title={summary.cwd}>
-                      {cwdText}
-                    </span>
-                  )}
-                  {summary.gitBranch !== undefined && (
-                    <span className="tab-branch" data-nr-part="item-branch">
-                      <GitBranch size={11} aria-hidden="true" className="tab-branch-icon" />
-                      <span className="tab-branch-name">{summary.gitBranch}</span>
-                    </span>
-                  )}
+            </button>
+          )}
+        </DragRow>
+      );
+    }
+
+    const item = space.items[row.id];
+    if (!item) return null;
+    const label = item.title ?? `Tab ${order.indexOf(row.id) + 1}`;
+    const edit: Editing = { kind: "item", id: row.id };
+    if (editing?.kind === "item" && editing.id === row.id) {
+      return (
+        <li key={row.id} style={indent}>
+          <InlineName
+            label="Tab name"
+            initial={label}
+            onCommit={(value, restoreFocus) => onCommitEdit(edit, value, restoreFocus)}
+            onCancel={onCancelEdit}
+          />
+        </li>
+      );
+    }
+    const isActive = row.id === activeId;
+    const summary = summarizeItem(item, space.defaults.cwd);
+    const cwdText = summary.cwd !== undefined ? shortCwd(summary.cwd, home) : "";
+    const hasMeta = cwdText !== "" || summary.gitBranch !== undefined;
+    // The button is named by the title alone; the rest is read as its description.
+    const words = [
+      ...indicatorLabels(summary),
+      ...(cwdText !== "" ? [`Folder ${cwdText}`] : []),
+      ...(summary.gitBranch !== undefined ? [`Branch ${summary.gitBranch}`] : []),
+    ];
+    const descriptionId = `tab-info-${row.id}`;
+    // Pinned tabs sit still: they are not dragged, but a tab can be dropped on the Pinned zone.
+    const content = (drag?: DragHandle) => (
+      <>
+        <button
+          type="button"
+          className="tab-button"
+          data-nr-part="item"
+          data-nr-state={isActive ? "active" : undefined}
+          data-nr-selected={selected.includes(row.id) ? "true" : undefined}
+          data-nr-pinned={row.pinned ? "true" : undefined}
+          data-row-id={row.id}
+          data-nr-depth={row.depth}
+          aria-current={isActive ? "true" : undefined}
+          aria-label={label}
+          aria-describedby={words.length > 0 ? descriptionId : undefined}
+          {...drag?.buttonProps}
+          onClick={(event) => onItemClick(row.id, modifiersOf(event))}
+          onDoubleClick={() => onStartEdit(edit)}
+          onKeyDown={(event) => {
+            drag?.onKeyDown(event);
+            onRenameKey(event, edit);
+          }}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            onItemMenu(row.id, menuPoint(event));
+          }}
+        >
+          <span className="tab-line">
+            {row.pinned && <Pin size={12} aria-hidden="true" />}
+            <span className="tab-title" data-nr-part="item-title">
+              {label}
+            </span>
+            <span className="tab-badges" aria-hidden="true">
+              {summary.running && (
+                <span className="tab-badge" data-nr-indicator="running" title={RUNNING_LABEL}>
+                  <LoaderCircle size={12} className="spin" aria-hidden="true" />
                 </span>
               )}
-            </button>
-            {words.length > 0 && (
-              <span id={descriptionId} className="sr-only">
-                {words.join(". ")}
-              </span>
-            )}
-          </>
-        );
-        if (row.pinned) {
-          return (
-            <li key={row.id} style={indent}>
-              {content()}
-            </li>
-          );
-        }
-        return (
-          <DragRow key={row.id} id={row.id} kind="item" style={indent}>
-            {content}
-          </DragRow>
-        );
-      })}
+              {summary.failed !== undefined && (
+                <span
+                  className="tab-badge"
+                  data-nr-indicator="failed"
+                  title={failureLabel(summary.failed)}
+                >
+                  <CircleAlert size={12} aria-hidden="true" />
+                </span>
+              )}
+              {summary.unread && (
+                <span className="tab-badge" data-nr-indicator="unread" title={UNREAD_LABEL}>
+                  <span className="unread-dot" />
+                </span>
+              )}
+              {summary.bell && (
+                <span className="tab-badge" data-nr-indicator="bell" title={BELL_LABEL}>
+                  <Bell size={12} aria-hidden="true" />
+                </span>
+              )}
+            </span>
+          </span>
+          {hasMeta && (
+            <span className="tab-meta" data-nr-part="item-meta" aria-hidden="true">
+              {cwdText !== "" && (
+                <span className="tab-cwd" data-nr-part="item-cwd" title={summary.cwd}>
+                  {cwdText}
+                </span>
+              )}
+              {summary.gitBranch !== undefined && (
+                <span className="tab-branch" data-nr-part="item-branch">
+                  <GitBranch size={11} aria-hidden="true" className="tab-branch-icon" />
+                  <span className="tab-branch-name">{summary.gitBranch}</span>
+                </span>
+              )}
+            </span>
+          )}
+        </button>
+        {words.length > 0 && (
+          <span id={descriptionId} className="sr-only">
+            {words.join(". ")}
+          </span>
+        )}
+      </>
+    );
+    if (row.pinned) {
+      return (
+        <li key={row.id} style={indent}>
+          {content()}
+        </li>
+      );
+    }
+    return (
+      <DragRow key={row.id} id={row.id} kind="item" style={indent}>
+        {content}
+      </DragRow>
+    );
+  };
+
+  const pinnedRows = rows.filter((row) => row.kind === "item" && row.pinned);
+  const treeRows = rows.filter((row) => !(row.kind === "item" && row.pinned));
+  return (
+    <ul key={space.id} className="tab-list" aria-label="Tabs" aria-describedby={DRAG_HELP_ID}>
+      {pinnedRows.length > 0 && <PinnedList>{pinnedRows.map(renderRow)}</PinnedList>}
+      {treeRows.map(renderRow)}
     </ul>
   );
 }

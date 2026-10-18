@@ -168,6 +168,10 @@ body {
   list-style: none;
 }
 
+.tab-list > li {
+  position: relative;
+}
+
 .tab-button,
 .new-tab {
   width: 100%;
@@ -191,10 +195,122 @@ body {
   background: color-mix(in srgb, var(--nr-space-color) 16%, var(--nr-surface));
 }
 
-.tab-button[data-nr-pinned="true"] {
+.tab-button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tab-line {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+
+.tab-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-badges {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  color: var(--nr-muted);
+}
+
+.tab-badge[data-nr-indicator="running"] {
+  color: var(--nr-space-color);
+}
+
+.tab-badge[data-nr-indicator="failed"],
+.tab-badge[data-nr-indicator="bell"] {
+  color: var(--nr-accent);
+}
+
+.unread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--nr-accent);
+}
+
+.spin {
+  animation: nr-spin 1s linear infinite;
+}
+
+@keyframes nr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+
+.tab-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--nr-muted);
+  font-size: 11px;
+}
+
+.tab-cwd {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 65%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The branch takes what the folder leaves and gives way first. */
+.tab-branch {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.tab-branch-icon {
+  flex: none;
+}
+
+.tab-branch-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Text for assistive technology only. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 .tab-button[data-nr-selected="true"] {

@@ -18,7 +18,7 @@
     "licenses:check": "node scripts/check-licenses.mjs && cargo deny check licenses",
     "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm rust:check",
     "e2e": "pnpm --filter @noren/desktop build && playwright test -c e2e/playwright.config.ts --grep-invert @visual",
-    "e2e:visual": "playwright test -c e2e/playwright.config.ts --grep @visual --pass-with-no-tests"
+    "e2e:visual": "pnpm --filter @noren/desktop build && playwright test -c e2e/playwright.config.ts --grep @visual --pass-with-no-tests"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

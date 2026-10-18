@@ -196,6 +196,17 @@ describe("rejected content", () => {
     );
   });
 
+  it("accepts the git branch of a pane and rejects one that is not text", () => {
+    const state = plain();
+    state["spaces"][0].items.i1.layout.pane.gitBranch = "feature/x";
+    const result = expectOk(JSON.stringify(state));
+    expect(serializeWorkspace(result.workspace)).toContain('"gitBranch":"feature/x"');
+    state["spaces"][0].items.i1.layout.pane.gitBranch = 7;
+    expect(expectRejected(JSON.stringify(state))).toContain(
+      "spaces[0].items.i1.layout.pane.gitBranch: expected a string",
+    );
+  });
+
   it("rejects null where an optional field may only be absent", () => {
     const state = plain();
     state["spaces"][0].themeId = null;

@@ -106,7 +106,10 @@ export interface Pane {
   sessionId?: Id;
   profileId: string;
   cwd?: string;
+  /** Branch of the git repository `cwd` is in; only shown. Filled by the git integration (F7-02). */
+  gitBranch?: string;
   status: "running" | "idle" | "exited";
+  /** Exit code of the shell; set only while `status` is `"exited"`. */
   exitCode?: number;
   lastCommand?: LastCommand;
   unread: boolean;

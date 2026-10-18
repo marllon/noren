@@ -1,6 +1,6 @@
 import type { Clock } from "./clock";
 import type { IdGenerator } from "./ids";
-import type { Id } from "./types";
+import type { Id, Pane } from "./types";
 
 /**
  * Where an item lands in a space. `index` is the final position in the target list (after the item
@@ -165,6 +165,17 @@ export type Action =
   | { type: "pane/swap"; itemId: Id; paneId: Id; otherPaneId: Id }
   /** Focus a pane (ends zoom unless it is the zoomed pane). */
   | { type: "pane/focus"; itemId: Id; paneId: Id }
+  /**
+   * Records what the pane's shell is doing. `exitCode` is kept only with `"exited"` (other statuses
+   * clear it). An unknown pane or a value that changes nothing leaves the workspace as it is.
+   */
+  | {
+      type: "pane/set-status";
+      itemId: Id;
+      paneId: Id;
+      status: Pane["status"];
+      exitCode?: number;
+    }
   /** Focus the neighbor by layout geometry (ends zoom); no neighbor, no change. */
   | { type: "pane/focus-direction"; itemId: Id; direction: "left" | "right" | "up" | "down" };
 

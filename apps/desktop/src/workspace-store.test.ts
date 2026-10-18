@@ -3,6 +3,7 @@ import {
   STATE_SAVE_DELAY_MS,
   createDefaultWorkspace,
   createSequentialIds,
+  layoutPanes,
   liveSessionIds,
   parseState,
   restoreWorkspace,
@@ -167,6 +168,48 @@ describe("workspace store", () => {
 
     expect(liveSessionIds(store.getState().workspace).size).toBe(0);
     expect(backend.callsTo("kill").map((call) => call.args[0])).toEqual([Number(sessionId)]);
+  });
+
+  it("a shell that ends marks its pane as exited with the code, and the state is saved", async () => {
+    const backend = new FakeBackend();
+    const { store } = await openStore(backend);
+    const space = store.getState().workspace.spaces[0];
+    const item = space && Object.values(space.items)[0];
+    const pane = item && layoutPanes(item.layout)[0];
+    if (!item || !pane?.sessionId) throw new Error("no pane with a session");
+    expect(pane.status).toBe("idle");
+
+    await backend.write(Number(pane.sessionId), "exit 2\r");
+
+    const after = store.getState().workspace.spaces[0]?.items[item.id];
+    const exited = after && layoutPanes(after.layout)[0];
+    expect(exited).toMatchObject({ status: "exited", exitCode: 2, sessionId: pane.sessionId });
+    await vi.advanceTimersByTimeAsync(STATE_SAVE_DELAY_MS);
+    const saved = parseState(backend.stateContent ?? "");
+    const savedItem = saved.ok ? saved.workspace.spaces[0]?.items[item.id] : undefined;
+    expect(savedItem && layoutPanes(savedItem.layout)[0]).toMatchObject({
+      status: "exited",
+      exitCode: 2,
+    });
+  });
+
+  it("a session no pane holds (a closed tab) changes nothing when it ends", async () => {
+    const backend = new FakeBackend();
+    const { store } = await openStore(backend);
+    const space = store.getState().workspace.spaces[0];
+    const itemId = space && spaceItemIds(space)[0];
+    if (itemId === undefined) throw new Error("no tab");
+    const [sessionId] = liveSessionIds(store.getState().workspace);
+    store.getState().dispatch({ type: "item/close", itemId });
+    const before = store.getState().workspace;
+    await vi.advanceTimersByTimeAsync(STATE_SAVE_DELAY_MS);
+    const saves = backend.callsTo("saveState").length;
+
+    // Closing the tab killed the session; the exit that follows finds no pane to mark.
+    expect(backend.callsTo("kill").map((call) => call.args[0])).toEqual([Number(sessionId)]);
+    expect(store.getState().workspace).toBe(before);
+    await vi.advanceTimersByTimeAsync(STATE_SAVE_DELAY_MS);
+    expect(backend.callsTo("saveState")).toHaveLength(saves);
   });
 
   it("attachSession records the session of a new pane and kills one for a pane that is gone", async () => {

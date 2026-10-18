@@ -1,8 +1,25 @@
-import { ChevronDown, ChevronRight, Pin } from "lucide-react";
+import {
+  Bell,
+  ChevronDown,
+  ChevronRight,
+  CircleAlert,
+  GitBranch,
+  LoaderCircle,
+  Pin,
+} from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import type { GroupNode, Id, Space } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
+import {
+  BELL_LABEL,
+  RUNNING_LABEL,
+  UNREAD_LABEL,
+  failureLabel,
+  indicatorLabels,
+  shortCwd,
+  summarizeItem,
+} from "./pane-info";
 import type { MenuPoint } from "./SpaceMenu";
 import type { ClickModifiers, TreeRow } from "./sidebar-tree";
 import { spaceItemIds } from "./workspace-store";
@@ -20,6 +37,8 @@ interface SidebarTreeProps {
   /** Tabs of the multi-selection (empty when nothing is selected). */
   selected: readonly Id[];
   editing: Editing | null;
+  /** Home folder of the user: a folder under it shows as `~`. */
+  home?: string | undefined;
   onItemClick(itemId: Id, modifiers: ClickModifiers): void;
   onItemMenu(itemId: Id, point: MenuPoint): void;
   onGroupMenu(groupId: Id, point: MenuPoint): void;
@@ -89,6 +108,7 @@ export function SidebarTree({
   activeId,
   selected,
   editing,
+  home,
   onItemClick,
   onItemMenu,
   onGroupMenu,
@@ -187,6 +207,16 @@ export function SidebarTree({
           );
         }
         const isActive = row.id === activeId;
+        const summary = summarizeItem(item, space.defaults.cwd);
+        const cwdText = summary.cwd !== undefined ? shortCwd(summary.cwd, home) : "";
+        const hasMeta = cwdText !== "" || summary.gitBranch !== undefined;
+        // The button is named by the title alone; the rest is read as its description.
+        const words = [
+          ...indicatorLabels(summary),
+          ...(cwdText !== "" ? [`Folder ${cwdText}`] : []),
+          ...(summary.gitBranch !== undefined ? [`Branch ${summary.gitBranch}`] : []),
+        ];
+        const descriptionId = `tab-info-${row.id}`;
         return (
           <li key={row.id} style={indent}>
             <button
@@ -198,6 +228,8 @@ export function SidebarTree({
               data-nr-pinned={row.pinned ? "true" : undefined}
               data-row-id={row.id}
               aria-current={isActive ? "true" : undefined}
+              aria-label={label}
+              aria-describedby={words.length > 0 ? descriptionId : undefined}
               onClick={(event) => onItemClick(row.id, modifiersOf(event))}
               onDoubleClick={() => onStartEdit(edit)}
               onKeyDown={(event) => onRenameKey(event, edit)}
@@ -206,9 +238,59 @@ export function SidebarTree({
                 onItemMenu(row.id, menuPoint(event));
               }}
             >
-              {row.pinned && <Pin size={12} aria-hidden="true" />}
-              {label}
+              <span className="tab-line">
+                {row.pinned && <Pin size={12} aria-hidden="true" />}
+                <span className="tab-title" data-nr-part="item-title">
+                  {label}
+                </span>
+                <span className="tab-badges" aria-hidden="true">
+                  {summary.running && (
+                    <span className="tab-badge" data-nr-indicator="running" title={RUNNING_LABEL}>
+                      <LoaderCircle size={12} className="spin" aria-hidden="true" />
+                    </span>
+                  )}
+                  {summary.failed !== undefined && (
+                    <span
+                      className="tab-badge"
+                      data-nr-indicator="failed"
+                      title={failureLabel(summary.failed)}
+                    >
+                      <CircleAlert size={12} aria-hidden="true" />
+                    </span>
+                  )}
+                  {summary.unread && (
+                    <span className="tab-badge" data-nr-indicator="unread" title={UNREAD_LABEL}>
+                      <span className="unread-dot" />
+                    </span>
+                  )}
+                  {summary.bell && (
+                    <span className="tab-badge" data-nr-indicator="bell" title={BELL_LABEL}>
+                      <Bell size={12} aria-hidden="true" />
+                    </span>
+                  )}
+                </span>
+              </span>
+              {hasMeta && (
+                <span className="tab-meta" data-nr-part="item-meta" aria-hidden="true">
+                  {cwdText !== "" && (
+                    <span className="tab-cwd" data-nr-part="item-cwd" title={summary.cwd}>
+                      {cwdText}
+                    </span>
+                  )}
+                  {summary.gitBranch !== undefined && (
+                    <span className="tab-branch" data-nr-part="item-branch">
+                      <GitBranch size={11} aria-hidden="true" className="tab-branch-icon" />
+                      <span className="tab-branch-name">{summary.gitBranch}</span>
+                    </span>
+                  )}
+                </span>
+              )}
             </button>
+            {words.length > 0 && (
+              <span id={descriptionId} className="sr-only">
+                {words.join(". ")}
+              </span>
+            )}
           </li>
         );
       })}

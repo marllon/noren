@@ -392,5 +392,20 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
       target.map(({ itemId, paneId }): Action => ({ type: "pane/focus", itemId, paneId })),
     ),
     weighted(3, fc.record({ type: tag("pane/focus-direction"), itemId, direction })),
+    weighted(
+      3,
+      target.chain(({ itemId, paneId }) =>
+        fc.record(
+          {
+            type: tag("pane/set-status"),
+            itemId: fc.constant(itemId),
+            paneId: fc.constant(paneId),
+            status: fc.constantFrom("running", "idle", "exited"),
+            exitCode: fc.integer({ min: 0, max: 255 }),
+          },
+          { requiredKeys: ["type", "itemId", "paneId", "status"] },
+        ),
+      ),
+    ),
   );
 }

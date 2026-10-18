@@ -1,6 +1,7 @@
 import {
   DEFAULT_PROFILE_ID,
   StateWriter,
+  layoutPanes,
   liveSessionIds,
   reduce,
   treeGroups,
@@ -105,8 +106,11 @@ export interface WorkspaceState {
 export type WorkspaceStore = StoreApi<WorkspaceState>;
 
 export interface WorkspaceStoreOptions {
-  /** `saveState` for the default writer and `kill` for the sessions an action drops. */
-  backend: Pick<Backend, "saveState" | "kill">;
+  /**
+   * `saveState` for the default writer, `kill` for the sessions an action drops and `onExit` to
+   * mark the pane of a shell that ended.
+   */
+  backend: Pick<Backend, "saveState" | "kill" | "onExit">;
   workspace: Workspace;
   failedPaneIds?: Id[];
   /** Defaults to a `StateWriter` on `backend` with the 500 ms debounce. */
@@ -174,6 +178,17 @@ export function activeItemIdOf(state: Pick<WorkspaceState, "workspace">): Id | u
   return spaceItemIds(space)[0];
 }
 
+/** The item and pane that hold a session, among the open items; `undefined` when none does. */
+function findPaneBySession(ws: Workspace, sessionId: Id): { itemId: Id; paneId: Id } | undefined {
+  for (const space of ws.spaces) {
+    for (const item of Object.values(space.items)) {
+      const pane = layoutPanes(item.layout).find((p) => p.sessionId === sessionId);
+      if (pane) return { itemId: item.id, paneId: pane.id };
+    }
+  }
+  return undefined;
+}
+
 /** Copy of the layout with the session set on the pane; the same object when the pane is absent. */
 function withSession(layout: LayoutNode, paneId: Id, sessionId: Id): LayoutNode {
   if (layout.kind === "pane") {
@@ -218,131 +233,140 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
     backend.kill(Number(sessionId)).catch(() => undefined);
   };
 
-  return createStore<WorkspaceState>()((set, get) => ({
-    workspace: options.workspace,
-    failedPaneIds: options.failedPaneIds ?? [],
+  return createStore<WorkspaceState>()((set, get) => {
+    // The store lives as long as the window, so this subscription is never released.
+    backend.onExit((exit) => {
+      const found = findPaneBySession(get().workspace, String(exit.id));
+      if (!found) return;
+      get().dispatch({ type: "pane/set-status", ...found, status: "exited", exitCode: exit.code });
+    });
 
-    dispatch(action) {
-      const before = get().workspace;
-      const after = reduce(before, action, context);
-      if (after === before) return;
-      set({ workspace: after });
-      writer.schedule(after);
-      const alive = liveSessionIds(after);
-      for (const sessionId of liveSessionIds(before)) {
-        if (!alive.has(sessionId)) kill(sessionId);
-      }
-    },
+    return {
+      workspace: options.workspace,
+      failedPaneIds: options.failedPaneIds ?? [],
 
-    newTab() {
-      get().dispatch({ type: "item/create" });
-    },
-
-    createSpace(input) {
-      const before = get().workspace;
-      get().dispatch({
-        type: "space/create",
-        name: input.name,
-        ...(input.icon !== undefined ? { icon: input.icon } : {}),
-        ...(input.color !== undefined ? { color: input.color } : {}),
-        ...(input.profileId !== undefined ? { profileId: input.profileId } : {}),
-        ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
-        ...(input.env !== undefined ? { env: input.env } : {}),
-      });
-      const known = new Set(before.spaces.map((space) => space.id));
-      const created = get().workspace.spaces.find((space) => !known.has(space.id));
-      if (!created) return;
-      if (input.gitIdentity !== undefined) {
-        get().dispatch({
-          type: "space/set-defaults",
-          spaceId: created.id,
-          gitIdentity: input.gitIdentity,
-        });
-      }
-      get().dispatch({ type: "item/create", spaceId: created.id });
-    },
-
-    editSpace(spaceId, edit) {
-      const { dispatch } = get();
-      if (edit.name !== undefined) dispatch({ type: "space/rename", spaceId, name: edit.name });
-      if (edit.color !== undefined)
-        dispatch({ type: "space/set-color", spaceId, color: edit.color });
-      if (edit.icon !== undefined) dispatch({ type: "space/set-icon", spaceId, icon: edit.icon });
-      if (edit.cwd !== undefined || edit.env !== undefined || edit.gitIdentity !== undefined) {
-        dispatch({
-          type: "space/set-defaults",
-          spaceId,
-          ...(edit.cwd !== undefined ? { cwd: edit.cwd } : {}),
-          ...(edit.env !== undefined ? { env: edit.env } : {}),
-          ...(edit.gitIdentity !== undefined ? { gitIdentity: edit.gitIdentity } : {}),
-        });
-      }
-    },
-
-    deleteSpace(spaceId) {
-      const before = get().workspace;
-      get().dispatch({ type: "space/delete", spaceId, items: { mode: "close" } });
-      return get().workspace !== before;
-    },
-
-    moveSpace(spaceId, index) {
-      get().dispatch({ type: "space/move", spaceId, index });
-    },
-
-    activateSpace(spaceId) {
-      get().dispatch({ type: "space/activate", spaceId });
-    },
-
-    activateSpaceAt(index) {
-      const space = get().workspace.spaces[index];
-      if (space) get().dispatch({ type: "space/activate", spaceId: space.id });
-    },
-
-    activateItem(itemId) {
-      const { workspace, dispatch } = get();
-      dispatch({ type: "space/set-active-item", spaceId: activeSpaceOf(workspace).id, itemId });
-    },
-
-    groupItems(itemIds, name) {
-      const space = activeSpaceOf(get().workspace);
-      const known = new Set(treeGroups(space.tree).map((group) => group.id));
-      get().dispatch({ type: "group/create-from-selection", itemIds: [...itemIds], name });
-      const after = activeSpaceOf(get().workspace);
-      return treeGroups(after.tree).find((group) => !known.has(group.id))?.id;
-    },
-
-    closeItems(itemIds) {
-      const { dispatch } = get();
-      for (const itemId of itemIds) dispatch({ type: "item/close", itemId });
-    },
-
-    closeOthers(keepIds) {
-      const { workspace, dispatch } = get();
-      const space = activeSpaceOf(workspace);
-      const keep = new Set(keepIds);
-      const first = keepIds.find((id) => space.items[id] !== undefined);
-      if (first === undefined) return;
-      dispatch({ type: "space/set-active-item", spaceId: space.id, itemId: first });
-      for (const itemId of spaceItemIds(space)) {
-        if (!keep.has(itemId) && !space.pinned.includes(itemId)) {
-          dispatch({ type: "item/close", itemId });
+      dispatch(action) {
+        const before = get().workspace;
+        const after = reduce(before, action, context);
+        if (after === before) return;
+        set({ workspace: after });
+        writer.schedule(after);
+        const alive = liveSessionIds(after);
+        for (const sessionId of liveSessionIds(before)) {
+          if (!alive.has(sessionId)) kill(sessionId);
         }
-      }
-    },
+      },
 
-    attachSession(paneId, sessionId) {
-      const { workspace } = get();
-      const next = attachToWorkspace(workspace, paneId, sessionId);
-      if (next === workspace) {
-        // The pane closed while its shell was starting: nobody owns the session.
-        kill(sessionId);
-        return;
-      }
-      set({ workspace: next });
-    },
+      newTab() {
+        get().dispatch({ type: "item/create" });
+      },
 
-    flush() {
-      return writer.flush();
-    },
-  }));
+      createSpace(input) {
+        const before = get().workspace;
+        get().dispatch({
+          type: "space/create",
+          name: input.name,
+          ...(input.icon !== undefined ? { icon: input.icon } : {}),
+          ...(input.color !== undefined ? { color: input.color } : {}),
+          ...(input.profileId !== undefined ? { profileId: input.profileId } : {}),
+          ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+          ...(input.env !== undefined ? { env: input.env } : {}),
+        });
+        const known = new Set(before.spaces.map((space) => space.id));
+        const created = get().workspace.spaces.find((space) => !known.has(space.id));
+        if (!created) return;
+        if (input.gitIdentity !== undefined) {
+          get().dispatch({
+            type: "space/set-defaults",
+            spaceId: created.id,
+            gitIdentity: input.gitIdentity,
+          });
+        }
+        get().dispatch({ type: "item/create", spaceId: created.id });
+      },
+
+      editSpace(spaceId, edit) {
+        const { dispatch } = get();
+        if (edit.name !== undefined) dispatch({ type: "space/rename", spaceId, name: edit.name });
+        if (edit.color !== undefined)
+          dispatch({ type: "space/set-color", spaceId, color: edit.color });
+        if (edit.icon !== undefined) dispatch({ type: "space/set-icon", spaceId, icon: edit.icon });
+        if (edit.cwd !== undefined || edit.env !== undefined || edit.gitIdentity !== undefined) {
+          dispatch({
+            type: "space/set-defaults",
+            spaceId,
+            ...(edit.cwd !== undefined ? { cwd: edit.cwd } : {}),
+            ...(edit.env !== undefined ? { env: edit.env } : {}),
+            ...(edit.gitIdentity !== undefined ? { gitIdentity: edit.gitIdentity } : {}),
+          });
+        }
+      },
+
+      deleteSpace(spaceId) {
+        const before = get().workspace;
+        get().dispatch({ type: "space/delete", spaceId, items: { mode: "close" } });
+        return get().workspace !== before;
+      },
+
+      moveSpace(spaceId, index) {
+        get().dispatch({ type: "space/move", spaceId, index });
+      },
+
+      activateSpace(spaceId) {
+        get().dispatch({ type: "space/activate", spaceId });
+      },
+
+      activateSpaceAt(index) {
+        const space = get().workspace.spaces[index];
+        if (space) get().dispatch({ type: "space/activate", spaceId: space.id });
+      },
+
+      activateItem(itemId) {
+        const { workspace, dispatch } = get();
+        dispatch({ type: "space/set-active-item", spaceId: activeSpaceOf(workspace).id, itemId });
+      },
+
+      groupItems(itemIds, name) {
+        const space = activeSpaceOf(get().workspace);
+        const known = new Set(treeGroups(space.tree).map((group) => group.id));
+        get().dispatch({ type: "group/create-from-selection", itemIds: [...itemIds], name });
+        const after = activeSpaceOf(get().workspace);
+        return treeGroups(after.tree).find((group) => !known.has(group.id))?.id;
+      },
+
+      closeItems(itemIds) {
+        const { dispatch } = get();
+        for (const itemId of itemIds) dispatch({ type: "item/close", itemId });
+      },
+
+      closeOthers(keepIds) {
+        const { workspace, dispatch } = get();
+        const space = activeSpaceOf(workspace);
+        const keep = new Set(keepIds);
+        const first = keepIds.find((id) => space.items[id] !== undefined);
+        if (first === undefined) return;
+        dispatch({ type: "space/set-active-item", spaceId: space.id, itemId: first });
+        for (const itemId of spaceItemIds(space)) {
+          if (!keep.has(itemId) && !space.pinned.includes(itemId)) {
+            dispatch({ type: "item/close", itemId });
+          }
+        }
+      },
+
+      attachSession(paneId, sessionId) {
+        const { workspace } = get();
+        const next = attachToWorkspace(workspace, paneId, sessionId);
+        if (next === workspace) {
+          // The pane closed while its shell was starting: nobody owns the session.
+          kill(sessionId);
+          return;
+        }
+        set({ workspace: next });
+      },
+
+      flush() {
+        return writer.flush();
+      },
+    };
+  });
 }

@@ -6,6 +6,7 @@ import { Suspense, use, useEffect, useLayoutEffect, useMemo, useRef, useState } 
 import { useStore } from "zustand";
 import { insideTauri } from "./backend";
 import { backend, booted } from "./boot";
+import { loadHome } from "./home";
 import { ConfirmDialog } from "./ConfirmDialog";
 import {
   clickSelection,
@@ -203,6 +204,18 @@ function Shell({ store }: { store: WorkspaceStore }) {
     applySpaceColor(document.documentElement, theme, spaceColor);
   }, [theme, spaceColor]);
 
+  // The home folder arrives asynchronously; until then folders show in full.
+  const [home, setHome] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    void loadHome().then((path) => {
+      if (live) setHome(path);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
   // Ctrl+Alt+1..9 switches space. Captured on the window so the terminal never sees the keys.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -374,6 +387,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
           activeId={activeId}
           selected={selected}
           editing={editingHere}
+          home={home}
           onItemClick={onItemClick}
           onItemMenu={(itemId, point) => {
             const targets = menuTargets(selected, itemId);

@@ -41,6 +41,7 @@ import {
   type Item,
   type LayoutNode,
   type Node,
+  type Pane,
   type Space,
   type Workspace,
 } from "./types";
@@ -197,6 +198,8 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       return focusPane(ws, action.itemId, action.paneId);
     case "pane/focus-direction":
       return focusDirection(ws, action.itemId, action.direction);
+    case "pane/set-status":
+      return setPaneStatus(ws, action);
     default:
       return assertNever(action, ws);
   }
@@ -925,6 +928,39 @@ function focusPane(ws: Workspace, itemId: Id, paneId: Id): Workspace {
   // Zoom shows one pane only: focusing another one brings the layout back.
   const base = zoomed !== undefined && zoomed !== paneId ? withoutZoom(item) : item;
   return replaceItem(ws, space, { ...base, focusedPaneId: paneId });
+}
+
+/** Copy of the layout with the pane replaced by `next`; the same object when the pane is absent. */
+function withPane(layout: LayoutNode, next: Pane): LayoutNode {
+  if (layout.kind === "pane")
+    return layout.pane.id === next.id ? { kind: "pane", pane: next } : layout;
+  const children = layout.children.map((child) => withPane(child, next));
+  return children.some((child, index) => child !== layout.children[index])
+    ? { ...layout, children }
+    : layout;
+}
+
+function setPaneStatus(
+  ws: Workspace,
+  action: Extract<Action, { type: "pane/set-status" }>,
+): Workspace {
+  const { status, exitCode } = action;
+  if (status !== "running" && status !== "idle" && status !== "exited") return ws;
+  const located = locate(ws, action.itemId);
+  const pane = located && findPane(located.item.layout, action.paneId);
+  if (!located || !pane) return ws;
+  const code =
+    status === "exited" && typeof exitCode === "number" && Number.isFinite(exitCode)
+      ? exitCode
+      : undefined;
+  if (pane.status === status && pane.exitCode === code) return ws;
+  const next: Pane = { ...pane, status };
+  delete next.exitCode;
+  if (code !== undefined) next.exitCode = code;
+  return replaceItem(ws, located.space, {
+    ...located.item,
+    layout: withPane(located.item.layout, next),
+  });
 }
 
 function focusDirection(ws: Workspace, itemId: Id, direction: unknown): Workspace {

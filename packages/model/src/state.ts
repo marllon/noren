@@ -317,6 +317,7 @@ function checkPane(value: unknown, path: string): void {
   optional(pane, "sessionId", path, str);
   str(pane["profileId"], `${path}.profileId`);
   optional(pane, "cwd", path, str);
+  optional(pane, "gitBranch", path, str);
   const status = pane["status"];
   if (status !== "running" && status !== "idle" && status !== "exited") {
     throw new ShapeError(`${path}.status`, '"running", "idle" or "exited"');

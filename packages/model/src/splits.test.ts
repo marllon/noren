@@ -858,3 +858,72 @@ describe("splits and sessions", () => {
     expect([...liveSessionIds(ws)].sort()).toEqual(["x2", "x3", "x5", "x6", "x7"]);
   });
 });
+
+describe("pane/set-status", () => {
+  const paneOf = (ws: Workspace, itemId: Id, paneId: Id) =>
+    must(layoutPanes(itemOf(ws, itemId).layout).find((p) => p.id === paneId));
+
+  it("marks the pane as exited with its code, leaving the other panes and the sessions alone", () => {
+    const next = applyChecked(fixture(), {
+      type: "pane/set-status",
+      itemId: "b",
+      paneId: "p3",
+      status: "exited",
+      exitCode: 2,
+    });
+    expect(paneOf(next, "b", "p3")).toMatchObject({
+      status: "exited",
+      exitCode: 2,
+      sessionId: "x3",
+    });
+    expect(paneOf(next, "b", "p2")).toEqual(paneOf(fixture(), "b", "p2"));
+    expect(show(itemOf(next, "b").layout)).toBe("row(40:p2 60:p3)");
+    expect(sessionsLost(fixture(), next)).toEqual([]);
+  });
+
+  it("a zero code is kept", () => {
+    const next = applyChecked(fixture(), {
+      type: "pane/set-status",
+      itemId: "a",
+      paneId: "p1",
+      status: "exited",
+      exitCode: 0,
+    });
+    expect(paneOf(next, "a", "p1").exitCode).toBe(0);
+  });
+
+  it("drops the code when the status is not exited", () => {
+    const exited = applyChecked(fixture(), {
+      type: "pane/set-status",
+      itemId: "a",
+      paneId: "p1",
+      status: "exited",
+      exitCode: 2,
+    });
+    const running = applyChecked(exited, {
+      type: "pane/set-status",
+      itemId: "a",
+      paneId: "p1",
+      status: "running",
+      exitCode: 5,
+    });
+    expect(paneOf(running, "a", "p1").status).toBe("running");
+    expect(paneOf(running, "a", "p1")).not.toHaveProperty("exitCode");
+  });
+
+  it("changes nothing when the pane is unknown or the value is the same", () => {
+    const base = { type: "pane/set-status", status: "running" } as const;
+    expectUnchanged(fixture(), { ...base, itemId: "ghost", paneId: "p1" });
+    expectUnchanged(fixture(), { ...base, itemId: "a", paneId: "ghost" });
+    // p1 of another item.
+    expectUnchanged(fixture(), { ...base, itemId: "b", paneId: "p1" });
+    // Already running (the status of the test panes).
+    expectUnchanged(fixture(), { ...base, itemId: "a", paneId: "p1" });
+    expectUnchanged(fixture(), {
+      type: "pane/set-status",
+      itemId: "a",
+      paneId: "p1",
+      status: "bogus",
+    } as unknown as Action);
+  });
+});

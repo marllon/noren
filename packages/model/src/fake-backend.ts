@@ -33,6 +33,8 @@ export interface FakeBackendOptions {
   host?: string;
   /** Directory sessions start in without `cwd`, and the target of a bare `cd`. */
   home?: string;
+  /** Initial content of `state.json`. Defaults to `null` (no saved state). */
+  state?: string | null;
 }
 
 /** Read-only view of a session, for assertions. */
@@ -347,9 +349,12 @@ export class FakeBackend implements Backend {
   readonly #streams = new Map<SessionId, OutputStream>();
   readonly #exitListeners = new Set<(exit: SessionExit) => void>();
   readonly #calls: FakeCall[] = [];
+  readonly #quarantined: string[] = [];
+  #state: string | null;
   #nextId = 1;
 
   constructor(options: FakeBackendOptions = {}) {
+    this.#state = options.state ?? null;
     this.clock = options.clock ?? new ManualClock();
     this.#profiles = options.profiles ?? [{ id: "fake", name: "Fake shell", default: true }];
     this.#host = options.host ?? "fake-host";
@@ -364,6 +369,21 @@ export class FakeBackend implements Backend {
   /** The calls to one method. */
   callsTo(method: keyof Backend): FakeCall[] {
     return this.#calls.filter((call) => call.method === method);
+  }
+
+  /** Current content of the in-memory `state.json`, `null` when there is none. */
+  get stateContent(): string | null {
+    return this.#state;
+  }
+
+  /** Contents of the copies `quarantineState` made, oldest first. */
+  get quarantined(): readonly string[] {
+    return this.#quarantined;
+  }
+
+  /** How many times `quarantineState` made a copy. */
+  get quarantineCount(): number {
+    return this.#quarantined.length;
   }
 
   /** Snapshot of a session (kept after it ends). */
@@ -454,6 +474,24 @@ export class FakeBackend implements Backend {
     return () => {
       this.#exitListeners.delete(callback);
     };
+  }
+
+  async loadState(): Promise<string | null> {
+    this.#record("loadState");
+    return this.#state;
+  }
+
+  async saveState(content: string): Promise<void> {
+    this.#record("saveState", content);
+    this.#state = content;
+  }
+
+  /** Like the real one: copies the file, leaves the original, and fails when there is no file. */
+  async quarantineState(): Promise<string> {
+    this.#record("quarantineState");
+    if (this.#state === null) throw new Error("there is no state file to quarantine");
+    this.#quarantined.push(this.#state);
+    return `state.broken-${this.#quarantined.length}.json`;
   }
 
   #record(method: keyof Backend, ...args: unknown[]): void {

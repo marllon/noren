@@ -1,8 +1,8 @@
 /**
  * Terminal side of the backend contract. It never imports DOM or Tauri.
  *
- * Workspace state, config, git and AI methods (`loadState`, `saveState`, `loadConfig`,
- * `watchConfig`, `gitInfo`, `ai.*`) join this interface in the tasks of their own phases.
+ * Config, git and AI methods (`loadConfig`, `watchConfig`, `gitInfo`, `ai.*`) join this interface
+ * in the tasks of their own phases.
  */
 
 /** Function returned by every subscription: calling it stops the delivery. */
@@ -51,4 +51,10 @@ export interface Backend {
   onOutput(id: SessionId, callback: (data: Uint8Array) => void): Unsubscribe;
   /** Called once per session that ends, whether on its own or through `kill`. */
   onExit(callback: (exit: SessionExit) => void): Unsubscribe;
+  /** Text of the saved `state.json`, or `null` when there is none yet. Parsing is the caller's job. */
+  loadState(): Promise<string | null>;
+  /** Replaces `state.json` with `content` atomically: a crash never leaves half a file. */
+  saveState(content: string): Promise<void>;
+  /** Keeps a copy of the current `state.json` as `state.broken-<date>.json` and returns its path. */
+  quarantineState(): Promise<string>;
 }

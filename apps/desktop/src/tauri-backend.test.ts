@@ -209,6 +209,40 @@ describe("TauriBackend", () => {
     expect(fake.unlistened()).toBe(1);
   });
 
+  it("loads the state through state_load, as text or null", async () => {
+    const fake = fakeBridge({ state_load: '{"version":1}' });
+    await expect(new TauriBackend(fake.bridge).loadState()).resolves.toBe('{"version":1}');
+    expect(fake.invocations).toEqual([{ command: "state_load", args: undefined }]);
+
+    const none = fakeBridge({ state_load: null });
+    await expect(new TauriBackend(none.bridge).loadState()).resolves.toBeNull();
+  });
+
+  it("saves the state through state_save with the content", async () => {
+    const fake = fakeBridge();
+    await new TauriBackend(fake.bridge).saveState('{"version":1}');
+    expect(fake.invocations).toEqual([
+      { command: "state_save", args: { content: '{"version":1}' } },
+    ]);
+  });
+
+  it("quarantines through state_quarantine and returns the path of the copy", async () => {
+    const fake = fakeBridge({ state_quarantine: "C:\\data\\state.broken-20261018T120000Z.json" });
+    await expect(new TauriBackend(fake.bridge).quarantineState()).resolves.toBe(
+      "C:\\data\\state.broken-20261018T120000Z.json",
+    );
+    expect(fake.invocations).toEqual([{ command: "state_quarantine", args: undefined }]);
+  });
+
+  it("lets state command failures reach the caller", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    fake.failing.add("state_load").add("state_save").add("state_quarantine");
+    await expect(backend.loadState()).rejects.toThrow("state_load failed");
+    await expect(backend.saveState("x")).rejects.toThrow("state_save failed");
+    await expect(backend.quarantineState()).rejects.toThrow("state_quarantine failed");
+  });
+
   it("gives onOutput of an unknown session a harmless unsubscribe", () => {
     const backend = new TauriBackend(fakeBridge().bridge);
     expect(() => backend.onOutput(99, () => undefined)()).not.toThrow();

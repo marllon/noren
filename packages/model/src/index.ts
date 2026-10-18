@@ -21,7 +21,19 @@ export type { InvariantOptions, Violation, ViolationCode } from "./invariants";
 export { layoutRects, neighborPane } from "./geometry";
 export type { Direction, Rect } from "./geometry";
 export { reduce } from "./reducer";
+export { restoreWorkspace } from "./restore";
+export type { RestoreOptions, RestoreResult } from "./restore";
 export { layoutPanes, liveSessionIds } from "./sessions";
+export {
+  MIGRATIONS,
+  STATE_VERSION,
+  parseState,
+  serializeWorkspace,
+  workspaceWithoutSessions,
+} from "./state";
+export type { Migration, ParseStateResult } from "./state";
+export { STATE_SAVE_DELAY_MS, StateWriter } from "./state-writer";
+export type { StateWriterOptions } from "./state-writer";
 export { DEFAULT_MAX_PANES, MAX_CLOSED, MAX_GROUP_DEPTH } from "./types";
 export type {
   ArchivedItem,

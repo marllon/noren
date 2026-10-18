@@ -27,7 +27,7 @@ noren/
 
 - **pnpm workspaces** (`apps/*`, `packages/*`) and a **Cargo workspace** (`crates/*`, `apps/desktop/src-tauri`) at the root.
 - **`noren-core` does not depend on Tauri.** It is tested quickly with `cargo test -p noren-core` and is designed to later become a standalone daemon.
-- **`Backend` interface** (in `packages/model`): `listProfiles`, `createSession`, `write`, `resize`, `kill`, `onOutput`, `onExit`, `loadState`, `saveState`, `loadConfig`, `watchConfig`, `gitInfo`, `ai.*`. There are two implementations: `TauriBackend` (the app) and `FakeBackend` (tests, end-to-end runs and the web demo). The interface never imports anything from the DOM or from Tauri.
+- **`Backend` interface** (in `packages/model`): `listProfiles`, `createSession`, `write`, `resize`, `kill`, `onOutput`, `onExit`, `loadState`, `saveState`, `quarantineState`, `loadConfig`, `watchConfig`, `gitInfo`, `ai.*`. There are two implementations: `TauriBackend` (the app) and `FakeBackend` (tests, end-to-end runs and the web demo). The interface never imports anything from the DOM or from Tauri.
 - **Terminal output flow.** A PTY reader thread in Rust gathers bytes into batches (up to 64 KB or 8 ms) and sends them through a `tauri::ipc::Channel` with a binary payload (`ArrayBuffer`). The interface writes the `Uint8Array` straight into xterm. Input goes the other way: xterm's `onData` becomes `invoke('session_write')`.
 - **Interface state.** Zustand wraps the pure reducer from `packages/model`; the operations do not know React exists.
 - **Interface libraries.** `@xterm/xterm` and its addons (webgl, fit, search, web-links, unicode11, serialize), `cmdk` (command palette), `@dnd-kit` (drag and drop), `react-resizable-panels` (splits), `lucide-react` (icons). All are MIT or ISC.
@@ -116,7 +116,7 @@ Invariants (checked with property-based tests): every pane belongs to exactly on
 
 ## Files, configuration and themes
 
-- `state.json`: the `Workspace` above. Written atomically (temporary file plus rename), debounced by 500 ms, with a `version` field and migrations.
+- `state.json`: the `Workspace` above. Written atomically (temporary file plus rename), debounced by 500 ms, with a `version` field and migrations. In `packages/model`, `serializeWorkspace` and `parseState` (version, migrations, shape check, `checkInvariants`) read and write the text, `StateWriter` does the debounce, and `restoreWorkspace` loads the file and starts one session per pane in its saved cwd. Sessions are never saved. A file that cannot be used (broken JSON, wrong shape, broken invariants, unknown or newer version) is copied by `quarantineState` and the default workspace takes its place.
 - `scrollback/<paneId>.txt`: a snapshot (xterm serialize addon) of the last 2,000 lines, only when the space allows it.
 - `config.jsonc`: appearance (theme, density, sidebar position, compact mode, opacity, background), terminal (font, cursor, scrollback, paste), profiles (detected and user-defined, with `injectIntegration`), shortcuts, auto-archive, notifications, and AI (providers without keys; the key lives in the system keychain).
 - Theme (`themes/*.json`):

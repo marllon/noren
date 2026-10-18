@@ -67,7 +67,6 @@ export class TauriBackend implements Backend {
     const channel = this.#bridge.createChannel<ArrayBuffer>();
     channel.onmessage = (message) => stream.push(new Uint8Array(message));
 
-    // `cwd` and `env` are sent already; the Rust command ignores them until it accepts them.
     const id = await this.#bridge.invoke<SessionId>("session_create", {
       cols: options.cols,
       rows: options.rows,
@@ -113,6 +112,18 @@ export class TauriBackend implements Backend {
     return () => {
       this.#exitListeners.delete(callback);
     };
+  }
+
+  loadState(): Promise<string | null> {
+    return this.#bridge.invoke<string | null>("state_load");
+  }
+
+  async saveState(content: string): Promise<void> {
+    await this.#bridge.invoke("state_save", { content });
+  }
+
+  quarantineState(): Promise<string> {
+    return this.#bridge.invoke<string>("state_quarantine");
   }
 
   /** Stops listening to `session-exit`. Sessions still running will keep their ids until killed. */

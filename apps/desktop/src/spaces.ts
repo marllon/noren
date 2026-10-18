@@ -80,3 +80,55 @@ export function spaceShortcutIndex(event: ShortcutEvent): number | undefined {
   const match = /^Digit([1-9])$/.exec(event.code);
   return match?.[1] === undefined ? undefined : Number(match[1]) - 1;
 }
+
+/** The slice of a wheel event the space gesture reads. */
+export interface WheelLike {
+  deltaX: number;
+  deltaY: number;
+  deltaMode: number;
+  shiftKey: boolean;
+}
+
+/**
+ * Horizontal travel of a wheel event in pixels, positive to the right: `deltaX` when the gesture is
+ * mostly horizontal, or `deltaY` while Shift is held (some platforms already turn that into
+ * `deltaX`). A plain vertical wheel is 0.
+ */
+export function wheelTravel(event: WheelLike): number {
+  const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1;
+  if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return event.deltaX * scale;
+  return event.shiftKey ? event.deltaY * scale : 0;
+}
+
+/** Pixels of horizontal travel that make one step, and the pause that ends a gesture. */
+export const WHEEL_THRESHOLD = 60;
+export const WHEEL_IDLE_MS = 200;
+
+/**
+ * Turns a stream of horizontal wheel travel into at most one step (-1 left, +1 right) per gesture:
+ * the travel must add up to `threshold` first, and once a step fired the rest of the gesture (a
+ * trackpad keeps sending events with momentum) is ignored until `idleMs` pass with no event.
+ */
+export function createWheelGesture(
+  threshold = WHEEL_THRESHOLD,
+  idleMs = WHEEL_IDLE_MS,
+): (travel: number, now: number) => -1 | 0 | 1 {
+  let sum = 0;
+  let last = Number.NEGATIVE_INFINITY;
+  let spent = false;
+  return (travel, now) => {
+    if (now - last > idleMs) {
+      sum = 0;
+      spent = false;
+    }
+    last = now;
+    if (travel === 0 || spent) return 0;
+    if (Math.sign(travel) !== Math.sign(sum)) sum = 0;
+    sum += travel;
+    if (Math.abs(sum) < threshold) return 0;
+    spent = true;
+    const step = sum > 0 ? 1 : -1;
+    sum = 0;
+    return step;
+  };
+}

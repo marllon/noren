@@ -248,6 +248,69 @@ describe("workspace store", () => {
       expect(first && Object.keys(first.defaults.env)).toEqual([]);
     });
 
+    describe("sessionStartOptions with a git identity", () => {
+      const paneOf = (space: ReturnType<typeof activeSpaceOf>) => {
+        const item = Object.values(space.items)[0];
+        const pane = item && item.layout.kind === "pane" ? item.layout.pane : undefined;
+        if (!pane) throw new Error("no pane");
+        return pane;
+      };
+      const identity = { name: "Ada Lovelace", email: "ada@example.com" };
+
+      it("adds the author and committer variables to the environment", async () => {
+        const { store } = await openStore(new FakeBackend());
+        store.getState().editSpace(store.getState().workspace.activeSpaceId, {
+          gitIdentity: identity,
+          env: { WHO: "a" },
+        });
+        const space = activeSpaceOf(store.getState().workspace);
+        expect(sessionStartOptions(space, paneOf(space))).toEqual({
+          env: {
+            GIT_AUTHOR_NAME: "Ada Lovelace",
+            GIT_COMMITTER_NAME: "Ada Lovelace",
+            GIT_AUTHOR_EMAIL: "ada@example.com",
+            GIT_COMMITTER_EMAIL: "ada@example.com",
+            WHO: "a",
+          },
+        });
+      });
+
+      it("works without any other variable and leaves out a blank name or email", async () => {
+        const { store } = await openStore(new FakeBackend());
+        const id = store.getState().workspace.activeSpaceId;
+        store.getState().editSpace(id, { gitIdentity: { name: "", email: "ada@example.com" } });
+        const space = activeSpaceOf(store.getState().workspace);
+        expect(sessionStartOptions(space, paneOf(space)).env).toEqual({
+          GIT_AUTHOR_EMAIL: "ada@example.com",
+          GIT_COMMITTER_EMAIL: "ada@example.com",
+        });
+      });
+
+      it("lets a variable set explicitly on the space win, ignoring case", async () => {
+        const { store } = await openStore(new FakeBackend());
+        store.getState().editSpace(store.getState().workspace.activeSpaceId, {
+          gitIdentity: identity,
+          env: { GIT_AUTHOR_NAME: "Explicit", git_committer_email: "me@example.com" },
+        });
+        const space = activeSpaceOf(store.getState().workspace);
+        expect(sessionStartOptions(space, paneOf(space)).env).toEqual({
+          GIT_AUTHOR_NAME: "Explicit",
+          git_committer_email: "me@example.com",
+          GIT_COMMITTER_NAME: "Ada Lovelace",
+          GIT_AUTHOR_EMAIL: "ada@example.com",
+        });
+      });
+
+      it("leaves the variables out once the identity is cleared", async () => {
+        const { store } = await openStore(new FakeBackend());
+        const id = store.getState().workspace.activeSpaceId;
+        store.getState().editSpace(id, { gitIdentity: identity });
+        store.getState().editSpace(id, { gitIdentity: { name: "", email: "" } });
+        const space = activeSpaceOf(store.getState().workspace);
+        expect(sessionStartOptions(space, paneOf(space))).toEqual({});
+      });
+    });
+
     it("leaves the default profile and an empty env out of the start options", async () => {
       const { store } = await openStore(new FakeBackend());
       const space = activeSpaceOf(store.getState().workspace);
@@ -324,6 +387,37 @@ describe("workspace store", () => {
         const defaults = activeSpaceOf(store.getState().workspace).defaults;
         expect(defaults.cwd).toBeUndefined();
         expect(defaults.env).toEqual({ C: "3" });
+      });
+
+      it("sets the git identity, keeps it across other edits and clears it with blank fields", async () => {
+        const backend = new FakeBackend();
+        const { store } = await openStore(backend);
+        const id = store.getState().workspace.activeSpaceId;
+        const identity = { name: "Ada Lovelace", email: "ada@example.com" };
+        store.getState().editSpace(id, { gitIdentity: identity });
+        expect(activeSpaceOf(store.getState().workspace).defaults.gitIdentity).toEqual(identity);
+
+        store.getState().editSpace(id, { cwd: "/srv/a" });
+        expect(activeSpaceOf(store.getState().workspace).defaults.gitIdentity).toEqual(identity);
+
+        await vi.advanceTimersByTimeAsync(STATE_SAVE_DELAY_MS);
+        const saved = parseState(backend.stateContent ?? "");
+        expect(saved.ok && saved.workspace.spaces[0]?.defaults.gitIdentity).toEqual(identity);
+
+        store.getState().editSpace(id, { gitIdentity: { name: "", email: "  " } });
+        expect("gitIdentity" in activeSpaceOf(store.getState().workspace).defaults).toBe(false);
+      });
+
+      it("createSpace with a git identity stores it on the new space", async () => {
+        const { store } = await openStore(new FakeBackend());
+        store.getState().createSpace({
+          name: "Work",
+          gitIdentity: { name: "Ada", email: "ada@example.com" },
+        });
+        const space = activeSpaceOf(store.getState().workspace);
+        expect(space.name).toBe("Work");
+        expect(space.defaults.gitIdentity).toEqual({ name: "Ada", email: "ada@example.com" });
+        expect(spaceItemIds(space)).toHaveLength(1);
       });
 
       it("a blank name, an unknown space or no change leaves the workspace as it was", async () => {

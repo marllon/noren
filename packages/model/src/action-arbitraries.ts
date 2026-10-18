@@ -45,6 +45,18 @@ const arbEnv = fc.oneof(
   },
   { weight: 1, arbitrary: fc.constant({ "BAD=NAME": "x" }) },
 );
+/** An identity, a blank one (clears it) or, now and then, one the reducer refuses. */
+const arbIdentity = fc.oneof(
+  {
+    weight: 4,
+    arbitrary: fc.record({
+      name: fc.constantFrom("Ada", " Grace ", ""),
+      email: fc.constantFrom("ada@example.com", ""),
+    }),
+  },
+  { weight: 1, arbitrary: fc.constant({ name: "", email: "" }) },
+  { weight: 1, arbitrary: fc.constant({ name: "A\u0000B", email: "a@x.io" }) },
+);
 const arbCwd = fc.constantFrom("/home/user", "C:\\Projects\\noren", "~/proj");
 /** Reaches both ends and a little past them. */
 const arbIndex = fc.integer({ min: -1, max: 8 });
@@ -171,6 +183,7 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
           profileId: arbProfileOrBlank,
           cwd: arbCwd,
           env: arbEnv,
+          gitIdentity: arbIdentity,
         },
         { requiredKeys: ["type", "spaceId"] },
       ),

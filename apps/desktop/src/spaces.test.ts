@@ -5,7 +5,9 @@ import {
   formatEnvLines,
   isSingleGlyph,
   parseEnvLines,
+  createWheelGesture,
   spaceShortcutIndex,
+  wheelTravel,
 } from "./spaces";
 
 const key = (code: string, flags: Partial<Parameters<typeof spaceShortcutIndex>[0]> = {}) => ({
@@ -82,5 +84,67 @@ describe("isSingleGlyph", () => {
 
   it("refuses empty text and more than one character", () => {
     for (const text of ["", "🚀🚀", "ab", "🚀 "]) expect(isSingleGlyph(text)).toBe(false);
+  });
+});
+
+describe("wheelTravel", () => {
+  const wheel = (
+    deltaX: number,
+    deltaY: number,
+    flags: Partial<Parameters<typeof wheelTravel>[0]> = {},
+  ) => ({
+    deltaX,
+    deltaY,
+    deltaMode: 0,
+    shiftKey: false,
+    ...flags,
+  });
+
+  it("uses deltaX for a mostly horizontal gesture and ignores a vertical one", () => {
+    expect(wheelTravel(wheel(80, 10))).toBe(80);
+    expect(wheelTravel(wheel(-80, 10))).toBe(-80);
+    expect(wheelTravel(wheel(0, 100))).toBe(0);
+    expect(wheelTravel(wheel(10, 100))).toBe(0);
+  });
+
+  it("reads deltaY as horizontal travel while Shift is held", () => {
+    expect(wheelTravel(wheel(0, 100, { shiftKey: true }))).toBe(100);
+    expect(wheelTravel(wheel(0, -100, { shiftKey: true }))).toBe(-100);
+  });
+
+  it("scales lines and pages to pixels", () => {
+    expect(wheelTravel(wheel(3, 0, { deltaMode: 1 }))).toBe(48);
+    expect(wheelTravel(wheel(1, 0, { deltaMode: 2 }))).toBe(100);
+  });
+});
+
+describe("createWheelGesture", () => {
+  it("waits for the travel to add up to the threshold", () => {
+    const step = createWheelGesture(60, 200);
+    expect(step(25, 0)).toBe(0);
+    expect(step(25, 10)).toBe(0);
+    expect(step(25, 20)).toBe(1);
+  });
+
+  it("steps once per gesture, however long the momentum lasts", () => {
+    const step = createWheelGesture(60, 200);
+    const fired = [100, 100, 100, 100, 100].map((travel, i) => step(travel, i * 16));
+    expect(fired).toEqual([1, 0, 0, 0, 0]);
+  });
+
+  it("steps again after a pause, in either direction", () => {
+    const step = createWheelGesture(60, 200);
+    expect(step(100, 0)).toBe(1);
+    expect(step(100, 100)).toBe(0);
+    expect(step(100, 400)).toBe(1);
+    expect(step(-100, 1000)).toBe(-1);
+  });
+
+  it("forgets travel that stopped short of the threshold", () => {
+    const step = createWheelGesture(60, 200);
+    expect(step(40, 0)).toBe(0);
+    expect(step(40, 500)).toBe(0);
+    expect(step(-40, 520)).toBe(0);
+    expect(step(-40, 540)).toBe(-1);
   });
 });

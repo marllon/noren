@@ -28,11 +28,19 @@ export interface NewSpaceInput {
   profileId?: string;
   cwd?: string;
   env?: Record<string, string>;
+  gitIdentity?: GitIdentity;
+}
+
+/** Name and email git records as author and committer. */
+export interface GitIdentity {
+  name: string;
+  email: string;
 }
 
 /**
  * What the edit-space dialog changes. A missing field stays as it is. A blank `cwd` clears the
- * start folder and `env`, when given, replaces the whole environment.
+ * start folder and `env`, when given, replaces the whole environment. A `gitIdentity` with a blank
+ * name and a blank email clears the identity.
  */
 export interface SpaceEdit {
   name?: string;
@@ -40,6 +48,7 @@ export interface SpaceEdit {
   color?: string;
   cwd?: string;
   env?: Record<string, string>;
+  gitIdentity?: GitIdentity;
 }
 
 /** How to start the shell of a pane: its own settings first, then the defaults of its space. */
@@ -108,12 +117,31 @@ export function spaceItemIds(space: Space): Id[] {
 }
 
 /**
+ * The environment new sessions of a space get: the git identity as author and committer, under the
+ * variables of the space, which win on a conflict (names compare ignoring case, as on Windows).
+ * A blank name or email leaves its variables out.
+ */
+export function spaceSessionEnv(space: Space): Record<string, string> {
+  const { env, gitIdentity } = space.defaults;
+  if (gitIdentity === undefined) return env;
+  const taken = new Set(Object.keys(env).map((name) => name.toUpperCase()));
+  const fromIdentity: Record<string, string> = {};
+  const add = (names: string[], value: string) => {
+    if (value === "") return;
+    for (const name of names) if (!taken.has(name)) fromIdentity[name] = value;
+  };
+  add(["GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"], gitIdentity.name);
+  add(["GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"], gitIdentity.email);
+  return { ...fromIdentity, ...env };
+}
+
+/**
  * The options for the shell of `pane`: profile, folder and environment of the pane, falling back
  * to the defaults of `space`. The default profile is left out so the backend picks it.
  */
 export function sessionStartOptions(space: Space, pane: Pane): SessionStartOptions {
   const cwd = pane.cwd ?? space.defaults.cwd;
-  const env = space.defaults.env;
+  const env = spaceSessionEnv(space);
   return {
     ...(pane.profileId !== DEFAULT_PROFILE_ID ? { profileId: pane.profileId } : {}),
     ...(cwd !== undefined ? { cwd } : {}),
@@ -258,7 +286,15 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
       });
       const known = new Set(before.spaces.map((space) => space.id));
       const created = get().workspace.spaces.find((space) => !known.has(space.id));
-      if (created) get().dispatch({ type: "item/create", spaceId: created.id });
+      if (!created) return;
+      if (input.gitIdentity !== undefined) {
+        get().dispatch({
+          type: "space/set-defaults",
+          spaceId: created.id,
+          gitIdentity: input.gitIdentity,
+        });
+      }
+      get().dispatch({ type: "item/create", spaceId: created.id });
     },
 
     editSpace(spaceId, edit) {
@@ -267,12 +303,13 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
       if (edit.color !== undefined)
         dispatch({ type: "space/set-color", spaceId, color: edit.color });
       if (edit.icon !== undefined) dispatch({ type: "space/set-icon", spaceId, icon: edit.icon });
-      if (edit.cwd !== undefined || edit.env !== undefined) {
+      if (edit.cwd !== undefined || edit.env !== undefined || edit.gitIdentity !== undefined) {
         dispatch({
           type: "space/set-defaults",
           spaceId,
           ...(edit.cwd !== undefined ? { cwd: edit.cwd } : {}),
           ...(edit.env !== undefined ? { env: edit.env } : {}),
+          ...(edit.gitIdentity !== undefined ? { gitIdentity: edit.gitIdentity } : {}),
         });
       }
     },

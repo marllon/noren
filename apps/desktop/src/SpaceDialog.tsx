@@ -10,13 +10,15 @@ import {
   parseEnvLines,
 } from "./spaces";
 
-/** What the dialog collects. A blank `cwd` means no start folder. */
+/** What the dialog collects. A blank `cwd` means no start folder; blank git fields mean none. */
 export interface SpaceFormValues {
   name: string;
   icon: string;
   color: string;
   cwd: string;
   env: Record<string, string>;
+  /** Blank name and email mean no git identity. */
+  gitIdentity: { name: string; email: string };
 }
 
 interface SpaceDialogProps {
@@ -42,6 +44,8 @@ export function SpaceDialog({ space, onSubmit, onCancel }: SpaceDialogProps) {
   );
   const [cwd, setCwd] = useState(space?.defaults.cwd ?? "");
   const [envText, setEnvText] = useState(formatEnvLines(space?.defaults.env ?? {}));
+  const [gitName, setGitName] = useState(space?.defaults.gitIdentity?.name ?? "");
+  const [gitEmail, setGitEmail] = useState(space?.defaults.gitIdentity?.email ?? "");
   const [error, setError] = useState<string>();
 
   useEffect(() => {
@@ -71,6 +75,7 @@ export function SpaceDialog({ space, onSubmit, onCancel }: SpaceDialogProps) {
       color,
       cwd: cwd.trim(),
       env: env.env,
+      gitIdentity: { name: gitName.trim(), email: gitEmail.trim() },
     });
   };
 
@@ -153,6 +158,22 @@ export function SpaceDialog({ space, onSubmit, onCancel }: SpaceDialogProps) {
             value={envText}
             placeholder="NAME=value, one per line"
             onChange={(e) => setEnvText(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span>Git name</span>
+          <input
+            value={gitName}
+            placeholder="Optional, author of commits"
+            onChange={(e) => setGitName(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span>Git email</span>
+          <input
+            value={gitEmail}
+            placeholder="Optional"
+            onChange={(e) => setGitEmail(e.target.value)}
           />
         </label>
         {error !== undefined && <p role="alert">{error}</p>}

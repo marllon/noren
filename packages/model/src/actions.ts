@@ -40,7 +40,9 @@ export type Action =
     }
   /**
    * Changes the defaults new items of the space start with. A missing field stays as it is; a blank
-   * `profileId` or `cwd` clears it; `env`, when given, replaces the whole environment.
+   * `profileId` or `cwd` clears it; `env`, when given, replaces the whole environment; a
+   * `gitIdentity` whose name and email are both blank clears the identity. A NUL in the name or
+   * email is refused.
    */
   | {
       type: "space/set-defaults";
@@ -48,6 +50,7 @@ export type Action =
       profileId?: string;
       cwd?: string;
       env?: Record<string, string>;
+      gitIdentity?: { name: string; email: string };
     }
   | { type: "space/rename"; spaceId: Id; name: string }
   | { type: "space/set-color"; spaceId: Id; color: string }

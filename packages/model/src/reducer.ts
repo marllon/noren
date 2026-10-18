@@ -415,21 +415,48 @@ function setSpaceDefaults(
   action: Extract<Action, { type: "space/set-defaults" }>,
 ): Workspace {
   if (action.env !== undefined && !validEnv(action.env)) return ws;
+  const given = action.gitIdentity;
+  if (given !== undefined && [given.name, given.email].some((text) => text.includes("\u0000"))) {
+    return ws;
+  }
   return updateSpace(ws, action.spaceId, (space) => {
-    const { profileId: oldProfile, cwd: oldCwd, env: oldEnv, ...rest } = space.defaults;
+    const {
+      profileId: oldProfile,
+      cwd: oldCwd,
+      env: oldEnv,
+      gitIdentity: oldIdentity,
+      ...rest
+    } = space.defaults;
     const profileId = action.profileId === undefined ? oldProfile : present(action.profileId);
     const cwd = action.cwd === undefined ? oldCwd : present(action.cwd);
     const env = action.env === undefined ? oldEnv : { ...action.env };
-    const same = profileId === oldProfile && cwd === oldCwd && sameEnv(env, oldEnv);
+    const gitIdentity = given === undefined ? oldIdentity : normalizeIdentity(given);
+    const same =
+      profileId === oldProfile &&
+      cwd === oldCwd &&
+      sameEnv(env, oldEnv) &&
+      gitIdentity?.name === oldIdentity?.name &&
+      gitIdentity?.email === oldIdentity?.email;
     if (same) return undefined;
     const defaults: Space["defaults"] = {
       ...rest,
       env,
       ...(profileId !== undefined ? { profileId } : {}),
       ...(cwd !== undefined ? { cwd } : {}),
+      ...(gitIdentity !== undefined ? { gitIdentity } : {}),
     };
     return { ...space, defaults };
   });
+}
+
+/** Trimmed name and email; `undefined` (no identity) when both are blank. */
+function normalizeIdentity(identity: {
+  name: string;
+  email: string;
+}): Space["defaults"]["gitIdentity"] {
+  const name = identity.name.trim();
+  const email = identity.email.trim();
+  return name === "" && email === "" ? undefined : { name, email };
 }
 
 /** True when every name is a usable environment variable name and no value holds a NUL. */

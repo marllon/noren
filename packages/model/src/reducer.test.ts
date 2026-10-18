@@ -305,6 +305,73 @@ describe("space/create with env and space/set-defaults", () => {
   });
 });
 
+describe("space/set-defaults with gitIdentity", () => {
+  const identity = { name: "Ada Lovelace", email: "ada@example.com" };
+  const withIdentity = () =>
+    applyChecked(fixture(), { type: "space/set-defaults", spaceId: "s1", gitIdentity: identity });
+
+  it("sets the identity (trimmed) and leaves the other defaults alone", () => {
+    const first = applyChecked(fixture(), {
+      type: "space/set-defaults",
+      spaceId: "s1",
+      cwd: "/a",
+      gitIdentity: { name: "  Ada Lovelace ", email: " ada@example.com " },
+    });
+    expect(spaceOf(first, "s1").defaults).toEqual({ cwd: "/a", env: {}, gitIdentity: identity });
+  });
+
+  it("keeps the identity when the action does not mention it, and replaces it when it does", () => {
+    const ws = withIdentity();
+    const other = applyChecked(ws, { type: "space/set-defaults", spaceId: "s1", cwd: "/b" });
+    expect(spaceOf(other, "s1").defaults.gitIdentity).toEqual(identity);
+    const changed = applyChecked(ws, {
+      type: "space/set-defaults",
+      spaceId: "s1",
+      gitIdentity: { name: "Grace", email: "" },
+    });
+    expect(spaceOf(changed, "s1").defaults.gitIdentity).toEqual({ name: "Grace", email: "" });
+  });
+
+  it("clears the identity when name and email are both blank", () => {
+    const cleared = applyChecked(withIdentity(), {
+      type: "space/set-defaults",
+      spaceId: "s1",
+      gitIdentity: { name: " ", email: "" },
+    });
+    expect(spaceOf(cleared, "s1").defaults).toEqual({ env: {} });
+    expect("gitIdentity" in spaceOf(cleared, "s1").defaults).toBe(false);
+  });
+
+  it("returns the same workspace when the identity does not change or is refused", () => {
+    const ws = withIdentity();
+    const apply = (action: Action) => applyChecked(ws, action);
+    expect(apply({ type: "space/set-defaults", spaceId: "s1", gitIdentity: identity })).toBe(ws);
+    expect(
+      apply({
+        type: "space/set-defaults",
+        spaceId: "s1",
+        gitIdentity: { name: " Ada Lovelace", email: "ada@example.com " },
+      }),
+    ).toBe(ws);
+    expect(
+      apply({
+        type: "space/set-defaults",
+        spaceId: "s1",
+        gitIdentity: { name: "A\u0000B", email: "a@x.io" },
+      }),
+    ).toBe(ws);
+    // Clearing a space that has none changes nothing either.
+    const none = fixture();
+    expect(
+      applyChecked(none, {
+        type: "space/set-defaults",
+        spaceId: "s2",
+        gitIdentity: { name: "", email: "" },
+      }),
+    ).toBe(none);
+  });
+});
+
 describe("space/move", () => {
   const order = (ws: Workspace): Id[] => ws.spaces.map((s) => s.id);
 

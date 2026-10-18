@@ -12,7 +12,7 @@ import type { SpaceFormValues } from "./SpaceDialog";
 import { SpaceMenu } from "./SpaceMenu";
 import type { MenuPoint } from "./SpaceMenu";
 import { SpaceSwitcher } from "./SpaceSwitcher";
-import { spaceShortcutIndex } from "./spaces";
+import { createWheelGesture, spaceShortcutIndex, wheelTravel } from "./spaces";
 import { TerminalView } from "./TerminalView";
 import { applySpaceColor, applyTheme, terminalTheme } from "./theme";
 import { TitleBar } from "./TitleBar";
@@ -102,6 +102,9 @@ function newSpaceInput(values: SpaceFormValues): NewSpaceInput {
     color: values.color,
     ...(values.cwd !== "" ? { cwd: values.cwd } : {}),
     ...(Object.keys(values.env).length > 0 ? { env: values.env } : {}),
+    ...(values.gitIdentity.name !== "" || values.gitIdentity.email !== ""
+      ? { gitIdentity: values.gitIdentity }
+      : {}),
   };
 }
 
@@ -141,6 +144,29 @@ function Shell({ store }: { store: WorkspaceStore }) {
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [store]);
+
+  // A horizontal wheel (or Shift+wheel) over the sidebar steps to the neighbor space and stops at
+  // the ends. The listener is not passive so it can cancel the event, and it does that only when it
+  // switches; it sits on the sidebar, so the terminal never sees these events.
+  const sidebarRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const sidebar = sidebarRef.current;
+    if (!sidebar) return undefined;
+    const gesture = createWheelGesture();
+    const onWheel = (event: WheelEvent) => {
+      const travel = wheelTravel(event);
+      if (travel === 0) return;
+      const step = gesture(travel, event.timeStamp);
+      if (step === 0) return;
+      const state = store.getState();
+      const from = state.workspace.spaces.findIndex((s) => s.id === state.workspace.activeSpaceId);
+      if (from < 0 || state.workspace.spaces[from + step] === undefined) return;
+      event.preventDefault();
+      state.activateSpaceAt(from + step);
+    };
+    sidebar.addEventListener("wheel", onWheel, { passive: false });
+    return () => sidebar.removeEventListener("wheel", onWheel);
   }, [store]);
 
   useEffect(() => {
@@ -241,8 +267,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
 
   return (
     <div className="app-body">
-      <aside className="sidebar" data-nr-part="sidebar" aria-label="Sidebar">
-        <ul className="tab-list" aria-label="Tabs">
+      <aside ref={sidebarRef} className="sidebar" data-nr-part="sidebar" aria-label="Sidebar">
+        <ul key={space.id} className="tab-list" aria-label="Tabs">
           {itemIds.map((id, index) => {
             const item = space.items[id];
             if (!item) return null;
@@ -274,23 +300,25 @@ function Shell({ store }: { store: WorkspaceStore }) {
         />
       </aside>
       <section className="content" aria-label="Content">
-        {workspace.spaces.flatMap((s) =>
-          Object.values(s.items).flatMap((item) => {
-            const pane = shownPane(item);
-            if (!pane) return [];
-            return [
-              <PaneTerminal
-                key={pane.id}
-                store={store}
-                space={s}
-                pane={pane}
-                active={s.id === space.id && item.id === activeId}
-                colors={colors}
-                onReady={recordHandle}
-              />,
-            ];
-          }),
-        )}
+        {workspace.spaces.map((s) => (
+          <div key={s.id} className="space-layer" hidden={s.id !== space.id}>
+            {Object.values(s.items).flatMap((item) => {
+              const pane = shownPane(item);
+              if (!pane) return [];
+              return [
+                <PaneTerminal
+                  key={pane.id}
+                  store={store}
+                  space={s}
+                  pane={pane}
+                  active={s.id === space.id && item.id === activeId}
+                  colors={colors}
+                  onReady={recordHandle}
+                />,
+              ];
+            })}
+          </div>
+        ))}
       </section>
       {overlayNode}
     </div>

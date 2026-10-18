@@ -202,6 +202,36 @@ body {
   min-width: 0;
 }
 
+/* One layer per space; the shown one animates in when it appears. */
+.space-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.space-layer:not([hidden]),
+.tab-list {
+  animation: nr-space-in 160ms ease-out;
+}
+
+@keyframes nr-space-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .space-layer:not([hidden]),
+  .tab-list {
+    animation: none;
+  }
+}
+
 .pane-slot {
   position: absolute;
   inset: 0;

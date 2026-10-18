@@ -17,6 +17,8 @@ export const WIDTH_STEP_LARGE = 48;
 
 export type SidebarSide = "left" | "right";
 export type Density = "comfortable" | "compact";
+/** Where the tabs live: the tree in the sidebar, or a horizontal bar above the terminal. */
+export type TabsPlacement = "sidebar" | "top";
 
 export interface Layout {
   side: SidebarSide;
@@ -27,6 +29,8 @@ export interface Layout {
   compact: boolean;
   /** In compact mode, keeps the sidebar open (docked) instead of hiding it. */
   keepOpen: boolean;
+  /** Top tabs mode: the tabs move to a bar above the terminal and the sidebar leaves the layout. */
+  tabs: TabsPlacement;
 }
 
 export const DEFAULT_LAYOUT: Layout = {
@@ -35,6 +39,7 @@ export const DEFAULT_LAYOUT: Layout = {
   density: "comfortable",
   compact: false,
   keepOpen: false,
+  tabs: "sidebar",
 };
 
 /** A width forced into the allowed range and rounded to whole pixels. */
@@ -63,6 +68,7 @@ export function parseLayout(raw: string | null): Layout {
   const width = saved["width"];
   const compact = saved["compact"];
   const keepOpen = saved["keepOpen"];
+  const tabs = saved["tabs"];
   return {
     side: side === "left" || side === "right" ? side : DEFAULT_LAYOUT.side,
     width:
@@ -72,6 +78,8 @@ export function parseLayout(raw: string | null): Layout {
     density: density === "comfortable" || density === "compact" ? density : DEFAULT_LAYOUT.density,
     compact: typeof compact === "boolean" ? compact : DEFAULT_LAYOUT.compact,
     keepOpen: typeof keepOpen === "boolean" ? keepOpen : DEFAULT_LAYOUT.keepOpen,
+    // Preferences saved before top tabs existed have no such field: they keep the sidebar.
+    tabs: tabs === "sidebar" || tabs === "top" ? tabs : DEFAULT_LAYOUT.tabs,
   };
 }
 
@@ -104,12 +112,14 @@ export function saveLayout(storage: LayoutStorage | undefined, layout: Layout): 
 }
 
 /**
- * `docked`: the sidebar takes its column. `auto-hide`: compact mode, the sidebar is out of the
- * layout and shows over it on demand. Keeping it open docks it again.
+ * `docked`: the sidebar takes its column. `auto-hide`: the sidebar is out of the layout and shows
+ * over it on demand: in compact mode (keeping it open docks it again), and always with top tabs,
+ * where it only holds the favorites and the space switcher.
  */
 export type SidebarMode = "docked" | "auto-hide";
 
 export function sidebarMode(layout: Layout): SidebarMode {
+  if (layout.tabs === "top") return "auto-hide";
   return layout.compact && !layout.keepOpen ? "auto-hide" : "docked";
 }
 

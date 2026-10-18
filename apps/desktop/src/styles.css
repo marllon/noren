@@ -687,10 +687,19 @@ body {
   color: var(--nr-muted);
 }
 
+/* The column right of (or left of) the sidebar: the tab bar when the tabs are on top, then the terminal. */
+.main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .content {
   position: relative;
   flex: 1;
   min-width: 0;
+  min-height: 0;
 }
 
 /* One layer per space; the shown one animates in when it appears. */
@@ -957,4 +966,125 @@ body {
 
 .dialog-actions .danger {
   border-color: var(--nr-text);
+}
+
+/* Top tabs: a bar above the terminal; an open group is an island in the color of the group. */
+.tab-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--nr-border);
+  background: var(--nr-surface);
+}
+
+.bar-list {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bar-root {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.bar-slot {
+  position: relative;
+  flex: none;
+}
+
+.bar-tab,
+.bar-group,
+.bar-new {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: calc(var(--nr-radius) * 0.6);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.bar-tab {
+  max-width: 200px;
+  padding: 5px 10px;
+}
+
+.bar-tab:hover,
+.bar-group:hover,
+.bar-new:hover {
+  background: color-mix(in srgb, var(--nr-text) 8%, transparent);
+}
+
+.bar-tab[data-nr-state="active"] {
+  border-color: var(--nr-border);
+  background: color-mix(in srgb, var(--nr-space-color) 16%, var(--nr-bg));
+}
+
+.bar-tab[data-nr-selected="true"] {
+  border-color: var(--nr-accent);
+  background: color-mix(in srgb, var(--nr-accent) 14%, var(--nr-surface));
+}
+
+.bar-tab-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar-island {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 3px;
+  border: 1px solid color-mix(in srgb, var(--nr-island) 70%, var(--nr-border));
+  border-radius: calc(var(--nr-radius) * 0.9);
+  background: color-mix(in srgb, var(--nr-island) 14%, var(--nr-surface));
+}
+
+.bar-group {
+  padding: 4px 8px;
+  color: var(--nr-text);
+}
+
+.bar-group-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar-island .inline-name {
+  width: 140px;
+  padding: 3px 8px;
+}
+
+.bar-new {
+  flex: none;
+  padding: 5px 7px;
+  color: var(--nr-muted);
+}
+
+.app-body[data-nr-density="compact"] .tab-bar {
+  padding: 2px 8px;
+}
+
+.app-body[data-nr-density="compact"] .bar-tab {
+  padding: 2px 8px;
+}
+
+.app-body[data-nr-density="compact"] .bar-group {
+  padding: 1px 6px;
 }

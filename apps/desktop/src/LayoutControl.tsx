@@ -1,7 +1,7 @@
 import { PanelLeft } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import type { Density, SidebarSide } from "./layout";
+import type { Density, SidebarSide, TabsPlacement } from "./layout";
 import { updateLayout, useLayout } from "./layout-store";
 
 interface ChoiceProps<T extends string> {
@@ -34,6 +34,11 @@ function Choice<T extends string>({ legend, name, value, options, onChange }: Ch
 const SIDES: readonly { value: SidebarSide; label: string }[] = [
   { value: "left", label: "Left" },
   { value: "right", label: "Right" },
+];
+
+const TAB_PLACEMENTS: readonly { value: TabsPlacement; label: string }[] = [
+  { value: "sidebar", label: "In the sidebar" },
+  { value: "top", label: "On top" },
 ];
 
 const DENSITIES: readonly { value: Density; label: string }[] = [
@@ -93,16 +98,25 @@ export function LayoutControl() {
             onChange={(side) => updateLayout({ side })}
           />
           <Choice
+            legend="Tab position"
+            name="layout-tabs"
+            value={layout.tabs}
+            options={TAB_PLACEMENTS}
+            onChange={(tabs) => updateLayout({ tabs })}
+          />
+          <Choice
             legend="Density"
             name="layout-density"
             value={layout.density}
             options={DENSITIES}
             onChange={(density) => updateLayout({ density })}
           />
+          {/* With top tabs the sidebar always hides (it holds the spaces and favorites). */}
           <label className="layout-option">
             <input
               type="checkbox"
               checked={layout.compact}
+              disabled={layout.tabs === "top"}
               onChange={(event) => updateLayout({ compact: event.target.checked })}
             />
             <span>Compact mode</span>
@@ -111,7 +125,7 @@ export function LayoutControl() {
             <input
               type="checkbox"
               checked={layout.keepOpen}
-              disabled={!layout.compact}
+              disabled={!layout.compact || layout.tabs === "top"}
               onChange={(event) => updateLayout({ keepOpen: event.target.checked })}
             />
             <span>Keep sidebar open</span>

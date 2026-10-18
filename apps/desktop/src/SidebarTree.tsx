@@ -20,6 +20,7 @@ import {
   shortCwd,
   summarizeItem,
 } from "./pane-info";
+import type { ItemSummary } from "./pane-info";
 import type { MenuPoint } from "./SpaceMenu";
 import type { ClickModifiers, TreeRow } from "./sidebar-tree";
 import { DRAG_HELP_ID, DragRow, useOutsideDrop } from "./TreeDnd";
@@ -58,8 +59,36 @@ interface InlineNameProps {
   onCancel(): void;
 }
 
+/** The status marks of a tab (running, failed, unread, bell); read through the tab's description. */
+export function TabBadges({ summary }: { summary: ItemSummary }) {
+  return (
+    <span className="tab-badges" aria-hidden="true">
+      {summary.running && (
+        <span className="tab-badge" data-nr-indicator="running" title={RUNNING_LABEL}>
+          <LoaderCircle size={12} className="spin" aria-hidden="true" />
+        </span>
+      )}
+      {summary.failed !== undefined && (
+        <span className="tab-badge" data-nr-indicator="failed" title={failureLabel(summary.failed)}>
+          <CircleAlert size={12} aria-hidden="true" />
+        </span>
+      )}
+      {summary.unread && (
+        <span className="tab-badge" data-nr-indicator="unread" title={UNREAD_LABEL}>
+          <span className="unread-dot" />
+        </span>
+      )}
+      {summary.bell && (
+        <span className="tab-badge" data-nr-indicator="bell" title={BELL_LABEL}>
+          <Bell size={12} aria-hidden="true" />
+        </span>
+      )}
+    </span>
+  );
+}
+
 /** A text field that replaces a name: Enter confirms, Escape cancels and leaving the field confirms. */
-function InlineName({ label, initial, onCommit, onCancel }: InlineNameProps) {
+export function InlineName({ label, initial, onCommit, onCancel }: InlineNameProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const finished = useRef(false);
 
@@ -274,32 +303,7 @@ export function SidebarTree({
             <span className="tab-title" data-nr-part="item-title">
               {label}
             </span>
-            <span className="tab-badges" aria-hidden="true">
-              {summary.running && (
-                <span className="tab-badge" data-nr-indicator="running" title={RUNNING_LABEL}>
-                  <LoaderCircle size={12} className="spin" aria-hidden="true" />
-                </span>
-              )}
-              {summary.failed !== undefined && (
-                <span
-                  className="tab-badge"
-                  data-nr-indicator="failed"
-                  title={failureLabel(summary.failed)}
-                >
-                  <CircleAlert size={12} aria-hidden="true" />
-                </span>
-              )}
-              {summary.unread && (
-                <span className="tab-badge" data-nr-indicator="unread" title={UNREAD_LABEL}>
-                  <span className="unread-dot" />
-                </span>
-              )}
-              {summary.bell && (
-                <span className="tab-badge" data-nr-indicator="bell" title={BELL_LABEL}>
-                  <Bell size={12} aria-hidden="true" />
-                </span>
-              )}
-            </span>
+            <TabBadges summary={summary} />
           </span>
           {hasMeta && (
             <span className="tab-meta" data-nr-part="item-meta" aria-hidden="true">

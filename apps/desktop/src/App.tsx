@@ -1,6 +1,6 @@
 import { emit } from "@tauri-apps/api/event";
 import { FakeBackend, treeGroups } from "@noren/model";
-import type { Id, Item, Pane, Space } from "@noren/model";
+import type { GroupNode, Id, Item, Pane, Space } from "@noren/model";
 import type { ITheme } from "@xterm/xterm";
 import { Suspense, use, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
@@ -23,6 +23,7 @@ import { sidebarMode } from "./layout";
 import { updateLayout, useLayout } from "./layout-store";
 import { SidebarResizer } from "./SidebarResizer";
 import { SidebarTree } from "./SidebarTree";
+import { TabBar } from "./TabBar";
 import { useSidebarReveal } from "./use-sidebar-reveal";
 import type { Editing } from "./SidebarTree";
 import { SpaceDialog } from "./SpaceDialog";
@@ -182,7 +183,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
   /** Puts the keyboard focus back on a row once the field that replaced it is gone. */
   const focusRow = (id: Id) => {
     requestAnimationFrame(() => {
-      sidebarRef.current?.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(id)}"]`)?.focus();
+      // The row is in the sidebar tree, or in the tab bar with top tabs; only one of them exists.
+      document.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(id)}"]`)?.focus();
     });
   };
 
@@ -307,6 +309,27 @@ function Shell({ store }: { store: WorkspaceStore }) {
     dispatch({ type: "space/set-active-item", spaceId: favorite.spaceId, itemId: favorite.id });
   };
 
+  // The actions the sidebar tree and the top tab bar share: same selection, menus and renaming.
+  const treeProps = {
+    space,
+    activeId,
+    selected,
+    editing: editingHere,
+    onItemClick,
+    onItemMenu: (itemId: Id, point: MenuPoint) => {
+      const targets = menuTargets(selected, itemId);
+      if (targets.length === 1 && !selected.includes(itemId)) clearSelection();
+      setOverlay({ kind: "item-menu", targets, point });
+    },
+    onGroupMenu: (groupId: Id, point: MenuPoint) =>
+      setOverlay({ kind: "group-menu", groupId, point }),
+    onToggleGroup: (group: GroupNode) =>
+      dispatch({ type: "group/set-collapsed", groupId: group.id, collapsed: !group.collapsed }),
+    onStartEdit: setEditing,
+    onCommitEdit,
+    onCancelEdit,
+  };
+
   const close = () => setOverlay(null);
   const overlaySpace =
     overlay?.kind === "menu" || overlay?.kind === "edit" || overlay?.kind === "delete"
@@ -409,8 +432,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
   }
 
   const autoHide = sidebarMode(layout) === "auto-hide";
-  // A menu or dialog opened from the sidebar keeps it shown, even though the pointer left it.
-  const shown = reveal.revealed || overlay !== null;
+  const tabsOnTop = layout.tabs === "top";
+  // A menu or dialog opened from the sidebar keeps it shown, even though the pointer left it. The
+  // tab and group menus of the top bar do not: they do not come from the sidebar.
+  const fromTabBar = tabsOnTop && (overlay?.kind === "item-menu" || overlay?.kind === "group-menu");
+  const shown = reveal.revealed || (overlay !== null && !fromTabBar);
   return (
     <div
       className="app-body"
@@ -457,31 +483,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
               }
             />
           )}
-          <SidebarTree
-            space={space}
-            rows={rows}
-            activeId={activeId}
-            selected={selected}
-            editing={editingHere}
-            home={home}
-            onItemClick={onItemClick}
-            onItemMenu={(itemId, point) => {
-              const targets = menuTargets(selected, itemId);
-              if (targets.length === 1 && !selected.includes(itemId)) clearSelection();
-              setOverlay({ kind: "item-menu", targets, point });
-            }}
-            onGroupMenu={(groupId, point) => setOverlay({ kind: "group-menu", groupId, point })}
-            onToggleGroup={(group) =>
-              dispatch({
-                type: "group/set-collapsed",
-                groupId: group.id,
-                collapsed: !group.collapsed,
-              })
-            }
-            onStartEdit={setEditing}
-            onCommitEdit={onCommitEdit}
-            onCancelEdit={onCancelEdit}
-          />
+          {!tabsOnTop && <SidebarTree {...treeProps} rows={rows} home={home} />}
           <div className="sidebar-foot">
             <button type="button" className="new-tab" onClick={() => newTab()}>
               New tab
@@ -497,27 +499,30 @@ function Shell({ store }: { store: WorkspaceStore }) {
           />
         </TreeDnd>
       </aside>
-      <section className="content" aria-label="Content">
-        {workspace.spaces.map((s) => (
-          <div key={s.id} className="space-layer" hidden={s.id !== space.id}>
-            {Object.values(s.items).flatMap((item) => {
-              const pane = shownPane(item);
-              if (!pane) return [];
-              return [
-                <PaneTerminal
-                  key={pane.id}
-                  store={store}
-                  space={s}
-                  pane={pane}
-                  active={s.id === space.id && item.id === activeId}
-                  colors={colors}
-                  onReady={recordHandle}
-                />,
-              ];
-            })}
-          </div>
-        ))}
-      </section>
+      <div className="main">
+        {tabsOnTop && <TabBar {...treeProps} onNewTab={() => newTab()} />}
+        <section className="content" aria-label="Content">
+          {workspace.spaces.map((s) => (
+            <div key={s.id} className="space-layer" hidden={s.id !== space.id}>
+              {Object.values(s.items).flatMap((item) => {
+                const pane = shownPane(item);
+                if (!pane) return [];
+                return [
+                  <PaneTerminal
+                    key={pane.id}
+                    store={store}
+                    space={s}
+                    pane={pane}
+                    active={s.id === space.id && item.id === activeId}
+                    colors={colors}
+                    onReady={recordHandle}
+                  />,
+                ];
+              })}
+            </div>
+          ))}
+        </section>
+      </div>
       {overlayNode}
     </div>
   );

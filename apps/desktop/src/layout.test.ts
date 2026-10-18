@@ -65,6 +65,7 @@ describe("parseLayout", () => {
       density: 3,
       compact: "yes",
       keepOpen: null,
+      tabs: "bottom",
     });
     expect(parseLayout(raw)).toEqual(DEFAULT_LAYOUT);
     expect(parseLayout(JSON.stringify({ side: "right", width: "x" }))).toEqual({
@@ -86,8 +87,36 @@ describe("parseLayout", () => {
       density: "compact",
       compact: true,
       keepOpen: true,
+      tabs: "top",
     };
     expect(parseLayout(serializeLayout(layout))).toEqual(layout);
+  });
+
+  it("keeps the tabs in the sidebar by default and when the saved value is invalid", () => {
+    expect(DEFAULT_LAYOUT.tabs).toBe("sidebar");
+    for (const tabs of [3, null, true, "", "Top", "bottom", ["top"]]) {
+      expect(parseLayout(JSON.stringify({ tabs })).tabs).toBe("sidebar");
+    }
+  });
+
+  it("reads top tabs, and a layout saved before the field existed stays valid", () => {
+    expect(parseLayout(JSON.stringify({ tabs: "top" })).tabs).toBe("top");
+    expect(parseLayout(JSON.stringify({ tabs: "sidebar" })).tabs).toBe("sidebar");
+    const old = JSON.stringify({
+      side: "right",
+      width: 300,
+      density: "compact",
+      compact: true,
+      keepOpen: false,
+    });
+    expect(parseLayout(old)).toEqual({
+      side: "right",
+      width: 300,
+      density: "compact",
+      compact: true,
+      keepOpen: false,
+      tabs: "sidebar",
+    });
   });
 });
 
@@ -126,6 +155,13 @@ describe("sidebarMode", () => {
     expect(sidebarMode({ ...DEFAULT_LAYOUT, compact: true })).toBe("auto-hide");
     expect(sidebarMode({ ...DEFAULT_LAYOUT, compact: true, keepOpen: true })).toBe("docked");
     expect(sidebarMode({ ...DEFAULT_LAYOUT, keepOpen: true })).toBe("docked");
+  });
+
+  it("always leaves the flow with top tabs, even when kept open", () => {
+    expect(sidebarMode({ ...DEFAULT_LAYOUT, tabs: "top" })).toBe("auto-hide");
+    expect(sidebarMode({ ...DEFAULT_LAYOUT, tabs: "top", compact: true, keepOpen: true })).toBe(
+      "auto-hide",
+    );
   });
 });
 

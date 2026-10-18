@@ -1,0 +1,22 @@
+# cargo-deny: license gate for crates (see _loop/REGRAS.md, "Licenças permitidas").
+# A license outside this list is never added as an exception: it is a decision for the maintainer.
+
+[graph]
+all-features = true
+
+[licenses]
+confidence-threshold = 0.8
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "0BSD",
+  "Zlib",
+  "CC0-1.0",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "BlueOak-1.0.0",
+  "MPL-2.0",
+]

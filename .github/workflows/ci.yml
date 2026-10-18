@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - run: corepack enable
+
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        shell: bash
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
+      # Installs the channel and components from rust-toolchain.toml.
+      - name: Install Rust toolchain
+        shell: bash
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Tauri system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev build-essential
+
+      - run: pnpm install --frozen-lockfile
+
+      # apps/desktop/dist is gitignored and Tauri's generate_context requires frontendDist (../dist).
+      - run: pnpm --filter @noren/desktop build
+
+      - run: pnpm verify
+
+      - name: Install Chromium for Playwright
+        if: runner.os == 'Linux'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E (web mode)
+        if: runner.os == 'Linux'
+        run: pnpm e2e
+
+      - name: Smoke (real app)
+        if: runner.os == 'Windows'
+        run: pnpm smoke
+
+  licenses:
+    name: licenses
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - run: corepack enable
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm licenses:check

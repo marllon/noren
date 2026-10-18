@@ -24,7 +24,7 @@ export { reduce, validEnv } from "./reducer";
 export { restoreWorkspace } from "./restore";
 export type { RestoreOptions, RestoreResult } from "./restore";
 export { layoutPanes, liveSessionIds } from "./sessions";
-export { findItemSlot, treeGroups, treeItemIds } from "./tree";
+export { findGroup, findGroupSlot, findItemSlot, treeGroups, treeItemIds } from "./tree";
 export type { ItemSlot } from "./tree";
 export {
   MIGRATIONS,

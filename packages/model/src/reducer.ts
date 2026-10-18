@@ -21,8 +21,10 @@ import { layoutPanes, withoutSessions } from "./sessions";
 import {
   editChildren,
   findGroup,
+  findGroupSlot,
   findItemSlot,
   insertAt,
+  removeGroupNode,
   removeItemNodes,
   replaceGroupWithChildren,
   resolveIndex,
@@ -160,6 +162,8 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       const tree = replaceGroupWithChildren(hit.space.tree, action.groupId);
       return replaceSpace(ws, { ...hit.space, tree });
     }
+    case "group/move":
+      return moveGroup(ws, action);
     case "group/set-collapsed":
       return updateGroupIn(ws, action.groupId, (group) =>
         group.collapsed === action.collapsed
@@ -713,6 +717,34 @@ function createGroup(
     return index === undefined ? undefined : insertAt<Node>(children, index, group);
   });
   return tree ? replaceSpace(ws, { ...space, tree }) : ws;
+}
+
+function moveGroup(ws: Workspace, action: Extract<Action, { type: "group/move" }>): Workspace {
+  const hit = locateGroup(ws, action.groupId);
+  if (!hit) return ws;
+  const { space } = hit;
+  const group = hit.found.group;
+  if (action.parentGroupId !== undefined) {
+    // Only a top-level group can hold another one, and only one that holds no group itself.
+    const parent = findGroup(space.tree, action.parentGroupId);
+    const holdsGroup = group.children.some((child) => child.kind === "group");
+    if (!parent || parent.depth >= MAX_GROUP_DEPTH || holdsGroup) return ws;
+    if (parent.group.id === group.id) return ws;
+  }
+  const from = findGroupSlot(space.tree, group.id);
+  const tree = editChildren(
+    removeGroupNode(space.tree, group.id),
+    action.parentGroupId,
+    (children) => {
+      const index = resolveIndex(action.index, children.length, children.length);
+      return index === undefined ? undefined : insertAt<Node>(children, index, group);
+    },
+  );
+  if (!tree || !from) return ws;
+  const to = findGroupSlot(tree, group.id);
+  // Dropped where it already was: nothing changes.
+  if (to && to.parentId === from.parentId && to.index === from.index) return ws;
+  return replaceSpace(ws, { ...space, tree });
 }
 
 function groupSelection(

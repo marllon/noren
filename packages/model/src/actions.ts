@@ -120,6 +120,13 @@ export type Action =
       color?: string;
     }
   | { type: "group/ungroup"; groupId: Id }
+  /**
+   * Moves a group, children included, within its space. `parentGroupId` is the top-level group to
+   * nest it in (absent: the top level); a group that holds a group cannot nest, and nothing nests in
+   * itself. `index` is the final position in the target list (after the group left its old spot);
+   * a missing index means the end and one past the end is clamped.
+   */
+  | { type: "group/move"; groupId: Id; parentGroupId?: Id; index?: number }
   | { type: "group/set-collapsed"; groupId: Id; collapsed: boolean }
   | { type: "group/rename"; groupId: Id; name: string }
   | { type: "group/set-color"; groupId: Id; color: string }

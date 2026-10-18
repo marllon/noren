@@ -33,6 +33,7 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "group/create": true,
   "group/create-from-selection": true,
   "group/ungroup": true,
+  "group/move": true,
   "group/set-collapsed": true,
   "group/rename": true,
   "group/set-color": true,
@@ -137,6 +138,7 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "item/unfavorite":
       return !ws.favorites.includes(action.itemId);
     case "group/ungroup":
+    case "group/move":
     case "group/set-collapsed":
     case "group/rename":
     case "group/set-color":

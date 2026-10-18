@@ -9,7 +9,8 @@ import {
 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
-import type { GroupNode, Id, Space } from "@noren/model";
+import { treeGroups } from "@noren/model";
+import type { Action, GroupNode, Id, Space } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
 import {
   BELL_LABEL,
@@ -22,6 +23,8 @@ import {
 } from "./pane-info";
 import type { MenuPoint } from "./SpaceMenu";
 import type { ClickModifiers, TreeRow } from "./sidebar-tree";
+import { DRAG_HELP_ID, DragRow, TreeDnd } from "./TreeDnd";
+import type { DragHandle } from "./TreeDnd";
 import { spaceItemIds } from "./workspace-store";
 
 /** What is being renamed on the spot. */
@@ -47,6 +50,8 @@ interface SidebarTreeProps {
   /** Enter or leaving the field: the new text of the name; `restoreFocus` is set for Enter. */
   onCommitEdit(editing: Editing, value: string, restoreFocus: boolean): void;
   onCancelEdit(): void;
+  /** A drop that moves a tab or a group. */
+  onMove(action: Action): void;
 }
 
 interface InlineNameProps {
@@ -116,8 +121,14 @@ export function SidebarTree({
   onStartEdit,
   onCommitEdit,
   onCancelEdit,
+  onMove,
 }: SidebarTreeProps) {
   const order = spaceItemIds(space);
+  const labelOf = (id: Id): string => {
+    const item = space.items[id];
+    if (item) return item.title ?? `Tab ${order.indexOf(id) + 1}`;
+    return treeGroups(space.tree).find((group) => group.id === id)?.name ?? id;
+  };
 
   const modifiersOf = (event: MouseEvent): ClickModifiers => ({
     toggle: event.ctrlKey || event.metaKey,
@@ -131,169 +142,196 @@ export function SidebarTree({
   };
 
   return (
-    <ul key={space.id} className="tab-list" aria-label="Tabs">
-      {rows.map((row) => {
-        const indent = { marginInlineStart: row.depth * 14 };
-        if (row.kind === "group") {
-          const { group, count } = row;
-          const edit: Editing = { kind: "group", id: group.id };
-          if (editing?.kind === "group" && editing.id === group.id) {
+    <TreeDnd space={space} rows={rows} labelOf={labelOf} onAction={onMove}>
+      <ul key={space.id} className="tab-list" aria-label="Tabs" aria-describedby={DRAG_HELP_ID}>
+        {rows.map((row) => {
+          const indent = { marginInlineStart: row.depth * 14 };
+          if (row.kind === "group") {
+            const { group, count } = row;
+            const edit: Editing = { kind: "group", id: group.id };
+            if (editing?.kind === "group" && editing.id === group.id) {
+              return (
+                <li key={group.id} style={indent}>
+                  <InlineName
+                    label="Group name"
+                    initial={group.name}
+                    onCommit={(value, restoreFocus) => onCommitEdit(edit, value, restoreFocus)}
+                    onCancel={onCancelEdit}
+                  />
+                </li>
+              );
+            }
             return (
-              <li key={group.id} style={indent}>
+              <DragRow key={group.id} id={group.id} kind="group" style={indent}>
+                {(drag) => (
+                  <button
+                    type="button"
+                    className="group-button"
+                    data-nr-part="group"
+                    data-nr-state={group.collapsed ? "collapsed" : "expanded"}
+                    data-row-id={group.id}
+                    data-nr-depth={row.depth}
+                    aria-label={group.name}
+                    aria-expanded={!group.collapsed}
+                    {...drag.buttonProps}
+                    onClick={() => onToggleGroup(group)}
+                    onDoubleClick={() => onStartEdit(edit)}
+                    onKeyDown={(event) => {
+                      drag.onKeyDown(event);
+                      onRenameKey(event, edit);
+                    }}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      onGroupMenu(group.id, menuPoint(event));
+                    }}
+                  >
+                    {group.collapsed ? (
+                      <ChevronRight size={14} aria-hidden="true" />
+                    ) : (
+                      <ChevronDown size={14} aria-hidden="true" />
+                    )}
+                    <span
+                      className="group-dot"
+                      style={{ background: group.color }}
+                      aria-hidden="true"
+                    />
+                    <span className="group-name">{group.name}</span>
+                    <span
+                      className="group-count"
+                      data-nr-part="group-count"
+                      title={count === 1 ? "1 tab" : `${count} tabs`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                )}
+              </DragRow>
+            );
+          }
+
+          const item = space.items[row.id];
+          if (!item) return null;
+          const label = item.title ?? `Tab ${order.indexOf(row.id) + 1}`;
+          const edit: Editing = { kind: "item", id: row.id };
+          if (editing?.kind === "item" && editing.id === row.id) {
+            return (
+              <li key={row.id} style={indent}>
                 <InlineName
-                  label="Group name"
-                  initial={group.name}
+                  label="Tab name"
+                  initial={label}
                   onCommit={(value, restoreFocus) => onCommitEdit(edit, value, restoreFocus)}
                   onCancel={onCancelEdit}
                 />
               </li>
             );
           }
-          return (
-            <li key={group.id} style={indent}>
+          const isActive = row.id === activeId;
+          const summary = summarizeItem(item, space.defaults.cwd);
+          const cwdText = summary.cwd !== undefined ? shortCwd(summary.cwd, home) : "";
+          const hasMeta = cwdText !== "" || summary.gitBranch !== undefined;
+          // The button is named by the title alone; the rest is read as its description.
+          const words = [
+            ...indicatorLabels(summary),
+            ...(cwdText !== "" ? [`Folder ${cwdText}`] : []),
+            ...(summary.gitBranch !== undefined ? [`Branch ${summary.gitBranch}`] : []),
+          ];
+          const descriptionId = `tab-info-${row.id}`;
+          // Pinned tabs sit still: moving them in and out of Pinned is the next task.
+          const content = (drag?: DragHandle) => (
+            <>
               <button
                 type="button"
-                className="group-button"
-                data-nr-part="group"
-                data-nr-state={group.collapsed ? "collapsed" : "expanded"}
-                data-row-id={group.id}
-                aria-label={group.name}
-                aria-expanded={!group.collapsed}
-                onClick={() => onToggleGroup(group)}
+                className="tab-button"
+                data-nr-part="item"
+                data-nr-state={isActive ? "active" : undefined}
+                data-nr-selected={selected.includes(row.id) ? "true" : undefined}
+                data-nr-pinned={row.pinned ? "true" : undefined}
+                data-row-id={row.id}
+                data-nr-depth={row.depth}
+                aria-current={isActive ? "true" : undefined}
+                aria-label={label}
+                aria-describedby={words.length > 0 ? descriptionId : undefined}
+                {...drag?.buttonProps}
+                onClick={(event) => onItemClick(row.id, modifiersOf(event))}
                 onDoubleClick={() => onStartEdit(edit)}
-                onKeyDown={(event) => onRenameKey(event, edit)}
+                onKeyDown={(event) => {
+                  drag?.onKeyDown(event);
+                  onRenameKey(event, edit);
+                }}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  onGroupMenu(group.id, menuPoint(event));
+                  onItemMenu(row.id, menuPoint(event));
                 }}
               >
-                {group.collapsed ? (
-                  <ChevronRight size={14} aria-hidden="true" />
-                ) : (
-                  <ChevronDown size={14} aria-hidden="true" />
+                <span className="tab-line">
+                  {row.pinned && <Pin size={12} aria-hidden="true" />}
+                  <span className="tab-title" data-nr-part="item-title">
+                    {label}
+                  </span>
+                  <span className="tab-badges" aria-hidden="true">
+                    {summary.running && (
+                      <span className="tab-badge" data-nr-indicator="running" title={RUNNING_LABEL}>
+                        <LoaderCircle size={12} className="spin" aria-hidden="true" />
+                      </span>
+                    )}
+                    {summary.failed !== undefined && (
+                      <span
+                        className="tab-badge"
+                        data-nr-indicator="failed"
+                        title={failureLabel(summary.failed)}
+                      >
+                        <CircleAlert size={12} aria-hidden="true" />
+                      </span>
+                    )}
+                    {summary.unread && (
+                      <span className="tab-badge" data-nr-indicator="unread" title={UNREAD_LABEL}>
+                        <span className="unread-dot" />
+                      </span>
+                    )}
+                    {summary.bell && (
+                      <span className="tab-badge" data-nr-indicator="bell" title={BELL_LABEL}>
+                        <Bell size={12} aria-hidden="true" />
+                      </span>
+                    )}
+                  </span>
+                </span>
+                {hasMeta && (
+                  <span className="tab-meta" data-nr-part="item-meta" aria-hidden="true">
+                    {cwdText !== "" && (
+                      <span className="tab-cwd" data-nr-part="item-cwd" title={summary.cwd}>
+                        {cwdText}
+                      </span>
+                    )}
+                    {summary.gitBranch !== undefined && (
+                      <span className="tab-branch" data-nr-part="item-branch">
+                        <GitBranch size={11} aria-hidden="true" className="tab-branch-icon" />
+                        <span className="tab-branch-name">{summary.gitBranch}</span>
+                      </span>
+                    )}
+                  </span>
                 )}
-                <span
-                  className="group-dot"
-                  style={{ background: group.color }}
-                  aria-hidden="true"
-                />
-                <span className="group-name">{group.name}</span>
-                <span
-                  className="group-count"
-                  data-nr-part="group-count"
-                  title={count === 1 ? "1 tab" : `${count} tabs`}
-                >
-                  {count}
-                </span>
               </button>
-            </li>
-          );
-        }
-
-        const item = space.items[row.id];
-        if (!item) return null;
-        const label = item.title ?? `Tab ${order.indexOf(row.id) + 1}`;
-        const edit: Editing = { kind: "item", id: row.id };
-        if (editing?.kind === "item" && editing.id === row.id) {
-          return (
-            <li key={row.id} style={indent}>
-              <InlineName
-                label="Tab name"
-                initial={label}
-                onCommit={(value, restoreFocus) => onCommitEdit(edit, value, restoreFocus)}
-                onCancel={onCancelEdit}
-              />
-            </li>
-          );
-        }
-        const isActive = row.id === activeId;
-        const summary = summarizeItem(item, space.defaults.cwd);
-        const cwdText = summary.cwd !== undefined ? shortCwd(summary.cwd, home) : "";
-        const hasMeta = cwdText !== "" || summary.gitBranch !== undefined;
-        // The button is named by the title alone; the rest is read as its description.
-        const words = [
-          ...indicatorLabels(summary),
-          ...(cwdText !== "" ? [`Folder ${cwdText}`] : []),
-          ...(summary.gitBranch !== undefined ? [`Branch ${summary.gitBranch}`] : []),
-        ];
-        const descriptionId = `tab-info-${row.id}`;
-        return (
-          <li key={row.id} style={indent}>
-            <button
-              type="button"
-              className="tab-button"
-              data-nr-part="item"
-              data-nr-state={isActive ? "active" : undefined}
-              data-nr-selected={selected.includes(row.id) ? "true" : undefined}
-              data-nr-pinned={row.pinned ? "true" : undefined}
-              data-row-id={row.id}
-              aria-current={isActive ? "true" : undefined}
-              aria-label={label}
-              aria-describedby={words.length > 0 ? descriptionId : undefined}
-              onClick={(event) => onItemClick(row.id, modifiersOf(event))}
-              onDoubleClick={() => onStartEdit(edit)}
-              onKeyDown={(event) => onRenameKey(event, edit)}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                onItemMenu(row.id, menuPoint(event));
-              }}
-            >
-              <span className="tab-line">
-                {row.pinned && <Pin size={12} aria-hidden="true" />}
-                <span className="tab-title" data-nr-part="item-title">
-                  {label}
-                </span>
-                <span className="tab-badges" aria-hidden="true">
-                  {summary.running && (
-                    <span className="tab-badge" data-nr-indicator="running" title={RUNNING_LABEL}>
-                      <LoaderCircle size={12} className="spin" aria-hidden="true" />
-                    </span>
-                  )}
-                  {summary.failed !== undefined && (
-                    <span
-                      className="tab-badge"
-                      data-nr-indicator="failed"
-                      title={failureLabel(summary.failed)}
-                    >
-                      <CircleAlert size={12} aria-hidden="true" />
-                    </span>
-                  )}
-                  {summary.unread && (
-                    <span className="tab-badge" data-nr-indicator="unread" title={UNREAD_LABEL}>
-                      <span className="unread-dot" />
-                    </span>
-                  )}
-                  {summary.bell && (
-                    <span className="tab-badge" data-nr-indicator="bell" title={BELL_LABEL}>
-                      <Bell size={12} aria-hidden="true" />
-                    </span>
-                  )}
-                </span>
-              </span>
-              {hasMeta && (
-                <span className="tab-meta" data-nr-part="item-meta" aria-hidden="true">
-                  {cwdText !== "" && (
-                    <span className="tab-cwd" data-nr-part="item-cwd" title={summary.cwd}>
-                      {cwdText}
-                    </span>
-                  )}
-                  {summary.gitBranch !== undefined && (
-                    <span className="tab-branch" data-nr-part="item-branch">
-                      <GitBranch size={11} aria-hidden="true" className="tab-branch-icon" />
-                      <span className="tab-branch-name">{summary.gitBranch}</span>
-                    </span>
-                  )}
+              {words.length > 0 && (
+                <span id={descriptionId} className="sr-only">
+                  {words.join(". ")}
                 </span>
               )}
-            </button>
-            {words.length > 0 && (
-              <span id={descriptionId} className="sr-only">
-                {words.join(". ")}
-              </span>
-            )}
-          </li>
-        );
-      })}
-    </ul>
+            </>
+          );
+          if (row.pinned) {
+            return (
+              <li key={row.id} style={indent}>
+                {content()}
+              </li>
+            );
+          }
+          return (
+            <DragRow key={row.id} id={row.id} kind="item" style={indent}>
+              {content}
+            </DragRow>
+          );
+        })}
+      </ul>
+    </TreeDnd>
   );
 }

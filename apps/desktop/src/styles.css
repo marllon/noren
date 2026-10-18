@@ -337,6 +337,53 @@ body {
   background: color-mix(in srgb, var(--nr-text) 8%, transparent);
 }
 
+/* Drag and drop: the row stays dimmed in place, a ghost follows the pointer, and a line (or a frame) marks where it lands. */
+.drag-slot[data-nr-state="dragging"] {
+  opacity: 0.4;
+}
+
+.drag-ghost {
+  box-sizing: border-box;
+  padding: 6px 10px;
+  overflow: hidden;
+  border: 1px solid var(--nr-accent);
+  border-radius: calc(var(--nr-radius) * 0.6);
+  background: var(--nr-surface);
+  color: var(--nr-text);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--nr-bg) 70%, transparent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: grabbing;
+}
+
+.drop-indicator {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.drop-indicator[data-nr-position="before"],
+.drop-indicator[data-nr-position="after"] {
+  inset-inline: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--nr-accent);
+}
+
+.drop-indicator[data-nr-position="before"] {
+  top: -2px;
+}
+
+.drop-indicator[data-nr-position="after"] {
+  bottom: -2px;
+}
+
+.drop-indicator[data-nr-position="inside"] {
+  inset: 0;
+  border: 2px solid var(--nr-accent);
+  border-radius: calc(var(--nr-radius) * 0.6);
+}
+
 .group-dot {
   flex: none;
   width: 8px;

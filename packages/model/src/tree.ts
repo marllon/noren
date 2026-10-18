@@ -131,3 +131,27 @@ export function resolveIndex(
   if (!Number.isInteger(index)) return undefined;
   return Math.min(Math.max(index, 0), length);
 }
+
+/** Where a group sits: the group holding it (undefined at the top level) and its position there. */
+export function findGroupSlot(
+  nodes: readonly Node[],
+  groupId: Id,
+  parentId?: Id,
+): { parentId: Id | undefined; index: number } | undefined {
+  for (const [index, node] of nodes.entries()) {
+    if (node.kind !== "group") continue;
+    if (node.id === groupId) return { parentId, index };
+    const inner = findGroupSlot(node.children, groupId, node.id);
+    if (inner) return inner;
+  }
+  return undefined;
+}
+
+/** Tree without the group `groupId`, its children going with it. */
+export function removeGroupNode(nodes: readonly Node[], groupId: Id): Node[] {
+  return nodes.flatMap((node): Node[] => {
+    if (node.kind === "item") return [node];
+    if (node.id === groupId) return [];
+    return [{ ...node, children: removeGroupNode(node.children, groupId) }];
+  });
+}

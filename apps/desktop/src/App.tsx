@@ -405,6 +405,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
           onStartEdit={setEditing}
           onCommitEdit={onCommitEdit}
           onCancelEdit={onCancelEdit}
+          onMove={dispatch}
         />
         <button type="button" className="new-tab" onClick={() => newTab()}>
           New tab

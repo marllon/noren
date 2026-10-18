@@ -317,6 +317,13 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
       ),
     ),
     weighted(2, fc.record({ type: tag("group/ungroup"), groupId })),
+    weighted(
+      3,
+      fc.record(
+        { type: tag("group/move"), groupId, parentGroupId: groupId, index: arbIndex },
+        { requiredKeys: ["type", "groupId"] },
+      ),
+    ),
     weighted(1, fc.record({ type: tag("group/set-collapsed"), groupId, collapsed: fc.boolean() })),
     weighted(1, fc.record({ type: tag("group/rename"), groupId, name: arbName })),
     weighted(1, fc.record({ type: tag("group/set-color"), groupId, color: arbColor })),

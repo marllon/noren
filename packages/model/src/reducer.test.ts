@@ -1062,6 +1062,82 @@ describe("group/create-from-selection", () => {
   });
 });
 
+describe("group/move", () => {
+  /** The fixture with a second top-level group "g3" (holding i5) after i4. */
+  function twoGroups(): Workspace {
+    const grouped = applyChecked(fixture(), {
+      type: "group/create-from-selection",
+      itemIds: ["i5"],
+      name: "other",
+    });
+    return grouped;
+  }
+
+  it("moves a top-level group after a loose item, children included", () => {
+    const next = applyChecked(fixture(), { type: "group/move", groupId: "g1", index: 1 });
+    expect(shape(spaceOf(next, "s1").tree)).toEqual(["i4", { g1: ["i2", { g2: ["i3"] }] }, "i5"]);
+  });
+
+  it("moves a group to the end when there is no index and clamps one past the end", () => {
+    const end = applyChecked(fixture(), { type: "group/move", groupId: "g1" });
+    expect(shape(spaceOf(end, "s1").tree)).toEqual(["i4", "i5", { g1: ["i2", { g2: ["i3"] }] }]);
+    const clamped = applyChecked(fixture(), { type: "group/move", groupId: "g1", index: 99 });
+    expect(shape(spaceOf(clamped, "s1").tree)).toEqual(shape(spaceOf(end, "s1").tree));
+  });
+
+  it("reorders a group among the groups of its parent", () => {
+    const ws = twoGroups();
+    expect(shape(spaceOf(ws, "s1").tree)).toEqual([
+      { g1: ["i2", { g2: ["i3"] }] },
+      "i4",
+      { n1: ["i5"] },
+    ]);
+    const next = applyChecked(ws, { type: "group/move", groupId: "n1", index: 0 });
+    expect(shape(spaceOf(next, "s1").tree)).toEqual([
+      { n1: ["i5"] },
+      { g1: ["i2", { g2: ["i3"] }] },
+      "i4",
+    ]);
+  });
+
+  it("moves an inner group out to the top level and back into another group", () => {
+    const out = applyChecked(fixture(), { type: "group/move", groupId: "g2", index: 1 });
+    expect(shape(spaceOf(out, "s1").tree)).toEqual([{ g1: ["i2"] }, { g2: ["i3"] }, "i4", "i5"]);
+    const ws = twoGroups();
+    const into = applyChecked(ws, {
+      type: "group/move",
+      groupId: "n1",
+      parentGroupId: "g1",
+      index: 0,
+    });
+    expect(shape(spaceOf(into, "s1").tree)).toEqual([
+      { g1: [{ n1: ["i5"] }, "i2", { g2: ["i3"] }] },
+      "i4",
+    ]);
+  });
+
+  it("refuses what would break the nesting rules and returns the same workspace", () => {
+    const ws = twoGroups();
+    // A group that holds a group cannot nest (three levels), and nothing nests in itself.
+    expect(applyChecked(ws, { type: "group/move", groupId: "g1", parentGroupId: "n1" })).toBe(ws);
+    expect(applyChecked(ws, { type: "group/move", groupId: "n1", parentGroupId: "n1" })).toBe(ws);
+    // The inner group is already on the second level: it cannot host another group.
+    expect(applyChecked(ws, { type: "group/move", groupId: "n1", parentGroupId: "g2" })).toBe(ws);
+    expect(applyChecked(ws, { type: "group/move", groupId: "nope" })).toBe(ws);
+    expect(applyChecked(ws, { type: "group/move", groupId: "i4" })).toBe(ws);
+    expect(applyChecked(ws, { type: "group/move", groupId: "n1", parentGroupId: "nope" })).toBe(ws);
+    expect(applyChecked(ws, { type: "group/move", groupId: "n1", index: 1.5 })).toBe(ws);
+  });
+
+  it("returns the same workspace when the group would stay where it is", () => {
+    const ws = fixture();
+    expect(applyChecked(ws, { type: "group/move", groupId: "g1", index: 0 })).toBe(ws);
+    expect(
+      applyChecked(ws, { type: "group/move", groupId: "g2", parentGroupId: "g1", index: 1 }),
+    ).toBe(ws);
+  });
+});
+
 describe("group/ungroup", () => {
   it("puts the children in the place of the group", () => {
     const next = applyChecked(fixture(), { type: "group/ungroup", groupId: "g1" });

@@ -1,7 +1,9 @@
 import * as fc from "fast-check";
 import type { Action, Placement } from "./actions";
+import { splitAt, splitPaths } from "./layout";
+import { layoutPanes } from "./sessions";
 import { treeGroups, treeItemIds } from "./tree";
-import type { Id, Workspace } from "./types";
+import type { Id, Item, Workspace } from "./types";
 
 const tag = <T extends string>(type: T): fc.Arbitrary<T> => fc.constant(type);
 
@@ -63,6 +65,64 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
     { weight: 6, arbitrary: sameSpaceSelection },
     { weight: 1, arbitrary: anySelection },
   );
+
+  // Splits: an item with one of its panes (mostly real, now and then a made-up id).
+  const items = ws.spaces.flatMap((space) => Object.values(space.items));
+  const paneIds = items.flatMap((item) => layoutPanes(item.layout).map((pane) => pane.id));
+  const paneOf = (item: Item): fc.Arbitrary<Id> =>
+    arbIdOf(layoutPanes(item.layout).map((pane) => pane.id));
+  const target: fc.Arbitrary<{ itemId: Id; paneId: Id }> =
+    items.length === 0
+      ? fc.record({ itemId: arbGhost, paneId: arbGhost })
+      : fc.oneof(
+          {
+            weight: 12,
+            arbitrary: fc
+              .constantFrom(...items)
+              .chain((item) => paneOf(item).map((paneId) => ({ itemId: item.id, paneId }))),
+          },
+          { weight: 1, arbitrary: fc.record({ itemId, paneId: arbIdOf(paneIds) }) },
+        );
+  const dir = fc.constantFrom("row", "column");
+  const side = fc.constantFrom("before", "after");
+  const direction = fc.constantFrom("left", "right", "up", "down");
+
+  /** Sizes for a split of an item: mostly the right count, positive; sometimes broken ones. */
+  const resize: fc.Arbitrary<Action> =
+    items.length === 0
+      ? fc.constant({ type: "pane/resize", itemId: "ghost-1", path: [], sizes: [1, 1] })
+      : fc.constantFrom(...items).chain((item) => {
+          const paths = splitPaths(item.layout);
+          if (paths.length === 0) {
+            return fc.constant<Action>({
+              type: "pane/resize",
+              itemId: item.id,
+              path: [],
+              sizes: [1],
+            });
+          }
+          return fc.constantFrom(...paths).chain((path) => {
+            const count = splitAt(item.layout, path)?.children.length ?? 2;
+            const weight = fc.double({ min: 0.05, max: 1000, noNaN: true });
+            const sizes = fc.oneof(
+              { weight: 10, arbitrary: fc.array(weight, { minLength: count, maxLength: count }) },
+              { weight: 1, arbitrary: fc.array(weight, { minLength: 1, maxLength: 5 }) },
+              {
+                weight: 1,
+                arbitrary: fc.array(fc.constantFrom(0, -1, Number.NaN, Infinity), {
+                  minLength: count,
+                  maxLength: count,
+                }),
+              },
+            );
+            return sizes.map((s): Action => ({
+              type: "pane/resize",
+              itemId: item.id,
+              path,
+              sizes: s,
+            }));
+          });
+        });
 
   const weighted = (weight: number, arbitrary: fc.Arbitrary<Action>) => ({ weight, arbitrary });
 
@@ -187,5 +247,77 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
     weighted(1, fc.record({ type: tag("group/set-collapsed"), groupId, collapsed: fc.boolean() })),
     weighted(1, fc.record({ type: tag("group/rename"), groupId, name: arbName })),
     weighted(1, fc.record({ type: tag("group/set-color"), groupId, color: arbColor })),
+    // Splits
+    weighted(
+      7,
+      target.chain(({ itemId, paneId }) =>
+        fc.record(
+          {
+            type: tag("pane/split"),
+            itemId: fc.constant(itemId),
+            paneId: fc.constant(paneId),
+            dir,
+            side,
+            profileId: arbProfile,
+            cwd: arbCwd,
+          },
+          { requiredKeys: ["type", "itemId", "paneId", "dir", "side"] },
+        ),
+      ),
+    ),
+    weighted(
+      4,
+      target.map(({ itemId, paneId }): Action => ({ type: "pane/close", itemId, paneId })),
+    ),
+    weighted(
+      3,
+      target.map(({ itemId, paneId }): Action => ({ type: "pane/detach", itemId, paneId })),
+    ),
+    weighted(
+      4,
+      target.chain(({ itemId: targetItemId, paneId: targetPaneId }) =>
+        fc.record({
+          type: tag("item/join"),
+          itemId,
+          targetItemId: fc.constant(targetItemId),
+          targetPaneId: fc.constant(targetPaneId),
+          dir,
+          side,
+        }),
+      ),
+    ),
+    weighted(4, resize),
+    weighted(
+      3,
+      target.chain(({ itemId, paneId }) =>
+        fc.record(
+          { type: tag("pane/zoom"), itemId: fc.constant(itemId), paneId: fc.constant(paneId) },
+          { requiredKeys: ["type", "itemId"] },
+        ),
+      ),
+    ),
+    weighted(
+      3,
+      items.length === 0
+        ? fc.constant({
+            type: "pane/swap",
+            itemId: "ghost-1",
+            paneId: "ghost-1",
+            otherPaneId: "ghost-2",
+          })
+        : fc.constantFrom(...items).chain((item) =>
+            fc.record({
+              type: tag("pane/swap"),
+              itemId: fc.constant(item.id),
+              paneId: paneOf(item),
+              otherPaneId: paneOf(item),
+            }),
+          ),
+    ),
+    weighted(
+      3,
+      target.map(({ itemId, paneId }): Action => ({ type: "pane/focus", itemId, paneId })),
+    ),
+    weighted(3, fc.record({ type: tag("pane/focus-direction"), itemId, direction })),
   );
 }

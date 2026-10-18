@@ -8,7 +8,7 @@ import { reduce, reduceStrict } from "./reducer";
 import { layoutPanes, liveSessionIds } from "./sessions";
 import { deepFreeze, testContext } from "./test-helpers";
 import { treeGroups } from "./tree";
-import type { Id, Item, Workspace } from "./types";
+import { DEFAULT_MAX_PANES, type Id, type Item, type Workspace } from "./types";
 
 /** One key per action type: the compiler fails here when a new action is not listed. */
 const ACTION_TYPES: Record<ActionType, true> = {
@@ -34,14 +34,47 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "group/set-collapsed": true,
   "group/rename": true,
   "group/set-color": true,
+  "pane/split": true,
+  "pane/close": true,
+  "pane/detach": true,
+  "item/join": true,
+  "pane/resize": true,
+  "pane/zoom": true,
+  "pane/swap": true,
+  "pane/focus": true,
+  "pane/focus-direction": true,
 };
 const TYPES = Object.keys(ACTION_TYPES) as ActionType[];
 
 const STEPS = 200;
 const NUM_RUNS = 150;
+/** Runs of the sequences with a non-default `maxPanes`. */
+const SMALL_RUNS = 50;
+const SEQUENCE_TIMEOUT_MS = 60_000;
+
+/** Actions whose effect on the panes `checkPaneDelta` knows. */
+const PANE_ACTIONS = new Set<ActionType>([
+  "pane/split",
+  "pane/close",
+  "pane/detach",
+  "item/join",
+  "pane/swap",
+  "pane/resize",
+  "pane/zoom",
+  "pane/focus",
+  "pane/focus-direction",
+]);
 
 const itemIdsOf = (ws: Workspace): Set<Id> =>
   new Set(ws.spaces.flatMap((space) => Object.keys(space.items)));
+const itemOf = (ws: Workspace, itemId: Id): Item | undefined =>
+  ws.spaces.flatMap((space) => Object.values(space.items)).find((item) => item.id === itemId);
+/** Ids of every pane of every live item (closed and archived ones do not count). */
+const paneIdsOf = (ws: Workspace): Id[] =>
+  ws.spaces
+    .flatMap((space) => Object.values(space.items))
+    .flatMap((item) => layoutPanes(item.layout).map((pane) => pane.id))
+    .sort();
 const groupIdsOf = (ws: Workspace): Set<Id> =>
   new Set(ws.spaces.flatMap((space) => treeGroups(space.tree).map((g) => g.id)));
 
@@ -55,6 +88,12 @@ function sessionsEndedBy(ws: Workspace, action: Action): Set<Id> {
       }
     }
   };
+  if (action.type === "pane/close") {
+    // The pane's own session ends (the whole item's, when it was the only pane, via the pane too).
+    const pane = itemOf(ws, action.itemId)?.layout;
+    const closed = pane && layoutPanes(pane).find((p) => p.id === action.paneId);
+    if (closed?.sessionId !== undefined) ids.add(closed.sessionId);
+  }
   for (const space of ws.spaces) {
     if (action.type === "item/close" && Object.hasOwn(space.items, action.itemId)) {
       collect(Object.values(space.items).filter((item) => item.id === action.itemId));
@@ -93,20 +132,101 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "group/rename":
     case "group/set-color":
       return !groupIdsOf(ws).has(action.groupId);
+    case "pane/split":
+    case "pane/close":
+    case "pane/detach":
+    case "pane/focus":
+      return !hasPane(ws, action.itemId, action.paneId);
+    case "pane/swap":
+      return (
+        !hasPane(ws, action.itemId, action.paneId) ||
+        !hasPane(ws, action.itemId, action.otherPaneId)
+      );
+    case "pane/zoom":
+      return action.paneId !== undefined && !hasPane(ws, action.itemId, action.paneId);
+    case "pane/resize":
+    case "pane/focus-direction":
+      return !itemIdsOf(ws).has(action.itemId);
+    case "item/join":
+      return (
+        !itemIdsOf(ws).has(action.itemId) || !hasPane(ws, action.targetItemId, action.targetPaneId)
+      );
     default:
       return false;
   }
 }
 
-describe("reducer properties", () => {
-  it(`property: ${STEPS} random actions keep every invariant (${NUM_RUNS} runs)`, () => {
-    const generated = new Map<ActionType, number>();
-    const applied = new Map<ActionType, number>();
-    let noops = 0;
+function hasPane(ws: Workspace, itemId: Id, paneId: Id): boolean {
+  const item = itemOf(ws, itemId);
+  return item !== undefined && layoutPanes(item.layout).some((pane) => pane.id === paneId);
+}
 
-    fc.assert(
-      fc.property(arbWorkspace(), fc.gen(), (initial, gen) => {
-        const { ctx, clock } = testContext();
+/** What an action that did something must do to the panes of the live items. */
+function checkPaneDelta(ws: Workspace, next: Workspace, action: Action, where: () => string): void {
+  const fail = (what: string): never => {
+    throw new Error(`${where()}: ${what}`);
+  };
+  const same = (a: readonly Id[], b: readonly Id[]): boolean =>
+    a.length === b.length && a.every((id, i) => id === b[i]);
+  if (!PANE_ACTIONS.has(action.type)) return;
+  const before = paneIdsOf(ws);
+  const after = paneIdsOf(next);
+  switch (action.type) {
+    case "pane/split":
+      // Exactly one new pane.
+      if (after.length !== before.length + 1 || !before.every((id) => after.includes(id))) {
+        fail("split did not add exactly one pane");
+      }
+      break;
+    case "pane/close":
+      // Exactly that pane is gone (an item's only pane takes the item along).
+      if (
+        !same(
+          after,
+          before.filter((id) => id !== action.paneId),
+        )
+      ) {
+        fail("close did not remove exactly the pane");
+      }
+      break;
+    case "pane/detach":
+    case "item/join":
+    case "pane/swap":
+    case "pane/resize":
+    case "pane/zoom":
+    case "pane/focus":
+    case "pane/focus-direction": {
+      // The same panes, only arranged differently, and every session still there.
+      const sessions = liveSessionIds(next);
+      const kept = [...liveSessionIds(ws)].every((id) => sessions.has(id));
+      if (!same(after, before) || !kept || sessions.size !== liveSessionIds(ws).size) {
+        fail("the panes or the sessions changed");
+      }
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+/**
+ * Plays `STEPS` random actions per run on random workspaces. `maxPanes` goes both to the
+ * generated workspaces and to the reducer; absent means the default of 4.
+ */
+function playSequences(numRuns: number, maxPanes?: number): void {
+  const generated = new Map<ActionType, number>();
+  const applied = new Map<ActionType, number>();
+  let noops = 0;
+  let overLimit = 0;
+  const limit = maxPanes ?? DEFAULT_MAX_PANES;
+
+  fc.assert(
+    fc.property(
+      arbWorkspace(maxPanes === undefined ? {} : { maxPanes }),
+      fc.gen(),
+      (initial, gen) => {
+        const { ctx: base, clock } = testContext();
+        const ctx = maxPanes === undefined ? base : { ...base, maxPanes };
         let ws = deepFreeze(initial);
         for (let step = 0; step < STEPS; step++) {
           clock.advance(1);
@@ -114,27 +234,27 @@ describe("reducer properties", () => {
           // `gen` on each call, which made 150 runs of 200 steps take 90 s instead of 3 s.
           const state = ws;
           const action = gen(() => arbAction(state));
-          const where = `step ${step}, ${JSON.stringify(action)}`;
+          const where = (): string => `step ${step}, ${JSON.stringify(action)}`;
           // Strict reducer on a frozen state: a throw or a mutation fails the property.
           const next = reduceStrict(ws, action, ctx);
 
-          const violations = checkInvariants(next);
+          const violations = checkInvariants(next, { maxPanes: limit });
           if (violations.length > 0) {
             throw new Error(
-              `${where}: ${violations.map((v) => `${v.code} at ${v.path}`).join("; ")}`,
+              `${where()}: ${violations.map((v) => `${v.code} at ${v.path}`).join("; ")}`,
             );
           }
 
-          // Sessions only leave with a closed item or a deleted space, and none appears.
+          // Sessions only leave with a closed item or pane, or a deleted space, and none appears.
           const before = liveSessionIds(ws);
           const after = liveSessionIds(next);
           const ended = sessionsEndedBy(ws, action);
           for (const id of after) {
-            if (!before.has(id)) throw new Error(`${where}: session ${id} appeared`);
+            if (!before.has(id)) throw new Error(`${where()}: session ${id} appeared`);
           }
           for (const id of before) {
             if (!after.has(id) && !ended.has(id)) {
-              throw new Error(`${where}: session ${id} vanished`);
+              throw new Error(`${where()}: session ${id} vanished`);
             }
           }
           // Whatever the reducer closes keeps no session.
@@ -142,13 +262,23 @@ describe("reducer properties", () => {
             if (ws.closed.includes(entry)) continue;
             for (const pane of layoutPanes(entry.item.layout)) {
               if (pane.sessionId !== undefined)
-                throw new Error(`${where}: closed item has a session`);
+                throw new Error(`${where()}: closed item has a session`);
             }
           }
           // An action on something that does not exist changes nothing.
           if (missingTarget(ws, action) && next !== ws) {
-            throw new Error(`${where}: unknown target changed the workspace`);
+            throw new Error(`${where()}: unknown target changed the workspace`);
           }
+          // A split that would pass the limit changes nothing either.
+          if (action.type === "pane/split" && hasPane(ws, action.itemId, action.paneId)) {
+            const item = itemOf(ws, action.itemId);
+            const count = item ? layoutPanes(item.layout).length : 0;
+            if (count + 1 > limit) {
+              overLimit++;
+              if (next !== ws) throw new Error(`${where()}: split passed maxPanes`);
+            }
+          }
+          if (next !== ws) checkPaneDelta(ws, next, action, where);
 
           generated.set(action.type, (generated.get(action.type) ?? 0) + 1);
           if (next === ws) {
@@ -158,16 +288,36 @@ describe("reducer properties", () => {
           }
           ws = deepFreeze(next);
         }
-      }),
-      { numRuns: NUM_RUNS },
-    );
+      },
+    ),
+    { numRuns },
+  );
 
-    // The sequences must exercise every action for real, and the invalid paths too.
-    const neverApplied = TYPES.filter((type) => (applied.get(type) ?? 0) === 0);
-    expect(neverApplied).toEqual([]);
-    expect(noops).toBeGreaterThan(0);
-    expect([...generated.values()].reduce((sum, n) => sum + n, 0)).toBe(NUM_RUNS * STEPS);
-  });
+  // The sequences must exercise every action for real, and the invalid paths too.
+  const neverApplied = TYPES.filter((type) => (applied.get(type) ?? 0) === 0);
+  expect(neverApplied).toEqual([]);
+  expect(noops).toBeGreaterThan(0);
+  expect(overLimit).toBeGreaterThan(0);
+  expect([...generated.values()].reduce((sum, n) => sum + n, 0)).toBe(numRuns * STEPS);
+}
+
+describe("reducer properties", () => {
+  // About 4 s on a quiet machine, near the 5 s default: a loaded runner must not turn it flaky.
+  it(
+    `property: ${STEPS} random actions keep every invariant (${NUM_RUNS} runs)`,
+    () => {
+      playSequences(NUM_RUNS);
+    },
+    SEQUENCE_TIMEOUT_MS,
+  );
+
+  it.each([2, 6])(
+    "property: sequences keep every invariant with maxPanes %i",
+    (maxPanes) => {
+      playSequences(SMALL_RUNS, maxPanes);
+    },
+    SEQUENCE_TIMEOUT_MS,
+  );
 
   it("property: input that is not an action never throws and never breaks the invariants", () => {
     const keys = [

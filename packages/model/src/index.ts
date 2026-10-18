@@ -18,8 +18,10 @@ export { createSequentialIds } from "./ids";
 export type { IdGenerator } from "./ids";
 export { SIZE_SUM_TOLERANCE, checkInvariants } from "./invariants";
 export type { InvariantOptions, Violation, ViolationCode } from "./invariants";
+export { layoutRects, neighborPane } from "./geometry";
+export type { Direction, Rect } from "./geometry";
 export { reduce } from "./reducer";
-export { liveSessionIds } from "./sessions";
+export { layoutPanes, liveSessionIds } from "./sessions";
 export { DEFAULT_MAX_PANES, MAX_CLOSED, MAX_GROUP_DEPTH } from "./types";
 export type {
   ArchivedItem,

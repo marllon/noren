@@ -6,6 +6,17 @@ import {
   createTab,
   type EmptySpaceOptions,
 } from "./factories";
+import { neighborPane } from "./geometry";
+import {
+  countPanes,
+  findPane,
+  insertBeside,
+  normalizeSizes,
+  removePane,
+  setSplitSizes,
+  splitAt,
+  swapPanes,
+} from "./layout";
 import { layoutPanes, withoutSessions } from "./sessions";
 import {
   editChildren,
@@ -21,12 +32,14 @@ import {
   type GroupLocation,
 } from "./tree";
 import {
+  DEFAULT_MAX_PANES,
   MAX_CLOSED,
   MAX_GROUP_DEPTH,
   type ClosedItem,
   type GroupNode,
   type Id,
   type Item,
+  type LayoutNode,
   type Node,
   type Space,
   type Workspace,
@@ -148,6 +161,24 @@ export function reduceStrict(ws: Workspace, action: Action, ctx: ReducerContext)
         group.color === color ? undefined : { ...group, color },
       );
     }
+    case "pane/split":
+      return splitPane(ws, action, ctx);
+    case "pane/close":
+      return closePane(ws, action.itemId, action.paneId, ctx);
+    case "pane/detach":
+      return detachPane(ws, action.itemId, action.paneId, ctx);
+    case "item/join":
+      return joinItem(ws, action, ctx);
+    case "pane/resize":
+      return resizeSplit(ws, action);
+    case "pane/zoom":
+      return zoomPane(ws, action.itemId, action.paneId);
+    case "pane/swap":
+      return swapItemPanes(ws, action.itemId, action.paneId, action.otherPaneId);
+    case "pane/focus":
+      return focusPane(ws, action.itemId, action.paneId);
+    case "pane/focus-direction":
+      return focusDirection(ws, action.itemId, action.direction);
     default:
       return assertNever(action, ws);
   }
@@ -578,4 +609,195 @@ function groupSelection(
     insertAt<Node>(children, slot.index, group),
   );
   return tree ? replaceSpace(ws, { ...space, tree }) : ws;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Splits
+
+const isDir = (dir: unknown): dir is "row" | "column" => dir === "row" || dir === "column";
+const isSide = (side: unknown): side is "before" | "after" => side === "before" || side === "after";
+
+/** `ctx.maxPanes` when it is a positive integer, else the default. */
+function maxPanesOf(ctx: ReducerContext): number {
+  const max = ctx.maxPanes;
+  return max !== undefined && Number.isInteger(max) && max >= 1 ? max : DEFAULT_MAX_PANES;
+}
+
+function replaceItem(ws: Workspace, space: Space, item: Item): Workspace {
+  return replaceSpace(ws, { ...space, items: { ...space.items, [item.id]: item } });
+}
+
+function withoutZoom(item: Item): Item {
+  if (item.zoomedPaneId === undefined) return item;
+  const next = { ...item };
+  delete next.zoomedPaneId;
+  return next;
+}
+
+/**
+ * The item after `removedId` left its layout (now `layout`): zoom ends if it was on that pane or
+ * nothing is left to zoom; focus goes to the neighbor in layout order (before it, else after) if it
+ * was on that pane.
+ */
+function afterRemoval(item: Item, layout: LayoutNode, removedId: Id): Item {
+  const old = layoutPanes(item.layout);
+  const at = old.findIndex((pane) => pane.id === removedId);
+  const heir = old[at - 1] ?? old[at + 1];
+  const next: Item = { ...item, layout };
+  if (item.focusedPaneId === removedId && heir) next.focusedPaneId = heir.id;
+  return item.zoomedPaneId === removedId || layout.kind === "pane" ? withoutZoom(next) : next;
+}
+
+function splitPane(
+  ws: Workspace,
+  action: Extract<Action, { type: "pane/split" }>,
+  ctx: ReducerContext,
+): Workspace {
+  if (!isDir(action.dir) || !isSide(action.side)) return ws;
+  const located = locate(ws, action.itemId);
+  const source = located && findPane(located.item.layout, action.paneId);
+  if (!located || !source) return ws;
+  if (countPanes(located.item.layout) + 1 > maxPanesOf(ctx)) return ws;
+  const profileId = action.profileId === undefined ? source.profileId : present(action.profileId);
+  if (profileId === undefined) return ws;
+  const fresh = createPane(idPool(ws, ctx)(), profileId, present(action.cwd) ?? source.cwd);
+  const layout = insertBeside(located.item.layout, source.id, action.dir, action.side, {
+    kind: "pane",
+    pane: fresh,
+  });
+  if (!layout) return ws;
+  // The new pane takes focus, so zoom on another pane would hide it.
+  const item: Item = { ...withoutZoom(located.item), layout, focusedPaneId: fresh.id };
+  return replaceItem(ws, located.space, item);
+}
+
+function closePane(ws: Workspace, itemId: Id, paneId: Id, ctx: ReducerContext): Workspace {
+  const located = locate(ws, itemId);
+  if (!located || !findPane(located.item.layout, paneId)) return ws;
+  // The only pane: nothing would be left, so the item closes.
+  if (located.item.layout.kind === "pane") return closeItem(ws, itemId, ctx);
+  const layout = removePane(located.item.layout, paneId);
+  return layout ? replaceItem(ws, located.space, afterRemoval(located.item, layout, paneId)) : ws;
+}
+
+function detachPane(ws: Workspace, itemId: Id, paneId: Id, ctx: ReducerContext): Workspace {
+  const located = locate(ws, itemId);
+  const pane = located && findPane(located.item.layout, paneId);
+  if (!located || !pane) return ws;
+  // A tab with one pane has nothing to detach (`removePane` gives up on it).
+  const layout = removePane(located.item.layout, paneId);
+  if (!layout) return ws;
+  const { item, space } = located;
+  const detached = createTab(idPool(ws, ctx)(), pane, ctx.clock.now());
+  const arriving: Space = {
+    ...space,
+    items: {
+      ...space.items,
+      [item.id]: afterRemoval(item, layout, paneId),
+      [detached.id]: detached,
+    },
+  };
+  // Right after the origin item. A pinned origin keeps the pin to itself: the new item opens at
+  // the top of the tree, just below the pinned items.
+  const slot = findItemSlot(space.tree, item.id);
+  if (!slot && !space.pinned.includes(item.id)) return ws;
+  const placement: Placement = slot
+    ? {
+        to: "tree",
+        index: slot.index + 1,
+        ...(slot.parentId !== undefined ? { groupId: slot.parentId } : {}),
+      }
+    : { to: "tree", index: 0 };
+  const placed = place(arriving, detached.id, placement);
+  return placed ? replaceSpace(ws, placed) : ws;
+}
+
+function joinItem(
+  ws: Workspace,
+  action: Extract<Action, { type: "item/join" }>,
+  ctx: ReducerContext,
+): Workspace {
+  if (!isDir(action.dir) || !isSide(action.side) || action.itemId === action.targetItemId) {
+    return ws;
+  }
+  const source = locate(ws, action.itemId);
+  const target = locate(ws, action.targetItemId);
+  if (!source || !target || !findPane(target.item.layout, action.targetPaneId)) return ws;
+  if (countPanes(source.item.layout) + countPanes(target.item.layout) > maxPanesOf(ctx)) return ws;
+  const layout = insertBeside(
+    target.item.layout,
+    action.targetPaneId,
+    action.dir,
+    action.side,
+    source.item.layout,
+  );
+  const joinedPanes = layoutPanes(source.item.layout);
+  const focus = joinedPanes.find((pane) => pane.id === source.item.focusedPaneId) ?? joinedPanes[0];
+  if (!layout || !focus) return ws;
+  const merged: Item = { ...withoutZoom(target.item), layout, focusedPaneId: focus.id };
+  const joined = replaceItem(ws, target.space, merged);
+  // The source space as it is now (the same as the target's when both share a space).
+  const left = locate(joined, source.item.id);
+  if (!left) return ws;
+  return {
+    ...replaceSpace(joined, dropItem(left.space, source.item.id)),
+    favorites: ws.favorites.filter((id) => id !== source.item.id),
+  };
+}
+
+function resizeSplit(ws: Workspace, action: Extract<Action, { type: "pane/resize" }>): Workspace {
+  const located = locate(ws, action.itemId);
+  if (!located || !Array.isArray(action.path) || !Array.isArray(action.sizes)) return ws;
+  const split = splitAt(located.item.layout, action.path);
+  if (!split || action.sizes.length !== split.children.length) return ws;
+  const sizes = normalizeSizes(action.sizes);
+  if (!sizes || sizes.every((size, i) => Math.abs(size - (split.sizes[i] ?? NaN)) < 1e-9)) {
+    return ws;
+  }
+  const layout = setSplitSizes(located.item.layout, action.path, sizes);
+  return layout ? replaceItem(ws, located.space, { ...located.item, layout }) : ws;
+}
+
+function zoomPane(ws: Workspace, itemId: Id, paneId: Id | undefined): Workspace {
+  const located = locate(ws, itemId);
+  if (!located || located.item.layout.kind === "pane") return ws;
+  const { item, space } = located;
+  const target = paneId ?? item.zoomedPaneId ?? item.focusedPaneId;
+  if (!findPane(item.layout, target)) return ws;
+  if (item.zoomedPaneId === target) return replaceItem(ws, space, withoutZoom(item));
+  return replaceItem(ws, space, { ...item, zoomedPaneId: target, focusedPaneId: target });
+}
+
+function swapItemPanes(ws: Workspace, itemId: Id, paneId: Id, otherPaneId: Id): Workspace {
+  const located = locate(ws, itemId);
+  const a = located && findPane(located.item.layout, paneId);
+  const b = located && findPane(located.item.layout, otherPaneId);
+  if (!located || !a || !b || a.id === b.id) return ws;
+  return replaceItem(ws, located.space, {
+    ...located.item,
+    layout: swapPanes(located.item.layout, a, b),
+  });
+}
+
+function focusPane(ws: Workspace, itemId: Id, paneId: Id): Workspace {
+  const located = locate(ws, itemId);
+  if (!located || !findPane(located.item.layout, paneId)) return ws;
+  const { item, space } = located;
+  const zoomed = item.zoomedPaneId;
+  if (item.focusedPaneId === paneId && (zoomed === undefined || zoomed === paneId)) return ws;
+  // Zoom shows one pane only: focusing another one brings the layout back.
+  const base = zoomed !== undefined && zoomed !== paneId ? withoutZoom(item) : item;
+  return replaceItem(ws, space, { ...base, focusedPaneId: paneId });
+}
+
+function focusDirection(ws: Workspace, itemId: Id, direction: unknown): Workspace {
+  const located = locate(ws, itemId);
+  if (
+    !located ||
+    (direction !== "left" && direction !== "right" && direction !== "up" && direction !== "down")
+  ) {
+    return ws;
+  }
+  const next = neighborPane(located.item.layout, located.item.focusedPaneId, direction);
+  return next === undefined ? ws : focusPane(ws, itemId, next);
 }

@@ -19,8 +19,8 @@ export type SpaceItemsFate =
   | { mode: "close" };
 
 /**
- * Every change to a workspace the model knows about (splits join in NOR-F3-03). Where a space is
- * optional, it is the active one.
+ * Every change to a workspace the model knows about. Where a space is optional, it is the active
+ * one.
  */
 export type Action =
   // Spaces
@@ -100,7 +100,51 @@ export type Action =
   | { type: "group/ungroup"; groupId: Id }
   | { type: "group/set-collapsed"; groupId: Id; collapsed: boolean }
   | { type: "group/rename"; groupId: Id; name: string }
-  | { type: "group/set-color"; groupId: Id; color: string };
+  | { type: "group/set-color"; groupId: Id; color: string }
+  // Splits. A pane is named by its item and its own id.
+  /**
+   * Splits `paneId` in two: `dir` is the axis the panes line up on (`row`: side by side, `column`:
+   * stacked) and `side` puts the new pane before (left/top) or after (right/bottom) it. The new
+   * pane takes focus and ends zoom. It inherits `profileId` and `cwd` from the split pane unless
+   * given. Over `maxPanes` is invalid.
+   */
+  | {
+      type: "pane/split";
+      itemId: Id;
+      paneId: Id;
+      dir: "row" | "column";
+      side: "before" | "after";
+      profileId?: string;
+      cwd?: string;
+    }
+  /** Closes the pane and the layout collapses. Closing the only pane closes the item. */
+  | { type: "pane/close"; itemId: Id; paneId: Id }
+  /** Moves the pane, session included, to a new item right after the item it came from. */
+  | { type: "pane/detach"; itemId: Id; paneId: Id }
+  /**
+   * Merges item `itemId` into item `targetItemId`, beside `targetPaneId` (dropping on a pane edge).
+   * The source item leaves its space; its panes and sessions live on in the target.
+   */
+  | {
+      type: "item/join";
+      itemId: Id;
+      targetItemId: Id;
+      targetPaneId: Id;
+      dir: "row" | "column";
+      side: "before" | "after";
+    }
+  /**
+   * Sets the sizes of one split. `path` is the child index at each level from the root (`[]` is
+   * the root split). `sizes` need not sum to 100: they are normalized.
+   */
+  | { type: "pane/resize"; itemId: Id; path: number[]; sizes: number[] }
+  /** Toggles zoom on `paneId` (default: the zoomed pane, else the focused one). */
+  | { type: "pane/zoom"; itemId: Id; paneId?: Id }
+  | { type: "pane/swap"; itemId: Id; paneId: Id; otherPaneId: Id }
+  /** Focus a pane (ends zoom unless it is the zoomed pane). */
+  | { type: "pane/focus"; itemId: Id; paneId: Id }
+  /** Focus the neighbor by layout geometry (ends zoom); no neighbor, no change. */
+  | { type: "pane/focus-direction"; itemId: Id; direction: "left" | "right" | "up" | "down" };
 
 export type ActionType = Action["type"];
 
@@ -110,4 +154,6 @@ export interface ReducerContext {
   newId: IdGenerator;
   /** Source of `lastActivityAt` and `closedAt`. */
   clock: Pick<Clock, "now">;
+  /** Most panes one item may hold; an action that would pass it changes nothing. Default 4. */
+  maxPanes?: number;
 }

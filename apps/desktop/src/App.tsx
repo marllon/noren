@@ -1,5 +1,5 @@
 import { emit } from "@tauri-apps/api/event";
-import { FakeBackend } from "@noren/model";
+import { FakeBackend, treeGroups } from "@noren/model";
 import type { Id, Item, Pane, Space } from "@noren/model";
 import type { ITheme } from "@xterm/xterm";
 import { Suspense, use, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -7,6 +7,16 @@ import { useStore } from "zustand";
 import { insideTauri } from "./backend";
 import { backend, booted } from "./boot";
 import { ConfirmDialog } from "./ConfirmDialog";
+import {
+  clickSelection,
+  menuTargets,
+  visibleItemIds,
+  visibleRows,
+  visibleSelection,
+} from "./sidebar-tree";
+import type { ClickModifiers, Selection } from "./sidebar-tree";
+import { SidebarTree } from "./SidebarTree";
+import type { Editing } from "./SidebarTree";
 import { SpaceDialog } from "./SpaceDialog";
 import type { SpaceFormValues } from "./SpaceDialog";
 import { SpaceMenu } from "./SpaceMenu";
@@ -16,6 +26,7 @@ import { createWheelGesture, spaceShortcutIndex, wheelTravel } from "./spaces";
 import { TerminalView } from "./TerminalView";
 import { applySpaceColor, applyTheme, terminalTheme } from "./theme";
 import { TitleBar } from "./TitleBar";
+import { GroupContextMenu, ItemContextMenu } from "./TreeMenus";
 import { useTheme } from "./use-theme";
 import type { TerminalHandle } from "./TerminalView";
 import {
@@ -87,8 +98,10 @@ function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTermi
   );
 }
 
-/** What covers the shell: a space menu, or a dialog about one space (or a new one). */
+/** What covers the shell: a tab, group or space menu, or a dialog about one space (or a new one). */
 type Overlay =
+  | { kind: "item-menu"; targets: Id[]; point: MenuPoint }
+  | { kind: "group-menu"; groupId: Id; point: MenuPoint }
   | { kind: "menu"; spaceId: Id; point: MenuPoint }
   | { kind: "new" }
   | { kind: "edit"; spaceId: Id }
@@ -108,6 +121,9 @@ function newSpaceInput(values: SpaceFormValues): NewSpaceInput {
   };
 }
 
+/** The multi-selection of the sidebar, tied to the space it was made in. */
+type SpaceSelection = Selection & { spaceId: Id };
+
 function Shell({ store }: { store: WorkspaceStore }) {
   const workspace = useStore(store, (state) => state.workspace);
   const newTab = useStore(store, (state) => state.newTab);
@@ -117,15 +133,70 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const editSpace = useStore(store, (state) => state.editSpace);
   const deleteSpace = useStore(store, (state) => state.deleteSpace);
   const moveSpace = useStore(store, (state) => state.moveSpace);
+  const dispatch = useStore(store, (state) => state.dispatch);
   const [overlay, setOverlay] = useState<Overlay | null>(null);
+  const [selection, setSelection] = useState<SpaceSelection>({ spaceId: "", ids: [] });
+  const [editing, setEditing] = useState<Editing | null>(null);
   const handles = useRef(new Map<Id, TerminalHandle>());
   const theme = useTheme();
   const colors = useMemo(() => terminalTheme(theme), [theme]);
 
   const space = activeSpaceOf(workspace);
   const activeId = activeItemIdOf({ workspace });
-  const itemIds = spaceItemIds(space);
   const spaceColor = space.color;
+  const itemIds = spaceItemIds(space);
+  const rows = visibleRows(space);
+  const order = visibleItemIds(rows);
+  // A selection belongs to the space it was made in and only counts tabs that are on screen.
+  const selected = selection.spaceId === space.id ? visibleSelection(selection, order) : [];
+  const editingHere =
+    editing !== null &&
+    (editing.kind === "item"
+      ? space.items[editing.id] !== undefined
+      : treeGroups(space.tree).some((group) => group.id === editing.id))
+      ? editing
+      : null;
+
+  const clearSelection = () => setSelection({ spaceId: space.id, ids: [] });
+
+  const onItemClick = (itemId: Id, modifiers: ClickModifiers) => {
+    const current = selection.spaceId === space.id ? selection : { ids: [] };
+    const next = clickSelection(current, order, itemId, modifiers, activeId);
+    setSelection({ spaceId: space.id, ...next });
+    if (!modifiers.toggle && !modifiers.shift) activateItem(itemId);
+  };
+
+  /** Puts the keyboard focus back on a row once the field that replaced it is gone. */
+  const focusRow = (id: Id) => {
+    requestAnimationFrame(() => {
+      sidebarRef.current?.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(id)}"]`)?.focus();
+    });
+  };
+
+  const startEdit = (target: Editing) => {
+    setOverlay(null);
+    setEditing(target);
+  };
+
+  const onCommitEdit = (target: Editing, value: string, restoreFocus: boolean) => {
+    setEditing(null);
+    if (target.kind === "group") {
+      dispatch({ type: "group/rename", groupId: target.id, name: value });
+    } else {
+      const item = space.items[target.id];
+      // The placeholder ("Tab 3") is not a name the user chose; keep the title unlocked.
+      const placeholder = `Tab ${itemIds.indexOf(target.id) + 1}`;
+      if (item && !(item.title === undefined && value.trim() === placeholder)) {
+        dispatch({ type: "item/rename", itemId: target.id, title: value });
+      }
+    }
+    if (restoreFocus) focusRow(target.id);
+  };
+
+  const onCancelEdit = () => {
+    if (editingHere) focusRow(editingHere.id);
+    setEditing(null);
+  };
 
   // The active space tinges the accent. After the theme's own effect, which sets the accent.
   useEffect(() => {
@@ -207,11 +278,41 @@ function Shell({ store }: { store: WorkspaceStore }) {
 
   const close = () => setOverlay(null);
   const overlaySpace =
-    overlay !== null && overlay.kind !== "new"
+    overlay?.kind === "menu" || overlay?.kind === "edit" || overlay?.kind === "delete"
       ? workspace.spaces.find((s) => s.id === overlay.spaceId)
       : undefined;
+  const overlayGroup =
+    overlay?.kind === "group-menu"
+      ? treeGroups(space.tree).find((group) => group.id === overlay.groupId)
+      : undefined;
   let overlayNode: React.ReactNode = null;
-  if (overlay?.kind === "new") {
+  if (overlay?.kind === "item-menu") {
+    overlayNode = (
+      <ItemContextMenu
+        store={store}
+        workspace={workspace}
+        targets={overlay.targets.filter((id) => space.items[id] !== undefined)}
+        point={overlay.point}
+        onClose={close}
+        onDone={() => {
+          clearSelection();
+          close();
+        }}
+        onRename={(itemId) => startEdit({ kind: "item", id: itemId })}
+        onGrouped={(groupId) => setEditing({ kind: "group", id: groupId })}
+      />
+    );
+  } else if (overlayGroup !== undefined && overlay?.kind === "group-menu") {
+    overlayNode = (
+      <GroupContextMenu
+        store={store}
+        group={overlayGroup}
+        point={overlay.point}
+        onClose={close}
+        onRename={(groupId) => startEdit({ kind: "group", id: groupId })}
+      />
+    );
+  } else if (overlay?.kind === "new") {
     overlayNode = (
       <SpaceDialog
         onCancel={close}
@@ -267,26 +368,30 @@ function Shell({ store }: { store: WorkspaceStore }) {
   return (
     <div className="app-body">
       <aside ref={sidebarRef} className="sidebar" data-nr-part="sidebar" aria-label="Sidebar">
-        <ul key={space.id} className="tab-list" aria-label="Tabs">
-          {itemIds.map((id, index) => {
-            const item = space.items[id];
-            if (!item) return null;
-            return (
-              <li key={id}>
-                <button
-                  type="button"
-                  className="tab-button"
-                  data-nr-part="item"
-                  data-nr-state={id === activeId ? "active" : undefined}
-                  aria-current={id === activeId ? "true" : undefined}
-                  onClick={() => activateItem(id)}
-                >
-                  {item.title ?? `Tab ${index + 1}`}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <SidebarTree
+          space={space}
+          rows={rows}
+          activeId={activeId}
+          selected={selected}
+          editing={editingHere}
+          onItemClick={onItemClick}
+          onItemMenu={(itemId, point) => {
+            const targets = menuTargets(selected, itemId);
+            if (targets.length === 1 && !selected.includes(itemId)) clearSelection();
+            setOverlay({ kind: "item-menu", targets, point });
+          }}
+          onGroupMenu={(groupId, point) => setOverlay({ kind: "group-menu", groupId, point })}
+          onToggleGroup={(group) =>
+            dispatch({
+              type: "group/set-collapsed",
+              groupId: group.id,
+              collapsed: !group.collapsed,
+            })
+          }
+          onStartEdit={setEditing}
+          onCommitEdit={onCommitEdit}
+          onCancelEdit={onCancelEdit}
+        />
         <button type="button" className="new-tab" onClick={() => newTab()}>
           New tab
         </button>

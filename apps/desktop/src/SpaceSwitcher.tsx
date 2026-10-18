@@ -1,6 +1,6 @@
 import { Ellipsis, Plus } from "lucide-react";
-import type { MouseEvent } from "react";
 import type { Id, Space } from "@noren/model";
+import { menuPoint } from "./ContextMenu";
 import { SpaceIcon } from "./SpaceIcon";
 import type { MenuPoint } from "./SpaceMenu";
 
@@ -11,15 +11,6 @@ interface SpaceSwitcherProps {
   onNewSpace(): void;
   /** Asks for the menu of a space: right click on its icon, or the "..." button for the active one. */
   onMenu(spaceId: Id, point: MenuPoint): void;
-}
-
-/** The pointer position of a context-menu event; the key (Menu, Shift+F10) has none, so use the button. */
-function menuPoint(event: MouseEvent<HTMLElement>): MenuPoint {
-  if (event.clientX === 0 && event.clientY === 0) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    return { x: rect.left, y: rect.top };
-  }
-  return { x: event.clientX, y: event.clientY };
 }
 
 /** Icons of the spaces at the foot of the sidebar: click one to switch, plus a button for a new one. */

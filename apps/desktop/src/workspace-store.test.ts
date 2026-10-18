@@ -545,4 +545,85 @@ describe("workspace store", () => {
       expect(store.getState().workspace).toBe(before);
     });
   });
+
+  describe("tree actions", () => {
+    async function openTabs(count: number) {
+      const backend = new FakeBackend();
+      const { store } = await openStore(backend);
+      for (let i = 1; i < count; i++) store.getState().newTab();
+      const ids = () => spaceItemIds(activeSpaceOf(store.getState().workspace));
+      return { store, ids };
+    }
+
+    it("groupItems makes the group where the first tab was and returns its id", async () => {
+      const { store, ids } = await openTabs(4);
+      const [a, b, c, d] = ids();
+      if (!a || !b || !c || !d) throw new Error("expected 4 tabs");
+
+      const groupId = store.getState().groupItems([b, c], "Work");
+
+      const space = activeSpaceOf(store.getState().workspace);
+      expect(space.tree.map((node) => node.kind)).toEqual(["item", "group", "item"]);
+      const group = space.tree[1];
+      expect(group).toMatchObject({ kind: "group", id: groupId, name: "Work", collapsed: false });
+      expect(group?.kind === "group" && group.children.map((node) => node.id)).toEqual([b, c]);
+      expect(ids()).toEqual([a, b, c, d]);
+    });
+
+    it("groupItems returns undefined and changes nothing for tabs that cannot be grouped", async () => {
+      const { store, ids } = await openTabs(2);
+      const [a, b] = ids();
+      if (!a || !b) throw new Error("expected 2 tabs");
+      store.getState().dispatch({ type: "item/pin", itemId: a });
+      const before = store.getState().workspace;
+
+      expect(store.getState().groupItems([a, b], "Work")).toBeUndefined();
+      expect(store.getState().groupItems([b], "  ")).toBeUndefined();
+      expect(store.getState().groupItems([], "Work")).toBeUndefined();
+      expect(store.getState().workspace).toBe(before);
+    });
+
+    it("closeItems closes each tab, ends its session and moves the active tab to the neighbor", async () => {
+      const { store, ids } = await openTabs(3);
+      const [a, b, c] = ids();
+      if (!a || !b || !c) throw new Error("expected 3 tabs");
+      store.getState().attachSession(
+        (() => {
+          const space = activeSpaceOf(store.getState().workspace);
+          const layout = space.items[b]?.layout;
+          if (layout?.kind !== "pane") throw new Error("expected a pane");
+          return layout.pane.id;
+        })(),
+        "77",
+      );
+      store.getState().activateItem(b);
+
+      store.getState().closeItems([b, c]);
+
+      expect(ids()).toEqual([a]);
+      expect(activeItemIdOf(store.getState())).toBe(a);
+    });
+
+    it("closeOthers keeps the chosen tabs and the pinned ones, and the first chosen tab is active", async () => {
+      const { store, ids } = await openTabs(5);
+      const [a, b, c, d, e] = ids();
+      if (!a || !b || !c || !d || !e) throw new Error("expected 5 tabs");
+      store.getState().dispatch({ type: "item/pin", itemId: e });
+      store.getState().activateItem(a);
+
+      store.getState().closeOthers([c, d]);
+
+      // Pinned tabs come first in the sidebar order.
+      expect(ids()).toEqual([e, c, d]);
+      expect(activeItemIdOf(store.getState())).toBe(c);
+    });
+
+    it("closeOthers with an unknown tab changes nothing", async () => {
+      const { store } = await openTabs(3);
+      const before = store.getState().workspace;
+      store.getState().closeOthers(["missing"]);
+      store.getState().closeOthers([]);
+      expect(store.getState().workspace).toBe(before);
+    });
+  });
 });

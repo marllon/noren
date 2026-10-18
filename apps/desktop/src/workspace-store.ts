@@ -1,4 +1,11 @@
-import { DEFAULT_PROFILE_ID, StateWriter, liveSessionIds, reduce, treeItemIds } from "@noren/model";
+import {
+  DEFAULT_PROFILE_ID,
+  StateWriter,
+  liveSessionIds,
+  reduce,
+  treeGroups,
+  treeItemIds,
+} from "@noren/model";
 import type {
   Action,
   Backend,
@@ -77,6 +84,18 @@ export interface WorkspaceState {
   activateSpaceAt(index: number): void;
   /** Activates a tab of the active space (saved with the workspace). */
   activateItem(itemId: Id): void;
+  /**
+   * Makes a group of tree items of the active space, taking the place of the first one. Returns the
+   * id of the new group, or `undefined` when the items cannot be grouped (nothing changes then).
+   */
+  groupItems(itemIds: readonly Id[], name: string): Id | undefined;
+  /** Closes tabs of the active space; the neighbor rule of the model picks the next active one. */
+  closeItems(itemIds: readonly Id[]): void;
+  /**
+   * Closes every tab of the active space except `keepIds` and the pinned ones. The first kept tab
+   * becomes the active one before the others go.
+   */
+  closeOthers(keepIds: readonly Id[]): void;
   /** Records the session the view started for a pane. Not saved: sessions die with the process. */
   attachSession(paneId: Id, sessionId: Id): void;
   /** Writes the pending state now (window closing). */
@@ -282,6 +301,33 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
     activateItem(itemId) {
       const { workspace, dispatch } = get();
       dispatch({ type: "space/set-active-item", spaceId: activeSpaceOf(workspace).id, itemId });
+    },
+
+    groupItems(itemIds, name) {
+      const space = activeSpaceOf(get().workspace);
+      const known = new Set(treeGroups(space.tree).map((group) => group.id));
+      get().dispatch({ type: "group/create-from-selection", itemIds: [...itemIds], name });
+      const after = activeSpaceOf(get().workspace);
+      return treeGroups(after.tree).find((group) => !known.has(group.id))?.id;
+    },
+
+    closeItems(itemIds) {
+      const { dispatch } = get();
+      for (const itemId of itemIds) dispatch({ type: "item/close", itemId });
+    },
+
+    closeOthers(keepIds) {
+      const { workspace, dispatch } = get();
+      const space = activeSpaceOf(workspace);
+      const keep = new Set(keepIds);
+      const first = keepIds.find((id) => space.items[id] !== undefined);
+      if (first === undefined) return;
+      dispatch({ type: "space/set-active-item", spaceId: space.id, itemId: first });
+      for (const itemId of spaceItemIds(space)) {
+        if (!keep.has(itemId) && !space.pinned.includes(itemId)) {
+          dispatch({ type: "item/close", itemId });
+        }
+      }
     },
 
     attachSession(paneId, sessionId) {

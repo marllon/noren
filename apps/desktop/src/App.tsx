@@ -1,11 +1,15 @@
 import { emit } from "@tauri-apps/api/event";
 import { FakeBackend } from "@noren/model";
 import type { Id, Item, Pane, Space } from "@noren/model";
-import { Suspense, use, useEffect, useRef } from "react";
+import type { ITheme } from "@xterm/xterm";
+import { Suspense, use, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useStore } from "zustand";
 import { insideTauri } from "./backend";
 import { backend, booted } from "./boot";
 import { TerminalView } from "./TerminalView";
+import { applyTheme, terminalTheme } from "./theme";
+import { TitleBar } from "./TitleBar";
+import { useTheme } from "./use-theme";
 import type { TerminalHandle } from "./TerminalView";
 import { activeItemIdOf, activeSpaceOf, spaceItemIds } from "./workspace-store";
 import type { WorkspaceStore } from "./workspace-store";
@@ -43,17 +47,19 @@ interface PaneTerminalProps {
   space: Space;
   pane: Pane;
   active: boolean;
+  colors: ITheme;
   onReady(paneId: Id, handle: TerminalHandle): void;
 }
 
 /** One terminal bound to one pane; it stays mounted (hidden) while another tab shows. */
-function PaneTerminal({ store, space, pane, active, onReady }: PaneTerminalProps) {
+function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTerminalProps) {
   const cwd = pane.cwd ?? space.defaults.cwd;
   const env = space.defaults.env;
   return (
-    <div className="pane-slot" hidden={!active}>
+    <div className="pane-slot" data-nr-part="pane" hidden={!active}>
       <TerminalView
         backend={backend}
+        theme={colors}
         active={active}
         {...(pane.sessionId !== undefined ? { attach: Number(pane.sessionId) } : {})}
         {...(pane.profileId !== "default" ? { profileId: pane.profileId } : {})}
@@ -72,6 +78,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const newTab = useStore(store, (state) => state.newTab);
   const activateItem = useStore(store, (state) => state.activateItem);
   const handles = useRef(new Map<Id, TerminalHandle>());
+  const theme = useTheme();
+  const colors = useMemo(() => terminalTheme(theme), [theme]);
 
   const space = activeSpaceOf(workspace);
   const activeId = activeItemIdOf({ workspace, activeItems });
@@ -106,7 +114,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
 
   return (
     <div className="app-body">
-      <aside className="sidebar" aria-label="Sidebar">
+      <aside className="sidebar" data-nr-part="sidebar" aria-label="Sidebar">
         <ul className="tab-list" aria-label="Tabs">
           {itemIds.map((id, index) => {
             const item = space.items[id];
@@ -116,6 +124,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
                 <button
                   type="button"
                   className="tab-button"
+                  data-nr-part="item"
+                  data-nr-state={id === activeId ? "active" : undefined}
                   aria-current={id === activeId ? "true" : undefined}
                   onClick={() => activateItem(id)}
                 >
@@ -141,6 +151,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
                 space={s}
                 pane={pane}
                 active={s.id === space.id && item.id === activeId}
+                colors={colors}
                 onReady={recordHandle}
               />,
             ];
@@ -158,9 +169,15 @@ function Booted() {
 }
 
 export function App() {
+  const theme = useTheme();
+  // Before paint, so the first frame already has the colors.
+  useLayoutEffect(() => {
+    applyTheme(document.documentElement, theme);
+  }, [theme]);
+
   return (
     <main className="app">
-      <header className="app-title">Noren</header>
+      <TitleBar />
       <Suspense fallback={null}>
         <Booted />
       </Suspense>

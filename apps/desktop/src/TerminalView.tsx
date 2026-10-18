@@ -5,6 +5,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
+import type { ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import type { Backend, SessionId } from "@noren/model";
 import { useEffect, useRef, useState } from "react";
@@ -40,6 +41,8 @@ interface TerminalViewProps {
    * ends it on unmount. Without this callback the view ends its own session when it goes away.
    */
   onSessionStart?(id: SessionId): void;
+  /** Colors of the terminal; changing them repaints the live terminal. */
+  theme: ITheme;
   /** False while the view is hidden (another tab shows). Default true. */
   active?: boolean;
   /** Default `copy-or-paste`. */
@@ -47,13 +50,6 @@ interface TerminalViewProps {
   /** Called once the terminal is mounted. */
   onReady?(handle: TerminalHandle): void;
 }
-
-const THEME = {
-  background: "#14161a",
-  foreground: "#d8dce2",
-  cursor: "#d8dce2",
-  selectionBackground: "#3a4a63",
-};
 
 function isShortcut(event: KeyboardEvent, code: string): boolean {
   return (
@@ -74,6 +70,7 @@ export function TerminalView({
   cwd,
   env,
   onSessionStart,
+  theme,
   active = true,
   rightClick,
   onReady,
@@ -84,6 +81,7 @@ export function TerminalView({
   const onReadyRef = useRef(onReady);
   const onSessionStartRef = useRef(onSessionStart);
   const activeRef = useRef(active);
+  const themeRef = useRef(theme);
   const [pending, setPending] = useState<string | null>(null);
   // What the shell starts with is fixed when the view mounts; a later change must not restart it.
   const [start0] = useState(() => ({ attach, profileId, cwd, env }));
@@ -93,7 +91,13 @@ export function TerminalView({
     onReadyRef.current = onReady;
     onSessionStartRef.current = onSessionStart;
     activeRef.current = active;
+    themeRef.current = theme;
   });
+
+  // A new theme repaints the terminal that is already running.
+  useEffect(() => {
+    if (termRef.current) termRef.current.options.theme = theme;
+  }, [theme]);
 
   // Showing a tab again gives it the keyboard.
   useEffect(() => {
@@ -110,7 +114,7 @@ export function TerminalView({
       fontFamily: '"Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace',
       fontSize: 14,
       scrollback: 10_000,
-      theme: THEME,
+      theme: themeRef.current,
     });
     termRef.current = term;
     const fit = new FitAddon();

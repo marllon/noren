@@ -1,3 +1,5 @@
+/* Colors come only from the theme tokens (--nr-*), set on the root element by theme.ts. */
+
 html,
 body,
 #root {
@@ -6,8 +8,8 @@ body,
 }
 
 body {
-  background: #14161a;
-  color: #d8dce2;
+  background: var(--nr-bg);
+  color: var(--nr-text);
   font-family: system-ui, sans-serif;
 }
 
@@ -17,10 +19,56 @@ body {
   height: 100%;
 }
 
-.app-title {
-  padding: 4px 12px;
+.titlebar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  height: 34px;
+  padding-left: 12px;
+  border-bottom: 1px solid var(--nr-border);
+  background: var(--nr-surface);
+  color: var(--nr-muted);
   font-size: 12px;
-  color: #8b93a1;
+  user-select: none;
+}
+
+/* The macOS overlay title bar leaves the native buttons on the left. */
+.titlebar-mac {
+  padding-left: 80px;
+}
+
+.titlebar-title {
+  flex: 1;
+  line-height: 34px;
+}
+
+.window-controls {
+  display: flex;
+  align-self: stretch;
+}
+
+.window-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: default;
+}
+
+.window-button:hover {
+  background: color-mix(in srgb, var(--nr-text) 12%, transparent);
+  color: var(--nr-text);
+}
+
+.window-close:hover {
+  background: var(--nr-accent);
+  color: var(--nr-bg);
 }
 
 .terminal-view {
@@ -41,16 +89,16 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgb(0 0 0 / 55%);
+  background: color-mix(in srgb, var(--nr-bg) 55%, transparent);
 }
 
 .paste-dialog {
   max-width: min(640px, 90%);
   padding: 16px 20px;
-  border: 1px solid #3a4150;
-  border-radius: 8px;
-  background: #1d2026;
-  color: #d8dce2;
+  border: 1px solid var(--nr-border);
+  border-radius: var(--nr-radius);
+  background: var(--nr-surface);
+  color: var(--nr-text);
 }
 
 .paste-dialog h2 {
@@ -60,7 +108,7 @@ body {
 
 .paste-dialog p {
   margin: 0 0 8px;
-  color: #8b93a1;
+  color: var(--nr-muted);
 }
 
 .paste-preview {
@@ -68,8 +116,8 @@ body {
   margin: 0 0 12px;
   padding: 8px;
   overflow: auto;
-  border-radius: 4px;
-  background: #14161a;
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-bg);
   font-size: 12px;
 }
 
@@ -81,12 +129,16 @@ body {
 
 .paste-actions button {
   padding: 4px 14px;
-  border: 1px solid #3a4150;
-  border-radius: 4px;
-  background: #2a2f39;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-surface);
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+.paste-actions button:hover {
+  border-color: var(--nr-accent);
 }
 
 .app-body {
@@ -102,8 +154,8 @@ body {
   box-sizing: border-box;
   width: 200px;
   padding: 8px;
-  border-right: 1px solid #2a2f39;
-  background: #181b20;
+  border-right: 1px solid var(--nr-border);
+  background: var(--nr-surface);
 }
 
 .tab-list {
@@ -121,7 +173,7 @@ body {
   width: 100%;
   padding: 6px 10px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: calc(var(--nr-radius) * 0.6);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -131,17 +183,17 @@ body {
 
 .tab-button:hover,
 .new-tab:hover {
-  background: #232830;
+  background: color-mix(in srgb, var(--nr-text) 8%, transparent);
 }
 
-.tab-button[aria-current="true"] {
-  border-color: #3a4150;
-  background: #2a2f39;
+.tab-button[data-nr-state="active"] {
+  border-color: var(--nr-border);
+  background: color-mix(in srgb, var(--nr-space-color) 16%, var(--nr-surface));
 }
 
 .new-tab {
-  border-color: #3a4150;
-  color: #8b93a1;
+  border-color: var(--nr-border);
+  color: var(--nr-muted);
 }
 
 .content {

@@ -63,8 +63,16 @@ export function reduce(ws: Workspace, action: Action, ctx: ReducerContext): Work
   }
 }
 
-/** `reduce` without the safety net: tests use it so a bug cannot hide behind a no-op. */
+/**
+ * `reduce` without the safety net: tests use it so a bug cannot hide behind a no-op. Every space
+ * the action changed ends with a valid active item (see `settleActive`).
+ */
 export function reduceStrict(ws: Workspace, action: Action, ctx: ReducerContext): Workspace {
+  const next = applyAction(ws, action, ctx);
+  return next === ws ? ws : settleActive(ws, next, action);
+}
+
+function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Workspace {
   switch (action.type) {
     case "space/create":
       return createSpace(ws, action, ctx);
@@ -96,6 +104,14 @@ export function reduceStrict(ws: Workspace, action: Action, ctx: ReducerContext)
     case "space/activate":
       if (ws.activeSpaceId === action.spaceId || !findSpace(ws, action.spaceId)) return ws;
       return { ...ws, activeSpaceId: action.spaceId };
+    case "space/set-active-item":
+      return updateSpace(ws, action.spaceId, (space) =>
+        typeof action.itemId === "string" &&
+        Object.hasOwn(space.items, action.itemId) &&
+        space.activeItemId !== action.itemId
+          ? { ...space, activeItemId: action.itemId }
+          : undefined,
+      );
     case "space/delete":
       return deleteSpace(ws, action.spaceId, action.items, ctx);
     case "item/create":
@@ -314,6 +330,61 @@ function spaceItemIds(space: Space): Id[] {
   );
   for (const id of Object.keys(space.items)) ordered.add(id);
   return [...ordered];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Active item
+
+/**
+ * Fixes the active item of every space the action changed. A created or reopened item becomes
+ * active in its space, and so does the target of a join. Otherwise the active item stays, unless it
+ * left the space (closed, moved out, merged away): then the next item in sidebar order takes over,
+ * else the previous one, else none for an empty space. A space with items but no active item (old
+ * data) gets its first item.
+ */
+function settleActive(before: Workspace, after: Workspace, action: Action): Workspace {
+  let changed = false;
+  const spaces = after.spaces.map((space) => {
+    const old = findSpace(before, space.id);
+    if (old === space) return space;
+    const chosen = chooseActive(old, space, action);
+    if (chosen === space.activeItemId) return space;
+    changed = true;
+    return withActiveItem(space, chosen);
+  });
+  return changed ? { ...after, spaces } : after;
+}
+
+function chooseActive(old: Space | undefined, space: Space, action: Action): Id | undefined {
+  if (action.type === "item/join" && Object.hasOwn(space.items, action.targetItemId)) {
+    return action.targetItemId;
+  }
+  if (action.type === "item/create" || action.type === "item/reopen") {
+    const arrived = Object.keys(space.items).find((id) => !old || !Object.hasOwn(old.items, id));
+    if (arrived !== undefined) return arrived;
+  }
+  const current = space.activeItemId;
+  if (current !== undefined && Object.hasOwn(space.items, current)) return current;
+  const order = spaceItemIds(space);
+  if (old && current !== undefined) {
+    const was = spaceItemIds(old);
+    const at = was.indexOf(current);
+    const heir = [...was.slice(at + 1), ...was.slice(0, Math.max(at, 0)).reverse()].find((id) =>
+      Object.hasOwn(space.items, id),
+    );
+    if (at >= 0 && heir !== undefined) return heir;
+  }
+  return order[0];
+}
+
+function withActiveItem(space: Space, itemId: Id | undefined): Space {
+  const next: Space = { ...space };
+  if (itemId === undefined) {
+    delete next.activeItemId;
+  } else {
+    next.activeItemId = itemId;
+  }
+  return next;
 }
 
 // ---------------------------------------------------------------------------------------------

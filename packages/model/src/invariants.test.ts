@@ -82,7 +82,7 @@ function fixture(): Workspace {
     },
   };
   return {
-    version: 1,
+    version: 2,
     spaces: [space],
     activeSpaceId: "s1",
     favorites: ["i1"],
@@ -107,7 +107,7 @@ const must = <T>(value: T | undefined): T => {
 describe("createDefaultWorkspace", () => {
   it("is the space Main with one tab of one pane, and valid", () => {
     const ws = createDefaultWorkspace();
-    expect(ws.version).toBe(1);
+    expect(ws.version).toBe(2);
     expect(ws.spaces).toHaveLength(1);
     const space = must(ws.spaces[0]);
     expect(space.name).toBe("Main");
@@ -254,6 +254,29 @@ describe("checkInvariants", () => {
         ws.activeSpaceId = "nope";
       }),
     ).toContain("active-space-missing");
+  });
+
+  it("active-item-missing: the active item is not an item of its space", () => {
+    expect(
+      codesAfter((_, space) => {
+        space.activeItemId = "nope";
+      }),
+    ).toContain("active-item-missing");
+    // A closed item is not an item of the space either.
+    expect(
+      codesAfter((ws, space) => {
+        space.activeItemId = must(ws.closed[0]).item.id;
+      }),
+    ).toContain("active-item-missing");
+  });
+
+  it("accepts a space with no active item and one on a valid item", () => {
+    expect(codesAfter(() => undefined)).not.toContain("active-item-missing");
+    expect(
+      codesAfter((_, space) => {
+        space.activeItemId = "i3";
+      }),
+    ).not.toContain("active-item-missing");
   });
 
   it("item-key-mismatch: the record key differs from the item id", () => {

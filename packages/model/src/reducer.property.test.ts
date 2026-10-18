@@ -19,6 +19,7 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "space/set-defaults": true,
   "space/move": true,
   "space/activate": true,
+  "space/set-active-item": true,
   "space/delete": true,
   "item/create": true,
   "item/close": true,
@@ -120,6 +121,10 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "space/activate":
     case "space/delete":
       return !ws.spaces.some((space) => space.id === action.spaceId);
+    case "space/set-active-item":
+      return !ws.spaces.some(
+        (space) => space.id === action.spaceId && Object.hasOwn(space.items, action.itemId),
+      );
     case "item/close":
     case "item/rename":
     case "item/move":
@@ -161,6 +166,35 @@ function missingTarget(ws: Workspace, action: Action): boolean {
 function hasPane(ws: Workspace, itemId: Id, paneId: Id): boolean {
   const item = itemOf(ws, itemId);
   return item !== undefined && layoutPanes(item.layout).some((pane) => pane.id === paneId);
+}
+
+/**
+ * The active item of every space an action changed: always an item of the space (also covered by
+ * `checkInvariants`), set whenever the space has items, and following creation, reopening and
+ * explicit choice.
+ */
+function checkActiveItems(ws: Workspace, next: Workspace, action: Action, where: () => string) {
+  const fail = (what: string): never => {
+    throw new Error(`${where()}: ${what}`);
+  };
+  for (const space of next.spaces) {
+    const old = ws.spaces.find((s) => s.id === space.id);
+    if (old === space) continue;
+    const count = Object.keys(space.items).length;
+    const active = space.activeItemId;
+    if (count > 0 && active === undefined) fail(`space ${space.id} has items but no active item`);
+    if (count === 0 && active !== undefined) fail(`empty space ${space.id} has an active item`);
+    if (old && active !== undefined && old.activeItemId === active) continue;
+    if (action.type === "space/set-active-item" && action.spaceId === space.id) {
+      if (active !== action.itemId) fail("the chosen item did not become active");
+    }
+    if (action.type === "item/create" || action.type === "item/reopen") {
+      const arrived = Object.keys(space.items).filter(
+        (id) => !old || !Object.hasOwn(old.items, id),
+      );
+      if (arrived.length === 1 && active !== arrived[0]) fail("the new item did not become active");
+    }
+  }
 }
 
 /** What an action that did something must do to the panes of the live items. */
@@ -281,6 +315,7 @@ function playSequences(numRuns: number, maxPanes?: number): void {
             }
           }
           if (next !== ws) checkPaneDelta(ws, next, action, where);
+          if (next !== ws) checkActiveItems(ws, next, action, where);
 
           generated.set(action.type, (generated.get(action.type) ?? 0) + 1);
           if (next === ws) {

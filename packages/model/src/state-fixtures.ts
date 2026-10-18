@@ -93,6 +93,101 @@ export const STATE_V0_FIXTURE = JSON.stringify(
   2,
 );
 
+/**
+ * A `state.json` as version 1 wrote it: current in every way but the active item of each space,
+ * which the interface kept outside the file. Space "Main" has a pinned item `i1` and a group
+ * holding `i2` and `i3`; space "Docs" has one tab `i4`; space "Empty" has no items. The pinned
+ * item comes first in sidebar order, so it is the one the migration picks for "Main".
+ */
+export const STATE_V1_FIXTURE = JSON.stringify(
+  {
+    version: 1,
+    activeSpaceId: "s2",
+    favorites: ["i4"],
+    closed: [],
+    archive: [],
+    spaces: [
+      {
+        id: "s1",
+        name: "Main",
+        icon: "terminal",
+        color: "#6b8afd",
+        modIds: [],
+        defaults: { env: {} },
+        aiEnabled: true,
+        saveScrollback: true,
+        pinned: ["i1"],
+        tree: [
+          {
+            kind: "group",
+            id: "g1",
+            name: "work",
+            color: "teal",
+            collapsed: false,
+            children: [
+              { kind: "item", id: "i2" },
+              { kind: "item", id: "i3" },
+            ],
+          },
+        ],
+        items: {
+          i1: v1Tab("i1", "p1"),
+          i2: v1Tab("i2", "p2"),
+          i3: v1Tab("i3", "p3"),
+        },
+      },
+      {
+        id: "s2",
+        name: "Docs",
+        icon: "rocket",
+        color: "#e06c75",
+        modIds: [],
+        defaults: { env: {} },
+        aiEnabled: true,
+        saveScrollback: true,
+        pinned: [],
+        tree: [{ kind: "item", id: "i4" }],
+        items: { i4: v1Tab("i4", "p4") },
+      },
+      {
+        id: "s3",
+        name: "Empty",
+        icon: "terminal",
+        color: "#98c379",
+        modIds: [],
+        defaults: { env: {} },
+        aiEnabled: true,
+        saveScrollback: true,
+        pinned: [],
+        tree: [],
+        items: {},
+      },
+    ],
+  },
+  null,
+  2,
+);
+
+function v1Tab(id: string, paneId: string) {
+  return {
+    id,
+    titleLocked: false,
+    layout: {
+      kind: "pane",
+      pane: {
+        id: paneId,
+        type: "terminal",
+        profileId: "bash",
+        status: "idle",
+        unread: false,
+        bell: false,
+      },
+    },
+    focusedPaneId: paneId,
+    lastActivityAt: 10,
+  };
+}
+
 const withSession = (pane: Pane, sessionId: string): Pane => ({ ...pane, sessionId });
 
 /**
@@ -133,13 +228,14 @@ export function richWorkspace(): Workspace {
   const main = createEmptySpace("s1", "Main", { cwd: "/work", profileId: "bash" });
   const work = createEmptySpace("s2", "Work");
   return {
-    version: 1,
+    version: 2,
     spaces: [
       {
         ...main,
         pinned: ["i1"],
         tree: [group],
         items: { i1: pinned, i2: split },
+        activeItemId: "i2",
         defaults: {
           ...main.defaults,
           env: { MODE: "dev" },

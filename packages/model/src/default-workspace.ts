@@ -21,12 +21,13 @@ export function createDefaultWorkspace(options: DefaultWorkspaceOptions = {}): W
   const paneId = newId();
   const item = createTab(itemId, createPane(paneId, options.profileId ?? DEFAULT_PROFILE_ID), now);
   return {
-    version: 1,
+    version: 2,
     spaces: [
       {
         ...createEmptySpace(spaceId, "Main"),
         tree: [{ kind: "item", id: itemId }],
         items: { [itemId]: item },
+        activeItemId: itemId,
       },
     ],
     activeSpaceId: spaceId,

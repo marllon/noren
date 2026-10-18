@@ -67,6 +67,8 @@ interface SpaceShape {
   saveScrollback: boolean;
   pinned: ItemShape[];
   tree: TreeShape[];
+  /** Which item of the space is active, wrapped around its items; absent means none. */
+  activeIndex: Maybe<number>;
 }
 
 interface ArchivedShape {
@@ -196,6 +198,7 @@ const arbSpaceShape = (maxPanes: number): fc.Arbitrary<SpaceShape> =>
     saveScrollback: fc.boolean(),
     pinned: fc.array(arbItemShape(maxPanes), { maxLength: 3 }),
     tree: arbTreeShapes(maxPanes, 2),
+    activeIndex: optional(fc.nat({ max: 7 })),
   });
 
 const arbArchivedShape = (maxPanes: number): fc.Arbitrary<ArchivedShape> =>
@@ -320,6 +323,11 @@ class Builder {
       };
     };
     const tree = shape.tree.map(node);
+    const itemIds = Object.keys(items);
+    const activeItemId =
+      shape.activeIndex !== undefined && itemIds.length > 0
+        ? nth(itemIds, shape.activeIndex)
+        : undefined;
     const d = shape.defaults;
     const defaults: SpaceDefaults = {
       ...(d.profileId !== undefined ? { profileId: d.profileId } : {}),
@@ -340,6 +348,7 @@ class Builder {
       pinned,
       tree,
       items,
+      ...(activeItemId !== undefined ? { activeItemId } : {}),
     };
   }
 
@@ -357,7 +366,7 @@ class Builder {
       archivedAt: a.at,
     }));
     return {
-      version: 1,
+      version: 2,
       spaces,
       activeSpaceId: spaceIdAt(shape.activeIndex),
       favorites: this.favorites,

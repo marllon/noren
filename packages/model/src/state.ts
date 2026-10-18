@@ -5,7 +5,7 @@ import { withoutSessions } from "./sessions";
 import type { Workspace } from "./types";
 
 /** Version written to `state.json` today. Bump it together with a new entry in `MIGRATIONS`. */
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 
 /** Turns the parsed content of version N into the content of version N + 1. May throw. */
 export type Migration = (data: Record<string, unknown>) => Record<string, unknown>;
@@ -16,6 +16,7 @@ export type Migration = (data: Record<string, unknown>) => Record<string, unknow
  */
 export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   0: migrateV0ToV1,
+  1: migrateV1ToV2,
 };
 
 /**
@@ -47,6 +48,55 @@ function migrateV0ToV1(data: Record<string, unknown>): Record<string, unknown> {
         )
       : spaces,
   };
+}
+
+/**
+ * Version 1 kept no active item per space (the interface held it outside `state.json`). Each space
+ * with items gets its first one in sidebar order, pinned first, then the tree depth-first, which is
+ * what the interface showed when nothing was chosen. An empty space stays without one.
+ */
+function migrateV1ToV2(data: Record<string, unknown>): Record<string, unknown> {
+  const { spaces, ...rest } = data;
+  return {
+    ...rest,
+    version: 2,
+    spaces: Array.isArray(spaces)
+      ? spaces.map((space: unknown) => {
+          if (!isRecord(space) || "activeItemId" in space) return space;
+          const first = firstItemId(space);
+          return first === undefined ? space : { ...space, activeItemId: first };
+        })
+      : spaces,
+  };
+}
+
+/** The first item of a version 1 space in sidebar order that exists in `items`. */
+function firstItemId(space: Obj): string | undefined {
+  const items = space["items"];
+  if (!isRecord(items)) return undefined;
+  const exists = (id: unknown): id is string => typeof id === "string" && Object.hasOwn(items, id);
+  const pinned = Array.isArray(space["pinned"]) ? space["pinned"].find(exists) : undefined;
+  if (typeof pinned === "string") return pinned;
+  return firstInTree(space["tree"], exists, 0);
+}
+
+function firstInTree(
+  nodes: unknown,
+  exists: (id: unknown) => id is string,
+  depth: number,
+): string | undefined {
+  if (!Array.isArray(nodes) || depth > MAX_WALK_DEPTH) return undefined;
+  for (const node of nodes) {
+    if (!isRecord(node)) continue;
+    const found =
+      node["kind"] === "item"
+        ? exists(node["id"])
+          ? node["id"]
+          : undefined
+        : firstInTree(node["children"], exists, depth + 1);
+    if (found !== undefined) return found;
+  }
+  return undefined;
 }
 
 export type ParseStateResult =
@@ -190,6 +240,7 @@ function checkSpace(value: unknown, path: string): void {
   bool(space["aiEnabled"], `${path}.aiEnabled`);
   bool(space["saveScrollback"], `${path}.saveScrollback`);
   list(space["pinned"], `${path}.pinned`, str);
+  optional(space, "activeItemId", path, str);
 
   const defaultsPath = `${path}.defaults`;
   const defaults = obj(space["defaults"], defaultsPath);

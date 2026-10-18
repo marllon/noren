@@ -3,7 +3,7 @@ export type Id = string;
 
 /** State saved in `state.json`. */
 export interface Workspace {
-  version: 1;
+  version: 2;
   spaces: Space[];
   activeSpaceId: Id;
   /** Item ids, global (an item of any space). */
@@ -36,6 +36,11 @@ export interface Space {
   tree: Node[];
   /** Every item of the space, pinned and in the tree. */
   items: Record<Id, Item>;
+  /**
+   * The item the space shows. When set it is an item of `items`; the reducer keeps it so while the
+   * space has items, and leaves it absent only when the space is empty.
+   */
+  activeItemId?: Id;
 }
 
 export interface ItemNode {

@@ -194,6 +194,34 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
     weighted(1, fc.record({ type: tag("space/move"), spaceId, index: arbIndex })),
     weighted(2, fc.record({ type: tag("space/activate"), spaceId })),
     weighted(
+      3,
+      fc.oneof(
+        // An item of its own space, mostly; any pair of ids now and then.
+        {
+          weight: 8,
+          arbitrary:
+            ws.spaces.length === 0
+              ? fc.constant<Action>({
+                  type: "space/set-active-item",
+                  spaceId: "ghost-1",
+                  itemId: "ghost-1",
+                })
+              : fc.constantFrom(...ws.spaces).chain((space) => {
+                  const own = Object.keys(space.items);
+                  return fc.record({
+                    type: tag("space/set-active-item"),
+                    spaceId: fc.constant(space.id),
+                    itemId: arbIdOf(own),
+                  });
+                }),
+        },
+        {
+          weight: 1,
+          arbitrary: fc.record({ type: tag("space/set-active-item"), spaceId, itemId }),
+        },
+      ),
+    ),
+    weighted(
       1,
       fc.record({
         type: tag("space/delete"),

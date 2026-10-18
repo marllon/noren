@@ -3,7 +3,7 @@ import { createDefaultWorkspace } from "./default-workspace";
 import { checkInvariants } from "./invariants";
 import { MIGRATIONS, STATE_VERSION, parseState, serializeWorkspace } from "./state";
 import { workspaceWithoutSessions } from "./state";
-import { STATE_V0_FIXTURE, richWorkspace } from "./state-fixtures";
+import { STATE_V0_FIXTURE, STATE_V1_FIXTURE, richWorkspace } from "./state-fixtures";
 import type { Workspace } from "./types";
 
 function expectOk(text: string) {
@@ -47,7 +47,7 @@ describe("serializeWorkspace and parseState", () => {
   });
 
   it("writes the current version", () => {
-    expect(STATE_VERSION).toBe(1);
+    expect(STATE_VERSION).toBe(2);
     expect(JSON.parse(serializeWorkspace(richWorkspace())).version).toBe(STATE_VERSION);
   });
 
@@ -65,11 +65,13 @@ describe("migrations", () => {
     }
   });
 
-  it("migrates the version 0 fixture to version 1", () => {
+  it("migrates the version 0 fixture through version 1 to version 2", () => {
     const result = expectOk(STATE_V0_FIXTURE);
     expect(result.migratedFrom).toBe(0);
     const ws = result.workspace;
-    expect(ws.version).toBe(1);
+    expect(ws.version).toBe(2);
+    // The first item of each space becomes its active one.
+    expect(ws.spaces.map((s) => s.activeItemId)).toEqual(["i1", "i2"]);
     expect(ws.activeSpaceId).toBe("s2");
     expect(ws).not.toHaveProperty("activeSpace");
     expect(ws.favorites).toEqual([]);
@@ -93,7 +95,54 @@ describe("migrations", () => {
     expect(pane).toMatchObject({ kind: "pane", pane: { id: "p1", cwd: "/work/app" } });
   });
 
-  it("saves a migrated state as version 1 and reads it back unchanged", () => {
+  it("migrates the version 1 fixture to version 2, picking the first item of each space", () => {
+    const result = expectOk(STATE_V1_FIXTURE);
+    expect(result.migratedFrom).toBe(1);
+    const ws = result.workspace;
+    expect(ws.version).toBe(2);
+    // Pinned first, then the tree depth-first; an empty space stays without one.
+    expect(ws.spaces.map((s) => s.activeItemId)).toEqual(["i1", "i4", undefined]);
+    expect(ws.spaces[2]).not.toHaveProperty("activeItemId");
+    expect(ws.activeSpaceId).toBe("s2");
+    expect(ws.favorites).toEqual(["i4"]);
+    expect(checkInvariants(ws)).toEqual([]);
+  });
+
+  it("picks the first tree item when nothing is pinned, going into groups", () => {
+    const v1 = JSON.parse(STATE_V1_FIXTURE) as {
+      spaces: { pinned: string[]; items: Record<string, unknown> }[];
+    };
+    // Drop the pinned item of "Main": its first tree item sits inside the group.
+    const main = v1.spaces[0];
+    if (main) {
+      main.pinned = [];
+      delete main.items["i1"];
+    }
+    const ws = expectOk(JSON.stringify(v1)).workspace;
+    expect(ws.spaces.map((s) => s.activeItemId)).toEqual(["i2", "i4", undefined]);
+  });
+
+  it("keeps an active item a version 1 file already holds", () => {
+    const v1 = JSON.parse(STATE_V1_FIXTURE) as { spaces: Record<string, unknown>[] };
+    v1.spaces[0] = { ...v1.spaces[0], activeItemId: "i3" };
+    expect(expectOk(JSON.stringify(v1)).workspace.spaces[0]?.activeItemId).toBe("i3");
+  });
+
+  it("rejects a version 1 file whose migrated active item cannot be valid", () => {
+    const v1 = JSON.parse(STATE_V1_FIXTURE) as { spaces: Record<string, unknown>[] };
+    v1.spaces[0] = { ...v1.spaces[0], activeItemId: "ghost" };
+    expect(expectRejected(JSON.stringify(v1))).toContain("active-item-missing");
+  });
+
+  it("chains version 0 to version 2 with the same result as two single steps", () => {
+    const step1 = MIGRATIONS[0]?.(JSON.parse(STATE_V0_FIXTURE) as Record<string, unknown>);
+    expect(step1?.["version"]).toBe(1);
+    const step2 = MIGRATIONS[1]?.(step1 ?? {});
+    expect(step2?.["version"]).toBe(2);
+    expect(expectOk(STATE_V0_FIXTURE).workspace).toEqual(step2);
+  });
+
+  it("saves a migrated state as version 2 and reads it back unchanged", () => {
     const migrated = expectOk(STATE_V0_FIXTURE).workspace;
     const again = expectOk(serializeWorkspace(migrated));
     expect(again.migratedFrom).toBeUndefined();
@@ -165,6 +214,18 @@ describe("rejected content", () => {
     const layout = plain();
     layout["spaces"][0].items.i1.layout.kind = "grid";
     expect(expectRejected(JSON.stringify(layout))).toContain("layout.kind");
+  });
+
+  it("rejects an active item that is not a string", () => {
+    const state = plain();
+    state["spaces"][0].activeItemId = 7;
+    expect(expectRejected(JSON.stringify(state))).toContain("activeItemId");
+  });
+
+  it("rejects an active item the space does not have", () => {
+    const state = plain();
+    state["spaces"][0].activeItemId = "i3";
+    expect(expectRejected(JSON.stringify(state))).toContain("active-item-missing");
   });
 
   it("rejects a non-string environment value", () => {

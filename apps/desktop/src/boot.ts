@@ -13,16 +13,25 @@ export type BootResult =
 const newId = () => crypto.randomUUID();
 const clock = { now: () => Date.now() };
 
+/** Where earlier builds kept the active tab of each space; now it lives in `state.json`. */
+export const LEGACY_ACTIVE_ITEMS_KEY = "noren.ui.activeItems";
+
 /**
  * Restores the saved workspace (new shells in the saved folders), builds the store around it and
- * makes sure the pending state is written when the window goes away.
+ * makes sure the pending state is written when the window goes away. The old browser-storage copy
+ * of the active tabs is dropped, not migrated: the first run after the upgrade shows the first tab.
  */
 export async function bootWorkspace(
   target: Backend,
   events: Pick<Window, "addEventListener">,
-  storage: Pick<Storage, "getItem" | "setItem"> | undefined,
+  storage: Pick<Storage, "removeItem"> | undefined,
 ): Promise<BootResult> {
   try {
+    try {
+      storage?.removeItem(LEGACY_ACTIVE_ITEMS_KEY);
+    } catch {
+      // Storage may be blocked; the leftover key is harmless.
+    }
     const profiles = await target.listProfiles();
     if (profiles.length === 0) return { ok: false, error: "No shell was found on this machine." };
     const restored = await restoreWorkspace(target, { defaults: { newId, clock } });
@@ -32,7 +41,6 @@ export async function bootWorkspace(
       failedPaneIds: restored.failedPaneIds,
       newId,
       clock,
-      ...(storage !== undefined ? { uiStorage: storage } : {}),
     });
     const flush = () => {
       store

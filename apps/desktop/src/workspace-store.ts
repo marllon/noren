@@ -14,12 +14,6 @@ import type {
 import { createStore } from "zustand/vanilla";
 import type { StoreApi } from "zustand/vanilla";
 
-/** Where the interface keeps what is not in `state.json` (only the active tab of each space). */
-export type UiStorage = Pick<Storage, "getItem" | "setItem">;
-
-/** Key of the active-tab map in `UiStorage`. */
-export const ACTIVE_ITEMS_KEY = "noren.ui.activeItems";
-
 /** What the new-space dialog collects. A missing field leaves the default of the model. */
 export interface NewSpaceInput {
   name: string;
@@ -60,11 +54,6 @@ export interface SessionStartOptions {
 
 export interface WorkspaceState {
   workspace: Workspace;
-  /**
-   * The tab the user picked in each space. The model has no notion of an active item, so this lives
-   * beside the workspace; an entry that points to a missing item falls back to the first one.
-   */
-  activeItems: Record<Id, Id>;
   /** Panes whose shell could not start at restore; they have no session. */
   failedPaneIds: Id[];
   /** Runs an action through the reducer, schedules the save and ends the sessions it dropped. */
@@ -86,7 +75,7 @@ export interface WorkspaceState {
   activateSpace(spaceId: Id): void;
   /** Shows the space at a zero-based position of the switcher; out of range changes nothing. */
   activateSpaceAt(index: number): void;
-  /** Activates a tab of the active space. */
+  /** Activates a tab of the active space (saved with the workspace). */
   activateItem(itemId: Id): void;
   /** Records the session the view started for a pane. Not saved: sessions die with the process. */
   attachSession(paneId: Id, sessionId: Id): void;
@@ -107,7 +96,6 @@ export interface WorkspaceStoreOptions {
   newId?: IdGenerator;
   clock?: Pick<Clock, "now">;
   maxPanes?: number;
-  uiStorage?: UiStorage;
   onError?(error: unknown): void;
 }
 
@@ -156,12 +144,13 @@ export function activeSpaceOf(ws: Workspace): Space {
   return space;
 }
 
-/** The tab of the active space that shows in the content area; `undefined` for an empty space. */
-export function activeItemIdOf(
-  state: Pick<WorkspaceState, "workspace" | "activeItems">,
-): Id | undefined {
+/**
+ * The tab of the active space that shows in the content area; `undefined` for an empty space. It is
+ * the space's `activeItemId`; a space that holds none (a hand-edited file) shows its first tab.
+ */
+export function activeItemIdOf(state: Pick<WorkspaceState, "workspace">): Id | undefined {
   const space = activeSpaceOf(state.workspace);
-  const chosen = state.activeItems[space.id];
+  const chosen = space.activeItemId;
   if (chosen !== undefined && space.items[chosen] !== undefined) return chosen;
   return spaceItemIds(space)[0];
 }
@@ -193,31 +182,9 @@ function attachToWorkspace(ws: Workspace, paneId: Id, sessionId: Id): Workspace 
   return changed ? { ...ws, spaces } : ws;
 }
 
-/** The item `item/create` added to `spaceId`, if the action made one. */
-function createdItemId(before: Workspace, after: Workspace, spaceId: Id): Id | undefined {
-  const known = before.spaces.find((s) => s.id === spaceId)?.items ?? {};
-  const now = after.spaces.find((s) => s.id === spaceId)?.items ?? {};
-  return Object.keys(now).find((id) => !(id in known));
-}
-
-function readActiveItems(storage: UiStorage | undefined): Record<Id, Id> {
-  if (!storage) return {};
-  try {
-    const parsed: unknown = JSON.parse(storage.getItem(ACTIVE_ITEMS_KEY) ?? "{}");
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
-    return Object.fromEntries(
-      Object.entries(parsed).filter(
-        (entry): entry is [string, string] => typeof entry[1] === "string",
-      ),
-    );
-  } catch {
-    return {};
-  }
-}
-
 /** The state of the interface: a thin Zustand store over the pure reducer of `@noren/model`. */
 export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceStore {
-  const { backend, uiStorage } = options;
+  const { backend } = options;
   const onError = options.onError ?? (() => undefined);
   const writer = options.writer ?? new StateWriter({ backend, onError });
   const newId = options.newId ?? (() => crypto.randomUUID());
@@ -231,37 +198,16 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
   const kill = (sessionId: Id) => {
     backend.kill(Number(sessionId)).catch(() => undefined);
   };
-  const persistActive = (activeItems: Record<Id, Id>) => {
-    try {
-      uiStorage?.setItem(ACTIVE_ITEMS_KEY, JSON.stringify(activeItems));
-    } catch (error) {
-      onError(error);
-    }
-  };
 
   return createStore<WorkspaceState>()((set, get) => ({
     workspace: options.workspace,
-    activeItems: readActiveItems(uiStorage),
     failedPaneIds: options.failedPaneIds ?? [],
 
     dispatch(action) {
-      const { workspace: before, activeItems } = get();
+      const before = get().workspace;
       const after = reduce(before, action, context);
       if (after === before) return;
-      let nextActive = activeItems;
-      if (action.type === "item/create") {
-        const created = createdItemId(before, after, action.spaceId ?? before.activeSpaceId);
-        if (created !== undefined) {
-          nextActive = { ...activeItems, [action.spaceId ?? before.activeSpaceId]: created };
-        }
-      }
-      if (action.type === "space/delete" && action.spaceId in nextActive) {
-        nextActive = Object.fromEntries(
-          Object.entries(nextActive).filter(([id]) => id !== action.spaceId),
-        );
-      }
-      set({ workspace: after, activeItems: nextActive });
-      if (nextActive !== activeItems) persistActive(nextActive);
+      set({ workspace: after });
       writer.schedule(after);
       const alive = liveSessionIds(after);
       for (const sessionId of liveSessionIds(before)) {
@@ -334,12 +280,8 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
     },
 
     activateItem(itemId) {
-      const { workspace, activeItems } = get();
-      const space = activeSpaceOf(workspace);
-      if (space.items[itemId] === undefined || activeItems[space.id] === itemId) return;
-      const next = { ...activeItems, [space.id]: itemId };
-      set({ activeItems: next });
-      persistActive(next);
+      const { workspace, dispatch } = get();
+      dispatch({ type: "space/set-active-item", spaceId: activeSpaceOf(workspace).id, itemId });
     },
 
     attachSession(paneId, sessionId) {

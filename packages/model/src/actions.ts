@@ -57,6 +57,12 @@ export type Action =
   | { type: "space/set-icon"; spaceId: Id; icon: string }
   | { type: "space/move"; spaceId: Id; index: number }
   | { type: "space/activate"; spaceId: Id }
+  /**
+   * Chooses the item a space shows. The item must belong to that space. The reducer also moves it
+   * on its own: a new or reopened item becomes active, and when the active item leaves the space
+   * the next one in sidebar order (else the previous one) takes over.
+   */
+  | { type: "space/set-active-item"; spaceId: Id; itemId: Id }
   | { type: "space/delete"; spaceId: Id; items: SpaceItemsFate }
   // Items
   | {

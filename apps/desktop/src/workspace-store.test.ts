@@ -9,28 +9,16 @@ import {
 } from "@noren/model";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  ACTIVE_ITEMS_KEY,
   activeItemIdOf,
   activeSpaceOf,
   createWorkspaceStore,
   sessionStartOptions,
   spaceItemIds,
 } from "./workspace-store";
-import type { UiStorage } from "./workspace-store";
-
-class MemoryStorage implements UiStorage {
-  readonly values = new Map<string, string>();
-  getItem(key: string): string | null {
-    return this.values.get(key) ?? null;
-  }
-  setItem(key: string, value: string): void {
-    this.values.set(key, value);
-  }
-}
 
 const clock = { now: () => 1000 };
 
-async function openStore(backend: FakeBackend, storage?: UiStorage) {
+async function openStore(backend: FakeBackend) {
   const newId = createSequentialIds("n");
   const restored = await restoreWorkspace(backend, { defaults: { newId, clock } });
   const store = createWorkspaceStore({
@@ -38,7 +26,6 @@ async function openStore(backend: FakeBackend, storage?: UiStorage) {
     workspace: restored.workspace,
     newId,
     clock,
-    ...(storage ? { uiStorage: storage } : {}),
   });
   return { store, restored };
 }
@@ -110,39 +97,61 @@ describe("workspace store", () => {
     expect(before && after && spaceItemIds(after)).toEqual(before && spaceItemIds(before));
   });
 
-  it("activating a tab changes only the active tab and is kept in the ui storage", async () => {
+  it("activating a tab is saved in the workspace, and a restore brings it back", async () => {
     const backend = new FakeBackend();
-    const storage = new MemoryStorage();
-    const { store } = await openStore(backend, storage);
+    const { store } = await openStore(backend);
     store.getState().newTab();
     const space = store.getState().workspace.spaces[0];
     if (!space) throw new Error("no space");
     const [first] = spaceItemIds(space);
     if (first === undefined) throw new Error("no tab");
+    expect(activeItemIdOf(store.getState())).not.toBe(first);
 
     store.getState().activateItem(first);
     expect(activeItemIdOf(store.getState())).toBe(first);
-    expect(backend.callsTo("saveState")).toHaveLength(0);
-    expect(JSON.parse(storage.values.get(ACTIVE_ITEMS_KEY) ?? "{}")).toEqual({ [space.id]: first });
+    expect(store.getState().workspace.spaces[0]?.activeItemId).toBe(first);
+    await store.getState().flush();
 
-    // A new store over the same storage picks the choice up again.
-    const again = createWorkspaceStore({
-      backend,
-      workspace: store.getState().workspace,
-      uiStorage: storage,
-    });
-    expect(activeItemIdOf(again.getState())).toBe(first);
+    const saved = parseState(backend.stateContent ?? "");
+    expect(saved.ok && saved.workspace.spaces[0]?.activeItemId).toBe(first);
+    const again = await openStore(backend);
+    expect(activeItemIdOf(again.store.getState())).toBe(first);
   });
 
-  it("an active tab that no longer exists falls back to the first one", () => {
-    const storage = new MemoryStorage();
-    storage.setItem(ACTIVE_ITEMS_KEY, JSON.stringify({ id1: "gone" }));
+  it("activating an unknown tab, or the tab already active, changes nothing", async () => {
+    const { store } = await openStore(new FakeBackend());
+    const before = store.getState().workspace;
+    store.getState().activateItem("ghost");
+    store.getState().activateItem(activeItemIdOf(store.getState()) ?? "");
+    expect(store.getState().workspace).toBe(before);
+  });
+
+  it("an active tab missing from the workspace falls back to the first one", () => {
+    const ws = createDefaultWorkspace();
+    const space = ws.spaces[0];
+    if (!space) throw new Error("no space");
+    const rest = { ...space };
+    delete rest.activeItemId;
     const store = createWorkspaceStore({
       backend: new FakeBackend(),
-      workspace: createDefaultWorkspace(),
-      uiStorage: storage,
+      workspace: { ...ws, spaces: [rest] },
     });
-    expect(activeItemIdOf(store.getState())).toBe("id2");
+    expect(activeItemIdOf(store.getState())).toBe(spaceItemIds(space)[0]);
+  });
+
+  it("each space keeps its own active tab when switching between them", async () => {
+    const { store } = await openStore(new FakeBackend());
+    store.getState().newTab();
+    store.getState().createSpace({ name: "Two" });
+    store.getState().newTab();
+    const two = activeItemIdOf(store.getState());
+    store.getState().activateSpaceAt(0);
+    const mainFirst = spaceItemIds(activeSpaceOf(store.getState().workspace))[0];
+    store.getState().activateItem(mainFirst ?? "");
+    store.getState().activateSpaceAt(1);
+    expect(activeItemIdOf(store.getState())).toBe(two);
+    store.getState().activateSpaceAt(0);
+    expect(activeItemIdOf(store.getState())).toBe(mainFirst);
   });
 
   it("closing a tab ends its session", async () => {
@@ -454,21 +463,19 @@ describe("workspace store", () => {
         expect([...liveSessionIds(store.getState().workspace)]).toEqual([mainSession]);
       });
 
-      it("deleting another space keeps the active one and forgets the active tab of the deleted one", async () => {
-        const storage = new MemoryStorage();
-        const { store } = await openStore(new FakeBackend(), storage);
+      it("deleting another space keeps the active one and its active tab", async () => {
+        const { store } = await openStore(new FakeBackend());
         store.getState().createSpace({ name: "Two" });
         store.getState().createSpace({ name: "Three" });
         const two = store.getState().workspace.spaces[1];
+        const three = activeItemIdOf(store.getState());
         if (!two) throw new Error("no space");
-        expect(JSON.parse(storage.values.get(ACTIVE_ITEMS_KEY) ?? "{}")).toHaveProperty(two.id);
 
         store.getState().deleteSpace(two.id);
 
         expect(names(store)).toEqual(["Main", "Three"]);
         expect(activeSpaceOf(store.getState().workspace).name).toBe("Three");
-        expect(store.getState().activeItems).not.toHaveProperty(two.id);
-        expect(JSON.parse(storage.values.get(ACTIVE_ITEMS_KEY) ?? "{}")).not.toHaveProperty(two.id);
+        expect(activeItemIdOf(store.getState())).toBe(three);
       });
 
       it("deleting the active space activates a neighbor", async () => {

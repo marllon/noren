@@ -84,7 +84,7 @@ function fixture(): Workspace {
     items: { d: item("d", leaf("p7", "x7"), "p7") },
   };
   return {
-    version: 1,
+    version: 2,
     spaces: [main, work],
     activeSpaceId: "s1",
     favorites: ["a", "d"],

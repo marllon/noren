@@ -110,7 +110,6 @@ function newSpaceInput(values: SpaceFormValues): NewSpaceInput {
 
 function Shell({ store }: { store: WorkspaceStore }) {
   const workspace = useStore(store, (state) => state.workspace);
-  const activeItems = useStore(store, (state) => state.activeItems);
   const newTab = useStore(store, (state) => state.newTab);
   const activateItem = useStore(store, (state) => state.activateItem);
   const activateSpace = useStore(store, (state) => state.activateSpace);
@@ -124,7 +123,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const colors = useMemo(() => terminalTheme(theme), [theme]);
 
   const space = activeSpaceOf(workspace);
-  const activeId = activeItemIdOf({ workspace, activeItems });
+  const activeId = activeItemIdOf({ workspace });
   const itemIds = spaceItemIds(space);
   const spaceColor = space.color;
 

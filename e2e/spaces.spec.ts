@@ -142,6 +142,44 @@ test("a new tab in space B starts in B's folder with B's environment", async ({ 
   expect((await sessionStarts(page))[3]).toEqual({});
 });
 
+const activeTab = (page: Page): Promise<number> =>
+  tabs(page).evaluateAll((buttons) =>
+    buttons.findIndex((button) => button.getAttribute("aria-current") === "true"),
+  );
+
+test("each space reloads with its own active tab, kept in the saved state", async ({ page }) => {
+  await page.goto("/");
+  const newTab = page.getByRole("button", { name: "New tab", exact: true });
+  await newTab.click();
+  await newTab.click();
+  await expect(tabs(page)).toHaveCount(3);
+  await tabs(page).nth(1).click();
+  expect(await activeTab(page)).toBe(1);
+
+  await createSpace(page, { name: "Two" });
+  await newTab.click();
+  await expect(tabs(page)).toHaveCount(2);
+  expect(await activeTab(page)).toBe(1);
+  await tabs(page).nth(0).click();
+  expect(await activeTab(page)).toBe(0);
+
+  // The key an older build used must be gone after a reload, even if it was left behind.
+  await page.evaluate(() => window.localStorage.setItem("noren.ui.activeItems", "{}"));
+  await page.reload();
+
+  await expect(spaceButton(page, "Two")).toHaveAttribute("aria-current", "true");
+  await expect(tabs(page)).toHaveCount(2);
+  expect(await activeTab(page)).toBe(0);
+  await spaceButton(page, "Main").click();
+  await expect(tabs(page)).toHaveCount(3);
+  expect(await activeTab(page)).toBe(1);
+  expect(await page.evaluate(() => window.localStorage.getItem("noren.ui.activeItems"))).toBeNull();
+
+  // Switching back and forth keeps each choice.
+  await spaceButton(page, "Two").click();
+  expect(await activeTab(page)).toBe(0);
+});
+
 test("the dialog needs a name, rejects a bad environment line and cancels cleanly", async ({
   page,
 }) => {

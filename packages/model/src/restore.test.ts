@@ -127,7 +127,7 @@ describe("restoreWorkspace with a valid state", () => {
     const result = await restoreWorkspace(backend);
     expect(result.source).toBe("saved");
     expect(result.migratedFrom).toBe(0);
-    expect(result.workspace.version).toBe(1);
+    expect(result.workspace.version).toBe(2);
     expect(result.workspace.activeSpaceId).toBe("s2");
     expect(backend.quarantineCount).toBe(0);
     const p1 = paneById(result.workspace, "p1");
@@ -166,7 +166,7 @@ describe("restoreWorkspace with no usable state", () => {
     ["not an object", "[1, 2]"],
     [
       "future version",
-      JSON.stringify({ ...JSON.parse(serializeWorkspace(richWorkspace())), version: 2 }),
+      JSON.stringify({ ...JSON.parse(serializeWorkspace(richWorkspace())), version: 3 }),
     ],
     ["wrong shape", JSON.stringify({ version: 1, spaces: "none" })],
     ["broken invariant", JSON.stringify({ ...createDefaultWorkspace(), activeSpaceId: "ghost" })],

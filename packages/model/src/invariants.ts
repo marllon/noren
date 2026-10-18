@@ -18,6 +18,7 @@ export type ViolationCode =
   | "pane-in-multiple-items"
   | "session-shared"
   | "active-space-missing"
+  | "active-item-missing"
   | "item-key-mismatch"
   | "item-unplaced"
   | "item-duplicated"
@@ -156,6 +157,15 @@ function run(ws: Workspace, maxPanes: number, out: Violation[]): void {
   ws.spaces.forEach((space, spaceIndex) => {
     const spacePath = `spaces[${spaceIndex}]`;
     register("space", space.id, spacePath, space.id);
+
+    // The item a space shows must be one of its own.
+    if (space.activeItemId !== undefined && !Object.hasOwn(space.items, space.activeItemId)) {
+      add(
+        "active-item-missing",
+        `${spacePath}.activeItemId`,
+        `active item ${space.activeItemId} is not an item of space ${space.id}`,
+      );
+    }
 
     for (const [key, item] of Object.entries(space.items)) {
       if (key !== item.id) {

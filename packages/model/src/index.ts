@@ -24,6 +24,7 @@ export { reduce } from "./reducer";
 export { restoreWorkspace } from "./restore";
 export type { RestoreOptions, RestoreResult } from "./restore";
 export { layoutPanes, liveSessionIds } from "./sessions";
+export { treeItemIds } from "./tree";
 export {
   MIGRATIONS,
   STATE_VERSION,

@@ -24,8 +24,24 @@ export interface TerminalHandle {
 
 interface TerminalViewProps {
   backend: Backend;
-  /** Shell profile to start; the backend's default profile when left out. */
+  /**
+   * Session to show. When left out the view starts a shell of its own. Read once, on mount:
+   * changing it later does not restart the terminal.
+   */
+  attach?: SessionId;
+  /** Shell profile to start; the backend's default profile when left out. Read once. */
   profileId?: string;
+  /** Starting directory of the new shell. Read once. */
+  cwd?: string;
+  /** Extra environment of the new shell. Read once. */
+  env?: Record<string, string>;
+  /**
+   * Called with the session the view started. The caller owns it from then on: the view no longer
+   * ends it on unmount. Without this callback the view ends its own session when it goes away.
+   */
+  onSessionStart?(id: SessionId): void;
+  /** False while the view is hidden (another tab shows). Default true. */
+  active?: boolean;
   /** Default `copy-or-paste`. */
   rightClick?: RightClickAction;
   /** Called once the terminal is mounted. */
@@ -51,17 +67,38 @@ function isShortcut(event: KeyboardEvent, code: string): boolean {
 }
 
 /** One xterm bound to one backend session, which lives as long as the view. */
-export function TerminalView({ backend, profileId, rightClick, onReady }: TerminalViewProps) {
+export function TerminalView({
+  backend,
+  attach,
+  profileId,
+  cwd,
+  env,
+  onSessionStart,
+  active = true,
+  rightClick,
+  onReady,
+}: TerminalViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const rightClickRef = useRef<RightClickAction>(rightClick ?? "copy-or-paste");
   const onReadyRef = useRef(onReady);
+  const onSessionStartRef = useRef(onSessionStart);
+  const activeRef = useRef(active);
   const [pending, setPending] = useState<string | null>(null);
+  // What the shell starts with is fixed when the view mounts; a later change must not restart it.
+  const [start0] = useState(() => ({ attach, profileId, cwd, env }));
 
   useEffect(() => {
     rightClickRef.current = rightClick ?? "copy-or-paste";
     onReadyRef.current = onReady;
+    onSessionStartRef.current = onSessionStart;
+    activeRef.current = active;
   });
+
+  // Showing a tab again gives it the keyboard.
+  useEffect(() => {
+    if (active) termRef.current?.focus();
+  }, [active]);
 
   useEffect(() => {
     const host = container.current;
@@ -173,17 +210,28 @@ export function TerminalView({ backend, profileId, rightClick, onReady }: Termin
       if (sessionId !== undefined) backend.resize(sessionId, cols, rows).catch(() => undefined);
     });
 
+    let ownsSession = false;
     const start = async () => {
       const startCols = term.cols;
       const startRows = term.rows;
-      const id = await backend.createSession({
-        ...(profileId !== undefined ? { profileId } : {}),
-        cols: startCols,
-        rows: startRows,
-      });
-      if (disposed) {
-        void backend.kill(id).catch(() => undefined);
-        return;
+      let id: SessionId;
+      if (start0.attach !== undefined) {
+        id = start0.attach;
+      } else {
+        id = await backend.createSession({
+          ...(start0.profileId !== undefined ? { profileId: start0.profileId } : {}),
+          ...(start0.cwd !== undefined ? { cwd: start0.cwd } : {}),
+          ...(start0.env !== undefined ? { env: start0.env } : {}),
+          cols: startCols,
+          rows: startRows,
+        });
+        if (disposed) {
+          void backend.kill(id).catch(() => undefined);
+          return;
+        }
+        const handOff = onSessionStartRef.current;
+        if (handOff) handOff(id);
+        else ownsSession = true;
       }
       sessionId = id;
       cleanups.push(backend.onOutput(id, (bytes) => term.write(bytes)));
@@ -214,7 +262,7 @@ export function TerminalView({ backend, profileId, rightClick, onReady }: Termin
       },
       renderer: () => (webgl ? "webgl" : "dom"),
     });
-    term.focus();
+    if (activeRef.current) term.focus();
 
     return () => {
       disposed = true;
@@ -224,11 +272,12 @@ export function TerminalView({ backend, profileId, rightClick, onReady }: Termin
       dataSub.dispose();
       resizeSub.dispose();
       for (const cleanup of cleanups) cleanup();
-      if (sessionId !== undefined) void backend.kill(sessionId).catch(() => undefined);
+      if (sessionId !== undefined && ownsSession)
+        void backend.kill(sessionId).catch(() => undefined);
       termRef.current = null;
       term.dispose();
     };
-  }, [backend, profileId]);
+  }, [backend, start0]);
 
   const closeDialog = (paste: boolean) => {
     const text = pending;

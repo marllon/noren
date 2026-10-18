@@ -88,3 +88,75 @@ body {
   font: inherit;
   cursor: pointer;
 }
+
+.app-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 200px;
+  padding: 8px;
+  border-right: 1px solid #2a2f39;
+  background: #181b20;
+}
+
+.tab-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.tab-button,
+.new-tab {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tab-button:hover,
+.new-tab:hover {
+  background: #232830;
+}
+
+.tab-button[aria-current="true"] {
+  border-color: #3a4150;
+  background: #2a2f39;
+}
+
+.new-tab {
+  border-color: #3a4150;
+  color: #8b93a1;
+}
+
+.content {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.pane-slot {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pane-slot[hidden] {
+  display: none;
+}

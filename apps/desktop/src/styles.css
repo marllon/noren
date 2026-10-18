@@ -1,0 +1,90 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #14161a;
+  color: #d8dce2;
+  font-family: system-ui, sans-serif;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app-title {
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #8b93a1;
+}
+
+.terminal-view {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.terminal-host {
+  position: absolute;
+  inset: 0 0 0 8px;
+}
+
+.paste-backdrop {
+  z-index: 10;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 55%);
+}
+
+.paste-dialog {
+  max-width: min(640px, 90%);
+  padding: 16px 20px;
+  border: 1px solid #3a4150;
+  border-radius: 8px;
+  background: #1d2026;
+  color: #d8dce2;
+}
+
+.paste-dialog h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.paste-dialog p {
+  margin: 0 0 8px;
+  color: #8b93a1;
+}
+
+.paste-preview {
+  max-height: 200px;
+  margin: 0 0 12px;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 4px;
+  background: #14161a;
+  font-size: 12px;
+}
+
+.paste-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.paste-actions button {
+  padding: 4px 14px;
+  border: 1px solid #3a4150;
+  border-radius: 4px;
+  background: #2a2f39;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}

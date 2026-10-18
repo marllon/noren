@@ -1,0 +1,9 @@
+_loop/
+ROADMAP.pt-BR.md
+pnpm-lock.yaml
+node_modules/
+target/
+dist/
+dist-demo/
+test-results/
+playwright-report/

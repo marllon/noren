@@ -13,7 +13,8 @@
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test"
+    "rust:check": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace",
+    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm rust:check"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

@@ -25,6 +25,13 @@ fn main() {
         ])
         .setup(move |app| {
             app.manage(bridge::state_store(app.handle())?);
+            // The window is created hidden (tauri.conf.json); only a normal start shows it.
+            if smoke::should_show_window(smoke)
+                && let Some(window) = app.get_webview_window("main")
+            {
+                window.show()?;
+                window.set_focus()?;
+            }
             if smoke {
                 smoke::arm(app);
             }

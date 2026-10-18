@@ -8,6 +8,7 @@
         "width": 1280,
         "height": 800,
         "decorations": true,
+        "visible": false,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true
       }

@@ -15,7 +15,8 @@
         "title": "Noren",
         "width": 1280,
         "height": 800,
-        "decorations": false
+        "decorations": false,
+        "visible": false
       }
     ],
     "security": {

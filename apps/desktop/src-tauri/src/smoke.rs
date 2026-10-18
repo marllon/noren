@@ -22,6 +22,29 @@ const SMOKE_TIMEOUT: Duration = Duration::from_secs(30);
 /// Characters of output quoted in the failure message.
 const TAIL_CHARS: usize = 400;
 
+/// Whether the main window is shown at startup. The smoke run keeps it hidden so it never takes
+/// the focus (it would drop a full-screen game); every normal start shows it.
+pub fn should_show_window(smoke: bool) -> bool {
+    !smoke
+}
+
+/// Fails unless the `main` window exists and is hidden.
+fn check_window_hidden(app: &AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "the main window does not exist".to_string())?;
+    let visible = window.is_visible().map_err(|e| e.to_string())?;
+    window_hidden_result(visible)
+}
+
+fn window_hidden_result(visible: bool) -> Result<(), String> {
+    if visible {
+        Err("the main window is visible; the smoke run must keep it hidden".to_string())
+    } else {
+        Ok(())
+    }
+}
+
 /// Prints `line` to stdout and flushes it so a parent process sees it before we exit.
 fn print_line(line: &str) {
     let mut out = std::io::stdout().lock();
@@ -176,15 +199,18 @@ pub fn arm(app: &tauri::App) {
         }
         print_line("SMOKE app-ready received");
         let handle = handle.clone();
-        thread::spawn(
-            move || match check_session(&handle, started + SMOKE_TIMEOUT) {
+        thread::spawn(move || {
+            let result = check_session(&handle, started + SMOKE_TIMEOUT)
+                .and_then(|()| check_window_hidden(&handle));
+            match result {
                 Ok(()) => {
+                    print_line("SMOKE window hidden");
                     print_line(&format!("SMOKE OK {SMOKE_MARKER}"));
                     handle.exit(0);
                 }
                 Err(message) => fail(&handle, &message),
-            },
-        );
+            }
+        });
     });
 
     let handle = app.handle().clone();
@@ -202,6 +228,19 @@ pub fn arm(app: &tauri::App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_smoke_run_keeps_the_window_hidden() {
+        assert!(!should_show_window(true));
+        assert!(should_show_window(false));
+    }
+
+    #[test]
+    fn a_visible_window_fails_the_smoke_check() {
+        assert!(window_hidden_result(false).is_ok());
+        let message = window_hidden_result(true).unwrap_err();
+        assert!(message.contains("visible"));
+    }
 
     #[test]
     fn strips_csi_osc_and_charset_sequences() {

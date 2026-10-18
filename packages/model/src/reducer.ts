@@ -89,6 +89,8 @@ export function reduceStrict(ws: Workspace, action: Action, ctx: ReducerContext)
         space.icon === icon ? undefined : { ...space, icon },
       );
     }
+    case "space/set-defaults":
+      return setSpaceDefaults(ws, action);
     case "space/move":
       return moveSpace(ws, action.spaceId, action.index);
     case "space/activate":
@@ -392,7 +394,9 @@ function createSpace(
   if (action.color !== undefined && color === undefined) return ws;
   const profileId = present(action.profileId);
   const cwd = present(action.cwd);
+  if (action.env !== undefined && !validEnv(action.env)) return ws;
   const options: EmptySpaceOptions = {
+    ...(action.env !== undefined ? { env: action.env } : {}),
     ...(icon !== undefined ? { icon } : {}),
     ...(color !== undefined ? { color } : {}),
     ...(profileId !== undefined ? { profileId } : {}),
@@ -404,6 +408,41 @@ function createSpace(
     spaces: [...ws.spaces, space],
     activeSpaceId: action.activate === false ? ws.activeSpaceId : space.id,
   };
+}
+
+function setSpaceDefaults(
+  ws: Workspace,
+  action: Extract<Action, { type: "space/set-defaults" }>,
+): Workspace {
+  if (action.env !== undefined && !validEnv(action.env)) return ws;
+  return updateSpace(ws, action.spaceId, (space) => {
+    const { profileId: oldProfile, cwd: oldCwd, env: oldEnv, ...rest } = space.defaults;
+    const profileId = action.profileId === undefined ? oldProfile : present(action.profileId);
+    const cwd = action.cwd === undefined ? oldCwd : present(action.cwd);
+    const env = action.env === undefined ? oldEnv : { ...action.env };
+    const same = profileId === oldProfile && cwd === oldCwd && sameEnv(env, oldEnv);
+    if (same) return undefined;
+    const defaults: Space["defaults"] = {
+      ...rest,
+      env,
+      ...(profileId !== undefined ? { profileId } : {}),
+      ...(cwd !== undefined ? { cwd } : {}),
+    };
+    return { ...space, defaults };
+  });
+}
+
+/** True when every name is a usable environment variable name and no value holds a NUL. */
+export function validEnv(env: Record<string, string>): boolean {
+  return Object.entries(env).every(
+    ([name, value]) =>
+      name !== "" && !/[=\s]/.test(name) && !name.includes("\u0000") && !value.includes("\u0000"),
+  );
+}
+
+function sameEnv(a: Record<string, string>, b: Record<string, string>): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
 }
 
 function moveSpace(ws: Workspace, spaceId: Id, index: number): Workspace {

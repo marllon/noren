@@ -33,6 +33,7 @@ export interface EmptySpaceOptions {
   color?: string;
   profileId?: string;
   cwd?: string;
+  env?: Record<string, string>;
 }
 
 /** A space with nothing in it. */
@@ -44,7 +45,7 @@ export function createEmptySpace(id: Id, name: string, options: EmptySpaceOption
     color: options.color ?? DEFAULT_SPACE_COLOR,
     modIds: [],
     defaults: {
-      env: {},
+      env: { ...options.env },
       ...(options.profileId !== undefined ? { profileId: options.profileId } : {}),
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
     },

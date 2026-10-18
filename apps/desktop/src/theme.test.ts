@@ -4,6 +4,7 @@ import {
   NOREN_DUSK,
   NOREN_PAPER,
   THEMES,
+  applySpaceColor,
   applyTheme,
   terminalTheme,
   themeForScheme,
@@ -128,5 +129,17 @@ describe("styles.css", () => {
     );
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
     expect(css).not.toMatch(/\b(rgb|rgba|hsl|hsla|oklch|oklab|lab|lch|hwb)\(/i);
+  });
+});
+
+describe("applySpaceColor", () => {
+  it("overrides --nr-space-color with the space's color and falls back to the accent", () => {
+    const { vars, root } = recorder();
+    applyTheme(root, NOREN_DUSK);
+    expect(vars.get("--nr-space-color")).toBe(NOREN_DUSK.ui.accent);
+    applySpaceColor(root, NOREN_DUSK, "#4caf7d");
+    expect(vars.get("--nr-space-color")).toBe("#4caf7d");
+    applySpaceColor(root, NOREN_DUSK);
+    expect(vars.get("--nr-space-color")).toBe(NOREN_DUSK.ui.accent);
   });
 });

@@ -222,6 +222,89 @@ describe("space/set-color and space/set-icon", () => {
   });
 });
 
+describe("space/create with env and space/set-defaults", () => {
+  it("creates a space with its own copy of the environment", () => {
+    const env = { EDITOR: "vim", NOREN_MODE: "work" };
+    const next = applyChecked(fixture(), { type: "space/create", name: "Dev", env });
+    expect(spaceOf(next, "n1").defaults.env).toEqual(env);
+    expect(spaceOf(next, "n1").defaults.env).not.toBe(env);
+  });
+
+  it("refuses an environment with an unusable name or a NUL in a value", () => {
+    const ws = fixture();
+    const { ctx } = testContext();
+    for (const env of [{ "A=B": "x" }, { "": "x" }, { "A B": "x" }, { A: "x\u0000y" }]) {
+      expect(reduceStrict(ws, { type: "space/create", name: "Dev", env }, ctx)).toBe(ws);
+    }
+  });
+
+  it("sets profile, folder and environment, and the next item of the space uses them", () => {
+    const ws = applyChecked(fixture(), {
+      type: "space/set-defaults",
+      spaceId: "s2",
+      profileId: "pwsh",
+      cwd: "C:\\work",
+      env: { TOKEN: "abc" },
+    });
+    expect(spaceOf(ws, "s2").defaults).toEqual({
+      profileId: "pwsh",
+      cwd: "C:\\work",
+      env: { TOKEN: "abc" },
+    });
+    const { ctx } = testContext();
+    const withTab = applyChecked(ws, { type: "item/create", spaceId: "s2" }, ctx);
+    const created = Object.values(spaceOf(withTab, "s2").items).find((i) => i.id !== "i6");
+    expect(created && layoutPanes(created.layout)[0]).toMatchObject({
+      profileId: "pwsh",
+      cwd: "C:\\work",
+    });
+  });
+
+  it("keeps what is not given, replaces the whole environment and clears with a blank", () => {
+    const first = applyChecked(fixture(), {
+      type: "space/set-defaults",
+      spaceId: "s1",
+      profileId: "pwsh",
+      cwd: "/a",
+      env: { A: "1", B: "2" },
+    });
+    const second = applyChecked(first, {
+      type: "space/set-defaults",
+      spaceId: "s1",
+      env: { C: "3" },
+    });
+    expect(spaceOf(second, "s1").defaults).toEqual({
+      profileId: "pwsh",
+      cwd: "/a",
+      env: { C: "3" },
+    });
+    const cleared = applyChecked(second, {
+      type: "space/set-defaults",
+      spaceId: "s1",
+      profileId: " ",
+      cwd: "",
+      env: {},
+    });
+    expect(spaceOf(cleared, "s1").defaults).toEqual({ env: {} });
+  });
+
+  it("returns the same workspace when nothing changes or the input is invalid", () => {
+    const ws = applyChecked(fixture(), {
+      type: "space/set-defaults",
+      spaceId: "s1",
+      cwd: "/a",
+      env: { A: "1" },
+    });
+    const apply = (action: Action) => applyChecked(ws, action);
+    expect(apply({ type: "space/set-defaults", spaceId: "s1" })).toBe(ws);
+    expect(apply({ type: "space/set-defaults", spaceId: "s1", cwd: "/a", env: { A: "1" } })).toBe(
+      ws,
+    );
+    expect(apply({ type: "space/set-defaults", spaceId: "nope", cwd: "/b" })).toBe(ws);
+    expect(apply({ type: "space/set-defaults", spaceId: "s1", env: { "A=": "1" } })).toBe(ws);
+  });
+});
+
 describe("space/move", () => {
   const order = (ws: Workspace): Id[] => ws.spaces.map((s) => s.id);
 

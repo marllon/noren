@@ -20,7 +20,7 @@ export { SIZE_SUM_TOLERANCE, checkInvariants } from "./invariants";
 export type { InvariantOptions, Violation, ViolationCode } from "./invariants";
 export { layoutRects, neighborPane } from "./geometry";
 export type { Direction, Rect } from "./geometry";
-export { reduce } from "./reducer";
+export { reduce, validEnv } from "./reducer";
 export { restoreWorkspace } from "./restore";
 export type { RestoreOptions, RestoreResult } from "./restore";
 export { layoutPanes, liveSessionIds } from "./sessions";

@@ -2,17 +2,25 @@ import { emit } from "@tauri-apps/api/event";
 import { FakeBackend } from "@noren/model";
 import type { Id, Item, Pane, Space } from "@noren/model";
 import type { ITheme } from "@xterm/xterm";
-import { Suspense, use, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { Suspense, use, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { insideTauri } from "./backend";
 import { backend, booted } from "./boot";
+import { SpaceDialog } from "./SpaceDialog";
+import { SpaceSwitcher } from "./SpaceSwitcher";
+import { spaceShortcutIndex } from "./spaces";
 import { TerminalView } from "./TerminalView";
-import { applyTheme, terminalTheme } from "./theme";
+import { applySpaceColor, applyTheme, terminalTheme } from "./theme";
 import { TitleBar } from "./TitleBar";
 import { useTheme } from "./use-theme";
 import type { TerminalHandle } from "./TerminalView";
-import { activeItemIdOf, activeSpaceOf, spaceItemIds } from "./workspace-store";
-import type { WorkspaceStore } from "./workspace-store";
+import {
+  activeItemIdOf,
+  activeSpaceOf,
+  sessionStartOptions,
+  spaceItemIds,
+} from "./workspace-store";
+import type { SessionStartOptions, WorkspaceStore } from "./workspace-store";
 
 /** Read-only view of the active terminal, published only when the backend is the in-memory one. */
 export interface NorenTestHook {
@@ -20,6 +28,8 @@ export interface NorenTestHook {
   renderer(): "webgl" | "dom";
   /** Number of `write` calls the backend received. */
   writeCalls(): number;
+  /** Options of every `createSession` call the backend received, in order. */
+  sessionStarts(): { profileId?: string; cwd?: string; env?: Record<string, string> }[];
 }
 
 declare global {
@@ -53,8 +63,7 @@ interface PaneTerminalProps {
 
 /** One terminal bound to one pane; it stays mounted (hidden) while another tab shows. */
 function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTerminalProps) {
-  const cwd = pane.cwd ?? space.defaults.cwd;
-  const env = space.defaults.env;
+  const { profileId, cwd, env } = sessionStartOptions(space, pane);
   return (
     <div className="pane-slot" data-nr-part="pane" hidden={!active}>
       <TerminalView
@@ -62,9 +71,9 @@ function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTermi
         theme={colors}
         active={active}
         {...(pane.sessionId !== undefined ? { attach: Number(pane.sessionId) } : {})}
-        {...(pane.profileId !== "default" ? { profileId: pane.profileId } : {})}
+        {...(profileId !== undefined ? { profileId } : {})}
         {...(cwd !== undefined ? { cwd } : {})}
-        {...(Object.keys(env).length > 0 ? { env } : {})}
+        {...(env !== undefined ? { env } : {})}
         onSessionStart={(id) => store.getState().attachSession(pane.id, String(id))}
         onReady={(handle) => onReady(pane.id, handle)}
       />
@@ -77,6 +86,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const activeItems = useStore(store, (state) => state.activeItems);
   const newTab = useStore(store, (state) => state.newTab);
   const activateItem = useStore(store, (state) => state.activateItem);
+  const activateSpace = useStore(store, (state) => state.activateSpace);
+  const createSpace = useStore(store, (state) => state.createSpace);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const handles = useRef(new Map<Id, TerminalHandle>());
   const theme = useTheme();
   const colors = useMemo(() => terminalTheme(theme), [theme]);
@@ -84,6 +96,25 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const space = activeSpaceOf(workspace);
   const activeId = activeItemIdOf({ workspace, activeItems });
   const itemIds = spaceItemIds(space);
+  const spaceColor = space.color;
+
+  // The active space tinges the accent. After the theme's own effect, which sets the accent.
+  useEffect(() => {
+    applySpaceColor(document.documentElement, theme, spaceColor);
+  }, [theme, spaceColor]);
+
+  // Ctrl+Alt+1..9 switches space. Captured on the window so the terminal never sees the keys.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const index = spaceShortcutIndex(event);
+      if (index === undefined) return;
+      event.preventDefault();
+      event.stopPropagation();
+      store.getState().activateSpaceAt(index);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [store]);
 
   useEffect(() => {
     if (backend instanceof FakeBackend) {
@@ -100,6 +131,15 @@ function Shell({ store }: { store: WorkspaceStore }) {
         lines: () => current()?.readLines() ?? [],
         renderer: () => current()?.renderer() ?? "dom",
         writeCalls: () => fake.callsTo("write").length,
+        sessionStarts: () =>
+          fake.callsTo("createSession").map((call) => {
+            const { profileId, cwd, env } = call.args[0] as SessionStartOptions;
+            return {
+              ...(profileId !== undefined ? { profileId } : {}),
+              ...(cwd !== undefined ? { cwd } : {}),
+              ...(env !== undefined ? { env } : {}),
+            };
+          }),
       };
     }
     if (insideTauri) {
@@ -138,6 +178,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
         <button type="button" className="new-tab" onClick={() => newTab()}>
           New tab
         </button>
+        <SpaceSwitcher
+          spaces={workspace.spaces}
+          activeSpaceId={space.id}
+          onActivate={activateSpace}
+          onNewSpace={() => setDialogOpen(true)}
+        />
       </aside>
       <section className="content" aria-label="Content">
         {workspace.spaces.flatMap((s) =>
@@ -158,6 +204,15 @@ function Shell({ store }: { store: WorkspaceStore }) {
           }),
         )}
       </section>
+      {dialogOpen && (
+        <SpaceDialog
+          onCancel={() => setDialogOpen(false)}
+          onCreate={(input) => {
+            createSpace(input);
+            setDialogOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

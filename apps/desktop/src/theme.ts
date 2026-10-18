@@ -170,7 +170,7 @@ export function themeVariables(theme: Theme): Record<string, string> {
     "--nr-accent": ui.accent,
     "--nr-border": ui.border,
     "--nr-radius": `${ui.radius}px`,
-    // The color of the active space; spaces arrive in NOR-F4-02, until then it is the accent.
+    // The color of the active space; `applySpaceColor` overrides it with the space's own.
     "--nr-space-color": ui.accent,
   };
 }
@@ -185,6 +185,11 @@ export function applyTheme(root: StyleTarget, theme: Theme): void {
     root.style.setProperty(name, value);
   }
   root.style.setProperty("color-scheme", theme.kind);
+}
+
+/** Sets `--nr-space-color` to the color of the active space, or back to the accent without one. */
+export function applySpaceColor(root: StyleTarget, theme: Theme, spaceColor?: string): void {
+  root.style.setProperty("--nr-space-color", spaceColor ?? theme.ui.accent);
 }
 
 /** The colors xterm.js draws with. */

@@ -33,8 +33,21 @@ export type Action =
       profileId?: string;
       /** Default folder of the space; new items use it. */
       cwd?: string;
+      /** Environment of the space; new sessions get it. Names must be valid (see `validEnv`). */
+      env?: Record<string, string>;
       /** Becomes the active space unless `false`. */
       activate?: boolean;
+    }
+  /**
+   * Changes the defaults new items of the space start with. A missing field stays as it is; a blank
+   * `profileId` or `cwd` clears it; `env`, when given, replaces the whole environment.
+   */
+  | {
+      type: "space/set-defaults";
+      spaceId: Id;
+      profileId?: string;
+      cwd?: string;
+      env?: Record<string, string>;
     }
   | { type: "space/rename"; spaceId: Id; name: string }
   | { type: "space/set-color"; spaceId: Id; color: string }

@@ -27,6 +27,24 @@ const arbName = fc.oneof(
 const arbColor = fc.constantFrom("#6b8afd", "#e06c75", "teal", "red");
 const arbIcon = fc.constantFrom("terminal", "rocket", "folder");
 const arbProfile = fc.constantFrom("pwsh", "bash", "wsl:Ubuntu");
+const arbProfileOrBlank = fc.oneof(
+  { weight: 3, arbitrary: arbProfile },
+  { weight: 1, arbitrary: fc.constant("") },
+);
+/** Mostly valid environments, now and then one with a name the reducer refuses. */
+const arbEnv = fc.oneof(
+  {
+    weight: 5,
+    arbitrary: fc.dictionary(
+      fc.constantFrom("EDITOR", "LANG", "NOREN_X"),
+      fc.string({ maxLength: 6 }),
+      {
+        maxKeys: 3,
+      },
+    ),
+  },
+  { weight: 1, arbitrary: fc.constant({ "BAD=NAME": "x" }) },
+);
 const arbCwd = fc.constantFrom("/home/user", "C:\\Projects\\noren", "~/proj");
 /** Reaches both ends and a little past them. */
 const arbIndex = fc.integer({ min: -1, max: 8 });
@@ -138,9 +156,23 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
           color: arbColor,
           profileId: arbProfile,
           cwd: arbCwd,
+          env: arbEnv,
           activate: fc.boolean(),
         },
         { requiredKeys: ["type", "name"] },
+      ),
+    ),
+    weighted(
+      1,
+      fc.record(
+        {
+          type: tag("space/set-defaults"),
+          spaceId,
+          profileId: arbProfileOrBlank,
+          cwd: arbCwd,
+          env: arbEnv,
+        },
+        { requiredKeys: ["type", "spaceId"] },
       ),
     ),
     weighted(1, fc.record({ type: tag("space/rename"), spaceId, name: arbName })),

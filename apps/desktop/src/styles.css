@@ -212,3 +212,160 @@ body {
 .pane-slot[hidden] {
   display: none;
 }
+
+.space-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--nr-border);
+}
+
+.space-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: calc(var(--nr-radius) * 0.6);
+  background: transparent;
+  color: var(--nr-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.space-button:hover {
+  background: color-mix(in srgb, var(--nr-text) 8%, transparent);
+}
+
+.space-button[data-nr-state="active"] {
+  border-color: var(--nr-space-color);
+  background: color-mix(in srgb, var(--nr-space-color) 16%, var(--nr-surface));
+}
+
+.space-glyph {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.dialog-backdrop {
+  z-index: 20;
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--nr-bg) 60%, transparent);
+}
+
+.space-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  width: min(420px, 92%);
+  padding: 16px 20px;
+  border: 1px solid var(--nr-border);
+  border-radius: var(--nr-radius);
+  background: var(--nr-surface);
+  color: var(--nr-text);
+}
+
+.space-dialog h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.space-dialog .field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 13px;
+}
+
+.space-dialog .field > span,
+.space-dialog legend {
+  padding: 0;
+  color: var(--nr-muted);
+}
+
+.space-dialog input[type="text"],
+.space-dialog input:not([type]),
+.space-dialog textarea {
+  padding: 5px 8px;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-bg);
+  color: inherit;
+  font: inherit;
+}
+
+.space-dialog .choices {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.space-dialog .choices legend {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.swatch {
+  position: relative;
+  display: block;
+  cursor: pointer;
+}
+
+.swatch input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.swatch > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  border: 2px solid transparent;
+  border-radius: calc(var(--nr-radius) * 0.6);
+}
+
+.swatch input:checked + span {
+  border-color: var(--nr-text);
+}
+
+.swatch input:focus-visible + span {
+  outline: 2px solid var(--nr-accent);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialog-actions button {
+  padding: 4px 14px;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dialog-actions .primary {
+  border-color: var(--nr-space-color);
+}

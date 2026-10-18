@@ -1,4 +1,4 @@
-import { StateWriter, liveSessionIds, reduce, treeItemIds } from "@noren/model";
+import { DEFAULT_PROFILE_ID, StateWriter, liveSessionIds, reduce, treeItemIds } from "@noren/model";
 import type {
   Action,
   Backend,
@@ -7,6 +7,7 @@ import type {
   Id,
   Item,
   LayoutNode,
+  Pane,
   Space,
   Workspace,
 } from "@noren/model";
@@ -18,6 +19,23 @@ export type UiStorage = Pick<Storage, "getItem" | "setItem">;
 
 /** Key of the active-tab map in `UiStorage`. */
 export const ACTIVE_ITEMS_KEY = "noren.ui.activeItems";
+
+/** What the new-space dialog collects. A missing field leaves the default of the model. */
+export interface NewSpaceInput {
+  name: string;
+  icon?: string;
+  color?: string;
+  profileId?: string;
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
+/** How to start the shell of a pane: its own settings first, then the defaults of its space. */
+export interface SessionStartOptions {
+  profileId?: string;
+  cwd?: string;
+  env?: Record<string, string>;
+}
 
 export interface WorkspaceState {
   workspace: Workspace;
@@ -32,6 +50,12 @@ export interface WorkspaceState {
   dispatch(action: Action): void;
   /** Makes a new tab in the active space and activates it. */
   newTab(): void;
+  /** Makes a space (active) with its first tab, which starts with the defaults of the space. */
+  createSpace(input: NewSpaceInput): void;
+  /** Shows another space; unknown ids change nothing. */
+  activateSpace(spaceId: Id): void;
+  /** Shows the space at a zero-based position of the switcher; out of range changes nothing. */
+  activateSpaceAt(index: number): void;
   /** Activates a tab of the active space. */
   activateItem(itemId: Id): void;
   /** Records the session the view started for a pane. Not saved: sessions die with the process. */
@@ -60,6 +84,20 @@ export interface WorkspaceStoreOptions {
 /** Ids of the items of a space in sidebar order: pinned first, then the tree. */
 export function spaceItemIds(space: Space): Id[] {
   return [...space.pinned, ...treeItemIds(space.tree)];
+}
+
+/**
+ * The options for the shell of `pane`: profile, folder and environment of the pane, falling back
+ * to the defaults of `space`. The default profile is left out so the backend picks it.
+ */
+export function sessionStartOptions(space: Space, pane: Pane): SessionStartOptions {
+  const cwd = pane.cwd ?? space.defaults.cwd;
+  const env = space.defaults.env;
+  return {
+    ...(pane.profileId !== DEFAULT_PROFILE_ID ? { profileId: pane.profileId } : {}),
+    ...(cwd !== undefined ? { cwd } : {}),
+    ...(Object.keys(env).length > 0 ? { env } : {}),
+  };
 }
 
 /** The space the user is looking at. */
@@ -179,6 +217,31 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
 
     newTab() {
       get().dispatch({ type: "item/create" });
+    },
+
+    createSpace(input) {
+      const before = get().workspace;
+      get().dispatch({
+        type: "space/create",
+        name: input.name,
+        ...(input.icon !== undefined ? { icon: input.icon } : {}),
+        ...(input.color !== undefined ? { color: input.color } : {}),
+        ...(input.profileId !== undefined ? { profileId: input.profileId } : {}),
+        ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+        ...(input.env !== undefined ? { env: input.env } : {}),
+      });
+      const known = new Set(before.spaces.map((space) => space.id));
+      const created = get().workspace.spaces.find((space) => !known.has(space.id));
+      if (created) get().dispatch({ type: "item/create", spaceId: created.id });
+    },
+
+    activateSpace(spaceId) {
+      get().dispatch({ type: "space/activate", spaceId });
+    },
+
+    activateSpaceAt(index) {
+      const space = get().workspace.spaces[index];
+      if (space) get().dispatch({ type: "space/activate", spaceId: space.id });
     },
 
     activateItem(itemId) {

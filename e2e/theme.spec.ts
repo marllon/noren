@@ -24,7 +24,8 @@ test.describe("dark scheme", () => {
     expect(await rootVar(page, "--nr-surface")).toBe(DUSK.surface);
     expect(await rootVar(page, "--nr-text")).toBe(DUSK.text);
     expect(await rootVar(page, "--nr-accent")).toBe(DUSK.accent);
-    expect(await rootVar(page, "--nr-space-color")).toBe(DUSK.accent);
+    // The active space's own color (the default space is blue), no longer the theme accent.
+    await expect.poll(() => rootVar(page, "--nr-space-color")).toBe("#6b8afd");
     expect(await rootVar(page, "--nr-radius")).toBe("10px");
     // The page really paints with the token.
     expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(

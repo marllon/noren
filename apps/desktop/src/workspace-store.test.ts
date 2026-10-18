@@ -11,7 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ACTIVE_ITEMS_KEY,
   activeItemIdOf,
+  activeSpaceOf,
   createWorkspaceStore,
+  sessionStartOptions,
   spaceItemIds,
 } from "./workspace-store";
 import type { UiStorage } from "./workspace-store";
@@ -182,5 +184,102 @@ describe("workspace store", () => {
     expect(store.getState().workspace).toBe(before);
     await vi.advanceTimersByTimeAsync(STATE_SAVE_DELAY_MS * 2);
     expect(backend.callsTo("saveState")).toHaveLength(0);
+  });
+
+  describe("spaces", () => {
+    it("createSpace makes the space active with a first tab that has the space's defaults", async () => {
+      const backend = new FakeBackend();
+      const { store } = await openStore(backend);
+      store.getState().createSpace({
+        name: "Work",
+        icon: "briefcase",
+        color: "#e07a5f",
+        cwd: "/srv/work",
+        profileId: "fake",
+        env: { STAGE: "work" },
+      });
+
+      const state = store.getState();
+      expect(state.workspace.spaces.map((s) => s.name)).toHaveLength(2);
+      const space = activeSpaceOf(state.workspace);
+      expect(space).toMatchObject({
+        name: "Work",
+        icon: "briefcase",
+        color: "#e07a5f",
+        defaults: { cwd: "/srv/work", profileId: "fake", env: { STAGE: "work" } },
+      });
+      const ids = spaceItemIds(space);
+      expect(ids).toHaveLength(1);
+      expect(activeItemIdOf(state)).toBe(ids[0]);
+    });
+
+    it("a session started in a new tab uses the cwd, env and profile of the active space", async () => {
+      const backend = new FakeBackend();
+      const { store } = await openStore(backend);
+      store.getState().createSpace({ name: "A", cwd: "/a", env: { WHO: "a" } });
+      store.getState().createSpace({
+        name: "B",
+        cwd: "/b",
+        profileId: "fake",
+        env: { WHO: "b" },
+      });
+      store.getState().newTab();
+
+      const space = activeSpaceOf(store.getState().workspace);
+      expect(space.name).toBe("B");
+      const newest = spaceItemIds(space).at(-1);
+      const item = newest === undefined ? undefined : space.items[newest];
+      const pane = item && item.layout.kind === "pane" ? item.layout.pane : undefined;
+      if (!pane) throw new Error("no pane");
+      expect(sessionStartOptions(space, pane)).toEqual({
+        profileId: "fake",
+        cwd: "/b",
+        env: { WHO: "b" },
+      });
+
+      // The other space keeps its own; the first space has no defaults to add.
+      const a = store.getState().workspace.spaces.find((s) => s.name === "A");
+      const first = store.getState().workspace.spaces[0];
+      const aPane = a && Object.values(a.items)[0]?.layout;
+      expect(aPane && aPane.kind === "pane" && sessionStartOptions(a, aPane.pane)).toEqual({
+        cwd: "/a",
+        env: { WHO: "a" },
+      });
+      expect(first && Object.keys(first.defaults.env)).toEqual([]);
+    });
+
+    it("leaves the default profile and an empty env out of the start options", async () => {
+      const { store } = await openStore(new FakeBackend());
+      const space = activeSpaceOf(store.getState().workspace);
+      const item = Object.values(space.items)[0];
+      const pane = item && item.layout.kind === "pane" ? item.layout.pane : undefined;
+      if (!pane) throw new Error("no pane");
+      expect(sessionStartOptions(space, pane)).toEqual({});
+    });
+
+    it("activateSpaceAt switches by position and ignores positions that do not exist", async () => {
+      const { store } = await openStore(new FakeBackend());
+      const firstId = store.getState().workspace.activeSpaceId;
+      store.getState().createSpace({ name: "Two" });
+      store.getState().createSpace({ name: "Three" });
+      expect(activeSpaceOf(store.getState().workspace).name).toBe("Three");
+
+      store.getState().activateSpaceAt(0);
+      expect(store.getState().workspace.activeSpaceId).toBe(firstId);
+      store.getState().activateSpaceAt(1);
+      expect(activeSpaceOf(store.getState().workspace).name).toBe("Two");
+      store.getState().activateSpaceAt(8);
+      store.getState().activateSpaceAt(-1);
+      expect(activeSpaceOf(store.getState().workspace).name).toBe("Two");
+      store.getState().activateSpace("missing");
+      expect(activeSpaceOf(store.getState().workspace).name).toBe("Two");
+    });
+
+    it("an invalid new space (blank name) changes nothing", async () => {
+      const { store } = await openStore(new FakeBackend());
+      const before = store.getState().workspace;
+      store.getState().createSpace({ name: "  " });
+      expect(store.getState().workspace).toBe(before);
+    });
   });
 });

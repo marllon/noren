@@ -16,6 +16,7 @@ Noren is licensed under the [MIT License](LICENSE). It directly depends on the f
 | ---------------------------------------------------- | ------- | ----------------- | ----------------------------------- |
 | [`tauri`](https://github.com/tauri-apps/tauri)       | 2.12.4  | Apache-2.0 OR MIT | Desktop shell                       |
 | [`tauri-build`](https://github.com/tauri-apps/tauri) | 2.7.3   | Apache-2.0 OR MIT | Build dependency of the desktop app |
+| [`portable-pty`](https://github.com/wezterm/wezterm) | 0.9.0   | MIT               | Pseudo terminal sessions (ConPTY)   |
 
 ## Themes and fonts
 

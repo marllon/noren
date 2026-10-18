@@ -7,3 +7,4 @@ license.workspace = true
 publish = false
 
 [dependencies]
+portable-pty = "0.9.0"

@@ -1,0 +1,216 @@
+import { describe, expect, it } from "vitest";
+import { decodeUtf8 } from "@noren/model";
+import type { SessionExit } from "@noren/model";
+import { TauriBackend } from "./tauri-backend";
+import type { ChannelLike, TauriBridge } from "./tauri-backend";
+
+interface Invocation {
+  command: string;
+  args: Record<string, unknown> | undefined;
+}
+
+/** A bridge whose `invoke` answers from a table and whose events are fired by the test. */
+function fakeBridge(answers: Record<string, unknown> = {}) {
+  const invocations: Invocation[] = [];
+  const channels: ChannelLike<ArrayBuffer>[] = [];
+  const handlers = new Map<string, (event: { payload: unknown }) => void>();
+  const failing = new Set<string>();
+  let unlistened = 0;
+  const bridge: TauriBridge = {
+    invoke: <T>(command: string, args?: Record<string, unknown>) => {
+      invocations.push({ command, args });
+      if (failing.has(command)) return Promise.reject(new Error(`${command} failed`));
+      return Promise.resolve(answers[command] as T);
+    },
+    listen: (event, handler) => {
+      handlers.set(event, handler as (event: { payload: unknown }) => void);
+      return Promise.resolve(() => {
+        unlistened++;
+      });
+    },
+    createChannel: <T>() => {
+      const channel: ChannelLike<T> = { onmessage: () => undefined };
+      channels.push(channel as ChannelLike<ArrayBuffer>);
+      return channel;
+    },
+  };
+  return {
+    bridge,
+    invocations,
+    channels,
+    failing,
+    unlistened: () => unlistened,
+    emitExit: (payload: unknown) => handlers.get("session-exit")?.({ payload }),
+    callsTo: (command: string) => invocations.filter((i) => i.command === command),
+  };
+}
+
+const buffer = (...bytes: number[]): ArrayBuffer => new Uint8Array(bytes).buffer;
+
+describe("TauriBackend", () => {
+  it("lists profiles through profiles_list", async () => {
+    const profiles = [{ id: "pwsh", name: "PowerShell", default: true }];
+    const fake = fakeBridge({ profiles_list: profiles });
+    await expect(new TauriBackend(fake.bridge).listProfiles()).resolves.toEqual(profiles);
+    expect(fake.invocations).toEqual([{ command: "profiles_list", args: undefined }]);
+  });
+
+  it("creates a session with camelCase arguments and a binary channel", async () => {
+    const fake = fakeBridge({ session_create: 7 });
+    const backend = new TauriBackend(fake.bridge);
+    const id = await backend.createSession({ profileId: "pwsh", cols: 100, rows: 30 });
+    expect(id).toBe(7);
+    const [call] = fake.callsTo("session_create");
+    expect(call?.args).toEqual({
+      profileId: "pwsh",
+      cols: 100,
+      rows: 30,
+      onOutput: fake.channels[0],
+    });
+  });
+
+  it("leaves optional fields out instead of sending undefined", async () => {
+    const fake = fakeBridge({ session_create: 1 });
+    await new TauriBackend(fake.bridge).createSession({ cols: 80, rows: 24 });
+    const args = fake.callsTo("session_create")[0]?.args ?? {};
+    expect(Object.keys(args).sort()).toEqual(["cols", "onOutput", "rows"]);
+  });
+
+  it("passes cwd and env along", async () => {
+    const fake = fakeBridge({ session_create: 1 });
+    await new TauriBackend(fake.bridge).createSession({
+      cols: 80,
+      rows: 24,
+      cwd: "C:\\work",
+      env: { A: "1" },
+    });
+    expect(fake.callsTo("session_create")[0]?.args).toMatchObject({
+      cwd: "C:\\work",
+      env: { A: "1" },
+    });
+  });
+
+  it("turns channel ArrayBuffers into Uint8Array for onOutput, holding early output", async () => {
+    const fake = fakeBridge({ session_create: 3 });
+    const backend = new TauriBackend(fake.bridge);
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    const channel = fake.channels[0];
+    channel?.onmessage(buffer(104, 105));
+
+    const seen: Uint8Array[] = [];
+    const stop = backend.onOutput(id, (data) => seen.push(data));
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBeInstanceOf(Uint8Array);
+    expect(decodeUtf8(seen[0] ?? new Uint8Array())).toBe("hi");
+
+    channel?.onmessage(buffer(33));
+    expect(decodeUtf8(seen[1] ?? new Uint8Array())).toBe("!");
+    stop();
+    channel?.onmessage(buffer(63));
+    expect(seen).toHaveLength(2);
+  });
+
+  it("sends text as a string and bytes as an array to session_write", async () => {
+    const fake = fakeBridge({ session_create: 3 });
+    const backend = new TauriBackend(fake.bridge);
+    await backend.write(3, "echo hi\r");
+    await backend.write(3, new Uint8Array([1, 2, 3]));
+    expect(fake.callsTo("session_write").map((c) => c.args)).toEqual([
+      { id: 3, data: "echo hi\r" },
+      { id: 3, data: [1, 2, 3] },
+    ]);
+  });
+
+  it("resizes and kills through session_resize and session_kill", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    await backend.resize(3, 120, 40);
+    await backend.kill(3);
+    expect(fake.invocations).toEqual([
+      { command: "session_resize", args: { id: 3, cols: 120, rows: 40 } },
+      { command: "session_kill", args: { id: 3 } },
+    ]);
+  });
+
+  it("turns session-exit into onExit and releases the id with session_kill", async () => {
+    const fake = fakeBridge({ session_create: 5 });
+    const backend = new TauriBackend(fake.bridge);
+    const exits: SessionExit[] = [];
+    backend.onExit((exit) => exits.push(exit));
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+
+    fake.emitExit({ id, code: 3, signal: null });
+    expect(exits).toEqual([{ id: 5, code: 3 }]);
+    expect(fake.callsTo("session_kill").map((c) => c.args)).toEqual([{ id: 5 }]);
+  });
+
+  it("includes the signal when there is one", async () => {
+    const fake = fakeBridge({ session_create: 5 });
+    const backend = new TauriBackend(fake.bridge);
+    const exits: SessionExit[] = [];
+    backend.onExit((exit) => exits.push(exit));
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    fake.emitExit({ id, code: 1, signal: "SIGTERM" });
+    expect(exits).toEqual([{ id: 5, code: 1, signal: "SIGTERM" }]);
+  });
+
+  it("releases the id even when nobody listens to onExit", async () => {
+    const fake = fakeBridge({ session_create: 5 });
+    const backend = new TauriBackend(fake.bridge);
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    fake.emitExit({ id, code: 0, signal: null });
+    expect(fake.callsTo("session_kill")).toHaveLength(1);
+  });
+
+  it("does not kill twice when kill() caused the exit", async () => {
+    const fake = fakeBridge({ session_create: 5 });
+    const backend = new TauriBackend(fake.bridge);
+    const exits: SessionExit[] = [];
+    backend.onExit((exit) => exits.push(exit));
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    await backend.kill(id);
+    fake.emitExit({ id, code: 1, signal: null });
+    expect(exits).toHaveLength(1);
+    expect(fake.callsTo("session_kill")).toHaveLength(1);
+  });
+
+  it("handles an exit that arrives before session_create returns", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    const exits: SessionExit[] = [];
+    backend.onExit((exit) => exits.push(exit));
+    // The event for session 9 reaches the interface before the command answers.
+    const original = fake.bridge.invoke;
+    fake.bridge.invoke = <T>(command: string, args?: Record<string, unknown>) => {
+      if (command === "session_create") fake.emitExit({ id: 9, code: 0, signal: null });
+      return original<T>(command, args).then((value) =>
+        command === "session_create" ? (9 as T) : value,
+      );
+    };
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    expect(id).toBe(9);
+    expect(exits).toEqual([{ id: 9, code: 0 }]);
+    expect(fake.callsTo("session_kill").map((c) => c.args)).toEqual([{ id: 9 }]);
+  });
+
+  it("ignores a failing session_kill after an exit", async () => {
+    const fake = fakeBridge({ session_create: 5 });
+    fake.failing.add("session_kill");
+    const backend = new TauriBackend(fake.bridge);
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    expect(() => fake.emitExit({ id, code: 0, signal: null })).not.toThrow();
+  });
+
+  it("stops listening to exits on dispose", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    backend.onExit(() => undefined);
+    await backend.dispose();
+    expect(fake.unlistened()).toBe(1);
+  });
+
+  it("gives onOutput of an unknown session a harmless unsubscribe", () => {
+    const backend = new TauriBackend(fakeBridge().bridge);
+    expect(() => backend.onOutput(99, () => undefined)()).not.toThrow();
+  });
+});

@@ -1,21 +1,17 @@
 import { emit } from "@tauri-apps/api/event";
-import { FakeBackend } from "@noren/model";
-import type { Backend } from "@noren/model";
 import { useEffect } from "react";
+import { createBackend, insideTauri } from "./backend";
 
-const insideTauri = "__TAURI_INTERNALS__" in window;
-
-// Plain browser (web mode, e2e, demo): no Tauri IPC, use the in-memory backend.
-const webBackend: Backend | null = insideTauri ? null : new FakeBackend();
+const backend = createBackend();
 
 export function App() {
   useEffect(() => {
-    if (webBackend) {
-      void webBackend.ready();
-      return;
+    // Warms up the backend; the terminal view (NOR-F2-05) is the first real consumer.
+    void backend.listProfiles().catch(() => undefined);
+    if (insideTauri) {
+      // Tells the Rust side the interface is mounted (used by `noren --smoke`).
+      emit("app-ready").catch(() => undefined);
     }
-    // Tells the Rust side the interface is mounted (used by `noren --smoke`).
-    emit("app-ready").catch(() => undefined);
   }, []);
 
   return <main>Noren</main>;

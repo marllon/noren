@@ -10,6 +10,31 @@ export type {
 } from "./backend";
 export { ManualClock } from "./clock";
 export type { Clock } from "./clock";
+export { createDefaultWorkspace } from "./default-workspace";
+export type { DefaultWorkspaceOptions } from "./default-workspace";
+export { createSequentialIds } from "./ids";
+export type { IdGenerator } from "./ids";
+export { SIZE_SUM_TOLERANCE, checkInvariants } from "./invariants";
+export type { InvariantOptions, Violation, ViolationCode } from "./invariants";
+export { DEFAULT_MAX_PANES, MAX_CLOSED, MAX_GROUP_DEPTH } from "./types";
+export type {
+  ArchivedItem,
+  ClosedItem,
+  GroupNode,
+  Id,
+  Item,
+  ItemNode,
+  ItemOrigin,
+  LastCommand,
+  LayoutNode,
+  Node,
+  Pane,
+  PaneLeaf,
+  Space,
+  SpaceDefaults,
+  SplitNode,
+  Workspace,
+} from "./types";
 export { FakeBackend } from "./fake-backend";
 export type { FakeBackendOptions, FakeCall, FakeSessionInfo } from "./fake-backend";
 export { OutputStream } from "./output-stream";

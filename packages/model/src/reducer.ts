@@ -41,6 +41,7 @@ import {
   type GroupNode,
   type Id,
   type Item,
+  type ItemOrigin,
   type LayoutNode,
   type Node,
   type Pane,
@@ -146,6 +147,8 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       // Back to the top of the tree, right below the pinned items.
       return relocate(ws, located, located.space.id, withIndex({ to: "tree" }, action.index ?? 0));
     }
+    case "item/reset":
+      return resetItem(ws, action.itemId, ctx);
     case "item/favorite":
       if (!locate(ws, action.itemId) || ws.favorites.includes(action.itemId)) return ws;
       return { ...ws, favorites: [...ws.favorites, action.itemId] };
@@ -431,6 +434,73 @@ function place(space: Space, itemId: Id, placement: Placement): Space | undefine
   return tree ? { ...space, tree } : undefined;
 }
 
+/**
+ * Where a pinned item returns to on reset: the folder, profile and (when the model has one) the
+ * command of its focused pane. The folder is the pane's own or else the start folder of the space
+ * it is in; with neither there is nothing to return to, so no origin is recorded.
+ */
+function originOf(item: Item, space: Space): ItemOrigin | undefined {
+  const pane = findPane(item.layout, item.focusedPaneId);
+  const cwd = pane?.cwd ?? space.defaults.cwd;
+  if (!pane || cwd === undefined) return undefined;
+  return { cwd, profileId: pane.profileId };
+}
+
+/**
+ * The item as `space` now holds it. A pinned item that was already pinned keeps its origin (or gets
+ * one if it had none); one that has just been pinned records a new one from the pane it has now
+ * (`from` is the space it was in); an item that is not pinned has none.
+ */
+function withOrigin(space: Space, item: Item, from: Space): Space {
+  const current = space.items[item.id] ?? item;
+  const origin = space.pinned.includes(item.id)
+    ? from.pinned.includes(item.id)
+      ? (current.origin ?? originOf(current, from))
+      : originOf(current, from)
+    : undefined;
+  if (origin === current.origin) return space;
+  const next: Item = { ...current };
+  if (origin === undefined) {
+    delete next.origin;
+  } else {
+    next.origin = origin;
+  }
+  return { ...space, items: { ...space.items, [item.id]: next } };
+}
+
+/** Copy of the layout with the leaf of pane `paneId` holding `next` instead. */
+function replacePane(layout: LayoutNode, paneId: Id, next: Pane): LayoutNode {
+  if (layout.kind === "pane")
+    return layout.pane.id === paneId ? { kind: "pane", pane: next } : layout;
+  const children = layout.children.map((child) => replacePane(child, paneId, next));
+  return children.some((child, index) => child !== layout.children[index])
+    ? { ...layout, children }
+    : layout;
+}
+
+/**
+ * Takes a pinned item back to its origin: its focused pane is replaced by a fresh one in the folder
+ * and profile of the origin. The old pane's session is dropped (the app ends it, as for a closed
+ * pane) and the new pane has none, so the view starts a shell for it. No origin, no change.
+ */
+function resetItem(ws: Workspace, itemId: Id, ctx: ReducerContext): Workspace {
+  const located = locate(ws, itemId);
+  const origin = located?.item.origin;
+  if (!located || !origin || !located.space.pinned.includes(itemId)) return ws;
+  const { item, space } = located;
+  const old = findPane(item.layout, item.focusedPaneId);
+  if (!old) return ws;
+  const fresh = createPane(idPool(ws, ctx)(), origin.profileId, origin.cwd);
+  const next: Item = {
+    ...item,
+    layout: replacePane(item.layout, old.id, fresh),
+    focusedPaneId: fresh.id,
+    lastActivityAt: ctx.clock.now(),
+  };
+  if (item.zoomedPaneId === old.id) next.zoomedPaneId = fresh.id;
+  return replaceItem(ws, space, next);
+}
+
 /** Moves an item to `placement` in `targetSpaceId` (its own space or another one). */
 function relocate(
   ws: Workspace,
@@ -444,11 +514,12 @@ function relocate(
   if (!target) return ws;
   if (target.id === source.id) {
     const placed = place(unplace(source, item.id), item.id, placement);
-    return placed ? replaceSpace(ws, placed) : ws;
+    return placed ? replaceSpace(ws, withOrigin(placed, item, source)) : ws;
   }
   const arriving: Space = { ...target, items: { ...target.items, [item.id]: item } };
-  const placed = place(arriving, item.id, placement);
-  if (!placed) return ws;
+  const arrived = place(arriving, item.id, placement);
+  if (!arrived) return ws;
+  const placed = withOrigin(arrived, item, source);
   return {
     ...ws,
     spaces: ws.spaces.map((space) =>
@@ -662,6 +733,8 @@ function reopenItem(ws: Workspace, itemId: Id | undefined, ctx: ReducerContext):
   if (!space) return ws;
   // A closed item holds no live session, whatever the state it was loaded from says.
   const item: Item = { ...withoutSessions(entry.item), lastActivityAt: ctx.clock.now() };
+  // It comes back unpinned, so it has no origin to return to.
+  delete item.origin;
   const arriving: Space = { ...space, items: { ...space.items, [item.id]: item } };
   const placed = place(arriving, item.id, { to: "tree" });
   if (!placed) return ws;

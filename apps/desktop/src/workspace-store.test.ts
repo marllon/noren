@@ -170,6 +170,41 @@ describe("workspace store", () => {
     expect(backend.callsTo("kill").map((call) => call.args[0])).toEqual([Number(sessionId)]);
   });
 
+  it("resetting a pinned tab ends its session and the new pane starts in the origin, which is saved", async () => {
+    const backend = new FakeBackend();
+    const { store } = await openStore(backend);
+    const spaceId = activeSpaceOf(store.getState().workspace).id;
+    store.getState().editSpace(spaceId, { cwd: "/a" });
+    store.getState().newTab();
+    const itemId = spaceItemIds(activeSpaceOf(store.getState().workspace))[1];
+    if (itemId === undefined) throw new Error("no new tab");
+    const paneOf = () => {
+      const item = activeSpaceOf(store.getState().workspace).items[itemId];
+      const found = item && layoutPanes(item.layout)[0];
+      if (!found) throw new Error("no pane");
+      return found;
+    };
+    const old = paneOf();
+    store.getState().attachSession(old.id, "41");
+    store.getState().dispatch({ type: "item/pin", itemId });
+    store.getState().editSpace(spaceId, { cwd: "/b" });
+
+    store.getState().dispatch({ type: "item/reset", itemId });
+
+    const fresh = paneOf();
+    expect(fresh.id).not.toBe(old.id);
+    expect(fresh.sessionId).toBeUndefined();
+    expect(backend.callsTo("kill").map((call) => call.args[0])).toEqual([41]);
+    const space = activeSpaceOf(store.getState().workspace);
+    expect(sessionStartOptions(space, fresh).cwd).toBe("/a");
+    expect(space.items[itemId]?.origin).toEqual({ cwd: "/a", profileId: "default" });
+
+    await vi.advanceTimersByTimeAsync(STATE_SAVE_DELAY_MS);
+    const saved = parseState(backend.stateContent ?? "");
+    const savedItem = saved.ok ? saved.workspace.spaces[0]?.items[itemId] : undefined;
+    expect(savedItem?.origin).toEqual({ cwd: "/a", profileId: "default" });
+  });
+
   it("a shell that ends marks its pane as exited with the code, and the state is saved", async () => {
     const backend = new FakeBackend();
     const { store } = await openStore(backend);

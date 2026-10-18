@@ -920,6 +920,140 @@ describe("item/pin and item/unpin", () => {
   });
 });
 
+describe("origin of a pinned item and item/reset", () => {
+  /** s1 with the start folder "/a"; i4 has a pane of its own folder, i5 follows the space. */
+  function withFolders(): Workspace {
+    const ws = fixture();
+    const main = spaceOf(ws, "s1");
+    const i4 = must(main.items["i4"]);
+    const only = must(layoutPanes(i4.layout)[0]);
+    return {
+      ...ws,
+      spaces: [
+        {
+          ...main,
+          defaults: { env: {}, cwd: "/a" },
+          items: {
+            ...main.items,
+            i4: { ...i4, layout: { kind: "pane", pane: { ...only, cwd: "/own" } } },
+          },
+        },
+        ...ws.spaces.slice(1),
+      ],
+    };
+  }
+  const originOf = (ws: Workspace, spaceId: Id, itemId: Id) =>
+    spaceOf(ws, spaceId).items[itemId]?.origin;
+  const withCwd = (ws: Workspace, cwd: string): Workspace => ({
+    ...ws,
+    spaces: ws.spaces.map((s) => (s.id === "s1" ? { ...s, defaults: { env: {}, cwd } } : s)),
+  });
+
+  it("pin records the folder and profile of the focused pane", () => {
+    const next = applyChecked(withFolders(), { type: "item/pin", itemId: "i4" });
+    expect(originOf(next, "s1", "i4")).toEqual({ cwd: "/own", profileId: "bash" });
+  });
+
+  it("pin falls back to the start folder of the space, and records no command", () => {
+    const next = applyChecked(withFolders(), { type: "item/pin", itemId: "i5" });
+    expect(originOf(next, "s1", "i5")).toEqual({ cwd: "/a", profileId: "bash" });
+    expect(originOf(next, "s1", "i5")).not.toHaveProperty("command");
+  });
+
+  it("pin records nothing when neither the pane nor the space has a folder", () => {
+    const next = applyChecked(fixture(), { type: "item/pin", itemId: "i4" });
+    expect(spaceOf(next, "s1").pinned).toContain("i4");
+    expect(originOf(next, "s1", "i4")).toBeUndefined();
+    expect(applyChecked(next, { type: "item/reset", itemId: "i4" })).toBe(next);
+  });
+
+  it("unpin clears the origin", () => {
+    const pinned = applyChecked(withFolders(), { type: "item/pin", itemId: "i4" });
+    const next = applyChecked(pinned, { type: "item/unpin", itemId: "i4" });
+    expect(spaceOf(next, "s1").items["i4"]).not.toHaveProperty("origin");
+  });
+
+  it("moving a pinned item out of Pinned clears the origin, into Pinned records it", () => {
+    const pinned = applyChecked(withFolders(), { type: "item/pin", itemId: "i4" });
+    const out = applyChecked(pinned, { type: "item/move", itemId: "i4" });
+    expect(originOf(out, "s1", "i4")).toBeUndefined();
+    const into = applyChecked(withFolders(), {
+      type: "item/move",
+      itemId: "i5",
+      placement: { to: "pinned" },
+    });
+    expect(originOf(into, "s1", "i5")).toEqual({ cwd: "/a", profileId: "bash" });
+  });
+
+  it("a pinned item moved to another space keeps its origin, and loses it when unpinned there", () => {
+    const pinned = applyChecked(withFolders(), { type: "item/pin", itemId: "i5" });
+    const moved = applyChecked(pinned, {
+      type: "item/move",
+      itemId: "i5",
+      spaceId: "s2",
+      placement: { to: "pinned" },
+    });
+    expect(originOf(moved, "s2", "i5")).toEqual({ cwd: "/a", profileId: "bash" });
+    const toTree = applyChecked(pinned, { type: "item/move", itemId: "i5", spaceId: "s2" });
+    expect(originOf(toTree, "s2", "i5")).toBeUndefined();
+  });
+
+  it("a reopened item is unpinned and has no origin", () => {
+    const base = fixture();
+    const closedItem: Item = {
+      ...item("i7", leaf("p8"), "p8"),
+      origin: { cwd: "/a", profileId: "bash" },
+    };
+    const ws: Workspace = { ...base, closed: [{ item: closedItem, spaceId: "s1", closedAt: 1 }] };
+    const next = applyChecked(ws, { type: "item/reopen", itemId: "i7" });
+    expect(originOf(next, "s1", "i7")).toBeUndefined();
+  });
+
+  it("reset replaces the focused pane by one in the origin and drops the old session", () => {
+    const pinned = applyChecked(withFolders(), { type: "item/pin", itemId: "i5" });
+    // The space moves on to another folder; the origin does not follow.
+    const moved = withCwd(pinned, "/b");
+    const next = applyChecked(moved, { type: "item/reset", itemId: "i5" }, idsFrom(["fresh"]));
+    const reset = must(spaceOf(next, "s1").items["i5"]);
+    expect(reset.focusedPaneId).toBe("fresh");
+    expect(reset.layout).toEqual({
+      kind: "pane",
+      pane: {
+        id: "fresh",
+        type: "terminal",
+        profileId: "bash",
+        cwd: "/a",
+        status: "idle",
+        unread: false,
+        bell: false,
+      },
+    });
+    expect(reset.origin).toEqual({ cwd: "/a", profileId: "bash" });
+    expect(lost(moved, next)).toEqual(["x6"]);
+    expect(spaceOf(next, "s1").pinned).toEqual(spaceOf(moved, "s1").pinned);
+  });
+
+  it("reset only touches the focused pane of a split and moves the zoom to the new pane", () => {
+    let ws = applyChecked(withFolders(), { type: "item/pin", itemId: "i2" });
+    ws = applyChecked(ws, { type: "pane/focus", itemId: "i2", paneId: "p3" });
+    ws = applyChecked(ws, { type: "pane/zoom", itemId: "i2" });
+    const next = applyChecked(ws, { type: "item/reset", itemId: "i2" }, idsFrom(["fresh"]));
+    const reset = must(spaceOf(next, "s1").items["i2"]);
+    expect(layoutPanes(reset.layout).map((p) => p.id)).toEqual(["p2", "fresh"]);
+    expect(reset.focusedPaneId).toBe("fresh");
+    expect(reset.zoomedPaneId).toBe("fresh");
+    expect(lost(ws, next)).toEqual(["x3"]);
+  });
+
+  it("reset returns the same workspace for an unknown, unpinned or origin-less item", () => {
+    const ws = withFolders();
+    expect(applyChecked(ws, { type: "item/reset", itemId: "nope" })).toBe(ws);
+    expect(applyChecked(ws, { type: "item/reset", itemId: "i4" })).toBe(ws);
+    // A pinned item without an origin (an older state): nothing to return to.
+    expect(applyChecked(ws, { type: "item/reset", itemId: "i1" })).toBe(ws);
+  });
+});
+
 describe("item/favorite and item/unfavorite", () => {
   it("adds a favorite from any space, once", () => {
     const next = applyChecked(fixture(), { type: "item/favorite", itemId: "i3" });

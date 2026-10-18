@@ -287,6 +287,7 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
         { requiredKeys: ["type", "itemId"] },
       ),
     ),
+    weighted(2, fc.record({ type: tag("item/reset"), itemId })),
     weighted(2, fc.record({ type: tag("item/favorite"), itemId })),
     weighted(1, fc.record({ type: tag("item/unfavorite"), itemId })),
     // Groups

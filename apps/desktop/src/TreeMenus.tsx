@@ -51,6 +51,14 @@ export function ItemContextMenu({
         each((itemId) => dispatch({ type: model.allPinned ? "item/unpin" : "item/pin", itemId })),
       ),
     },
+    ...(model.canReset
+      ? [
+          {
+            label: "Reset",
+            onSelect: run(() => dispatch({ type: "item/reset", itemId: targets[0] ?? "" })),
+          },
+        ]
+      : []),
     {
       label: model.allFavorite ? "Remove from favorites" : "Add to favorites",
       onSelect: run(

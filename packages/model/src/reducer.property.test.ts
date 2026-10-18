@@ -28,6 +28,7 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "item/move": true,
   "item/pin": true,
   "item/unpin": true,
+  "item/reset": true,
   "item/favorite": true,
   "item/unfavorite": true,
   "group/create": true,
@@ -99,6 +100,12 @@ function sessionsEndedBy(ws: Workspace, action: Action): Set<Id> {
     const closed = pane && layoutPanes(pane).find((p) => p.id === action.paneId);
     if (closed?.sessionId !== undefined) ids.add(closed.sessionId);
   }
+  if (action.type === "item/reset") {
+    // The focused pane of the item is replaced and its session ends.
+    const item = itemOf(ws, action.itemId);
+    const old = item && layoutPanes(item.layout).find((p) => p.id === item.focusedPaneId);
+    if (old?.sessionId !== undefined) ids.add(old.sessionId);
+  }
   for (const space of ws.spaces) {
     if (action.type === "item/close" && Object.hasOwn(space.items, action.itemId)) {
       collect(Object.values(space.items).filter((item) => item.id === action.itemId));
@@ -133,6 +140,7 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "item/move":
     case "item/pin":
     case "item/unpin":
+    case "item/reset":
     case "item/favorite":
       return !itemIdsOf(ws).has(action.itemId);
     case "item/unfavorite":
@@ -199,6 +207,38 @@ function checkActiveItems(ws: Workspace, next: Workspace, action: Action, where:
       );
       if (arrived.length === 1 && active !== arrived[0]) fail("the new item did not become active");
     }
+  }
+}
+
+/**
+ * Pinning leaves an origin (when the pane or the space has a folder), unpinning clears it, and a
+ * reset puts a new pane in the folder and profile of the origin, keeping the origin.
+ */
+function checkOrigin(ws: Workspace, next: Workspace, action: Action, where: () => string): void {
+  const fail = (what: string): never => {
+    throw new Error(`${where()}: ${what}`);
+  };
+  if (action.type === "item/unpin") {
+    if (itemOf(next, action.itemId)?.origin !== undefined) fail("unpin kept the origin");
+  } else if (action.type === "item/pin") {
+    const space = next.spaces.find((s) => Object.hasOwn(s.items, action.itemId));
+    const item = itemOf(next, action.itemId);
+    const pane = item && layoutPanes(item.layout).find((p) => p.id === item.focusedPaneId);
+    const cwd = pane?.cwd ?? space?.defaults.cwd;
+    if (cwd !== undefined && item?.origin === undefined) fail("pin recorded no origin");
+    if (item?.origin !== undefined && pane?.profileId !== item.origin.profileId) {
+      fail("the origin is not the pane's profile");
+    }
+  } else if (action.type === "item/reset") {
+    const before = itemOf(ws, action.itemId);
+    const after = itemOf(next, action.itemId);
+    const pane = after && layoutPanes(after.layout).find((p) => p.id === after.focusedPaneId);
+    if (!before?.origin || !pane) fail("reset changed an item that had no origin");
+    if (pane?.cwd !== before?.origin?.cwd || pane?.profileId !== before?.origin?.profileId) {
+      fail("reset did not return to the origin");
+    }
+    if (pane?.sessionId !== undefined) fail("the new pane has a session");
+    if (after?.origin !== before?.origin) fail("reset changed the origin");
   }
 }
 
@@ -321,6 +361,7 @@ function playSequences(numRuns: number, maxPanes?: number): void {
             }
           }
           if (next !== ws) checkPaneDelta(ws, next, action, where);
+          if (next !== ws) checkOrigin(ws, next, action, where);
           if (next !== ws) checkActiveItems(ws, next, action, where);
 
           generated.set(action.type, (generated.get(action.type) ?? 0) + 1);

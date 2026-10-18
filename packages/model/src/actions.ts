@@ -99,6 +99,12 @@ export type Action =
     }
   | { type: "item/pin"; itemId: Id; index?: number }
   | { type: "item/unpin"; itemId: Id; index?: number }
+  /**
+   * Takes a pinned item back to its origin: the focused pane is replaced by a new one in the folder
+   * and profile the item had when it was pinned (its session is dropped). Without an origin, or
+   * for an item that is not pinned, nothing changes.
+   */
+  | { type: "item/reset"; itemId: Id }
   | { type: "item/favorite"; itemId: Id }
   | { type: "item/unfavorite"; itemId: Id }
   // Groups

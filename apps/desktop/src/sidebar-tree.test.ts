@@ -189,6 +189,28 @@ describe("itemMenuModel", () => {
     expect(itemMenuModel(space(), favorites(), [a, d]).canGroup).toBe(false);
   });
 
+  it("offers Reset only for one pinned tab that has an origin", async () => {
+    const backend = new FakeBackend();
+    const newId = createSequentialIds("n");
+    const restored = await restoreWorkspace(backend, { defaults: { newId, clock } });
+    const store = createWorkspaceStore({ backend, workspace: restored.workspace, newId, clock });
+    store.getState().editSpace(activeSpaceOf(store.getState().workspace).id, { cwd: "/a" });
+    store.getState().newTab();
+    store.getState().newTab();
+    const space = (): Space => activeSpaceOf(store.getState().workspace);
+    const [a, b, c] = spaceItemIds(space()) as [Id, Id, Id];
+    const { dispatch } = store.getState();
+    dispatch({ type: "item/pin", itemId: a });
+    dispatch({ type: "item/pin", itemId: b });
+    const reset = (targets: Id[]) => itemMenuModel(space(), [], targets).canReset;
+    expect(reset([a])).toBe(true);
+    // Not pinned, several targets, do not offer it.
+    expect(reset([c])).toBe(false);
+    expect(reset([a, b])).toBe(false);
+    dispatch({ type: "item/unpin", itemId: a });
+    expect(reset([a])).toBe(false);
+  });
+
   it("does not offer a group where the nesting limit is reached", async () => {
     const { store, space, ids } = await openStore(2);
     const [a, b] = ids() as [Id, Id];

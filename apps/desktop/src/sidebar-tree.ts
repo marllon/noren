@@ -126,6 +126,8 @@ export interface ItemMenuModel {
   canGroup: boolean;
   /** Tabs of the space that are neither targets nor pinned: what "Close others" closes. */
   others: Id[];
+  /** The target is one pinned tab with an origin to return to (so the menu offers "Reset"). */
+  canReset: boolean;
 }
 
 export function itemMenuModel(
@@ -134,6 +136,7 @@ export function itemMenuModel(
   targets: readonly Id[],
 ): ItemMenuModel {
   const wanted = new Set(targets);
+  const only = targets.length === 1 ? targets[0] : undefined;
   // The group takes the place of the first target in tree order, as the reducer does.
   const inTree = treeItemIds(space.tree).filter((id) => wanted.has(id));
   const first = inTree[0];
@@ -145,5 +148,7 @@ export function itemMenuModel(
     canGroup:
       slot !== undefined && slot.parentDepth < MAX_GROUP_DEPTH && inTree.length === wanted.size,
     others: spaceItemIds(space).filter((id) => !wanted.has(id) && !space.pinned.includes(id)),
+    canReset:
+      only !== undefined && space.pinned.includes(only) && space.items[only]?.origin !== undefined,
   };
 }

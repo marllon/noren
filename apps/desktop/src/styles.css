@@ -34,6 +34,58 @@ body {
   user-select: none;
 }
 
+/* The layout control: a title bar button with a panel of choices under it. */
+.layout-control {
+  position: relative;
+  display: flex;
+  align-self: stretch;
+}
+
+.layout-panel {
+  z-index: 40;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 200px;
+  padding: 10px 12px;
+  border: 1px solid var(--nr-border);
+  border-radius: var(--nr-radius);
+  background: var(--nr-surface);
+  color: var(--nr-text);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--nr-bg) 70%, transparent);
+}
+
+.layout-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.layout-field legend {
+  margin-bottom: 4px;
+  padding: 0;
+  color: var(--nr-muted);
+}
+
+.layout-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.layout-option:has(input:disabled) {
+  color: var(--nr-muted);
+  cursor: default;
+}
+
 /* The macOS overlay title bar leaves the native buttons on the left. */
 .titlebar-mac {
   padding-left: 80px;
@@ -142,13 +194,17 @@ body {
 }
 
 .app-body {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
 }
 
+/* The width is set by the layout preferences (inline); the side flips the row. */
 .sidebar {
+  position: relative;
   display: flex;
+  flex: none;
   flex-direction: column;
   gap: 8px;
   box-sizing: border-box;
@@ -156,6 +212,115 @@ body {
   padding: 8px;
   border-right: 1px solid var(--nr-border);
   background: var(--nr-surface);
+}
+
+.app-body[data-nr-side="right"] {
+  flex-direction: row-reverse;
+}
+
+.app-body[data-nr-side="right"] .sidebar {
+  border-right: 0;
+  border-left: 1px solid var(--nr-border);
+}
+
+/* Compact mode: the sidebar leaves the flow (the terminal takes the whole width) and slides in over it. */
+.app-body[data-nr-sidebar-mode="auto-hide"] {
+  overflow: hidden;
+}
+
+.app-body[data-nr-sidebar-mode="auto-hide"] .sidebar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 6;
+  transition:
+    transform 120ms ease-out,
+    box-shadow 120ms ease-out;
+}
+
+.app-body[data-nr-sidebar-mode="auto-hide"][data-nr-side="left"] .sidebar {
+  left: 0;
+  transform: translateX(-100%);
+}
+
+.app-body[data-nr-sidebar-mode="auto-hide"][data-nr-side="right"] .sidebar {
+  right: 0;
+  transform: translateX(100%);
+}
+
+.app-body[data-nr-sidebar-mode="auto-hide"] .sidebar[data-nr-state="revealed"] {
+  transform: none;
+  box-shadow: 0 0 18px color-mix(in srgb, var(--nr-bg) 70%, transparent);
+}
+
+/* The strip on the screen edge that asks for the hidden sidebar. */
+.sidebar-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 6px;
+}
+
+.app-body[data-nr-side="left"] .sidebar-edge {
+  left: 0;
+}
+
+.app-body[data-nr-side="right"] .sidebar-edge {
+  right: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-body[data-nr-sidebar-mode="auto-hide"] .sidebar {
+    transition: none;
+  }
+}
+
+/* The handle straddles the inner edge of the sidebar and shows only on hover, drag or focus. */
+.sidebar-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 4;
+  width: 6px;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.app-body[data-nr-side="left"] .sidebar-resize {
+  right: -3px;
+}
+
+.app-body[data-nr-side="right"] .sidebar-resize {
+  left: -3px;
+}
+
+.sidebar-resize:hover,
+.sidebar-resize[data-nr-state="dragging"],
+.sidebar-resize:focus-visible {
+  background: color-mix(in srgb, var(--nr-accent) 45%, transparent);
+  outline: none;
+}
+
+/* Compact density: tighter rows in the sidebar. */
+.app-body[data-nr-density="compact"] .tab-list,
+.app-body[data-nr-density="compact"] .pinned-list {
+  gap: 1px;
+}
+
+.app-body[data-nr-density="compact"] .tab-button {
+  gap: 0;
+  padding: 3px 8px;
+}
+
+.app-body[data-nr-density="compact"] .group-button {
+  padding: 2px 8px;
+}
+
+.app-body[data-nr-density="compact"] .tab-meta {
+  font-size: 10px;
+  line-height: 1.2;
 }
 
 .tab-list {

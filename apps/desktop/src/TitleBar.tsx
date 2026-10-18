@@ -2,6 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Copy, Minus, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { insideTauri } from "./backend";
+import { LayoutControl } from "./LayoutControl";
 
 /** macOS keeps its native buttons (title bar overlay); Windows and Linux get our own. */
 const onMac = /Mac/i.test(navigator.userAgent);
@@ -79,6 +80,7 @@ export function TitleBar() {
       <span className="titlebar-title" data-tauri-drag-region>
         Noren
       </span>
+      <LayoutControl />
       {onMac ? null : <WindowControls />}
     </header>
   );

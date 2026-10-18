@@ -19,7 +19,11 @@ import {
   visibleSelection,
 } from "./sidebar-tree";
 import type { ClickModifiers, Selection } from "./sidebar-tree";
+import { sidebarMode } from "./layout";
+import { updateLayout, useLayout } from "./layout-store";
+import { SidebarResizer } from "./SidebarResizer";
 import { SidebarTree } from "./SidebarTree";
+import { useSidebarReveal } from "./use-sidebar-reveal";
 import type { Editing } from "./SidebarTree";
 import { SpaceDialog } from "./SpaceDialog";
 import type { SpaceFormValues } from "./SpaceDialog";
@@ -146,6 +150,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const handles = useRef(new Map<Id, TerminalHandle>());
   const theme = useTheme();
   const colors = useMemo(() => terminalTheme(theme), [theme]);
+  const layout = useLayout();
+  const reveal = useSidebarReveal(sidebarMode(layout) === "auto-hide");
 
   const space = activeSpaceOf(workspace);
   const activeId = activeItemIdOf({ workspace });
@@ -402,9 +408,38 @@ function Shell({ store }: { store: WorkspaceStore }) {
     );
   }
 
+  const autoHide = sidebarMode(layout) === "auto-hide";
+  // A menu or dialog opened from the sidebar keeps it shown, even though the pointer left it.
+  const shown = reveal.revealed || overlay !== null;
   return (
-    <div className="app-body">
-      <aside ref={sidebarRef} className="sidebar" data-nr-part="sidebar" aria-label="Sidebar">
+    <div
+      className="app-body"
+      data-nr-side={layout.side}
+      data-nr-density={layout.density}
+      data-nr-sidebar-mode={sidebarMode(layout)}
+    >
+      {autoHide && (
+        <div
+          className="sidebar-edge"
+          data-nr-part="sidebar-edge"
+          aria-hidden="true"
+          {...reveal.edge}
+        />
+      )}
+      <aside
+        ref={sidebarRef}
+        className="sidebar"
+        data-nr-part="sidebar"
+        data-nr-state={autoHide ? (shown ? "revealed" : "hidden") : undefined}
+        aria-label="Sidebar"
+        style={{ width: layout.width }}
+        {...reveal.sidebar}
+      >
+        <SidebarResizer
+          side={layout.side}
+          width={layout.width}
+          onResize={(width) => updateLayout({ width })}
+        />
         <TreeDnd
           spaces={workspace.spaces}
           favorites={workspace.favorites}

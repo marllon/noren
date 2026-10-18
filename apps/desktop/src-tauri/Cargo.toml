@@ -10,4 +10,8 @@ publish = false
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+noren-core = { path = "../../../crates/noren-core" }
 tauri = { version = "2", features = [] }
+# Derive macros for the command DTOs (profile list, session-exit payload, write payload).
+# Already in the dependency tree through Tauri; MIT OR Apache-2.0.
+serde = { version = "1", features = ["derive"] }

@@ -1,53 +1,38 @@
 // Keeps the release build from opening a console window on Windows.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::io::Write;
-use std::process;
-use std::thread;
-use std::time::Duration;
+mod bridge;
+mod smoke;
 
-use tauri::Listener;
+use tauri::{Manager, RunEvent};
 
-const SMOKE_FLAG: &str = "--smoke";
-const SMOKE_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Prints `line` to stdout and flushes it so a parent process sees it before we exit.
-fn print_line(line: &str) {
-    let mut out = std::io::stdout().lock();
-    // A closed stdout must not turn the smoke check into a panic.
-    let _ = writeln!(out, "{line}");
-    let _ = out.flush();
-}
-
-/// Smoke mode: wait for the interface to emit `app-ready`, report it and quit.
-/// If the interface never answers, exit with an error after `SMOKE_TIMEOUT`.
-fn arm_smoke(app: &tauri::App) {
-    let handle = app.handle().clone();
-    app.listen("app-ready", move |_event| {
-        print_line("SMOKE OK");
-        handle.exit(0);
-    });
-
-    thread::spawn(|| {
-        thread::sleep(SMOKE_TIMEOUT);
-        eprintln!(
-            "SMOKE FAILED: app-ready not received within {}s",
-            SMOKE_TIMEOUT.as_secs()
-        );
-        process::exit(1);
-    });
-}
+use bridge::AppState;
 
 fn main() {
-    let smoke = std::env::args().any(|arg| arg == SMOKE_FLAG);
+    let smoke = std::env::args().any(|arg| arg == smoke::SMOKE_FLAG);
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
+        .manage(AppState::detect())
+        .invoke_handler(tauri::generate_handler![
+            bridge::profiles_list,
+            bridge::session_create,
+            bridge::session_write,
+            bridge::session_resize,
+            bridge::session_kill,
+        ])
         .setup(move |app| {
             if smoke {
-                arm_smoke(app);
+                smoke::arm(app);
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Noren");
+        .build(tauri::generate_context!())
+        .expect("error while building Noren");
+
+    app.run(|handle, event| {
+        // No terminal session may outlive the app.
+        if let RunEvent::Exit = event {
+            handle.state::<AppState>().sessions.shutdown();
+        }
+    });
 }

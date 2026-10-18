@@ -1890,6 +1890,8 @@ dependencies = [
 name = "noren"
 version = "0.0.0"
 dependencies = [
+ "noren-core",
+ "serde",
  "tauri",
  "tauri-build",
 ]

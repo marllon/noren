@@ -1,5 +1,6 @@
 // Real-app smoke test: debug build without bundle, then `noren --smoke`.
-// Exits with the app's exit code; requires "SMOKE OK" on stdout.
+// Exits with the app's exit code; requires "SMOKE OK" and "noren-smoke-ok" (printed after a real
+// shell session echoed it) on stdout.
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -47,5 +48,7 @@ process.stdout.write(run.stdout ?? "");
 process.stderr.write(run.stderr ?? "");
 
 if (run.status !== 0) fail(`noren --smoke exited with code ${run.status}`);
-if (!(run.stdout ?? "").includes("SMOKE OK")) fail("SMOKE OK not found in the output");
+const stdout = run.stdout ?? "";
+if (!stdout.includes("SMOKE OK")) fail("SMOKE OK not found in the output");
+if (!stdout.includes("noren-smoke-ok")) fail("noren-smoke-ok not found in the output");
 process.exit(0);

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { SPACE_COLORS, SPACE_ICON_NAMES, parseEnvLines, spaceShortcutIndex } from "./spaces";
+import {
+  SPACE_COLORS,
+  SPACE_ICON_NAMES,
+  formatEnvLines,
+  isSingleGlyph,
+  parseEnvLines,
+  spaceShortcutIndex,
+} from "./spaces";
 
 const key = (code: string, flags: Partial<Parameters<typeof spaceShortcutIndex>[0]> = {}) => ({
   code,
@@ -56,5 +63,24 @@ describe("space choices", () => {
   it("have unique colors and icons", () => {
     expect(new Set(SPACE_COLORS.map((c) => c.value)).size).toBe(SPACE_COLORS.length);
     expect(new Set(SPACE_ICON_NAMES).size).toBe(SPACE_ICON_NAMES.length);
+  });
+});
+
+describe("formatEnvLines", () => {
+  it("writes one KEY=value per line and parseEnvLines reads it back", () => {
+    const env = { STAGE: "beta", TOKEN: "a=b", EMPTY: "" };
+    expect(formatEnvLines(env)).toBe("STAGE=beta\nTOKEN=a=b\nEMPTY=");
+    expect(parseEnvLines(formatEnvLines(env))).toEqual({ ok: true, env });
+    expect(formatEnvLines({})).toBe("");
+  });
+});
+
+describe("isSingleGlyph", () => {
+  it("accepts one emoji, with modifiers or joiners, and one letter", () => {
+    for (const glyph of ["🚀", "👍🏽", "👨‍👩‍👧", "🇧🇷", "N"]) expect(isSingleGlyph(glyph)).toBe(true);
+  });
+
+  it("refuses empty text and more than one character", () => {
+    for (const text of ["", "🚀🚀", "ab", "🚀 "]) expect(isSingleGlyph(text)).toBe(false);
   });
 });

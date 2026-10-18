@@ -27,7 +27,8 @@ export const SPACE_ICONS: Record<SpaceIconName, { label: string; Icon: LucideIco
   globe: { label: "Globe", Icon: Globe },
 };
 
-function isSpaceIcon(name: string): name is SpaceIconName {
+/** True when `name` is one of the Lucide icons a space can carry. */
+export function isSpaceIcon(name: string): name is SpaceIconName {
   return Object.hasOwn(SPACE_ICONS, name);
 }
 

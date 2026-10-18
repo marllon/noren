@@ -1,27 +1,52 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
-import { SPACE_ICONS } from "./SpaceIcon";
-import { SPACE_COLORS, SPACE_ICON_NAMES, parseEnvLines } from "./spaces";
-import type { NewSpaceInput } from "./workspace-store";
+import type { Space } from "@noren/model";
+import { SPACE_ICONS, isSpaceIcon } from "./SpaceIcon";
+import {
+  SPACE_COLORS,
+  SPACE_ICON_NAMES,
+  formatEnvLines,
+  isSingleGlyph,
+  parseEnvLines,
+} from "./spaces";
+
+/** What the dialog collects. A blank `cwd` means no start folder. */
+export interface SpaceFormValues {
+  name: string;
+  icon: string;
+  color: string;
+  cwd: string;
+  env: Record<string, string>;
+}
 
 interface SpaceDialogProps {
-  onCreate(input: NewSpaceInput): void;
+  /** The space to edit; without it the dialog makes a new one. */
+  space?: Space;
+  onSubmit(values: SpaceFormValues): void;
   onCancel(): void;
 }
 
-/** Collects the name, color, icon, start folder and environment of a new space. */
-export function SpaceDialog({ onCreate, onCancel }: SpaceDialogProps) {
+/** Collects the name, color, icon, start folder and environment of a space, new or existing. */
+export function SpaceDialog({ space, onSubmit, onCancel }: SpaceDialogProps) {
   const titleId = useId();
   const nameRef = useRef<HTMLInputElement>(null);
-  const [name, setName] = useState("");
-  const [color, setColor] = useState(SPACE_COLORS[0]?.value ?? "");
-  const [icon, setIcon] = useState<string>(SPACE_ICON_NAMES[0]);
-  const [cwd, setCwd] = useState("");
-  const [envText, setEnvText] = useState("");
+  const editing = space !== undefined;
+  const [name, setName] = useState(space?.name ?? "");
+  const [color, setColor] = useState(space?.color ?? SPACE_COLORS[0]?.value ?? "");
+  // A Lucide icon is picked from the list; any other icon name is an emoji, typed in its own field.
+  const [lucide, setLucide] = useState<string>(
+    space !== undefined && isSpaceIcon(space.icon) ? space.icon : SPACE_ICON_NAMES[0],
+  );
+  const [emoji, setEmoji] = useState(
+    space !== undefined && !isSpaceIcon(space.icon) ? space.icon : "",
+  );
+  const [cwd, setCwd] = useState(space?.defaults.cwd ?? "");
+  const [envText, setEnvText] = useState(formatEnvLines(space?.defaults.env ?? {}));
   const [error, setError] = useState<string>();
 
   useEffect(() => {
     nameRef.current?.focus();
+    nameRef.current?.select();
   }, []);
 
   const submit = (event: FormEvent) => {
@@ -30,17 +55,22 @@ export function SpaceDialog({ onCreate, onCancel }: SpaceDialogProps) {
       setError("Give the space a name.");
       return;
     }
+    const glyph = emoji.trim();
+    if (glyph !== "" && !isSingleGlyph(glyph)) {
+      setError("Use a single emoji for the icon.");
+      return;
+    }
     const env = parseEnvLines(envText);
     if (!env.ok) {
       setError(env.error);
       return;
     }
-    onCreate({
+    onSubmit({
       name,
-      icon,
+      icon: glyph !== "" ? glyph : lucide,
       color,
-      ...(cwd.trim() !== "" ? { cwd: cwd.trim() } : {}),
-      ...(Object.keys(env.env).length > 0 ? { env: env.env } : {}),
+      cwd: cwd.trim(),
+      env: env.env,
     });
   };
 
@@ -61,7 +91,7 @@ export function SpaceDialog({ onCreate, onCancel }: SpaceDialogProps) {
         onSubmit={submit}
         onKeyDown={onKeyDown}
       >
-        <h2 id={titleId}>New space</h2>
+        <h2 id={titleId}>{editing ? "Edit space" : "New space"}</h2>
         <label className="field">
           <span>Name</span>
           <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} />
@@ -91,8 +121,11 @@ export function SpaceDialog({ onCreate, onCancel }: SpaceDialogProps) {
                   type="radio"
                   name="space-icon"
                   aria-label={label}
-                  checked={icon === choice}
-                  onChange={() => setIcon(choice)}
+                  checked={emoji.trim() === "" && lucide === choice}
+                  onChange={() => {
+                    setLucide(choice);
+                    setEmoji("");
+                  }}
                 />
                 <span>
                   <Icon size={16} aria-hidden="true" />
@@ -101,6 +134,14 @@ export function SpaceDialog({ onCreate, onCancel }: SpaceDialogProps) {
             );
           })}
         </fieldset>
+        <label className="field">
+          <span>Emoji</span>
+          <input
+            value={emoji}
+            placeholder="Optional, replaces the icon"
+            onChange={(e) => setEmoji(e.target.value)}
+          />
+        </label>
         <label className="field">
           <span>Start folder</span>
           <input value={cwd} placeholder="Optional" onChange={(e) => setCwd(e.target.value)} />
@@ -120,7 +161,7 @@ export function SpaceDialog({ onCreate, onCancel }: SpaceDialogProps) {
             Cancel
           </button>
           <button type="submit" className="primary">
-            Create space
+            {editing ? "Save" : "Create space"}
           </button>
         </div>
       </form>

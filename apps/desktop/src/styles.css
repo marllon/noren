@@ -369,3 +369,54 @@ body {
 .dialog-actions .primary {
   border-color: var(--nr-space-color);
 }
+
+.menu-backdrop {
+  z-index: 30;
+  position: fixed;
+  inset: 0;
+}
+
+.space-menu {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  border: 1px solid var(--nr-border);
+  border-radius: var(--nr-radius);
+  background: var(--nr-surface);
+  color: var(--nr-text);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--nr-bg) 70%, transparent);
+}
+
+.space-menu button {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: calc(var(--nr-radius) / 2);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.space-menu button:hover:not(:disabled),
+.space-menu button:focus-visible {
+  background: color-mix(in srgb, var(--nr-text) 10%, transparent);
+  outline: none;
+}
+
+.space-menu button:disabled {
+  color: var(--nr-muted);
+  cursor: default;
+}
+
+.dialog-message {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.dialog-actions .danger {
+  border-color: var(--nr-text);
+}

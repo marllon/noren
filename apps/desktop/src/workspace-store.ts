@@ -30,6 +30,18 @@ export interface NewSpaceInput {
   env?: Record<string, string>;
 }
 
+/**
+ * What the edit-space dialog changes. A missing field stays as it is. A blank `cwd` clears the
+ * start folder and `env`, when given, replaces the whole environment.
+ */
+export interface SpaceEdit {
+  name?: string;
+  icon?: string;
+  color?: string;
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
 /** How to start the shell of a pane: its own settings first, then the defaults of its space. */
 export interface SessionStartOptions {
   profileId?: string;
@@ -52,6 +64,15 @@ export interface WorkspaceState {
   newTab(): void;
   /** Makes a space (active) with its first tab, which starts with the defaults of the space. */
   createSpace(input: NewSpaceInput): void;
+  /** Renames, recolors, re-icons or changes the defaults of a space; unknown ids change nothing. */
+  editSpace(spaceId: Id, edit: SpaceEdit): void;
+  /**
+   * Deletes a space: its tabs close, their sessions end and another space becomes active. The last
+   * space is never deleted. Returns whether the space was deleted.
+   */
+  deleteSpace(spaceId: Id): boolean;
+  /** Moves a space to a zero-based position of the switcher (clamped); unknown ids change nothing. */
+  moveSpace(spaceId: Id, index: number): void;
   /** Shows another space; unknown ids change nothing. */
   activateSpace(spaceId: Id): void;
   /** Shows the space at a zero-based position of the switcher; out of range changes nothing. */
@@ -206,6 +227,11 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
           nextActive = { ...activeItems, [action.spaceId ?? before.activeSpaceId]: created };
         }
       }
+      if (action.type === "space/delete" && action.spaceId in nextActive) {
+        nextActive = Object.fromEntries(
+          Object.entries(nextActive).filter(([id]) => id !== action.spaceId),
+        );
+      }
       set({ workspace: after, activeItems: nextActive });
       if (nextActive !== activeItems) persistActive(nextActive);
       writer.schedule(after);
@@ -233,6 +259,32 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
       const known = new Set(before.spaces.map((space) => space.id));
       const created = get().workspace.spaces.find((space) => !known.has(space.id));
       if (created) get().dispatch({ type: "item/create", spaceId: created.id });
+    },
+
+    editSpace(spaceId, edit) {
+      const { dispatch } = get();
+      if (edit.name !== undefined) dispatch({ type: "space/rename", spaceId, name: edit.name });
+      if (edit.color !== undefined)
+        dispatch({ type: "space/set-color", spaceId, color: edit.color });
+      if (edit.icon !== undefined) dispatch({ type: "space/set-icon", spaceId, icon: edit.icon });
+      if (edit.cwd !== undefined || edit.env !== undefined) {
+        dispatch({
+          type: "space/set-defaults",
+          spaceId,
+          ...(edit.cwd !== undefined ? { cwd: edit.cwd } : {}),
+          ...(edit.env !== undefined ? { env: edit.env } : {}),
+        });
+      }
+    },
+
+    deleteSpace(spaceId) {
+      const before = get().workspace;
+      get().dispatch({ type: "space/delete", spaceId, items: { mode: "close" } });
+      return get().workspace !== before;
+    },
+
+    moveSpace(spaceId, index) {
+      get().dispatch({ type: "space/move", spaceId, index });
     },
 
     activateSpace(spaceId) {

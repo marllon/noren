@@ -52,6 +52,19 @@ export function parseEnvLines(text: string): EnvParse {
   return { ok: true, env };
 }
 
+/** The inverse of `parseEnvLines`: one `KEY=value` per line. */
+export function formatEnvLines(env: Record<string, string>): string {
+  return Object.entries(env)
+    .map(([name, value]) => `${name}=${value}`)
+    .join("\n");
+}
+
+/** True when `text` is one user-perceived character (an emoji, with its modifiers and joiners). */
+export function isSingleGlyph(text: string): boolean {
+  const segments = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text)];
+  return segments.length === 1;
+}
+
 /** The slice of a keyboard event the space shortcut reads. */
 export interface ShortcutEvent {
   code: string;

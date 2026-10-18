@@ -275,6 +275,168 @@ describe("workspace store", () => {
       expect(activeSpaceOf(store.getState().workspace).name).toBe("Two");
     });
 
+    const names = (store: Awaited<ReturnType<typeof openStore>>["store"]) =>
+      store.getState().workspace.spaces.map((s) => s.name);
+
+    /** Starts a session for every pane of a space that has none; returns the ids it used. */
+    const attachSessions = (
+      store: Awaited<ReturnType<typeof openStore>>["store"],
+      spaceName: string,
+      firstId: number,
+    ): string[] => {
+      const space = store.getState().workspace.spaces.find((s) => s.name === spaceName);
+      if (!space) throw new Error("no space");
+      return Object.values(space.items).map((item, at) => {
+        const sessionId = String(firstId + at);
+        store.getState().attachSession(item.focusedPaneId, sessionId);
+        return sessionId;
+      });
+    };
+
+    describe("editSpace", () => {
+      it("renames, recolors and re-icons the space and schedules one save", async () => {
+        const backend = new FakeBackend();
+        const { store } = await openStore(backend);
+        const id = store.getState().workspace.activeSpaceId;
+        store.getState().editSpace(id, { name: "  Home  ", color: "#4caf7d", icon: "🏠" });
+
+        expect(activeSpaceOf(store.getState().workspace)).toMatchObject({
+          name: "Home",
+          color: "#4caf7d",
+          icon: "🏠",
+        });
+        await vi.advanceTimersByTimeAsync(STATE_SAVE_DELAY_MS);
+        expect(backend.callsTo("saveState")).toHaveLength(1);
+        const saved = parseState(backend.stateContent ?? "");
+        expect(saved.ok && saved.workspace.spaces[0]).toMatchObject({ name: "Home", icon: "🏠" });
+      });
+
+      it("changes the start folder and replaces the environment; a blank folder clears it", async () => {
+        const { store } = await openStore(new FakeBackend());
+        const id = store.getState().workspace.activeSpaceId;
+        store.getState().editSpace(id, { cwd: "/srv/a", env: { A: "1", B: "2" } });
+        expect(activeSpaceOf(store.getState().workspace).defaults).toMatchObject({
+          cwd: "/srv/a",
+          env: { A: "1", B: "2" },
+        });
+
+        store.getState().editSpace(id, { cwd: "", env: { C: "3" } });
+        const defaults = activeSpaceOf(store.getState().workspace).defaults;
+        expect(defaults.cwd).toBeUndefined();
+        expect(defaults.env).toEqual({ C: "3" });
+      });
+
+      it("a blank name, an unknown space or no change leaves the workspace as it was", async () => {
+        const backend = new FakeBackend();
+        const { store } = await openStore(backend);
+        const before = store.getState().workspace;
+        const space = activeSpaceOf(before);
+        store.getState().editSpace(space.id, { name: "   " });
+        store.getState().editSpace("missing", { name: "X", color: "#000000" });
+        store.getState().editSpace(space.id, { name: space.name, color: space.color });
+        store.getState().editSpace(space.id, {});
+        expect(store.getState().workspace).toBe(before);
+        await vi.advanceTimersByTimeAsync(STATE_SAVE_DELAY_MS * 2);
+        expect(backend.callsTo("saveState")).toHaveLength(0);
+      });
+    });
+
+    describe("deleteSpace", () => {
+      it("ends the live sessions of the space, activates another and keeps the other sessions", async () => {
+        const backend = new FakeBackend();
+        const { store } = await openStore(backend);
+        const [mainSession] = [...liveSessionIds(store.getState().workspace)];
+        store.getState().createSpace({ name: "Work" });
+        store.getState().newTab();
+        const started = attachSessions(store, "Work", 91);
+        expect(started).toHaveLength(2);
+        const work = activeSpaceOf(store.getState().workspace);
+
+        expect(store.getState().deleteSpace(work.id)).toBe(true);
+
+        expect(names(store)).toEqual(["Main"]);
+        expect(activeSpaceOf(store.getState().workspace).name).toBe("Main");
+        expect(backend.callsTo("kill").map((call) => call.args[0])).toEqual(started.map(Number));
+        expect([...liveSessionIds(store.getState().workspace)]).toEqual([mainSession]);
+      });
+
+      it("deleting another space keeps the active one and forgets the active tab of the deleted one", async () => {
+        const storage = new MemoryStorage();
+        const { store } = await openStore(new FakeBackend(), storage);
+        store.getState().createSpace({ name: "Two" });
+        store.getState().createSpace({ name: "Three" });
+        const two = store.getState().workspace.spaces[1];
+        if (!two) throw new Error("no space");
+        expect(JSON.parse(storage.values.get(ACTIVE_ITEMS_KEY) ?? "{}")).toHaveProperty(two.id);
+
+        store.getState().deleteSpace(two.id);
+
+        expect(names(store)).toEqual(["Main", "Three"]);
+        expect(activeSpaceOf(store.getState().workspace).name).toBe("Three");
+        expect(store.getState().activeItems).not.toHaveProperty(two.id);
+        expect(JSON.parse(storage.values.get(ACTIVE_ITEMS_KEY) ?? "{}")).not.toHaveProperty(two.id);
+      });
+
+      it("deleting the active space activates a neighbor", async () => {
+        const { store } = await openStore(new FakeBackend());
+        store.getState().createSpace({ name: "Two" });
+        store.getState().createSpace({ name: "Three" });
+        store.getState().activateSpaceAt(1);
+        store.getState().deleteSpace(activeSpaceOf(store.getState().workspace).id);
+        expect(names(store)).toEqual(["Main", "Three"]);
+        expect(activeSpaceOf(store.getState().workspace).name).toBe("Three");
+      });
+
+      it("refuses the last space: nothing changes, no session ends, nothing is saved", async () => {
+        const backend = new FakeBackend();
+        const { store } = await openStore(backend);
+        const before = store.getState().workspace;
+        expect(store.getState().deleteSpace(before.activeSpaceId)).toBe(false);
+        expect(store.getState().workspace).toBe(before);
+        expect(backend.callsTo("kill")).toHaveLength(0);
+        await vi.advanceTimersByTimeAsync(STATE_SAVE_DELAY_MS * 2);
+        expect(backend.callsTo("saveState")).toHaveLength(0);
+      });
+
+      it("an unknown space is not deleted", async () => {
+        const { store } = await openStore(new FakeBackend());
+        store.getState().createSpace({ name: "Two" });
+        expect(store.getState().deleteSpace("missing")).toBe(false);
+        expect(names(store)).toEqual(["Main", "Two"]);
+      });
+    });
+
+    describe("moveSpace", () => {
+      it("moves a space to a position; the active space does not change", async () => {
+        const { store } = await openStore(new FakeBackend());
+        store.getState().createSpace({ name: "Two" });
+        store.getState().createSpace({ name: "Three" });
+        const active = store.getState().workspace.activeSpaceId;
+        const [first] = store.getState().workspace.spaces;
+        if (!first) throw new Error("no space");
+
+        store.getState().moveSpace(first.id, 2);
+        expect(names(store)).toEqual(["Two", "Three", "Main"]);
+        store.getState().moveSpace(first.id, 1);
+        expect(names(store)).toEqual(["Two", "Main", "Three"]);
+        expect(store.getState().workspace.activeSpaceId).toBe(active);
+      });
+
+      it("clamps the position and ignores a move that changes nothing or an unknown space", async () => {
+        const { store } = await openStore(new FakeBackend());
+        store.getState().createSpace({ name: "Two" });
+        const [first] = store.getState().workspace.spaces;
+        if (!first) throw new Error("no space");
+        store.getState().moveSpace(first.id, 99);
+        expect(names(store)).toEqual(["Two", "Main"]);
+
+        const before = store.getState().workspace;
+        store.getState().moveSpace(first.id, 1);
+        store.getState().moveSpace("missing", 0);
+        expect(store.getState().workspace).toBe(before);
+      });
+    });
+
     it("an invalid new space (blank name) changes nothing", async () => {
       const { store } = await openStore(new FakeBackend());
       const before = store.getState().workspace;

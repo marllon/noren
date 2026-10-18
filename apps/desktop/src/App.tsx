@@ -6,7 +6,11 @@ import { Suspense, use, useEffect, useLayoutEffect, useMemo, useRef, useState } 
 import { useStore } from "zustand";
 import { insideTauri } from "./backend";
 import { backend, booted } from "./boot";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { SpaceDialog } from "./SpaceDialog";
+import type { SpaceFormValues } from "./SpaceDialog";
+import { SpaceMenu } from "./SpaceMenu";
+import type { MenuPoint } from "./SpaceMenu";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import { spaceShortcutIndex } from "./spaces";
 import { TerminalView } from "./TerminalView";
@@ -20,7 +24,7 @@ import {
   sessionStartOptions,
   spaceItemIds,
 } from "./workspace-store";
-import type { SessionStartOptions, WorkspaceStore } from "./workspace-store";
+import type { NewSpaceInput, SessionStartOptions, WorkspaceStore } from "./workspace-store";
 
 /** Read-only view of the active terminal, published only when the backend is the in-memory one. */
 export interface NorenTestHook {
@@ -28,6 +32,8 @@ export interface NorenTestHook {
   renderer(): "webgl" | "dom";
   /** Number of `write` calls the backend received. */
   writeCalls(): number;
+  /** Ids of the sessions the backend was asked to kill, in order. */
+  killedSessions(): number[];
   /** Options of every `createSession` call the backend received, in order. */
   sessionStarts(): { profileId?: string; cwd?: string; env?: Record<string, string> }[];
 }
@@ -81,6 +87,24 @@ function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTermi
   );
 }
 
+/** What covers the shell: a space menu, or a dialog about one space (or a new one). */
+type Overlay =
+  | { kind: "menu"; spaceId: Id; point: MenuPoint }
+  | { kind: "new" }
+  | { kind: "edit"; spaceId: Id }
+  | { kind: "delete"; spaceId: Id };
+
+/** What the new-space dialog hands the store: no folder and no environment when left blank. */
+function newSpaceInput(values: SpaceFormValues): NewSpaceInput {
+  return {
+    name: values.name,
+    icon: values.icon,
+    color: values.color,
+    ...(values.cwd !== "" ? { cwd: values.cwd } : {}),
+    ...(Object.keys(values.env).length > 0 ? { env: values.env } : {}),
+  };
+}
+
 function Shell({ store }: { store: WorkspaceStore }) {
   const workspace = useStore(store, (state) => state.workspace);
   const activeItems = useStore(store, (state) => state.activeItems);
@@ -88,7 +112,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const activateItem = useStore(store, (state) => state.activateItem);
   const activateSpace = useStore(store, (state) => state.activateSpace);
   const createSpace = useStore(store, (state) => state.createSpace);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const editSpace = useStore(store, (state) => state.editSpace);
+  const deleteSpace = useStore(store, (state) => state.deleteSpace);
+  const moveSpace = useStore(store, (state) => state.moveSpace);
+  const [overlay, setOverlay] = useState<Overlay | null>(null);
   const handles = useRef(new Map<Id, TerminalHandle>());
   const theme = useTheme();
   const colors = useMemo(() => terminalTheme(theme), [theme]);
@@ -131,6 +158,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
         lines: () => current()?.readLines() ?? [],
         renderer: () => current()?.renderer() ?? "dom",
         writeCalls: () => fake.callsTo("write").length,
+        killedSessions: () => fake.callsTo("kill").map((call) => Number(call.args[0])),
         sessionStarts: () =>
           fake.callsTo("createSession").map((call) => {
             const { profileId, cwd, env } = call.args[0] as SessionStartOptions;
@@ -151,6 +179,65 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const recordHandle = (paneId: Id, handle: TerminalHandle) => {
     handles.current.set(paneId, handle);
   };
+
+  const close = () => setOverlay(null);
+  const overlaySpace =
+    overlay !== null && overlay.kind !== "new"
+      ? workspace.spaces.find((s) => s.id === overlay.spaceId)
+      : undefined;
+  let overlayNode: React.ReactNode = null;
+  if (overlay?.kind === "new") {
+    overlayNode = (
+      <SpaceDialog
+        onCancel={close}
+        onSubmit={(values) => {
+          createSpace(newSpaceInput(values));
+          close();
+        }}
+      />
+    );
+  } else if (overlaySpace !== undefined && overlay?.kind === "menu") {
+    overlayNode = (
+      <SpaceMenu
+        space={overlaySpace}
+        index={workspace.spaces.indexOf(overlaySpace)}
+        count={workspace.spaces.length}
+        point={overlay.point}
+        onEdit={() => setOverlay({ kind: "edit", spaceId: overlaySpace.id })}
+        onMove={(delta) => {
+          moveSpace(overlaySpace.id, workspace.spaces.indexOf(overlaySpace) + delta);
+          close();
+        }}
+        onDelete={() => setOverlay({ kind: "delete", spaceId: overlaySpace.id })}
+        onClose={close}
+      />
+    );
+  } else if (overlaySpace !== undefined && overlay?.kind === "edit") {
+    overlayNode = (
+      <SpaceDialog
+        space={overlaySpace}
+        onCancel={close}
+        onSubmit={(values) => {
+          editSpace(overlaySpace.id, values);
+          close();
+        }}
+      />
+    );
+  } else if (overlaySpace !== undefined && overlay?.kind === "delete") {
+    const tabCount = spaceItemIds(overlaySpace).length;
+    overlayNode = (
+      <ConfirmDialog
+        title="Delete space"
+        message={`Delete "${overlaySpace.name}"? Its ${tabCount === 1 ? "1 tab" : `${tabCount} tabs`} will be closed and the shells running in them will end.`}
+        confirmLabel="Delete space"
+        onCancel={close}
+        onConfirm={() => {
+          deleteSpace(overlaySpace.id);
+          close();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="app-body">
@@ -182,7 +269,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
           spaces={workspace.spaces}
           activeSpaceId={space.id}
           onActivate={activateSpace}
-          onNewSpace={() => setDialogOpen(true)}
+          onNewSpace={() => setOverlay({ kind: "new" })}
+          onMenu={(spaceId, point) => setOverlay({ kind: "menu", spaceId, point })}
         />
       </aside>
       <section className="content" aria-label="Content">
@@ -204,15 +292,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
           }),
         )}
       </section>
-      {dialogOpen && (
-        <SpaceDialog
-          onCancel={() => setDialogOpen(false)}
-          onCreate={(input) => {
-            createSpace(input);
-            setDialogOpen(false);
-          }}
-        />
-      )}
+      {overlayNode}
     </div>
   );
 }

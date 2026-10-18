@@ -160,5 +160,9 @@ test("the dialog needs a name, rejects a bad environment line and cancels cleanl
 
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
-  await expect(switcher(page).getByRole("button")).toHaveCount(2); // the first space and "New space"
+  // The first space, "New space" and "Space options": no space was added.
+  await expect(switcher(page).getByRole("button")).toHaveCount(3);
+  await expect(
+    switcher(page).locator(".space-button:not(.space-add):not(.space-more)"),
+  ).toHaveCount(1);
 });

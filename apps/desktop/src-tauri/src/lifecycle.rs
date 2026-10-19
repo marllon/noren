@@ -62,9 +62,26 @@ impl CloseGate {
     }
 }
 
+/// The label of the window of the workspace, the one that closing ends the app with.
+pub const MAIN_LABEL: &str = "main";
+
 /// Handles the window events of the app: a request to close the main window is held when the page
-/// asked for it. Anything else is left to the default.
+/// asked for it, and once the main window is gone the quick window goes with it (it is hidden, so
+/// it would keep the app running with nothing to see; with no window left the app ends as it always
+/// did). The other windows are left to the default.
 pub fn on_window_event(window: &Window, event: &WindowEvent) {
+    if window.label() != MAIN_LABEL {
+        return;
+    }
+    if let WindowEvent::Destroyed = event {
+        if let Some(quick) = window
+            .app_handle()
+            .get_webview_window(crate::quick::QUICK_LABEL)
+        {
+            let _ = quick.destroy();
+        }
+        return;
+    }
     let WindowEvent::CloseRequested { api, .. } = event else {
         return;
     };

@@ -33,6 +33,9 @@ import { ActionsHeader } from "./ActionsHeader";
 import { handleDeepLink, setDeepLinkHandler } from "./deep-link";
 import { createDeepLinkHandler } from "./deep-link-handler";
 import { startDeepLinkReceiver } from "./deep-link-receiver";
+import { followQuickPromotions, promoteQuickSession } from "./quick-promote";
+import type { PromoteResult } from "./quick-promote";
+import { tauriQuickEvents } from "./quick";
 import { tauriBridge } from "./tauri-backend";
 import { CommandPalette } from "./CommandPalette";
 import { ConfigErrorNotice } from "./ConfigErrorNotice";
@@ -158,6 +161,17 @@ export interface NorenTestHook {
   writeCalls(): number;
   /** Ids of the sessions the backend was asked to kill, in order. */
   killedSessions(): number[];
+  /**
+   * Starts a shell that belongs to no tab, as the quick window does, and returns its id. It has the
+   * size of a fresh session (80x24) until a view takes it over.
+   */
+  startDetachedSession(): Promise<number>;
+  /** Brings such a shell in as a tab of the active space, as a `quick-promote` request does. */
+  promoteSession(id: number): Promise<PromoteResult>;
+  /** The size the backend has for a session (what the last `resize` set), `undefined` if unknown. */
+  sessionSize(id: number): { cols: number; rows: number } | undefined;
+  /** Every size the backend was asked to give to a session, in order. */
+  sessionResizes(id: number): { cols: number; rows: number }[];
   /** Options of every `createSession` call the backend received, in order. */
   sessionStarts(): { profileId?: string; cwd?: string; env?: Record<string, string> }[];
   /**
@@ -676,6 +690,15 @@ function Shell({ store }: { store: WorkspaceStore }) {
       activeFolder: () => activeSpaceOf(store.getState().workspace).defaults.cwd,
     });
   }, [store]);
+  // A shell opened in the quick window comes in as a tab of the active space when asked to
+  // (`quick-promote`); its process and its id stay as they are.
+  useEffect(() => {
+    if (!insideTauri) return undefined;
+    const stopped = followQuickPromotions(tauriQuickEvents(), store, backend);
+    return () => {
+      stopped.then((stop) => stop()).catch(() => undefined);
+    };
+  }, [store]);
   /** A tab was dropped on a pane of the tab on screen: join it, or say why it cannot be. */
   const onPaneDrop = (sourceId: Id, drop: PaneDrop) => {
     if (activeId === undefined) return;
@@ -1052,6 +1075,17 @@ function Shell({ store }: { store: WorkspaceStore }) {
         paneSnapshot: (paneId) => handles.current.get(paneId)?.snapshot() ?? "",
         paneDimLines: (paneId) => handles.current.get(paneId)?.dimLines() ?? [],
         killedSessions: () => fake.callsTo("kill").map((call) => Number(call.args[0])),
+        startDetachedSession: () => fake.createSession({ cols: 80, rows: 24 }),
+        promoteSession: (id) => promoteQuickSession(store, fake, id),
+        sessionSize: (id) => {
+          const info = fake.session(id);
+          return info && { cols: info.cols, rows: info.rows };
+        },
+        sessionResizes: (id) =>
+          fake
+            .callsTo("resize")
+            .filter((call) => call.args[0] === id)
+            .map((call) => ({ cols: Number(call.args[1]), rows: Number(call.args[2]) })),
         userProfileSessions: () => {
           const started = fake.callsTo("createSession").length;
           const sessions = [];

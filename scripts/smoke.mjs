@@ -1,11 +1,15 @@
-// Real-app smoke test: debug build without bundle, then `noren --smoke` and `noren --smoke-deeplink`.
+// Real-app smoke test: debug build without bundle, then `noren --smoke`, `noren --smoke-deeplink` and
+// `noren --smoke-quick`.
 // Exits with the app's exit code. The first run must print "SMOKE OK" and "noren-smoke-ok" (printed
 // after a real shell session echoed it), "SMOKE window effect ..." (the line of the effect the
 // hidden window was given, Mica on Windows and vibrancy on macOS: the effect applied, or the opaque
 // fallback with the reason, since a system that cannot paint it still passes) and "SMOKE window
 // hidden" (the main window stayed hidden); the second must print "SMOKE DEEPLINK OK" (a
 // noren://open link reached the interface and the space on screen has the folder of the link) and
-// "SMOKE window hidden".
+// "SMOKE window hidden"; the third must print "SMOKE QUICK OK" (the quick window was made hidden,
+// frameless and at the top of the screen; a shell opened in it was promoted to the main window as a
+// tab with the same session id and the same process, still answering, its output now reaching the
+// main window), "SMOKE quick window hidden" and "SMOKE window hidden" (neither window ever shown).
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -78,4 +82,16 @@ try {
 } finally {
   rmSync(folder, { recursive: true, force: true });
 }
+// The quick run keeps its files in a folder of its own, made and removed by the app.
+runSmoke(
+  ["--smoke-quick"],
+  [
+    "SMOKE quick window hidden",
+    "opened in the quick window",
+    "promoted to the main window",
+    "still alive after the promotion",
+    "SMOKE window hidden",
+    "SMOKE QUICK OK",
+  ],
+);
 process.exit(0);

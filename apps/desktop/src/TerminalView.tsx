@@ -389,8 +389,9 @@ export function TerminalView({
           if (exit.id === id) term.write(`\r\n[Process exited with code ${exit.code}]\r\n`);
         }),
       );
-      // The view may have been resized while the session was starting.
-      if (term.cols !== startCols || term.rows !== startRows) {
+      // The view may have been resized while the session was starting. A session taken over (a shell
+      // promoted from the quick window) was sized for the view it came from: it learns this one's.
+      if (start0.attach !== undefined || term.cols !== startCols || term.rows !== startRows) {
         backend.resize(id, term.cols, term.rows).catch(() => undefined);
       }
     };

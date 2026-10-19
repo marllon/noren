@@ -19,7 +19,7 @@ import {
 } from "./layout";
 import { MAX_BACKGROUND_BLUR, backgroundImageProblem } from "./background";
 import { MAX_MODS, isValidModFileName, sameModList } from "./mods";
-import { layoutPanes, withoutSessions } from "./sessions";
+import { layoutPanes, liveSessionIds, withoutSessions } from "./sessions";
 import { isMarked, isPaneVisible, mapPanes, shownItem, visiblePanes, withoutMarks } from "./unread";
 import {
   editChildren,
@@ -841,9 +841,17 @@ function createItem(
       : present(action.profileId);
   if (profileId === undefined) return ws;
   const cwd = present(action.cwd) ?? space.defaults.cwd;
+  const sessionId = present(action.sessionId);
+  // A session belongs to one pane: ending it would end the shell of the other one too.
+  if (sessionId !== undefined && liveSessionIds(ws).has(sessionId)) return ws;
   const nextId = idPool(ws, ctx);
   const itemId = nextId();
-  const item = createTab(itemId, createPane(nextId(), profileId, cwd), ctx.clock.now());
+  const pane = createPane(nextId(), profileId, cwd);
+  const item = createTab(
+    itemId,
+    sessionId === undefined ? pane : { ...pane, sessionId },
+    ctx.clock.now(),
+  );
   const arriving: Space = { ...space, items: { ...space.items, [itemId]: item } };
   const placed = place(arriving, itemId, action.placement ?? { to: "tree" });
   return placed ? replaceSpace(ws, placed) : ws;

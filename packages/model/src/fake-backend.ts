@@ -660,6 +660,16 @@ export class FakeBackend implements Backend {
   }
 
   /**
+   * The fake has one process and one stream per session whichever window asks, so taking a session
+   * over changes nothing about where its output goes; it only checks that the session is alive, as
+   * the real one does, and is on record in `calls`.
+   */
+  async attachSession(id: SessionId): Promise<void> {
+    this.#record("attachSession", id);
+    this.#alive(id);
+  }
+
+  /**
    * Makes the program of a session write `text` to the terminal, as is: a BEL, an OSC 9 or OSC 777
    * sequence, anything. Not a `Backend` call, so it is not recorded; an ended session throws.
    */

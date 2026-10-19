@@ -109,6 +109,19 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
   const closedIds = ws.closed.map((entry) => entry.item.id);
   const archivedIds = ws.archive.map((entry) => entry.item.id);
 
+  // The sessions the panes hold now, and a few that nobody holds.
+  const heldSessions = ws.spaces.flatMap((space) =>
+    Object.values(space.items).flatMap((item) =>
+      layoutPanes(item.layout).flatMap((pane) =>
+        pane.sessionId === undefined ? [] : [pane.sessionId],
+      ),
+    ),
+  );
+  const sessionId = fc.oneof(
+    { weight: 1, arbitrary: fc.constantFrom("q1", "q2", "q3") },
+    { weight: 1, arbitrary: arbIdOf(heldSessions) },
+  );
+
   const spaceId = arbIdOf(spaceIds);
   const itemId = arbIdOf(itemIds);
   const groupId = arbIdOf(groupIds);
@@ -284,6 +297,8 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
           profileId: arbProfile,
           cwd: arbCwd,
           placement,
+          // Half the time a session a pane holds already, which the reducer must refuse.
+          sessionId,
         },
         { requiredKeys: ["type"] },
       ),

@@ -85,6 +85,13 @@ export interface WorkspaceState {
    * the space unless the options name others.
    */
   newTab(options?: NewTabOptions): void;
+  /**
+   * Makes a new tab in the active space around a session that is already running (a terminal
+   * opened in the quick window), activates it and returns its id. The tab holds the session; no
+   * shell is started. It stands for the default profile, which is what the quick window starts.
+   * Returns `undefined`, changing nothing, when a pane already holds the session.
+   */
+  adoptSession(sessionId: Id): Id | undefined;
   /** Makes a space (active) with its first tab, which starts with the defaults of the space. */
   createSpace(input: NewSpaceInput): void;
   /** Renames, recolors, re-icons or changes the defaults of a space; unknown ids change nothing. */
@@ -368,6 +375,13 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
           ...(options.profileId !== undefined ? { profileId: options.profileId } : {}),
           ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
         });
+      },
+
+      adoptSession(sessionId) {
+        const space = activeSpaceOf(get().workspace);
+        const known = new Set(Object.keys(space.items));
+        get().dispatch({ type: "item/create", profileId: DEFAULT_PROFILE_ID, sessionId });
+        return Object.keys(activeSpaceOf(get().workspace).items).find((id) => !known.has(id));
       },
 
       createSpace(input) {

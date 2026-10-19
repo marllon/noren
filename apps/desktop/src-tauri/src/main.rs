@@ -5,6 +5,8 @@ mod bridge;
 mod deeplink;
 mod lifecycle;
 mod notify;
+mod quick;
+mod route;
 mod smoke;
 mod window_effect;
 
@@ -29,7 +31,11 @@ fn main() {
     } else {
         None
     };
-    let any_smoke = smoke || smoke_deeplink;
+    let smoke_quick = smoke::has_smoke_quick_flag(&args);
+    // The quick run promotes a shell into a new tab, which the interface saves: it keeps the files
+    // of the app in a folder of its own.
+    let quick_sandbox = smoke_quick.then(smoke::QuickSandbox::new);
+    let any_smoke = smoke || smoke_deeplink || smoke_quick;
 
     let mut builder = tauri::Builder::default();
     // First of all, so a second instance is detected before the rest of the setup runs. Not in a
@@ -54,6 +60,7 @@ fn main() {
             bridge::profiles_list,
             bridge::profiles_set_user,
             bridge::session_create,
+            bridge::session_attach,
             bridge::session_write,
             bridge::session_resize,
             bridge::session_kill,
@@ -85,22 +92,18 @@ fn main() {
             deeplink::deep_link_applied,
         ])
         .setup(move |app| {
-            match &smoke_link {
-                // The deep-link check never touches the user's state: it runs on an empty folder.
-                Some(target) => {
-                    app.manage(smoke::deeplink_state_store(target));
-                    app.manage(ConfigState::new(smoke::deeplink_config_store(target)));
-                    app.manage(ThemeState::new(smoke::deeplink_theme_store(target)));
-                    app.manage(ScrollbackState::new(smoke::deeplink_scrollback_store(
-                        target,
-                    )));
-                    app.manage(ModState::new(smoke::deeplink_mod_store(target)).without_watching());
-                    app.manage(BackgroundState::new(smoke::deeplink_background_store(
-                        target,
-                    )));
+            match (&smoke_link, &quick_sandbox) {
+                // The deep-link and quick checks never touch the user's files: they run on an empty
+                // folder of their own.
+                (Some(target), _) => {
+                    smoke::manage_sandbox_stores(app, &target.state_dir);
                     app.manage(target.clone());
                 }
-                None => {
+                (None, Some(sandbox)) => {
+                    smoke::manage_sandbox_stores(app, &sandbox.state_dir);
+                    app.manage(sandbox.clone());
+                }
+                (None, None) => {
                     app.manage(bridge::state_store(app.handle())?);
                     let config = ConfigState::new(bridge::config_store(app.handle())?);
                     // The smoke run reads the settings but does not watch them: watching would
@@ -142,6 +145,18 @@ fn main() {
                 window.show()?;
                 window.set_focus()?;
             }
+            // The quick terminal: a second window, hidden, that loads its page now so it is ready when
+            // something shows it. The plain smoke runs check the main window alone and leave it out; a
+            // failure to make it never stops a normal start, but fails the quick run.
+            if !smoke
+                && !smoke_deeplink
+                && let Err(error) = quick::create_hidden(app.handle())
+            {
+                if smoke_quick {
+                    return Err(error.into());
+                }
+                eprintln!("could not create the quick window: {error}");
+            }
             // A link the system passed on the command line of this first start.
             for url in deeplink::links_from_args(std::env::args()) {
                 deeplink::deliver(app.handle(), url);
@@ -163,6 +178,9 @@ fn main() {
             if let Some(target) = smoke_link.clone() {
                 smoke::arm_deeplink(app, target);
             }
+            if let Some(sandbox) = quick_sandbox.clone() {
+                smoke::arm_quick(app, sandbox);
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -174,6 +192,9 @@ fn main() {
             handle.state::<AppState>().sessions.shutdown();
             if let Some(target) = handle.try_state::<smoke::DeepLinkTarget>() {
                 target.remove_state_dir();
+            }
+            if let Some(sandbox) = handle.try_state::<smoke::QuickSandbox>() {
+                sandbox.remove();
             }
         }
     });

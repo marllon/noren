@@ -669,6 +669,65 @@ describe("item/create", () => {
     expect(shape(spaceOf(ws, "s1").tree)[1]).toBe("n5");
   });
 
+  describe("around a session that is already running", () => {
+    it("makes a tab whose pane holds that session, in the active space, and activates it", () => {
+      const ws = fixture();
+      const next = applyChecked(ws, { type: "item/create", profileId: "default", sessionId: "q9" });
+      const main = spaceOf(next, "s1");
+      expect(shape(main.tree).at(-1)).toBe("n1");
+      expect(layoutPanes(must(main.items.n1).layout)).toEqual([
+        {
+          id: "n2",
+          type: "terminal",
+          profileId: "default",
+          status: "idle",
+          unread: false,
+          bell: false,
+          sessionId: "q9",
+        },
+      ]);
+      expect(main.activeItemId).toBe("n1");
+      expect([...liveSessionIds(next)].sort()).toEqual([...liveSessionIds(ws), "q9"].sort());
+    });
+
+    it("goes to the space it names, not the one on screen", () => {
+      const next = applyChecked(fixture(), {
+        type: "item/create",
+        spaceId: "s2",
+        profileId: "default",
+        sessionId: "q9",
+      });
+      expect(spaceOf(next, "s2").items.n1).toBeDefined();
+      expect(liveSessionIds(next).has("q9")).toBe(true);
+      expect(spaceOf(next, "s1").items.n1).toBeUndefined();
+    });
+
+    it("makes nothing when a pane already holds the session: a session belongs to one pane", () => {
+      const ws = fixture();
+      // x2 is held by a pane of a split tab, in the space on screen; x6 by a pane of another space.
+      expect(applyChecked(ws, { type: "item/create", sessionId: "x2" })).toBe(ws);
+      expect(applyChecked(ws, { type: "item/create", sessionId: "x6" })).toBe(ws);
+      const once = applyChecked(ws, { type: "item/create", sessionId: "q9" });
+      expect(applyChecked(once, { type: "item/create", sessionId: "q9" })).toBe(once);
+    });
+
+    it("takes a blank session id as no session: the pane starts its own shell", () => {
+      const next = applyChecked(fixture(), { type: "item/create", sessionId: "  " });
+      const created = layoutPanes(must(spaceOf(next, "s1").items.n1).layout)[0];
+      expect(created).toBeDefined();
+      expect(created && "sessionId" in created).toBe(false);
+    });
+
+    it("lets the session go with the tab: closing it ends it like any other", () => {
+      const created = applyChecked(fixture(), { type: "item/create", sessionId: "q9" });
+      const closed = applyChecked(created, { type: "item/close", itemId: "n1" });
+      expect(liveSessionIds(closed).has("q9")).toBe(false);
+      // The closed tab keeps its place and what it showed, but not the session.
+      expect(closed.closed.at(-1)?.item.id).toBe("n1");
+      expect(liveSessionIds(closed).size).toBe(liveSessionIds(fixture()).size);
+    });
+  });
+
   it("returns the same workspace for an unknown space or group, a bad index or a blank profile", () => {
     const ws = fixture();
     expect(applyChecked(ws, { type: "item/create", spaceId: "nope" })).toBe(ws);

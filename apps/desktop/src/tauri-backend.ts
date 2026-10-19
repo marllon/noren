@@ -106,6 +106,24 @@ export class TauriBackend implements Backend {
     return id;
   }
 
+  async attachSession(id: SessionId): Promise<void> {
+    await this.#listenForExits();
+
+    // The stream is not kept until the Rust side moved the output here: a rejected call (the session
+    // is gone) leaves nothing behind. What arrives in between is held by the stream.
+    const stream = new OutputStream();
+    const channel = this.#bridge.createChannel<ArrayBuffer>();
+    channel.onmessage = (message) => stream.push(new Uint8Array(message));
+    await this.#bridge.invoke("session_attach", { id, onOutput: channel });
+    this.#streams.set(id, stream);
+
+    const early = this.#earlyExits.get(id);
+    if (early) {
+      this.#earlyExits.delete(id);
+      this.#handleExit(early);
+    }
+  }
+
   async write(id: SessionId, data: string | Uint8Array): Promise<void> {
     await this.#bridge.invoke("session_write", {
       id,

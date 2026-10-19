@@ -72,6 +72,14 @@ export interface Backend {
   setUserProfiles(profiles: readonly UserProfile[]): Promise<void>;
   /** Starts a shell. Output produced before `onOutput` is called is held for the first subscriber. */
   createSession(options: CreateSessionOptions): Promise<SessionId>;
+  /**
+   * Takes over the output of a live session that another window started (the quick terminal being
+   * promoted): from then on `onOutput(id)` delivers its output here and the window that had it gets
+   * none. The shell is the same process under the same id, nothing is restarted, and what it prints
+   * while this is being asked is held for the first `onOutput` subscriber. Rejects when no live
+   * session has the id (never started, or already ended).
+   */
+  attachSession(id: SessionId): Promise<void>;
   /** Sends keyboard input (text) or raw bytes (for example a paste) to the shell. */
   write(id: SessionId, data: string | Uint8Array): Promise<void>;
   resize(id: SessionId, cols: number, rows: number): Promise<void>;

@@ -19,7 +19,9 @@ use noren_core::{
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::path::BaseDirectory;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
+
+use crate::route::OutputRoute;
 
 /// File name of the workspace state inside the app data folder.
 pub const STATE_FILE_NAME: &str = "state.json";
@@ -39,6 +41,9 @@ pub struct AppState {
     detected: ProfileSet,
     /// The detected shells followed by the profiles of the user: what is listed and what starts.
     profiles: RwLock<ProfileSet>,
+    /// Where the output of each live session goes, by session id. A route is added when the session
+    /// starts and removed when it ends; `session_attach` changes the channel behind it.
+    routes: Arc<Mutex<HashMap<u64, Arc<OutputRoute>>>>,
 }
 
 /// What a `%NAME%` in a profile of the user is replaced with: the environment of the process.
@@ -58,6 +63,7 @@ impl AppState {
             sessions: SessionManager::new(),
             profiles: RwLock::new(detected.clone()),
             detected,
+            routes: Arc::default(),
         }
     }
 
@@ -74,6 +80,15 @@ impl AppState {
                 .cloned()
                 .ok_or_else(|| "no shell profile was found on this machine".to_owned()),
         }
+    }
+
+    /// Where the output of the session `id` goes; `None` for a session that never started or ended.
+    pub fn route(&self, id: u64) -> Option<Arc<OutputRoute>> {
+        self.routes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&id)
+            .cloned()
     }
 
     /// Every profile, the detected ones first, as the interface lists them.
@@ -194,7 +209,7 @@ pub fn apply_session_options(
 
 /// The folder with the shell integration scripts, when the app has it (installed app, or the
 /// copy `tauri-build` keeps next to the debug binary).
-pub fn integration_dir(app: &AppHandle) -> Option<PathBuf> {
+pub fn integration_dir<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
     let dir = app
         .path()
         .resolve(INTEGRATION_RESOURCE_DIR, BaseDirectory::Resource)
@@ -216,13 +231,16 @@ fn profile_dtos(set: &ProfileSet) -> Vec<ProfileDto> {
 /// Starts a session of `profile_id` (the default profile when `None`), streams its output to
 /// `output` and emits `session-exit` when it ends. Returns the session id and the profile id.
 ///
+/// The output goes through an [`OutputRoute`] kept in `state` until the session ends, so
+/// [`attach_session`] can move it to another channel while the shell runs.
+///
 /// `cwd` and `env` are optional (see [`apply_session_options`]).
 ///
 /// Shared by the `session_create` command and by `--smoke`, so the smoke test exercises the
 /// same path the interface uses.
 #[allow(clippy::too_many_arguments)]
-pub fn create_session(
-    app: &AppHandle,
+pub fn create_session<R: Runtime>(
+    app: &AppHandle<R>,
     state: &AppState,
     profile_id: Option<&str>,
     cwd: Option<&str>,
@@ -245,17 +263,22 @@ pub fn create_session(
     let mut slot = id_slot.lock().unwrap_or_else(|e| e.into_inner());
 
     let callback_slot = Arc::clone(&id_slot);
+    let route = Arc::new(OutputRoute::new(output));
+    let sink = Arc::clone(&route);
+    let routes = Arc::clone(&state.routes);
     let app = app.clone();
     let id = state
         .sessions
         .spawn(spec, move |event| match event {
-            SessionEvent::Output(bytes) => {
-                // A failed send means the interface is gone; the session ends with the app.
-                let _ = output.send(InvokeResponseBody::Raw(bytes.to_vec()));
-            }
+            // A failed send means the page is gone; the session ends with the app.
+            SessionEvent::Output(bytes) => sink.send(bytes),
             SessionEvent::Exit(info) => {
                 let id = *callback_slot.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(id) = id {
+                    routes
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .remove(&id.0);
                     let _ = app.emit(
                         SESSION_EXIT_EVENT,
                         SessionExitPayload {
@@ -268,8 +291,41 @@ pub fn create_session(
             }
         })
         .map_err(|e| e.to_string())?;
+    // Before the lock is released: the exit callback waits for it, so it cannot remove a route
+    // that was not added yet.
+    state
+        .routes
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(id.0, route);
     *slot = Some(id);
     Ok((id.0, profile.id.clone()))
+}
+
+/// Moves the output of the live session `id` to `output`: what the shell prints from now on goes
+/// there and no longer to the channel that had it. The shell is not touched, it is the same process
+/// under the same id; this is how a session opened in the quick window is handed to the main one.
+/// Fails when no live session has the id.
+pub fn attach_session(
+    state: &AppState,
+    id: u64,
+    output: Channel<InvokeResponseBody>,
+) -> Result<(), String> {
+    let route = state
+        .route(id)
+        .ok_or_else(|| format!("unknown session {id}"))?;
+    drop(route.replace(output));
+    Ok(())
+}
+
+/// Takes over the output of a live session that another window started (see [`attach_session`]).
+#[tauri::command(rename_all = "camelCase")]
+pub async fn session_attach(
+    state: State<'_, AppState>,
+    id: u64,
+    on_output: Channel<InvokeResponseBody>,
+) -> Result<(), String> {
+    attach_session(&state, id, on_output)
 }
 
 #[tauri::command]
@@ -1833,5 +1889,189 @@ mod tests {
     fn write_data_converts_text_and_bytes() {
         assert_eq!(WriteData::Text("é\r".into()).into_bytes(), b"\xc3\xa9\r");
         assert_eq!(WriteData::Bytes(vec![3, 4]).into_bytes(), vec![3, 4]);
+    }
+
+    // ---- Moving the output of a live session to another channel (the quick window's promotion) ----
+
+    /// Everything a channel received, as bytes.
+    type Received = Arc<Mutex<Vec<u8>>>;
+
+    fn collecting() -> (Channel<InvokeResponseBody>, Received) {
+        let received: Received = Arc::default();
+        let sink = Arc::clone(&received);
+        let channel = Channel::new(move |body| {
+            if let InvokeResponseBody::Raw(bytes) = body {
+                sink.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .extend_from_slice(&bytes);
+            }
+            Ok(())
+        });
+        (channel, received)
+    }
+
+    fn received(of: &Received) -> Vec<u8> {
+        of.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// A shell that stays up and can be told to print the number of its own process.
+    #[cfg(windows)]
+    fn shell_profile() -> Profile {
+        Profile {
+            args: vec!["-NoLogo".to_owned(), "-NoProfile".to_owned()],
+            inject_integration: false,
+            ..profile_running("powershell.exe")
+        }
+    }
+    #[cfg(not(windows))]
+    fn shell_profile() -> Profile {
+        Profile {
+            inject_integration: false,
+            ..profile_running("sh")
+        }
+    }
+
+    fn profile_running(program: &str) -> Profile {
+        Profile {
+            id: "test".to_owned(),
+            name: "Test shell".to_owned(),
+            program: program.to_owned(),
+            args: Vec::new(),
+            cwd: None,
+            inject_integration: false,
+        }
+    }
+
+    /// The line that makes the shell print `noren-pid-<its process number>-end`. The shell echoes
+    /// what is typed, but that text has `$PID` or `$$` where the number goes, so only the output of
+    /// the command has digits there.
+    #[cfg(windows)]
+    const PID_COMMAND: &[u8] = b"Write-Output \"noren-pid-$PID-end\"\r";
+    #[cfg(not(windows))]
+    const PID_COMMAND: &[u8] = b"echo \"noren-pid-$$-end\"\n";
+
+    /// The process number the shell printed in answer to [`PID_COMMAND`], when it has.
+    fn printed_pid(output: &[u8]) -> Option<u32> {
+        let text = crate::smoke::strip_ansi(&String::from_utf8_lossy(output));
+        text.split("noren-pid-").skip(1).find_map(|rest| {
+            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+            (!digits.is_empty() && rest[digits.len()..].starts_with("-end"))
+                .then(|| digits.parse().ok())
+                .flatten()
+        })
+    }
+
+    fn wait_for_pid(output: &Received) -> u32 {
+        let deadline = std::time::Instant::now() + Duration::from_secs(40);
+        loop {
+            if let Some(pid) = printed_pid(&received(output)) {
+                return pid;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the shell never printed its process number; it printed {:?}",
+                String::from_utf8_lossy(&received(output))
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn state_with_shell() -> AppState {
+        AppState::with_detected(ProfileSet {
+            profiles: vec![shell_profile()],
+            default_id: Some("test".to_owned()),
+        })
+    }
+
+    #[test]
+    fn printed_pid_reads_the_answer_and_not_the_typed_line() {
+        assert_eq!(printed_pid(b"noren-pid-4242-end\r\n"), Some(4242));
+        assert_eq!(
+            printed_pid(
+                b"PS> \x1b[93mWrite-Output\x1b[m \"noren-pid-$PID-end\"\r\nnoren-pid-17-end\r\n"
+            ),
+            Some(17)
+        );
+        assert_eq!(printed_pid(b"echo \"noren-pid-$$-end\"\r\n"), None);
+        assert_eq!(printed_pid(b"noren-pid-12"), None);
+        assert_eq!(printed_pid(b""), None);
+    }
+
+    #[test]
+    fn a_session_moved_to_a_new_channel_is_the_same_process_with_its_output_only_in_the_new_one() {
+        let state = state_with_shell();
+        let app = tauri::test::mock_app();
+        let (old, in_old) = collecting();
+        let (id, profile) =
+            create_session(app.handle(), &state, None, None, None, 120, 30, old).expect("start");
+        assert_eq!(profile, "test");
+        let route = state.route(id).expect("a live session has a route");
+        assert_eq!(route.channels(), 1);
+
+        state
+            .sessions
+            .write(SessionId(id), PID_COMMAND)
+            .expect("write");
+        let pid_before = wait_for_pid(&in_old);
+
+        let (new, in_new) = collecting();
+        attach_session(&state, id, new).expect("attach");
+        // Nothing was in flight past the replacement: what the old channel has is all it will have.
+        let old_final = received(&in_old);
+        assert_eq!(route.channels(), 2);
+        assert_eq!(
+            received(&in_new),
+            Vec::<u8>::new(),
+            "nothing reached the new one yet"
+        );
+
+        state
+            .sessions
+            .write(SessionId(id), PID_COMMAND)
+            .expect("write again");
+        let pid_after = wait_for_pid(&in_new);
+
+        assert_eq!(pid_before, pid_after, "the shell is the same process");
+        assert_eq!(
+            received(&in_old),
+            old_final,
+            "the old channel got output after the move"
+        );
+        assert!(
+            state.route(id).is_some_and(|now| Arc::ptr_eq(&now, &route)),
+            "the session has the same route"
+        );
+        assert_eq!(
+            state.sessions.session_count(),
+            1,
+            "no session was started or ended"
+        );
+
+        state.sessions.kill(SessionId(id)).expect("kill");
+    }
+
+    #[test]
+    fn a_session_that_ended_has_no_route_left_and_cannot_be_taken_over() {
+        let state = state_with_shell();
+        let app = tauri::test::mock_app();
+        let (channel, _) = collecting();
+        let (id, _) =
+            create_session(app.handle(), &state, None, None, None, 80, 24, channel).expect("start");
+        assert!(state.route(id).is_some());
+        state.sessions.kill(SessionId(id)).expect("kill");
+        assert!(state.route(id).is_none(), "the route went with the session");
+
+        let (late, in_late) = collecting();
+        let refusal = attach_session(&state, id, late).expect_err("the session is gone");
+        assert!(refusal.contains("unknown session"), "{refusal}");
+        assert!(received(&in_late).is_empty());
+    }
+
+    #[test]
+    fn a_session_that_never_existed_cannot_be_taken_over() {
+        let state = state_with_shell();
+        let (channel, _) = collecting();
+        let refusal = attach_session(&state, 99, channel).expect_err("no such session");
+        assert_eq!(refusal, "unknown session 99");
     }
 }

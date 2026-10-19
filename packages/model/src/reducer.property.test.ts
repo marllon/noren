@@ -388,12 +388,20 @@ function playSequences(numRuns: number, maxPanes?: number): void {
             );
           }
 
-          // Sessions only leave with a closed item or pane, or a deleted space, and none appears.
+          // Sessions only leave with a closed item or pane, or a deleted space, and none appears,
+          // except the one a new tab is made around (`item/create` with a `sessionId`), which no
+          // pane may hold already: asking for one that is held changes nothing.
           const before = liveSessionIds(ws);
           const after = liveSessionIds(next);
           const ended = sessionsEndedBy(ws, action);
+          const adopted = action.type === "item/create" ? action.sessionId : undefined;
           for (const id of after) {
-            if (!before.has(id)) throw new Error(`${where()}: session ${id} appeared`);
+            if (!before.has(id) && id !== adopted) {
+              throw new Error(`${where()}: session ${id} appeared`);
+            }
+          }
+          if (adopted !== undefined && before.has(adopted) && next !== ws) {
+            throw new Error(`${where()}: a session held by a pane was given to a second one`);
           }
           for (const id of before) {
             if (!after.has(id) && !ended.has(id)) {

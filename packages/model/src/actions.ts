@@ -96,6 +96,13 @@ export type Action =
       cwd?: string;
       /** Defaults to the end of the tree. */
       placement?: Placement;
+      /**
+       * A session that is already running, for the pane of the new tab to hold (a terminal opened in
+       * the quick window and promoted): the tab shows that shell instead of starting one. Nothing
+       * is created when an open pane already holds the session. The profile is then the one the
+       * session was started with, so pass it; the folder, when left out, is the one of the space.
+       */
+      sessionId?: Id;
     }
   | { type: "item/close"; itemId: Id }
   /**

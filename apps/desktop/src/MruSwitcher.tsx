@@ -1,3 +1,4 @@
+import { useT } from "./i18n";
 import type { MruRow } from "./use-mru-switcher";
 
 interface MruSwitcherViewProps {
@@ -10,9 +11,10 @@ interface MruSwitcherViewProps {
  * it is a list the user reads, not a dialog.
  */
 export function MruSwitcherView({ rows }: MruSwitcherViewProps) {
+  const t = useT();
   return (
     <div className="mru-backdrop">
-      <div className="mru" data-nr-part="mru" role="listbox" aria-label="Recent tabs">
+      <div className="mru" data-nr-part="mru" role="listbox" aria-label={t("mru.label")}>
         {rows.map((row) => (
           <div
             key={row.itemId}
@@ -28,7 +30,7 @@ export function MruSwitcherView({ rows }: MruSwitcherViewProps) {
               <span className="mru-detail">{row.detail}</span>
             </div>
             <pre className="mru-preview" data-nr-part="mru-preview">
-              {row.preview.length > 0 ? row.preview.join("\n") : "No output yet"}
+              {row.preview.length > 0 ? row.preview.join("\n") : t("output.none")}
             </pre>
           </div>
         ))}

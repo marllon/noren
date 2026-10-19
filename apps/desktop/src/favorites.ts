@@ -1,4 +1,5 @@
 import type { Id, Space } from "@noren/model";
+import { t } from "./i18n";
 import { spaceItemIds } from "./workspace-store";
 
 // The global favorites as the sidebar grid shows them. Pure: the grid only draws what this returns.
@@ -6,7 +7,7 @@ import { spaceItemIds } from "./workspace-store";
 /** The name of a tab: its title, else a placeholder counted in the order of its space. */
 export function itemTitle(space: Space, itemId: Id): string {
   const item = space.items[itemId];
-  return item?.title ?? `Tab ${spaceItemIds(space).indexOf(itemId) + 1}`;
+  return item?.title ?? t("tree.tabDefault", { n: spaceItemIds(space).indexOf(itemId) + 1 });
 }
 
 /** The first letter or digit of a title, upper case, for the tile of a favorite. */

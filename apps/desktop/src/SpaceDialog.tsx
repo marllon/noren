@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import type { Space } from "@noren/model";
+import { useT } from "./i18n";
+import { spaceColorName, spaceIconName } from "./i18n/names";
 import { SPACE_ICONS, isSpaceIcon } from "./SpaceIcon";
 import {
   SPACE_COLORS,
@@ -30,6 +32,7 @@ interface SpaceDialogProps {
 
 /** Collects the name, color, icon, start folder and environment of a space, new or existing. */
 export function SpaceDialog({ space, onSubmit, onCancel }: SpaceDialogProps) {
+  const t = useT();
   const titleId = useId();
   const nameRef = useRef<HTMLInputElement>(null);
   const editing = space !== undefined;
@@ -56,12 +59,12 @@ export function SpaceDialog({ space, onSubmit, onCancel }: SpaceDialogProps) {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (name.trim() === "") {
-      setError("Give the space a name.");
+      setError(t("spaceDialog.needName"));
       return;
     }
     const glyph = emoji.trim();
     if (glyph !== "" && !isSingleGlyph(glyph)) {
-      setError("Use a single emoji for the icon.");
+      setError(t("spaceDialog.needGlyph"));
       return;
     }
     const env = parseEnvLines(envText);
@@ -96,19 +99,19 @@ export function SpaceDialog({ space, onSubmit, onCancel }: SpaceDialogProps) {
         onSubmit={submit}
         onKeyDown={onKeyDown}
       >
-        <h2 id={titleId}>{editing ? "Edit space" : "New space"}</h2>
+        <h2 id={titleId}>{editing ? t("spaceDialog.edit") : t("spaces.new")}</h2>
         <label className="field">
-          <span>Name</span>
+          <span>{t("spaceDialog.name")}</span>
           <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <fieldset className="field choices">
-          <legend>Color</legend>
+          <legend>{t("spaceDialog.color")}</legend>
           {SPACE_COLORS.map((choice) => (
             <label key={choice.value} className="swatch">
               <input
                 type="radio"
                 name="space-color"
-                aria-label={choice.name}
+                aria-label={spaceColorName(choice.name)}
                 checked={color === choice.value}
                 onChange={() => setColor(choice.value)}
               />
@@ -117,7 +120,7 @@ export function SpaceDialog({ space, onSubmit, onCancel }: SpaceDialogProps) {
           ))}
         </fieldset>
         <fieldset className="field choices">
-          <legend>Icon</legend>
+          <legend>{t("spaceDialog.icon")}</legend>
           {SPACE_ICON_NAMES.map((choice) => {
             const { label, Icon } = SPACE_ICONS[choice];
             return (
@@ -125,7 +128,7 @@ export function SpaceDialog({ space, onSubmit, onCancel }: SpaceDialogProps) {
                 <input
                   type="radio"
                   name="space-icon"
-                  aria-label={label}
+                  aria-label={spaceIconName(choice, label)}
                   checked={emoji.trim() === "" && lucide === choice}
                   onChange={() => {
                     setLucide(choice);
@@ -140,49 +143,53 @@ export function SpaceDialog({ space, onSubmit, onCancel }: SpaceDialogProps) {
           })}
         </fieldset>
         <label className="field">
-          <span>Emoji</span>
+          <span>{t("spaceDialog.emoji")}</span>
           <input
             value={emoji}
-            placeholder="Optional, replaces the icon"
+            placeholder={t("spaceDialog.emojiHint")}
             onChange={(e) => setEmoji(e.target.value)}
           />
         </label>
         <label className="field">
-          <span>Start folder</span>
-          <input value={cwd} placeholder="Optional" onChange={(e) => setCwd(e.target.value)} />
+          <span>{t("spaceDialog.cwd")}</span>
+          <input
+            value={cwd}
+            placeholder={t("spaceDialog.optional")}
+            onChange={(e) => setCwd(e.target.value)}
+          />
         </label>
         <label className="field">
-          <span>Environment variables</span>
+          <span>{t("spaceDialog.env")}</span>
           <textarea
             rows={3}
             value={envText}
-            placeholder="NAME=value, one per line"
+            placeholder={t("spaceDialog.envHint")}
             onChange={(e) => setEnvText(e.target.value)}
           />
         </label>
         <label className="field">
-          <span>Git name</span>
+          <span>{t("spaceDialog.gitName")}</span>
           <input
             value={gitName}
-            placeholder="Optional, author of commits"
+            placeholder={t("spaceDialog.gitNameHint")}
             onChange={(e) => setGitName(e.target.value)}
           />
         </label>
         <label className="field">
-          <span>Git email</span>
+          <span>{t("spaceDialog.gitEmail")}</span>
           <input
             value={gitEmail}
-            placeholder="Optional"
+            placeholder={t("spaceDialog.optional")}
             onChange={(e) => setGitEmail(e.target.value)}
           />
         </label>
         {error !== undefined && <p role="alert">{error}</p>}
         <div className="dialog-actions">
           <button type="button" onClick={onCancel}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button type="submit" className="primary">
-            {editing ? "Save" : "Create space"}
+            {editing ? t("common.save") : t("spaceDialog.create")}
           </button>
         </div>
       </form>

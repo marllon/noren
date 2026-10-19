@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
+import { useT } from "./i18n";
 import { searchTabs } from "./tab-search";
 import type { SearchHit, SearchTab, TabHits } from "./tab-search";
 
@@ -38,6 +39,7 @@ function Line({ hit }: { hit: SearchHit }) {
  * click) picks a line, Escape closes.
  */
 export function TabSearch({ tabs, onPick, onClose }: TabSearchProps) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -82,9 +84,9 @@ export function TabSearch({ tabs, onPick, onClose }: TabSearchProps) {
 
   const total = rows.length;
   let status = "";
-  if (query.trim() === "") status = "Type to search the output of every open tab.";
-  else if (total === 0) status = "No matches";
-  else if (results.truncated) status = "Showing the first matches only. Narrow the search.";
+  if (query.trim() === "") status = t("tabSearch.hint");
+  else if (total === 0) status = t("tabSearch.none");
+  else if (results.truncated) status = t("tabSearch.truncated");
 
   return (
     <div
@@ -98,17 +100,17 @@ export function TabSearch({ tabs, onPick, onClose }: TabSearchProps) {
         data-nr-part="tab-search"
         role="dialog"
         aria-modal="true"
-        aria-label="Search all tabs"
+        aria-label={t("tabSearch.dialog")}
         onKeyDown={onKeyDown}
       >
         <input
           autoFocus
           type="text"
           className="tab-search-input"
-          aria-label="Search text in all tabs"
+          aria-label={t("tabSearch.input")}
           aria-controls="tab-search-list"
           aria-activedescendant={currentRow !== undefined ? `tab-search-${current}` : undefined}
-          placeholder="Search the output of every open tab"
+          placeholder={t("tabSearch.placeholder")}
           autoComplete="off"
           spellCheck={false}
           value={query}
@@ -122,7 +124,7 @@ export function TabSearch({ tabs, onPick, onClose }: TabSearchProps) {
           id="tab-search-list"
           className="tab-search-list"
           role="listbox"
-          aria-label="Matches"
+          aria-label={t("tabSearch.matches")}
         >
           {results.tabs.map((tab) => (
             <div

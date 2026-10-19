@@ -2,6 +2,7 @@ import type { Backend } from "@noren/model";
 import { ArrowUpRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBackend } from "./backend";
+import { useT } from "./i18n";
 import {
   QUICK_OPEN_EVENT,
   QUICK_PROMOTED_EVENT,
@@ -45,6 +46,7 @@ function pageBackend(): Backend {
  * waits for the next `quick-open`. Esc hides the window; the shell stays.
  */
 export function QuickApp({ backend = pageBackend(), events, hide }: QuickAppProps) {
+  const t = useT();
   const bus = useMemo(() => events ?? tauriQuickEvents(), [events]);
   const actions = useMemo(
     () => createQuickWindowActions({ events: bus, hide: hide ?? tauriHideWindow }),
@@ -155,7 +157,7 @@ export function QuickApp({ backend = pageBackend(), events, hide }: QuickAppProp
     void actions
       .promote(sessionId)
       .then((result) => {
-        if (!result.ok) showNotice(`Could not promote: ${result.reason}`);
+        if (!result.ok) showNotice(t("quick.promoteFailed", { reason: result.reason }));
       })
       .finally(() => setPromoting(false));
   };
@@ -163,7 +165,7 @@ export function QuickApp({ backend = pageBackend(), events, hide }: QuickAppProp
   return (
     <div ref={root} className="app quick-app" data-nr-part="quick-app">
       <div className="quick-bar">
-        <span className="quick-title">Quick terminal</span>
+        <span className="quick-title">{t("quick.title")}</span>
         <button
           type="button"
           className="quick-promote"
@@ -172,7 +174,7 @@ export function QuickApp({ backend = pageBackend(), events, hide }: QuickAppProp
           onClick={promote}
         >
           <ArrowUpRight size={14} aria-hidden="true" />
-          Promote to tab
+          {t("quick.promote")}
         </button>
       </div>
       {shell !== undefined && (

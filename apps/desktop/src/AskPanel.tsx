@@ -4,7 +4,6 @@ import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import {
-  EXPLAIN_QUESTION,
   NO_CHOICE,
   applyAskEvent,
   askRequestId,
@@ -12,6 +11,7 @@ import {
   chipsWithExplained,
   cutLine,
   explainChipLabel,
+  explainQuestion,
   failExchange,
   liveChoice,
   readAskChips,
@@ -23,6 +23,7 @@ import {
 } from "./ask-panel";
 import type { AskChoice, AskExchange, AskSources, ExplainRequest } from "./ask-panel";
 import { aiProvidersSync } from "./config-store";
+import { useT } from "./i18n";
 import { Markdown } from "./Markdown";
 import { useAskTarget } from "./use-ask-target";
 
@@ -83,6 +84,7 @@ export function AskPanel({
   onInsert,
   onClose,
 }: AskPanelProps) {
+  const t = useT();
   const [choice, setChoice] = useState<AskChoice>(NO_CHOICE);
   const [question, setQuestion] = useState("");
   const [preview, setPreview] = useState<Preview | undefined>();
@@ -162,10 +164,10 @@ export function AskPanel({
     if (explain === undefined) return;
     setExplained(explain.request);
     setChoice(NO_CHOICE);
-    setQuestion(EXPLAIN_QUESTION);
+    setQuestion(explainQuestion());
     setTabMenu(false);
     setInserted("");
-    openPreview(EXPLAIN_QUESTION, explain.request, NO_CHOICE);
+    openPreview(explainQuestion(), explain.request, NO_CHOICE);
     // Only a new request does this: the rest of what `openPreview` reads is current when it runs.
   }, [explain]);
 
@@ -190,7 +192,7 @@ export function AskPanel({
         { requestId, providerId: target.providerId, model: target.model, messages: built.messages },
         (event) => update((now) => applyAskEvent(now, event)),
       );
-      update((now) => failExchange(now, "The answer ended without a result."));
+      update((now) => failExchange(now, t("ask.endedNoResult")));
     } catch (error) {
       update((now) => failExchange(now, reasonOf(error)));
     } finally {
@@ -204,11 +206,7 @@ export function AskPanel({
   };
 
   const insert = (text: string) => {
-    setInserted(
-      onInsert(text)
-        ? "Put at the prompt. It runs only when you press Enter in the terminal."
-        : "There is no terminal to put it in.",
-    );
+    setInserted(onInsert(text) ? t("ask.inserted") : t("ask.noTerminal"));
   };
 
   const onQuestionKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -237,27 +235,21 @@ export function AskPanel({
       ref={panelBox}
       className="ask-panel"
       data-nr-part="ask-panel"
-      aria-label="Ask"
+      aria-label={t("ask.label")}
       onKeyDown={onPanelKey}
     >
       <header className="ask-head">
-        <h2>Ask</h2>
+        <h2>{t("ask.label")}</h2>
         <span className="ask-target" data-nr-part="ask-target">
-          {target?.label ?? (looking ? "Looking for a provider..." : "No provider")}
+          {target?.label ?? (looking ? t("ask.lookingProvider") : t("settings.aiNoProvider"))}
         </span>
-        <button type="button" className="ask-close" aria-label="Close Ask" onClick={onClose}>
+        <button type="button" className="ask-close" aria-label={t("ask.close")} onClick={onClose}>
           <X size={14} aria-hidden="true" />
         </button>
       </header>
 
-      <div className="ask-chips" role="group" aria-label="Context">
-        {(
-          [
-            ["selection", "Selection"],
-            ["lastOutput", "Last output"],
-            ["screen", "Screen"],
-          ] as const
-        ).map(([chip, label]) => (
+      <div className="ask-chips" role="group" aria-label={t("ask.context")}>
+        {(["selection", "lastOutput", "screen"] as const).map((chip) => (
           <button
             key={chip}
             type="button"
@@ -266,7 +258,7 @@ export function AskPanel({
             disabled={preview !== undefined || busy}
             onClick={() => toggle(chip)}
           >
-            {label}
+            {t(`ask.chip.${chip}`)}
           </button>
         ))}
         <button
@@ -277,14 +269,14 @@ export function AskPanel({
           disabled={preview !== undefined || busy}
           onClick={() => setTabMenu((open) => !open)}
         >
-          @ Tab
+          {t("ask.chip.tab")}
         </button>
         {explained !== undefined && (
           <span className="ask-chip ask-chip-tab" data-nr-part="ask-explain-chip">
-            <span>Command: {explainChipLabel(explained)}</span>
+            <span>{t("ask.commandChip", { command: explainChipLabel(explained) })}</span>
             <button
               type="button"
-              aria-label="Remove the command"
+              aria-label={t("ask.removeCommand")}
               disabled={preview !== undefined || busy}
               onClick={() => setExplained(undefined)}
             >
@@ -297,7 +289,7 @@ export function AskPanel({
             <span>@{tab.title}</span>
             <button
               type="button"
-              aria-label={`Remove tab ${tab.title}`}
+              aria-label={t("ask.removeTab", { title: tab.title })}
               disabled={preview !== undefined || busy}
               onClick={() => setChoice(withTab(chosen, tab.id, false))}
             >
@@ -307,8 +299,13 @@ export function AskPanel({
         ))}
       </div>
       {tabMenu && (
-        <div id="ask-tab-list" className="ask-tab-list" role="group" aria-label="Tabs to add">
-          {tabs.length === 0 && <p className="ask-hint">There is no other tab.</p>}
+        <div
+          id="ask-tab-list"
+          className="ask-tab-list"
+          role="group"
+          aria-label={t("ask.tabsToAdd")}
+        >
+          {tabs.length === 0 && <p className="ask-hint">{t("ask.noOtherTab")}</p>}
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -322,11 +319,16 @@ export function AskPanel({
         </div>
       )}
 
-      <div className="ask-log" ref={log} role="log" aria-label="Conversation" aria-live="polite">
+      <div
+        className="ask-log"
+        ref={log}
+        role="log"
+        aria-label={t("ask.conversation")}
+        aria-live="polite"
+      >
         {exchanges.length === 0 && (
           <p className="ask-hint" data-nr-part="ask-empty">
-            Ask about your shell or your work. The chips above add context from the terminal; you
-            see exactly what will be sent before anything goes.
+            {t("ask.empty")}
           </p>
         )}
         {exchanges.map((exchange) => {
@@ -335,7 +337,7 @@ export function AskPanel({
             <section
               key={exchange.key}
               className="ask-exchange"
-              aria-label={`Question: ${exchange.question}`}
+              aria-label={t("ask.exchange", { question: exchange.question })}
               data-nr-part="ask-exchange"
               data-nr-state={exchange.status}
             >
@@ -347,7 +349,7 @@ export function AskPanel({
                   onInsert={insert}
                 />
                 {exchange.status === "streaming" && exchange.answer === "" && (
-                  <p className="ask-hint">Waiting for the answer...</p>
+                  <p className="ask-hint">{t("ask.waiting")}</p>
                 )}
                 {note !== undefined && (
                   <p
@@ -369,7 +371,7 @@ export function AskPanel({
 
       {target === undefined && !looking ? (
         <div className="ask-steps" data-nr-part="ask-steps">
-          <p>Nothing can answer yet. To get a first answer:</p>
+          <p>{t("ask.nothingAnswers")}</p>
           <ol>
             {askSteps(fn).map((step) => (
               <li key={step}>{step}</li>
@@ -380,11 +382,11 @@ export function AskPanel({
         <div
           className="ask-review"
           role="region"
-          aria-label="Preview of what will be sent"
+          aria-label={t("ask.review")}
           data-nr-part="ask-review"
         >
           <p className="ask-hint">
-            This goes to {target?.label ?? "the provider"}. Nothing is sent until you press Send.
+            {t("ask.sendsTo", { target: target?.label ?? t("ask.theProvider") })}
           </p>
           <pre className="ask-preview" data-nr-part="ask-preview" tabIndex={0}>
             {preview.built.preview}
@@ -410,10 +412,10 @@ export function AskPanel({
               disabled={busy}
               onClick={() => void send()}
             >
-              Send
+              {t("ask.send")}
             </button>
             <button type="button" onClick={() => setPreview(undefined)}>
-              Edit
+              {t("ask.edit")}
             </button>
           </div>
         </div>
@@ -422,8 +424,8 @@ export function AskPanel({
           <textarea
             ref={questionBox}
             className="ask-question-box"
-            aria-label="Question"
-            placeholder="Ask a question (Enter to preview, Shift+Enter for a new line)"
+            aria-label={t("ask.question")}
+            placeholder={t("ask.placeholder")}
             rows={3}
             value={question}
             disabled={busy || looking}
@@ -441,7 +443,7 @@ export function AskPanel({
           <div className="ask-actions">
             {busy ? (
               <button type="button" className="ask-primary" onClick={stop}>
-                Stop
+                {t("ask.stop")}
               </button>
             ) : (
               <button
@@ -450,7 +452,7 @@ export function AskPanel({
                 disabled={looking}
                 onClick={showPreview}
               >
-                Preview
+                {t("ask.preview")}
               </button>
             )}
           </div>

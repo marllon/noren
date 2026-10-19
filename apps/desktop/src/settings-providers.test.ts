@@ -4,7 +4,7 @@ import type { AiProviderConfig, Config } from "@noren/model";
 import {
   NEW_PROVIDER,
   PROVIDER_ID_OLLAMA,
-  PROVIDER_STEPS,
+  providerSteps,
   connectionLine,
   needsSteps,
   ollamaLine,
@@ -246,7 +246,7 @@ describe("what the screen says", () => {
     expect(needsSteps({}, { found: true, models: ["llama3"] })).toBe(false);
     expect(needsSteps(listed, { found: false })).toBe(false);
     expect(needsSteps({ ai: { providers: [] } }, { found: false })).toBe(true);
-    expect(PROVIDER_STEPS.length).toBe(3);
+    expect(providerSteps().length).toBe(3);
   });
 
   it("tells a connection test in a sentence", () => {

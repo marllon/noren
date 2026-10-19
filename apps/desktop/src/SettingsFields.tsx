@@ -1,10 +1,17 @@
 import { useId } from "react";
+import { fieldDescription } from "./i18n/names";
 
 // The boxes of the settings screen that hold a line of text or a choice, each with its label and, under
 // it, the reason a value is refused.
 
+/** The description of a field in the language in force, for the `title` of its control. */
+const describe = (field: string | undefined): string | undefined =>
+  field === undefined ? undefined : fieldDescription(field) || undefined;
+
 export interface NumberBoxProps {
   label: string;
+  /** The path of the field in the schema, whose description is the tooltip of the box. */
+  field?: string;
   value: string;
   problem: string | undefined;
   /** A box for a path or other text rather than a number. */
@@ -16,6 +23,7 @@ export interface NumberBoxProps {
 
 export function NumberBox({
   label,
+  field,
   value,
   problem,
   text = false,
@@ -25,7 +33,7 @@ export function NumberBox({
   const hintId = useId();
   return (
     <div className={wide ? "settings-number settings-wide" : "settings-number"}>
-      <label className="settings-option">
+      <label className="settings-option" title={describe(field)}>
         <span>{label}</span>
         <input
           type="text"
@@ -49,6 +57,7 @@ export function NumberBox({
 
 export interface SelectBoxProps {
   label: string;
+  field?: string;
   value: string;
   options: readonly { value: string; label: string }[];
   problem: string | undefined;
@@ -56,13 +65,15 @@ export interface SelectBoxProps {
 }
 
 /** A drop-down list with its label; a problem is told under it, where the choice is made. */
-export function SelectBox({ label, value, options, problem, onChange }: SelectBoxProps) {
+export function SelectBox({ label, field, value, options, problem, onChange }: SelectBoxProps) {
   const hintId = useId();
   const selectId = useId();
   return (
     <div className="settings-number">
       <div className="settings-option">
-        <label htmlFor={selectId}>{label}</label>
+        <label htmlFor={selectId} title={describe(field)}>
+          {label}
+        </label>
         <select
           id={selectId}
           value={value}

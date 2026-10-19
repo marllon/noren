@@ -3,9 +3,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { Backend, Id, Workspace } from "@noren/model";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { useT } from "./i18n";
 import {
   LIBRARY_SECTIONS,
-  LIBRARY_SECTION_LABELS,
   filterLibrary,
   libraryEntries,
   loadLibraryTexts,
@@ -43,6 +43,7 @@ export function Library({
   onDelete,
   onClose,
 }: LibraryProps) {
+  const t = useT();
   const [section, setSection] = useState<LibrarySection>(initialSection);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
@@ -119,9 +120,9 @@ export function Library({
 
   let status = "";
   if (rows.length === 0) {
-    if (query.trim() !== "") status = "No matches";
-    else if (section === "archive") status = "Nothing in the archive yet.";
-    else status = "No recently closed tabs.";
+    if (query.trim() !== "") status = t("library.noMatches");
+    else if (section === "archive") status = t("library.emptyArchive");
+    else status = t("library.emptyClosed");
   }
 
   return (
@@ -137,11 +138,11 @@ export function Library({
           data-nr-part="library"
           role="dialog"
           aria-modal="true"
-          aria-label="Library"
+          aria-label={t("library.label")}
           onKeyDown={onKeyDown}
         >
           <div className="library-head">
-            <div className="library-sections" role="tablist" aria-label="Library sections">
+            <div className="library-sections" role="tablist" aria-label={t("library.sections")}>
               {LIBRARY_SECTIONS.map((name) => (
                 <button
                   key={name}
@@ -156,7 +157,7 @@ export function Library({
                     input.current?.focus();
                   }}
                 >
-                  {LIBRARY_SECTION_LABELS[name]}
+                  {t(`library.section.${name}`)}
                   <span className="library-count" aria-hidden="true">
                     {counts[name]}
                   </span>
@@ -168,8 +169,8 @@ export function Library({
               autoFocus
               type="text"
               className="library-input"
-              aria-label="Search the library"
-              placeholder="Search by title, folder or output"
+              aria-label={t("library.search")}
+              placeholder={t("library.placeholder")}
               autoComplete="off"
               spellCheck={false}
               value={query}
@@ -179,7 +180,7 @@ export function Library({
               }}
             />
           </div>
-          <ul ref={listRef} className="library-list" aria-label={LIBRARY_SECTION_LABELS[section]}>
+          <ul ref={listRef} className="library-list" aria-label={t(`library.section.${section}`)}>
             {rows.map((entry, index) => (
               <li
                 key={entry.itemId}
@@ -192,7 +193,7 @@ export function Library({
                 <button
                   type="button"
                   className="library-open"
-                  aria-label={`Restore ${entry.title}`}
+                  aria-label={t("library.restore", { title: entry.title })}
                   onClick={() => onRestore(entry)}
                 >
                   <span
@@ -216,7 +217,7 @@ export function Library({
                 <button
                   type="button"
                   className="library-delete"
-                  aria-label={`Delete ${entry.title}`}
+                  aria-label={t("library.delete", { title: entry.title })}
                   onClick={() => setPending(entry)}
                 >
                   <Trash2 size={14} aria-hidden="true" />
@@ -233,9 +234,9 @@ export function Library({
       </div>
       {pending !== null && (
         <ConfirmDialog
-          title="Delete from library"
-          message={`Delete "${pending.title}" for good? Its saved output is deleted with it.`}
-          confirmLabel="Delete"
+          title={t("library.confirmTitle")}
+          message={t("library.confirmMessage", { title: pending.title })}
+          confirmLabel={t("library.confirmDelete")}
           onCancel={() => {
             setPending(null);
             input.current?.focus();

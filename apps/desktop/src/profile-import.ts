@@ -1,5 +1,6 @@
 import { commandLineOf, importProfiles, userProfilesFromImported } from "@noren/model";
 import type { Config, ConfigManager, SkippedProfile, UserProfile } from "@noren/model";
+import { t } from "./i18n";
 import type { PickedFile } from "./scheme-import";
 
 // Importing the shell profiles of another program's settings file (JSON with comments) in two
@@ -33,12 +34,12 @@ export function takenProfileIds(config: Config, listed: readonly { id: string }[
 }
 
 function failure(file: PickedFile, reason: string): ProfileImportRead {
-  return { ok: false, message: `Could not import "${file.name}": ${reason}` };
+  return { ok: false, message: t("profileImport.failed", { file: file.name, reason }) };
 }
 
-/** `1 profile`, `3 profiles`: the count with the word for it. */
-function counted(count: number, one: string, many: string): string {
-  return count === 1 ? `1 ${one}` : `${count} ${many}`;
+/** `1 profile`, `3 profiles`: the count with the word for it, in the language in force. */
+export function profileCount(count: number): string {
+  return count === 1 ? t("count.profile.one") : t("count.profile.other", { count });
 }
 
 /**
@@ -51,34 +52,47 @@ export async function readProfileFile(
   takenIds: Iterable<string>,
 ): Promise<ProfileImportRead> {
   if (file.size > MAX_PROFILE_FILE_BYTES) {
-    return failure(file, "the file is too large to be a settings file.");
+    return failure(file, t("profileImport.tooLarge"));
   }
   let text: string;
   try {
     text = await file.text();
   } catch {
-    return failure(file, "the file could not be read.");
+    return failure(file, t("profileImport.unreadable"));
   }
   const read = importProfiles(text);
   if (!read.ok) {
     const more = read.errors.length - 1;
-    return failure(
-      file,
-      `${read.errors[0] ?? "it is not a settings file."}${more > 0 ? ` (and ${more} more)` : ""}`,
-    );
+    const first = read.errors[0] ?? t("profileImport.notSettings");
+    return failure(file, more > 0 ? t("profileImport.moreErrors", { first, count: more }) : first);
   }
   const { profiles, skipped } = userProfilesFromImported(read.profiles, takenIds);
   if (profiles.length === 0) {
     const why = [
-      read.hidden > 0 ? `${counted(read.hidden, "profile is", "profiles are")} hidden` : "",
+      read.hidden > 0
+        ? read.hidden === 1
+          ? t("profileImport.areHidden.one")
+          : t("profileImport.areHidden.other", { count: read.hidden })
+        : "",
       skipped.length > 0
-        ? `${counted(skipped.length, "profile has", "profiles have")} nothing to start (${skipped[0]?.name ?? ""}: ${skipped[0]?.reason ?? ""})`
+        ? t(
+            skipped.length === 1
+              ? "profileImport.nothingToStart.one"
+              : "profileImport.nothingToStart.other",
+            {
+              count: skipped.length,
+              name: skipped[0]?.name ?? "",
+              reason: skipped[0]?.reason ?? "",
+            },
+          )
         : "",
       read.warnings[0] ?? "",
     ].filter((part) => part !== "");
     return failure(
       file,
-      `there is no profile to import${why.length > 0 ? `: ${why.join("; ")}` : ""}.`,
+      why.length > 0
+        ? t("profileImport.noneWhy", { why: why.join("; ") })
+        : t("profileImport.none"),
     );
   }
   return {
@@ -95,8 +109,10 @@ export function describeProfile(profile: UserProfile): { name: string; command: 
 /** `"A"`, `"A" and "B"`, or the first two and a count. */
 function namesOf(profiles: readonly UserProfile[]): string {
   const shown = profiles.slice(0, 2).map((profile) => `"${profile.name}"`);
+  const [first = "", second = ""] = shown;
   const rest = profiles.length - shown.length;
-  return rest > 0 ? `${shown.join(", ")} and ${rest} more` : shown.join(" and ");
+  if (rest > 0) return t("profileImport.namesMore", { first, second, rest });
+  return second === "" ? first : t("profileImport.namesAnd", { first, second });
 }
 
 export type ProfileImportResult = { ok: true; message: string } | { ok: false; message: string };
@@ -113,9 +129,11 @@ export async function commitProfileImport(
 ): Promise<ProfileImportResult> {
   const result = await settings.update([{ path: ["profiles"], append: plan.profiles }]);
   if (!result.ok) return { ok: false, message: result.message };
-  const count = counted(plan.profiles.length, "profile", "profiles");
   return {
     ok: true,
-    message: `Imported ${count}: ${namesOf(plan.profiles)}. Open one with "New ... tab" in the command palette.`,
+    message: t("profileImport.done", {
+      profiles: profileCount(plan.profiles.length),
+      names: namesOf(plan.profiles),
+    }),
   };
 }

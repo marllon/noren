@@ -6,6 +6,7 @@ import {
 } from "@noren/model";
 import type { Backend } from "@noren/model";
 import type { ArchivedItem, ClosedItem, Id, Item, Space, Workspace } from "@noren/model";
+import { t } from "./i18n";
 import { shortCwd } from "./pane-info";
 
 // The library: the tabs that left their space, as a list to search, restore and delete. Two
@@ -16,13 +17,8 @@ export type LibrarySection = "archive" | "closed";
 
 export const LIBRARY_SECTIONS: readonly LibrarySection[] = ["archive", "closed"];
 
-export const LIBRARY_SECTION_LABELS: Readonly<Record<LibrarySection, string>> = {
-  archive: "Archive",
-  closed: "Closed",
-};
-
-/** What the library calls a tab that has no title. */
-export const UNTITLED_TAB = "Untitled tab";
+/** What the library calls a tab that has no title, in the language in force. */
+export const untitledTab = (): string => t("library.untitled");
 
 /** One tab of the library, ready to draw. */
 export interface LibraryEntry {
@@ -68,9 +64,9 @@ function entryOf(
   return {
     section,
     itemId: raw.item.id,
-    title: title !== undefined && title !== "" ? title : UNTITLED_TAB,
+    title: title !== undefined && title !== "" ? title : untitledTab(),
     spaceId: raw.spaceId,
-    spaceName: space?.name ?? "Deleted space",
+    spaceName: space?.name ?? t("library.deletedSpace"),
     spaceColor: space?.color ?? "var(--nr-muted)",
     ...(cwd !== undefined ? { cwd, cwdShort: shortCwd(cwd, home) } : {}),
     at,

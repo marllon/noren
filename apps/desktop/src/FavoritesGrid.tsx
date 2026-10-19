@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import type { Id } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
+import { useT } from "./i18n";
 import type { ResolvedFavorite } from "./favorites";
 import type { MenuPoint } from "./SpaceMenu";
 import { useOutsideDrop } from "./TreeDnd";
@@ -21,6 +22,7 @@ interface FavoritesGridProps {
  * also where a tab dragged from the tree becomes a favorite. It must sit inside the `TreeDnd`.
  */
 export function FavoritesGrid({ favorites, active, onOpen, onMenu }: FavoritesGridProps) {
+  const t = useT();
   const drop = useOutsideDrop({ kind: "favorites" });
   return (
     <section
@@ -28,7 +30,7 @@ export function FavoritesGrid({ favorites, active, onOpen, onMenu }: FavoritesGr
       className="favorites"
       data-nr-part="favorites"
       data-nr-state={drop.over ? "over" : undefined}
-      aria-label="Favorites"
+      aria-label={t("favorites.label")}
     >
       <ul className="favorites-grid">
         {favorites.map((favorite) => {

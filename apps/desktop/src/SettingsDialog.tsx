@@ -22,7 +22,7 @@ import type {
 } from "@noren/model";
 import { useConfigState, configManager } from "./config-store";
 import { LANGUAGE_NAMES, t, useT } from "./i18n";
-import { effectName } from "./i18n/names";
+import { effectName, fieldDescription } from "./i18n/names";
 import { resolveBindings } from "./keybindings";
 import type { Preset } from "./keybindings";
 import { useKeybindings } from "./keybindings-store";
@@ -54,17 +54,30 @@ import { aiProviderIds, fontChoice } from "./settings-sections";
 import type { AiTargetDraft } from "./settings-sections";
 import { useWindowEffectReport, windowEffectNote } from "./window-effect-store";
 
+/** The description of a field in the language in force, for the `title` of its control. */
+const describe = (field: string | undefined): string | undefined =>
+  field === undefined ? undefined : fieldDescription(field) || undefined;
+
 interface ChoiceProps<T extends string> {
   legend: string;
+  /** The path of the field in the schema, whose description is the tooltip of the group. */
+  field?: string;
   name: string;
   value: T;
   options: readonly { value: T; label: string }[];
   onChange(value: T): void;
 }
 
-function Choice<T extends string>({ legend, name, value, options, onChange }: ChoiceProps<T>) {
+function Choice<T extends string>({
+  legend,
+  field,
+  name,
+  value,
+  options,
+  onChange,
+}: ChoiceProps<T>) {
   return (
-    <fieldset className="settings-field">
+    <fieldset className="settings-field" title={describe(field)}>
       <legend>{legend}</legend>
       {options.map((option) => (
         <label key={option.value} className="settings-option">
@@ -83,14 +96,15 @@ function Choice<T extends string>({ legend, name, value, options, onChange }: Ch
 
 interface ToggleProps {
   label: string;
+  field?: string;
   checked: boolean;
   disabled?: boolean;
   onChange(checked: boolean): void;
 }
 
-function Toggle({ label, checked, disabled = false, onChange }: ToggleProps) {
+function Toggle({ label, field, checked, disabled = false, onChange }: ToggleProps) {
   return (
-    <label className="settings-option">
+    <label className="settings-option" title={describe(field)}>
       <input
         type="checkbox"
         checked={checked}
@@ -104,17 +118,18 @@ function Toggle({ label, checked, disabled = false, onChange }: ToggleProps) {
 
 interface TextAreaProps {
   label: string;
+  field?: string;
   value: string;
   problem: string | undefined;
   onChange(text: string): void;
 }
 
 /** A box of several lines, such as the arguments of a program, one to a line. */
-function TextArea({ label, value, problem, onChange }: TextAreaProps) {
+function TextArea({ label, field, value, problem, onChange }: TextAreaProps) {
   const hintId = useId();
   return (
     <div className="settings-number settings-wide">
-      <label className="settings-option">
+      <label className="settings-option" title={describe(field)}>
         <span>{label}</span>
         <textarea
           rows={2}
@@ -349,6 +364,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 <h3>{t("settings.appearance")}</h3>
                 <Choice
                   legend={t("settings.language")}
+                  field="language"
                   name="settings-language"
                   value={shown.language}
                   options={languageOptions()}
@@ -357,6 +373,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 <p className="settings-hint">{t("settings.language.hint")}</p>
                 <Choice
                   legend={t("settings.sidebarSide")}
+                  field="appearance.sidebar.position"
                   name="settings-side"
                   value={shown.side}
                   options={sideOptions()}
@@ -364,12 +381,14 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 />
                 <NumberBox
                   label={t("settings.sidebarWidth")}
+                  field="appearance.sidebar.width"
                   value={shown.width}
                   problem={plan.problems.width}
                   onChange={(width) => change({ width })}
                 />
                 <Choice
                   legend={t("settings.tabPosition")}
+                  field="appearance.tabs"
                   name="settings-tabs"
                   value={shown.tabs}
                   options={tabPlacementOptions()}
@@ -377,6 +396,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 />
                 <Choice
                   legend={t("settings.density")}
+                  field="appearance.density"
                   name="settings-density"
                   value={shown.density}
                   options={densityOptions()}
@@ -385,18 +405,21 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 {/* With top tabs the sidebar always hides (it holds the spaces and favorites). */}
                 <Toggle
                   label={t("settings.compactMode")}
+                  field="appearance.sidebar.compact"
                   checked={shown.compact}
                   disabled={!compactAvailable(shown)}
                   onChange={(compact) => change({ compact })}
                 />
                 <Toggle
                   label={t("settings.keepOpen")}
+                  field="appearance.sidebar.keepOpen"
                   checked={shown.keepOpen}
                   disabled={!keepOpenAvailable(shown)}
                   onChange={(keepOpen) => change({ keepOpen })}
                 />
                 <Toggle
                   label={t("settings.paneHeaders")}
+                  field="appearance.paneHeaders"
                   checked={shown.paneHeaders}
                   onChange={(paneHeaders) => change({ paneHeaders })}
                 />
@@ -409,6 +432,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 <h3>{t("settings.window")}</h3>
                 <Choice
                   legend={t("settings.windowEffect")}
+                  field="appearance.window.effect"
                   name="settings-window-effect"
                   value={shown.windowEffect}
                   options={windowEffectOptions()}
@@ -426,6 +450,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 )}
                 <NumberBox
                   label={t("settings.windowOpacity")}
+                  field="appearance.window.opacity"
                   value={shown.windowOpacity}
                   problem={plan.problems.windowOpacity}
                   onChange={(windowOpacity) => change({ windowOpacity })}
@@ -440,6 +465,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 <h3>{t("settings.background")}</h3>
                 <NumberBox
                   label={t("settings.backgroundImage")}
+                  field="appearance.background.image"
                   value={shown.backgroundImage}
                   problem={plan.problems.backgroundImage}
                   text
@@ -447,12 +473,14 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 />
                 <NumberBox
                   label={t("settings.backgroundOpacity")}
+                  field="appearance.background.opacity"
                   value={shown.backgroundOpacity}
                   problem={plan.problems.backgroundOpacity}
                   onChange={(backgroundOpacity) => change({ backgroundOpacity })}
                 />
                 <NumberBox
                   label={t("settings.backgroundBlur")}
+                  field="appearance.background.blur"
                   value={shown.backgroundBlur}
                   problem={plan.problems.backgroundBlur}
                   onChange={(backgroundBlur) => change({ backgroundBlur })}
@@ -467,6 +495,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 <h3>{t("settings.terminal")}</h3>
                 <NumberBox
                   label={t("settings.fontList")}
+                  field="terminal.font.family"
                   value={shown.terminal.fontFamily}
                   problem={plan.terminalProblems.fontFamily}
                   text
@@ -494,24 +523,28 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 )}
                 <NumberBox
                   label={t("settings.fontSize")}
+                  field="terminal.font.size"
                   value={shown.terminal.fontSize}
                   problem={plan.terminalProblems.fontSize}
                   onChange={(fontSize) => changeTerminal({ fontSize })}
                 />
                 <NumberBox
                   label={t("settings.lineHeight")}
+                  field="terminal.font.lineHeight"
                   value={shown.terminal.lineHeight}
                   problem={plan.terminalProblems.lineHeight}
                   onChange={(lineHeight) => changeTerminal({ lineHeight })}
                 />
                 <Toggle
                   label={t("settings.ligatures")}
+                  field="terminal.font.ligatures"
                   checked={shown.terminal.ligatures}
                   onChange={(ligatures) => changeTerminal({ ligatures })}
                 />
                 <p className="settings-hint">{t("settings.ligaturesHint")}</p>
                 <Choice
                   legend={t("settings.cursorShape")}
+                  field="terminal.cursor.style"
                   name="settings-cursor"
                   value={shown.terminal.cursorStyle}
                   options={cursorOptions()}
@@ -519,17 +552,20 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 />
                 <Toggle
                   label={t("settings.cursorBlinks")}
+                  field="terminal.cursor.blink"
                   checked={shown.terminal.cursorBlink}
                   onChange={(cursorBlink) => changeTerminal({ cursorBlink })}
                 />
                 <NumberBox
                   label={t("settings.scrollback")}
+                  field="terminal.scrollback"
                   value={shown.terminal.scrollback}
                   problem={plan.terminalProblems.scrollback}
                   onChange={(scrollback) => changeTerminal({ scrollback })}
                 />
                 <Choice
                   legend={t("settings.bell")}
+                  field="terminal.bell"
                   name="settings-bell"
                   value={shown.terminal.bell}
                   options={bellOptions()}
@@ -561,6 +597,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                           >
                             <NumberBox
                               label={t("settings.profileName")}
+                              field="profiles.item.name"
                               value={row.name}
                               problem={problems?.name}
                               text
@@ -569,6 +606,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                             />
                             <NumberBox
                               label={t("settings.profileProgram")}
+                              field="profiles.item.program"
                               value={row.program}
                               problem={problems?.program}
                               text
@@ -577,12 +615,14 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                             />
                             <TextArea
                               label={t("settings.profileArgs")}
+                              field="profiles.item.args"
                               value={row.args}
                               problem={problems?.args}
                               onChange={(args) => editProfile(row.key, { args })}
                             />
                             <NumberBox
                               label={t("settings.profileCwd")}
+                              field="profiles.item.cwd"
                               value={row.cwd}
                               problem={problems?.cwd}
                               text
@@ -617,6 +657,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 <h3>{t("settings.shortcuts")}</h3>
                 <Choice
                   legend={t("settings.preset")}
+                  field="keybindings.preset"
                   name="settings-preset"
                   value={shown.preset}
                   options={keyPresetOptions()}
@@ -638,11 +679,13 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 <h3>{t("settings.notifications")}</h3>
                 <Toggle
                   label={t("settings.systemNotifications")}
+                  field="notifications.enabled"
                   checked={shown.notifications}
                   onChange={(notifications) => change({ notifications })}
                 />
                 <NumberBox
                   label={t("settings.longCommand")}
+                  field="notifications.longCommandSeconds"
                   value={shown.longCommandSeconds}
                   problem={plan.problems.longCommandSeconds}
                   onChange={(longCommandSeconds) => change({ longCommandSeconds })}
@@ -656,11 +699,13 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 <h3>{t("settings.archive")}</h3>
                 <Toggle
                   label={t("settings.archiveIdle")}
+                  field="archive.enabled"
                   checked={shown.archive.enabled}
                   onChange={(enabled) => changeArchive({ enabled })}
                 />
                 <NumberBox
                   label={t("settings.archiveAfter")}
+                  field="archive.afterHours"
                   value={shown.archive.afterHours}
                   problem={plan.archiveProblems.afterHours}
                   onChange={(afterHours) => changeArchive({ afterHours })}
@@ -675,6 +720,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 <h3>{t("settings.ai")}</h3>
                 <Toggle
                   label={t("settings.aiOn")}
+                  field="ai.enabled"
                   checked={shown.ai.enabled}
                   onChange={(enabled) => changeAi({ enabled })}
                 />
@@ -691,6 +737,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                       <legend>{aiFunctionLabel(fn)}</legend>
                       <SelectBox
                         label={t("settings.aiProvider", { function: aiFunctionLabel(fn) })}
+                        field={`ai.defaults.${fn}.provider`}
                         value={shown.ai[fn].provider}
                         options={providerOptions(aiProviderIds(config), shown.ai[fn].provider)}
                         problem={problem?.field === "provider" ? problem.message : undefined}
@@ -698,6 +745,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                       />
                       <NumberBox
                         label={t("settings.aiModel", { function: aiFunctionLabel(fn) })}
+                        field={`ai.defaults.${fn}.model`}
                         value={shown.ai[fn].model}
                         problem={problem?.field === "model" ? problem.message : undefined}
                         text

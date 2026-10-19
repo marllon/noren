@@ -13,6 +13,7 @@ import {
 } from "./ask-panel";
 import type { AskExchange } from "./ask-panel";
 import { aiProvidersSync } from "./config-store";
+import { useT } from "./i18n";
 import { useAskTarget } from "./use-ask-target";
 
 // "? text" in the palette: what the person wants, in words, becomes one command for the shell and
@@ -43,11 +44,6 @@ function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-const REFUSALS = {
-  "empty-request": "Type what you want to do after the question mark.",
-  "request-too-long": "The request is too long. Shorten it and try again.",
-} as const;
-
 export function CommandAskDialog({
   backend,
   config,
@@ -58,6 +54,7 @@ export function CommandAskDialog({
   onInsert,
   onClose,
 }: CommandAskDialogProps) {
+  const t = useT();
   const titleId = useId();
   const { target, looking } = useAskTarget(backend, config, "command");
   const [exchange, setExchange] = useState<AskExchange | undefined>();
@@ -108,7 +105,7 @@ export function CommandAskDialog({
         },
         (event) => update((now) => applyAskEvent(now, event)),
       );
-      update((now) => failExchange(now, "The answer ended without a result."));
+      update((now) => failExchange(now, t("ask.endedNoResult")));
     } catch (error) {
       update((now) => failExchange(now, reasonOf(error)));
     } finally {
@@ -124,7 +121,7 @@ export function CommandAskDialog({
 
   const insert = (text: string) => {
     if (onInsert(text)) onClose();
-    else setNote("There is no terminal to put it in.");
+    else setNote(t("ask.noTerminal"));
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
@@ -147,28 +144,28 @@ export function CommandAskDialog({
         data-nr-part="command-dialog"
         onKeyDown={onKeyDown}
       >
-        <h2 id={titleId}>Ask for a command</h2>
-        <p className="dialog-message">
-          For {shell} on {os}.
-        </p>
+        <h2 id={titleId}>{t("commandAsk.title")}</h2>
+        <p className="dialog-message">{t("commandAsk.for", { shell, os })}</p>
 
         {!built.ok ? (
           <>
             <p className="command-problem" role="alert" data-nr-part="command-problem">
               {built.reason === "ai-off"
-                ? "The AI is off here. Turn it on in Settings, in the AI section, and in the space menu."
-                : REFUSALS[built.reason]}
+                ? t("commandAsk.aiOff")
+                : built.reason === "empty-request"
+                  ? t("commandAsk.empty")
+                  : t("commandAsk.tooLong")}
             </p>
             <div className="dialog-actions">
               <button type="button" autoFocus onClick={onClose}>
-                Close
+                {t("common.close")}
               </button>
             </div>
           </>
         ) : target === undefined && !looking ? (
           <>
             <div className="command-steps" data-nr-part="command-steps">
-              <p>Nothing can answer yet. To get a first answer:</p>
+              <p>{t("ask.nothingAnswers")}</p>
               <ol>
                 {askSteps("command").map((step) => (
                   <li key={step}>{step}</li>
@@ -177,7 +174,7 @@ export function CommandAskDialog({
             </div>
             <div className="dialog-actions">
               <button type="button" autoFocus onClick={onClose}>
-                Close
+                {t("common.close")}
               </button>
             </div>
           </>
@@ -185,10 +182,10 @@ export function CommandAskDialog({
           <>
             <p className="dialog-message">
               {exchange === undefined
-                ? `This goes to ${target?.label ?? "the provider"}. Nothing is sent until you press Send.`
-                : `Sent to ${target?.label ?? "the provider"}.`}
+                ? t("ask.sendsTo", { target: target?.label ?? t("ask.theProvider") })
+                : t("commandAsk.sentTo", { target: target?.label ?? t("ask.theProvider") })}
             </p>
-            <div role="region" aria-label="Preview of what will be sent">
+            <div role="region" aria-label={t("ask.review")}>
               <pre
                 className="dialog-detail command-preview"
                 data-nr-part="command-preview"
@@ -203,28 +200,24 @@ export function CommandAskDialog({
 
             {streaming && (
               <p className="dialog-message" role="status" data-nr-part="command-waiting">
-                Waiting for the command...
+                {t("commandAsk.waiting")}
               </p>
             )}
             {ended && command?.ok === true && (
               <div className="command-result" data-nr-part="command-result">
-                <p className="dialog-message">The command, to put at your prompt:</p>
+                <p className="dialog-message">{t("commandAsk.result")}</p>
                 <pre className="dialog-detail" data-nr-part="command-text">
                   {command.command}
                 </pre>
-                {command.moreLines && (
-                  <p className="dialog-message">
-                    The answer had more lines; only the first one is used.
-                  </p>
-                )}
-                <p className="dialog-message">It runs only when you press Enter in the terminal.</p>
+                {command.moreLines && <p className="dialog-message">{t("commandAsk.moreLines")}</p>}
+                <p className="dialog-message">{t("commandAsk.runsOnEnter")}</p>
               </div>
             )}
             {ended && command?.ok === false && (
               <p className="command-problem" role="alert" data-nr-part="command-problem">
                 {command.reason === "too-long"
-                  ? "The command that came back is too long to put at the prompt."
-                  : "The answer had no command."}
+                  ? t("commandAsk.commandTooLong")
+                  : t("commandAsk.noCommand")}
               </p>
             )}
             {ended && command === undefined && problem !== undefined && (
@@ -242,7 +235,7 @@ export function CommandAskDialog({
               {exchange === undefined && (
                 <>
                   <button type="button" onClick={onClose}>
-                    Cancel
+                    {t("common.cancel")}
                   </button>
                   <button
                     type="button"
@@ -251,19 +244,19 @@ export function CommandAskDialog({
                     disabled={looking}
                     onClick={() => void send()}
                   >
-                    Send
+                    {t("ask.send")}
                   </button>
                 </>
               )}
               {streaming && (
                 <button type="button" onClick={stop}>
-                  Stop
+                  {t("ask.stop")}
                 </button>
               )}
               {ended && (
                 <>
                   <button type="button" autoFocus={command?.ok !== true} onClick={onClose}>
-                    Close
+                    {t("common.close")}
                   </button>
                   {command?.ok === true && (
                     <button
@@ -273,7 +266,7 @@ export function CommandAskDialog({
                       data-nr-part="command-insert"
                       onClick={() => insert(command.command)}
                     >
-                      Insert at the prompt
+                      {t("commandAsk.insert")}
                     </button>
                   )}
                 </>

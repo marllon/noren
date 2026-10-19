@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import type { Id } from "@noren/model";
+import { useT } from "./i18n";
 import { PeekController } from "./peek-controller";
 import type { PeekTimers } from "./peek-controller";
 
@@ -147,6 +148,7 @@ export function usePeek(
  * markup), next to the tab on the side that faces the terminal.
  */
 export function PeekPopover({ view }: { view: PeekView }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const [top, setTop] = useState(view.anchor.top);
   const toRight = view.anchor.left + view.anchor.right < window.innerWidth;
@@ -174,7 +176,7 @@ export function PeekPopover({ view }: { view: PeekView }) {
     >
       {view.lines.length === 0 ? (
         <p className="peek-empty" data-nr-part="peek-empty">
-          No output yet
+          {t("output.none")}
         </p>
       ) : (
         <ol className="peek-lines" data-nr-part="peek-lines">

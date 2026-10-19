@@ -8,11 +8,12 @@ import {
   useAiProvidersError,
   useConfigState,
 } from "./config-store";
+import { useT } from "./i18n";
 import { NumberBox, SelectBox } from "./SettingsFields";
 import {
   NEW_PROVIDER,
   PROVIDER_KIND_LABELS,
-  PROVIDER_STEPS,
+  providerSteps,
   connectionLine,
   needsSteps,
   ollamaLine,
@@ -51,6 +52,7 @@ interface ProvidersPanelProps {
  * handed to `ai.setKey` and wiped, so it reaches only the keychain.
  */
 export function ProvidersPanel({ backend }: ProvidersPanelProps) {
+  const t = useT();
   const { config } = useConfigState();
   const refused = useAiProvidersError();
   const providers = config.ai?.providers ?? [];
@@ -119,13 +121,13 @@ export function ProvidersPanel({ backend }: ProvidersPanelProps) {
     const box = newKeyRef.current;
     const key = box?.value.trim() ?? "";
     if (box) box.value = "";
-    let message = `Added ${provider.id}.`;
+    let message = t("providers.added", { id: provider.id });
     if (key !== "") {
       try {
         await backend.ai.setKey(provider.id, key);
-        message = `Added ${provider.id}, and its key is stored in the keychain.`;
+        message = t("providers.addedKey", { id: provider.id });
       } catch (error) {
-        message = `Added ${provider.id}, but its key was not stored: ${reasonWithout(error, key)}`;
+        message = t("providers.addedNoKey", { id: provider.id, reason: reasonWithout(error, key) });
       }
     }
     setForm(NEW_PROVIDER);
@@ -152,18 +154,18 @@ export function ProvidersPanel({ backend }: ProvidersPanelProps) {
     await backend.ai.setKey(id, "").catch(() => undefined);
     setNotes((now) => Object.fromEntries(Object.entries(now).filter(([noted]) => noted !== id)));
     setKeyTick((now) => now + 1);
-    setStatus(`Removed ${id}.`);
+    setStatus(t("providers.removed", { id }));
     setBusy(false);
   };
 
   const test = async (id: string) => {
-    say(id, "Testing the connection...");
+    say(id, t("providers.testing"));
     try {
       await aiProvidersSync.settled();
       const result = await backend.ai.testConnection(id);
       say(id, connectionLine(result), !result.ok);
     } catch (error) {
-      say(id, `The connection could not be tested: ${reasonOf(error)}`, true);
+      say(id, t("providers.testFailed", { reason: reasonOf(error) }), true);
     }
   };
 
@@ -171,15 +173,15 @@ export function ProvidersPanel({ backend }: ProvidersPanelProps) {
     const box = keyBoxes.current.get(id);
     const key = box?.value.trim() ?? "";
     if (key === "") {
-      say(id, "Paste the key in the box first.", true);
+      say(id, t("providers.pasteFirst"), true);
       return;
     }
     try {
       await backend.ai.setKey(id, key);
-      say(id, "The key is stored in the keychain.");
+      say(id, t("providers.keyStoredNote"));
       setKeyTick((now) => now + 1);
     } catch (error) {
-      say(id, `The key was not stored: ${reasonWithout(error, key)}`, true);
+      say(id, t("providers.keyNotStored", { reason: reasonWithout(error, key) }), true);
     } finally {
       if (box) box.value = "";
     }
@@ -188,10 +190,10 @@ export function ProvidersPanel({ backend }: ProvidersPanelProps) {
   const removeKey = async (id: string) => {
     try {
       await backend.ai.setKey(id, "");
-      say(id, "The key is removed from the keychain.");
+      say(id, t("providers.keyRemoved"));
       setKeyTick((now) => now + 1);
     } catch (error) {
-      say(id, `The key was not removed: ${reasonOf(error)}`, true);
+      say(id, t("providers.keyNotRemoved", { reason: reasonOf(error) }), true);
     }
   };
 
@@ -218,12 +220,12 @@ export function ProvidersPanel({ backend }: ProvidersPanelProps) {
 
   return (
     <div className="settings-providers" data-nr-part="settings-ai-providers">
-      <h4>Providers</h4>
+      <h4>{t("providers.title")}</h4>
       {needsSteps(config, ollama) && (
         <div className="settings-steps" data-nr-part="settings-ai-steps">
-          <p className="settings-hint">No provider is ready to answer yet. To get one:</p>
+          <p className="settings-hint">{t("providers.noneReady")}</p>
           <ol>
-            {PROVIDER_STEPS.map((step) => (
+            {providerSteps().map((step) => (
               <li key={step}>{step}</li>
             ))}
           </ol>
@@ -245,22 +247,22 @@ export function ProvidersPanel({ backend }: ProvidersPanelProps) {
               {ollamaLine(ollama)}
             </p>
             {ollama?.found === true && ollama.models.length > 0 && (
-              <ul className="settings-models" aria-label="Ollama models">
+              <ul className="settings-models" aria-label={t("providers.ollamaModels")}>
                 {ollama.models.map((model) => (
                   <li key={model}>{model}</li>
                 ))}
               </ul>
             )}
             <button type="button" className="settings-link" onClick={checkOllama}>
-              Check Ollama again
+              {t("providers.checkAgain")}
             </button>
             <button
               type="button"
               className="settings-link"
-              aria-label="Test connection to Ollama"
+              aria-label={t("providers.testOllama")}
               onClick={() => void test(OLLAMA_PROVIDER_ID)}
             >
-              Test connection
+              {t("providers.test")}
             </button>
             {note(OLLAMA_PROVIDER_ID)}
           </fieldset>
@@ -274,15 +276,17 @@ export function ProvidersPanel({ backend }: ProvidersPanelProps) {
               onKeyDown={onEnter(() => void saveKey(provider.id))}
             >
               <p className="settings-hint">
-                {PROVIDER_KIND_LABELS[provider.kind]}, {provider.baseUrl}, model {provider.model}
+                {t("providers.summary", {
+                  kind: PROVIDER_KIND_LABELS[provider.kind],
+                  url: provider.baseUrl,
+                  model: provider.model,
+                })}
               </p>
               <p className="settings-hint" data-nr-part="settings-ai-key-state">
-                {hasKey(provider.id)
-                  ? "An API key is stored in the keychain."
-                  : "No API key is stored."}
+                {hasKey(provider.id) ? t("providers.keyStored") : t("providers.keyNone")}
               </p>
               <label className="settings-option">
-                <span>{`API key for ${provider.id}`}</span>
+                <span>{t("providers.keyLabel", { id: provider.id })}</span>
                 <input
                   type="password"
                   autoComplete="off"
@@ -296,37 +300,37 @@ export function ProvidersPanel({ backend }: ProvidersPanelProps) {
               <button
                 type="button"
                 className="settings-link"
-                aria-label={`Store the key of ${provider.id}`}
+                aria-label={t("providers.storeKeyLabel", { id: provider.id })}
                 onClick={() => void saveKey(provider.id)}
               >
-                Store key
+                {t("providers.storeKey")}
               </button>
               {hasKey(provider.id) && (
                 <button
                   type="button"
                   className="settings-link"
-                  aria-label={`Remove the key of ${provider.id}`}
+                  aria-label={t("providers.removeKeyLabel", { id: provider.id })}
                   onClick={() => void removeKey(provider.id)}
                 >
-                  Remove key
+                  {t("providers.removeKey")}
                 </button>
               )}
               <button
                 type="button"
                 className="settings-link"
-                aria-label={`Test connection to ${provider.id}`}
+                aria-label={t("providers.testLabel", { id: provider.id })}
                 onClick={() => void test(provider.id)}
               >
-                Test connection
+                {t("providers.test")}
               </button>
               <button
                 type="button"
                 className="settings-link"
-                aria-label={`Remove provider ${provider.id}`}
+                aria-label={t("providers.removeProviderLabel", { id: provider.id })}
                 disabled={busy}
                 onClick={() => void remove(provider.id)}
               >
-                Remove provider
+                {t("providers.removeProvider")}
               </button>
               {note(provider.id)}
             </fieldset>
@@ -335,12 +339,13 @@ export function ProvidersPanel({ backend }: ProvidersPanelProps) {
       </ul>
       <fieldset
         className="settings-profile"
-        aria-label="Add a provider"
+        aria-label={t("providers.addGroup")}
         data-nr-part="settings-ai-add"
         onKeyDown={onEnter(() => void add())}
       >
         <NumberBox
-          label="Provider id"
+          label={t("providers.id")}
+          field="ai.providers.item.id"
           value={form.id}
           problem={problems.id}
           text
@@ -348,7 +353,8 @@ export function ProvidersPanel({ backend }: ProvidersPanelProps) {
           onChange={(id) => setForm((now) => ({ ...now, id }))}
         />
         <SelectBox
-          label="Provider kind"
+          label={t("providers.kind")}
+          field="ai.providers.item.kind"
           value={form.kind}
           options={KIND_OPTIONS}
           problem={undefined}
@@ -360,7 +366,8 @@ export function ProvidersPanel({ backend }: ProvidersPanelProps) {
           }
         />
         <NumberBox
-          label="Provider address"
+          label={t("providers.address")}
+          field="ai.providers.item.baseUrl"
           value={form.baseUrl}
           problem={problems.baseUrl}
           text
@@ -368,7 +375,8 @@ export function ProvidersPanel({ backend }: ProvidersPanelProps) {
           onChange={(baseUrl) => setForm((now) => ({ ...now, baseUrl }))}
         />
         <NumberBox
-          label="Provider model"
+          label={t("providers.model")}
+          field="ai.providers.item.model"
           value={form.model}
           problem={problems.model}
           text
@@ -377,7 +385,7 @@ export function ProvidersPanel({ backend }: ProvidersPanelProps) {
         />
         <div className="settings-number settings-wide">
           <label className="settings-option">
-            <span>Provider API key (optional)</span>
+            <span>{t("providers.newKey")}</span>
             <input ref={newKeyRef} type="password" autoComplete="off" spellCheck={false} />
           </label>
         </div>
@@ -387,17 +395,13 @@ export function ProvidersPanel({ backend }: ProvidersPanelProps) {
           </span>
         )}
         <button type="button" className="settings-link" disabled={busy} onClick={() => void add()}>
-          Add provider
+          {t("providers.add")}
         </button>
       </fieldset>
       <p role="status" className="settings-hint" data-nr-part="settings-ai-providers-status">
         {status}
       </p>
-      <p className="settings-hint">
-        Adding and removing a provider writes config.jsonc at once; the rest of this screen is
-        written by Save. A key goes to the keychain of your system and is never written to
-        config.jsonc.
-      </p>
+      <p className="settings-hint">{t("providers.footnote")}</p>
     </div>
   );
 }

@@ -57,3 +57,26 @@ export function actionName(id: string, fallback: string): string {
 export function actionIsNamed(id: string): boolean {
   return PARAMETRIC.test(id) || isMessageKey(`action.${id}`);
 }
+
+/**
+ * The description of a field of `config.jsonc` in the language in force, by its path in the schema
+ * (`appearance.sidebar.position`; `item` stands for an entry of a list, as in `profiles.item.id`).
+ * `@noren/model` keeps the English words that the generated JSON Schema shows an editor and never
+ * imports the dictionary, so the screens say the field by its path. Empty for a path with none.
+ */
+export function fieldDescription(path: string): string {
+  const key = `field.${path}`;
+  return isMessageKey(key) ? tDynamic(key) : "";
+}
+
+/** The name of a color of the space dialog (`Blue`, by the name the list gives it). */
+export function spaceColorName(name: string): string {
+  const key = `spaceColor.${name.toLowerCase()}`;
+  return isMessageKey(key) ? tDynamic(key) : name;
+}
+
+/** The name of an icon of the space dialog, by its id; `fallback` is the English label. */
+export function spaceIconName(icon: string, fallback: string): string {
+  const key = `spaceIcon.${icon}`;
+  return isMessageKey(key) ? tDynamic(key) : fallback;
+}

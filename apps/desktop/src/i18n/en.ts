@@ -367,4 +367,379 @@ export const en = {
   "settings.importProfiles": "Import profiles...",
   "settings.profilesFile": "Settings file with profiles",
   "settings.fileProblem": "config.jsonc has a problem, so nothing can be saved until it is fixed.",
+
+  // The notice of a problem with config.jsonc
+  "configNotice.title": "The settings file has a problem, so the last valid settings stay in use.",
+  "configNotice.more.one": "1 more problem",
+  "configNotice.more.other": "{count} more problems",
+  "configNotice.dismiss": "Dismiss",
+
+  // The actions header of the sidebar
+  "actions.label": "Project actions",
+  "actions.start": "Start",
+  "actions.stop": "Stop",
+  "actions.startNamed": "Start {name}",
+  "actions.stopNamed": "Stop {name}",
+  "actions.running": "Running",
+  "actions.idle": "Not running",
+
+  // The paste dialog
+  "paste.title": "Paste {count} lines?",
+  "paste.warning": "Every line may run as a command.",
+  "paste.more": "… and {count} more",
+  "paste.paste": "Paste",
+
+  // The Ctrl+Tab switcher and the peek of a tab
+  "mru.label": "Recent tabs",
+  "output.none": "No output yet",
+
+  // The quick window
+  "quick.title": "Quick terminal",
+  "quick.promote": "Promote to tab",
+  "quick.promoteFailed": "Could not promote: {reason}",
+  "quick.preview": "Quick window preview",
+
+  // The favorites of the sidebar
+  "favorites.label": "Favorites",
+
+  // The search over the output of every tab
+  "tabSearch.dialog": "Search all tabs",
+  "tabSearch.input": "Search text in all tabs",
+  "tabSearch.placeholder": "Search the output of every open tab",
+  "tabSearch.matches": "Matches",
+  "tabSearch.hint": "Type to search the output of every open tab.",
+  "tabSearch.none": "No matches",
+  "tabSearch.truncated": "Showing the first matches only. Narrow the search.",
+
+  // The library
+  "library.label": "Library",
+  "library.sections": "Library sections",
+  "library.section.archive": "Archive",
+  "library.section.closed": "Closed",
+  "library.search": "Search the library",
+  "library.placeholder": "Search by title, folder or output",
+  "library.restore": "Restore {title}",
+  "library.delete": "Delete {title}",
+  "library.noMatches": "No matches",
+  "library.emptyArchive": "Nothing in the archive yet.",
+  "library.emptyClosed": "No recently closed tabs.",
+  "library.confirmTitle": "Delete from library",
+  "library.confirmMessage": 'Delete "{title}" for good? Its saved output is deleted with it.',
+  "library.confirmDelete": "Delete",
+  "library.untitled": "Untitled tab",
+  "library.deletedSpace": "Deleted space",
+
+  // The dialog of a space
+  "spaceDialog.edit": "Edit space",
+  "spaceDialog.name": "Name",
+  "spaceDialog.color": "Color",
+  "spaceDialog.icon": "Icon",
+  "spaceDialog.emoji": "Emoji",
+  "spaceDialog.emojiHint": "Optional, replaces the icon",
+  "spaceDialog.cwd": "Start folder",
+  "spaceDialog.optional": "Optional",
+  "spaceDialog.env": "Environment variables",
+  "spaceDialog.envHint": "NAME=value, one per line",
+  "spaceDialog.gitName": "Git name",
+  "spaceDialog.gitNameHint": "Optional, author of commits",
+  "spaceDialog.gitEmail": "Git email",
+  "spaceDialog.create": "Create space",
+  "spaceDialog.needName": "Give the space a name.",
+  "spaceDialog.needGlyph": "Use a single emoji for the icon.",
+  "spaceColor.blue": "Blue",
+  "spaceColor.coral": "Coral",
+  "spaceColor.green": "Green",
+  "spaceColor.amber": "Amber",
+  "spaceColor.violet": "Violet",
+  "spaceColor.teal": "Teal",
+  "spaceColor.rose": "Rose",
+  "spaceColor.slate": "Slate",
+  "spaceIcon.terminal": "Terminal",
+  "spaceIcon.folder": "Folder",
+  "spaceIcon.code": "Code",
+  "spaceIcon.rocket": "Rocket",
+  "spaceIcon.briefcase": "Briefcase",
+  "spaceIcon.house": "House",
+  "spaceIcon.book-open": "Book",
+  "spaceIcon.flask-conical": "Flask",
+  "spaceIcon.server": "Server",
+  "spaceIcon.globe": "Globe",
+
+  // The background image of a space
+  "background.title": "Background image",
+  "background.hint":
+    "A picture file on this computer for the space “{name}”: a full path, or a path inside the config folder (backgrounds/sky.jpg). Web addresses are not accepted. Empty opacity and blur take the ones of the settings or the theme.",
+  "background.image": "Image file",
+  "background.opacity": "Opacity (0 to 1)",
+  "background.blur": "Blur (px)",
+  "background.remove": "Remove image",
+  "background.apply": "Apply",
+
+  // Importing the profiles of a settings file
+  "count.profile.one": "1 profile",
+  "count.profile.other": "{count} profiles",
+  "profileImport.title": "Import profiles",
+  "profileImport.message":
+    '{profiles} from "{file}" will be added to config.jsonc. They are only added to the list: nothing is started or run.',
+  "profileImport.list": "Profiles to import",
+  "profileImport.hidden.one": "1 hidden profile in the file was ignored.",
+  "profileImport.hidden.other": "{count} hidden profiles in the file were ignored.",
+  "profileImport.leftOut": "Left out: {list}.",
+  "profileImport.import.one": "Import 1 profile",
+  "profileImport.import.other": "Import {count} profiles",
+  "profileImport.failed": 'Could not import "{file}": {reason}',
+  "profileImport.tooLarge": "the file is too large to be a settings file.",
+  "profileImport.unreadable": "the file could not be read.",
+  "profileImport.notSettings": "it is not a settings file.",
+  "profileImport.moreErrors": "{first} (and {count} more)",
+  "profileImport.none": "there is no profile to import.",
+  "profileImport.noneWhy": "there is no profile to import: {why}.",
+  "profileImport.areHidden.one": "1 profile is hidden",
+  "profileImport.areHidden.other": "{count} profiles are hidden",
+  "profileImport.nothingToStart.one": "1 profile has nothing to start ({name}: {reason})",
+  "profileImport.nothingToStart.other": "{count} profiles have nothing to start ({name}: {reason})",
+  "profileImport.namesAnd": "{first} and {second}",
+  "profileImport.namesMore": "{first}, {second} and {rest} more",
+  "profileImport.done":
+    'Imported {profiles}: {names}. Open one with "New ... tab" in the command palette.',
+
+  // The Ask panel
+  "ask.label": "Ask",
+  "ask.close": "Close Ask",
+  "ask.lookingProvider": "Looking for a provider...",
+  "ask.context": "Context",
+  "ask.chip.selection": "Selection",
+  "ask.chip.lastOutput": "Last output",
+  "ask.chip.screen": "Screen",
+  "ask.chip.tab": "@ Tab",
+  "ask.commandChip": "Command: {command}",
+  "ask.removeCommand": "Remove the command",
+  "ask.removeTab": "Remove tab {title}",
+  "ask.tabsToAdd": "Tabs to add",
+  "ask.noOtherTab": "There is no other tab.",
+  "ask.conversation": "Conversation",
+  "ask.empty":
+    "Ask about your shell or your work. The chips above add context from the terminal; you see exactly what will be sent before anything goes.",
+  "ask.exchange": "Question: {question}",
+  "ask.waiting": "Waiting for the answer...",
+  "ask.stopped": "Stopped.",
+  "ask.couldNot": "The AI could not answer.",
+  "ask.endedNoResult": "The answer ended without a result.",
+  "ask.inserted": "Put at the prompt. It runs only when you press Enter in the terminal.",
+  "ask.noTerminal": "There is no terminal to put it in.",
+  "ask.nothingAnswers": "Nothing can answer yet. To get a first answer:",
+  "ask.where.panel": "this panel",
+  "ask.where.dialog": "this",
+  "ask.step.ollama":
+    "Install Ollama, start it and install a model in it (ollama pull followed by the name of a model). Then close {where} and open it again.",
+  "ask.step.provider":
+    "Or open Settings, then AI, and add a provider of your own: the kind, the address of its API and a model. A key goes to the keychain of your system, never to config.jsonc.",
+  "ask.step.choose":
+    "In the same place, choose the provider and the model for {function}, and press Save.",
+  "ask.review": "Preview of what will be sent",
+  "ask.sendsTo": "This goes to {target}. Nothing is sent until you press Send.",
+  "ask.theProvider": "the provider",
+  "ask.send": "Send",
+  "ask.edit": "Edit",
+  "ask.stop": "Stop",
+  "ask.preview": "Preview",
+  "ask.question": "Question",
+  "ask.placeholder": "Ask a question (Enter to preview, Shift+Enter for a new line)",
+  "ask.insertInTerminal": "Insert in terminal",
+  "ask.explainQuestion": "Why did this command fail, and how do I fix it?",
+  "ask.left.selection": "Selection: nothing is selected in the terminal.",
+  "ask.left.lastNone": "Last output: no command has finished in this pane yet.",
+  "ask.left.lastEmpty": "Last output: the last command printed nothing.",
+  "ask.left.screen": "Screen: the screen is empty.",
+  "ask.left.tabGone": "A tab you added is gone.",
+  "ask.left.tabEmpty": "Tab {title}: it has no text yet.",
+  "ask.off.space": "The AI is off for this space. Turn it on in the space menu.",
+  "ask.off.global": "The AI is off. Turn it on in Settings, in the AI section.",
+  "ask.emptyQuestion": "Type a question first.",
+  "ask.questionTooLong": "The question is too long. Shorten it and try again.",
+  "ask.secrets.none": "No secret was found in what will be sent.",
+  "ask.secrets.one": "1 secret was replaced by a marker ({kinds}).",
+  "ask.secrets.other": "{count} secrets were replaced by markers ({kinds}).",
+  "ask.chipName.selection": "The selection",
+  "ask.chipName.lastOutput": "The output of the last command",
+  "ask.chipName.screen": "The visible screen",
+  "ask.chipName.command": "The output of the command",
+  "ask.chipName.tab": "A tab",
+  "ask.end.start": "the start",
+  "ask.end.end": "the end",
+  "ask.cut": "{chip} was cut: {removed} characters left out from {end}.",
+
+  // The dialog that asks for a command
+  "commandAsk.title": "Ask for a command",
+  "commandAsk.for": "For {shell} on {os}.",
+  "commandAsk.aiOff":
+    "The AI is off here. Turn it on in Settings, in the AI section, and in the space menu.",
+  "commandAsk.empty": "Type what you want to do after the question mark.",
+  "commandAsk.tooLong": "The request is too long. Shorten it and try again.",
+  "commandAsk.sentTo": "Sent to {target}.",
+  "commandAsk.waiting": "Waiting for the command...",
+  "commandAsk.result": "The command, to put at your prompt:",
+  "commandAsk.moreLines": "The answer had more lines; only the first one is used.",
+  "commandAsk.runsOnEnter": "It runs only when you press Enter in the terminal.",
+  "commandAsk.commandTooLong": "The command that came back is too long to put at the prompt.",
+  "commandAsk.noCommand": "The answer had no command.",
+  "commandAsk.insert": "Insert at the prompt",
+
+  // The providers of the AI, in the settings
+  "providers.title": "Providers",
+  "providers.noneReady": "No provider is ready to answer yet. To get one:",
+  "providers.step.ollama":
+    "To use Ollama: install it, start it, and install a model in it (ollama pull followed by the name of a model). Then press “Check Ollama again”.",
+  "providers.step.own":
+    "Or add a provider of your own below: the kind, the address of its API and a model. If it needs an API key, paste it in the key box; it goes to the keychain of your system, never to config.jsonc.",
+  "providers.step.turnOn":
+    "Turn the AI on above, choose a provider and a model for each function, and press Save.",
+  "providers.ollamaModels": "Ollama models",
+  "providers.checkAgain": "Check Ollama again",
+  "providers.testOllama": "Test connection to Ollama",
+  "providers.test": "Test connection",
+  "providers.summary": "{kind}, {url}, model {model}",
+  "providers.keyStored": "An API key is stored in the keychain.",
+  "providers.keyNone": "No API key is stored.",
+  "providers.keyLabel": "API key for {id}",
+  "providers.storeKeyLabel": "Store the key of {id}",
+  "providers.storeKey": "Store key",
+  "providers.removeKeyLabel": "Remove the key of {id}",
+  "providers.removeKey": "Remove key",
+  "providers.testLabel": "Test connection to {id}",
+  "providers.removeProviderLabel": "Remove provider {id}",
+  "providers.removeProvider": "Remove provider",
+  "providers.addGroup": "Add a provider",
+  "providers.id": "Provider id",
+  "providers.kind": "Provider kind",
+  "providers.address": "Provider address",
+  "providers.model": "Provider model",
+  "providers.newKey": "Provider API key (optional)",
+  "providers.add": "Add provider",
+  "providers.footnote":
+    "Adding and removing a provider writes config.jsonc at once; the rest of this screen is written by Save. A key goes to the keychain of your system and is never written to config.jsonc.",
+  "providers.added": "Added {id}.",
+  "providers.addedKey": "Added {id}, and its key is stored in the keychain.",
+  "providers.addedNoKey": "Added {id}, but its key was not stored: {reason}",
+  "providers.removed": "Removed {id}.",
+  "providers.testing": "Testing the connection...",
+  "providers.testFailed": "The connection could not be tested: {reason}",
+  "providers.pasteFirst": "Paste the key in the box first.",
+  "providers.keyStoredNote": "The key is stored in the keychain.",
+  "providers.keyNotStored": "The key was not stored: {reason}",
+  "providers.keyRemoved": "The key is removed from the keychain.",
+  "providers.keyNotRemoved": "The key was not removed: {reason}",
+  "providers.ollama.looking": "Looking for Ollama on this computer...",
+  "providers.ollama.notFound": "Ollama was not found on this computer.",
+  "providers.ollama.noModel": "Ollama is running, but no model is installed in it.",
+  "providers.ollama.one": "Ollama is running, with 1 model installed:",
+  "providers.ollama.other": "Ollama is running, with {count} models installed:",
+  "providers.connection.works": "The connection works.",
+  "providers.connection.failed": "The connection failed: {message}",
+  // The descriptions of the fields of config.jsonc, by their path in the schema (`item` is an entry of a list)
+  "field.root": "The settings file of Noren (config.jsonc). Every setting is optional.",
+  "field.$schema": "Where the JSON Schema of this file is, for the editor.",
+  "field.language":
+    'The language of the interface: "en" (English), "pt-BR" (Brazilian Portuguese), or "system", which follows the language of the computer and falls back to English when Noren does not have it.',
+  "field.appearance": "How the window looks and is laid out.",
+  "field.appearance.theme":
+    'The id of the theme, such as "noren-dusk". "system", or no value, follows the light or dark scheme of the system. An id Noren does not have also follows the system.',
+  "field.appearance.window":
+    "The window itself: the effect behind it and how opaque the interface is.",
+  "field.appearance.window.effect":
+    'What the system paints behind the window: "mica" or "acrylic" on Windows 11, "vibrancy" on macOS, "none" for a plain opaque window. A system that cannot paint the effect keeps the window opaque.',
+  "field.appearance.window.opacity":
+    "How opaque the interface is, from 0.3 (it lets most of what is behind the window through) to 1 (solid). Without a value (or null) the window is solid, and with an effect on it takes the opacity of the theme.",
+  "field.appearance.background": "The picture behind the terminals.",
+  "field.appearance.background.image":
+    "A picture file on this computer shown behind the terminals: an absolute path, or a path inside the config folder of the app (such as backgrounds/sky.jpg). A web address is refused. null shows no picture, even where the theme has one. The picture of a space wins over this one.",
+  "field.appearance.background.opacity":
+    "How much of the picture shows, from 0 (none) to 1 (solid). Without a value (or null) the theme says.",
+  "field.appearance.background.blur":
+    "How much the picture is blurred, in pixels. Without a value (or null) the theme says (none).",
+  "field.appearance.sidebar": "The sidebar.",
+  "field.appearance.sidebar.position": "Which side of the window the sidebar is on.",
+  "field.appearance.sidebar.width": "Width of the sidebar in pixels.",
+  "field.appearance.sidebar.compact":
+    "Compact mode: the sidebar leaves the layout and shows over it when the pointer touches the edge of the window.",
+  "field.appearance.sidebar.keepOpen":
+    "In compact mode, keeps the sidebar open instead of hiding it.",
+  "field.appearance.density": "How much room the rows of the sidebar take.",
+  "field.appearance.tabs":
+    "Where the tabs are: the tree in the sidebar, or a bar above the terminal.",
+  "field.appearance.paneHeaders":
+    "Shows a header with the title and the buttons on every pane of a tab.",
+  "field.terminal": "The terminal: its font, cursor, scrollback and bell.",
+  "field.terminal.font": "The text of the terminal.",
+  "field.terminal.font.family":
+    'The fonts of the terminal, by name, separated by commas: the first one found on this computer is used, such as "Cascadia Code, Consolas, monospace". Only names of font families are accepted (a web address, a semicolon or a brace is an error).',
+  "field.terminal.font.size":
+    "The size of the text in pixels. Ctrl+= and Ctrl+- change it for the open window, and Ctrl+0 goes back to this size; they do not change the file.",
+  "field.terminal.font.lineHeight":
+    "The height of a row of text, as a multiple of the font size. 1 is the tightest the terminal can draw.",
+  "field.terminal.font.ligatures":
+    "Joins the characters that a programming font draws as one sign (for example => or !=). Accepted, but it has no effect yet: the terminal draws every character on its own.",
+  "field.terminal.cursor": "The cursor of the terminal.",
+  "field.terminal.cursor.style": "The shape of the cursor.",
+  "field.terminal.cursor.blink": "Whether the cursor blinks.",
+  "field.terminal.scrollback":
+    "How many lines the terminal keeps above the screen, from 0 (none) to 100,000. Every line takes memory in every terminal that is open.",
+  "field.terminal.bell":
+    'What the terminal does when a program rings the bell: "none", "visual" (the pane flashes), "sound" (a short beep) or "both". The tab is marked as unread whichever it is.',
+  "field.terminal.saveScrollback":
+    "Keeps the last 2,000 lines of every pane when Noren closes and every minute while the pane is in use, and shows them again, dimmed, when the pane opens. false never saves any scrollback, in any space, and removes the files already saved. A space can turn it off for itself too.",
+  "field.mods":
+    'The CSS files of the mods folder (next to this file) that are turned on for every space, as file names such as "compact-tabs.css", in the order they are applied: the last one wins. A file that is not in the folder is ignored.',
+  "field.profiles":
+    "Shell profiles of your own, listed in the command palette after the ones Noren finds on the machine. An id the machine already has is refused when the profiles are loaded.",
+  "field.profiles.item": "A shell profile of your own.",
+  "field.profiles.item.id":
+    'The id of the profile, such as "dev-shell". Unique among the profiles.',
+  "field.profiles.item.name": "The name shown in the command palette.",
+  "field.profiles.item.program":
+    'The program that starts the shell, such as "pwsh.exe" or a full path. %NAME% is replaced by the environment variable NAME when a session starts.',
+  "field.profiles.item.args": "The arguments of the program, one item each.",
+  "field.profiles.item.cwd":
+    "The folder a session of this profile starts in, unless the space or the tab names one. %NAME% is replaced by the environment variable NAME.",
+  "field.keybindings": "Keyboard shortcuts.",
+  "field.keybindings.preset":
+    "Which set of shortcuts is in force: safe keeps the keys a shell uses, browser takes the keys of a web browser.",
+  "field.notifications": "System notifications.",
+  "field.notifications.enabled": "Off: Noren never asks the system to show a notification.",
+  "field.notifications.longCommandSeconds":
+    "A command that runs longer than this many seconds notifies when it ends out of sight.",
+  "field.archive":
+    "Auto-archive: tabs that nobody uses go to the archive with their saved output, and come back from the library.",
+  "field.archive.enabled":
+    "Off: Noren never puts a tab in the archive on its own. A tab you archive or close yourself is not affected.",
+  "field.archive.afterHours":
+    "How many hours a tab is left alone before it goes to the archive: with no command running, no output, nothing unread and not on screen. Pinned tabs and favorites are never archived. A fraction is fine (0.5 is half an hour).",
+  "field.ai":
+    "The AI, off until you turn it on: providers (Ollama on this computer, and any you add) and which of them each function uses. Noren never runs what the AI suggests.",
+  "field.ai.enabled":
+    "Off: no AI function is offered and nothing is ever sent to a provider. A space can turn the AI off for itself too; it takes both being on.",
+  "field.ai.providers":
+    'AI providers of your own, besides the Ollama on this computer that Noren already knows (id "ollama"). The API key of each is kept in the system keychain and never in this file.',
+  "field.ai.providers.item": "An AI provider of your own.",
+  "field.ai.providers.item.id":
+    'The id of the provider, such as "my-openai". Unique among the providers; "ollama" is taken by the Ollama that Noren already knows. The API key is kept in the system keychain under this id.',
+  "field.ai.providers.item.kind":
+    '"openai-compatible" for Ollama, LM Studio, vLLM, OpenRouter, OpenAI, Groq and the like (the address is the API root, such as "https://api.openai.com/v1"); "anthropic" for the Anthropic API (such as "https://api.anthropic.com").',
+  "field.ai.providers.item.baseUrl":
+    "The address of the API, up to its root. Only http and https; never put a key in it, the key goes to the system keychain.",
+  "field.ai.providers.item.model":
+    "The model this provider uses when a function does not name one in ai.defaults.",
+  "field.ai.defaults":
+    "The provider and model each function uses by default (ask, explain, command). A function that is not listed has no default.",
+  "field.ai.defaults.ask": "For the Ask panel.",
+  "field.ai.defaults.ask.provider": 'The id of a provider: "ollama" or one listed in ai.providers.',
+  "field.ai.defaults.ask.model": "The model to ask.",
+  "field.ai.defaults.explain": "For explaining the error of a command.",
+  "field.ai.defaults.explain.provider":
+    'The id of a provider: "ollama" or one listed in ai.providers.',
+  "field.ai.defaults.explain.model": "The model to ask.",
+  "field.ai.defaults.command": "For writing a command from a description.",
+  "field.ai.defaults.command.provider":
+    'The id of a provider: "ollama" or one listed in ai.providers.',
+  "field.ai.defaults.command.model": "The model to ask.",
 } as const;

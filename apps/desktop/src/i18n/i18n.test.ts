@@ -10,7 +10,16 @@ import {
   tabCount,
   translate,
 } from "./index";
-import { actionIsNamed, actionName, categoryName, effectName } from "./names";
+import { configJsonSchema } from "@noren/model";
+import {
+  actionIsNamed,
+  actionName,
+  categoryName,
+  effectName,
+  fieldDescription,
+  spaceColorName,
+  spaceIconName,
+} from "./names";
 import { ACTIONS } from "../keybindings";
 import { ptBR } from "./pt-BR";
 
@@ -157,5 +166,64 @@ describe("the names of things known by id", () => {
 
   it("give the title of the registry to an action the dictionary does not know", () => {
     expect(actionName("future.thing", "Do the thing")).toBe("Do the thing");
+  });
+});
+
+/** Every described field of the generated JSON Schema, by the path the dictionary names it with. */
+function schemaDescriptions(): Map<string, string> {
+  type Node = {
+    description?: string;
+    properties?: Record<string, Node>;
+    items?: Node;
+  };
+  const found = new Map<string, string>();
+  const walk = (node: Node, path: string[]): void => {
+    if (node.description !== undefined) found.set(path.join(".") || "root", node.description);
+    for (const [name, child] of Object.entries(node.properties ?? {})) walk(child, [...path, name]);
+    if (node.items !== undefined) walk(node.items, [...path, "item"]);
+  };
+  walk(configJsonSchema() as Node, []);
+  return found;
+}
+
+describe("the descriptions of the fields of config.jsonc", () => {
+  it("are in the dictionary, word for word in English, for every described field of the schema", () => {
+    for (const [path, description] of schemaDescriptions()) {
+      expect(Object.hasOwn(en, `field.${path}`), path).toBe(true);
+      expect(fieldDescription(path), path).toBe(description);
+    }
+  });
+
+  it("have no entry for a field the schema does not describe", () => {
+    const described = schemaDescriptions();
+    for (const key of Object.keys(en)) {
+      if (key.startsWith("field.")) expect(described.has(key.slice(6)), key).toBe(true);
+    }
+  });
+
+  it("are said in Portuguese by the id of the field", () => {
+    setLanguage("pt-BR");
+    for (const path of schemaDescriptions().keys()) {
+      expect(fieldDescription(path), path).not.toBe(en[`field.${path}` as keyof typeof en]);
+    }
+    expect(fieldDescription("appearance.sidebar.position")).toBe(
+      "Em que lado da janela fica a barra lateral.",
+    );
+  });
+
+  it("are empty for a path with none", () => {
+    expect(fieldDescription("appearance.nothing")).toBe("");
+  });
+});
+
+describe("the names of the colors and icons of a space", () => {
+  it("are said in the language in force and fall back to the given name", () => {
+    expect(spaceColorName("Blue")).toBe("Blue");
+    expect(spaceIconName("book-open", "Book")).toBe("Book");
+    setLanguage("pt-BR");
+    expect(spaceColorName("Blue")).toBe("Azul");
+    expect(spaceIconName("book-open", "Book")).toBe("Livro");
+    expect(spaceColorName("Unknown")).toBe("Unknown");
+    expect(spaceIconName("unknown", "Mystery")).toBe("Mystery");
   });
 });

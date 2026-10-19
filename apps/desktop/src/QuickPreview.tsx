@@ -6,6 +6,7 @@ import {
   quickPreviewEvents,
   sessionOfPayload,
 } from "./quick";
+import { useT } from "./i18n";
 import { QuickApp } from "./QuickApp";
 
 /** What the e2e tests read and press on the preview panel (`window.__norenQuick`). */
@@ -32,6 +33,7 @@ declare global {
  * "Hiding" it only marks the panel, so a test can see the window was asked to hide.
  */
 export function QuickPreview() {
+  const t = useT();
   const [shown, setShown] = useState(false);
   const [hides, setHides] = useState(0);
   const hide = useMemo(
@@ -67,7 +69,7 @@ export function QuickPreview() {
   return (
     <section
       className="quick-preview"
-      aria-label="Quick window preview"
+      aria-label={t("quick.preview")}
       data-nr-part="quick-preview"
       data-nr-shown={shown ? "true" : "false"}
     >

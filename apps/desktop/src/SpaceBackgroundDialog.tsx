@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import type { Space, SpaceBackground } from "@noren/model";
+import { useT } from "./i18n";
 import { backgroundFormOf, planBackground } from "./space-background";
 import type { BackgroundForm, BackgroundProblems } from "./space-background";
 
@@ -24,6 +25,7 @@ export function SpaceBackgroundDialog({
   onClear,
   onCancel,
 }: SpaceBackgroundDialogProps) {
+  const t = useT();
   const titleId = useId();
   const imageRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState<BackgroundForm>(() => backgroundFormOf(space));
@@ -91,24 +93,20 @@ export function SpaceBackgroundDialog({
         onSubmit={submit}
         onKeyDown={onKeyDown}
       >
-        <h2 id={titleId}>Background image</h2>
-        <p className="settings-hint">
-          A picture file on this computer for the space “{space.name}”: a full path, or a path
-          inside the config folder (backgrounds/sky.jpg). Web addresses are not accepted. Empty
-          opacity and blur take the ones of the settings or the theme.
-        </p>
-        {box("image", "Image file", { ref: imageRef, text: true })}
-        {box("opacity", "Opacity (0 to 1)")}
-        {box("blur", "Blur (px)")}
+        <h2 id={titleId}>{t("background.title")}</h2>
+        <p className="settings-hint">{t("background.hint", { name: space.name })}</p>
+        {box("image", t("background.image"), { ref: imageRef, text: true })}
+        {box("opacity", t("background.opacity"))}
+        {box("blur", t("background.blur"))}
         <div className="dialog-actions">
           <button type="button" onClick={onCancel}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button type="button" disabled={space.background === undefined} onClick={onClear}>
-            Remove image
+            {t("background.remove")}
           </button>
           <button type="submit" className="primary">
-            Apply
+            {t("background.apply")}
           </button>
         </div>
       </form>

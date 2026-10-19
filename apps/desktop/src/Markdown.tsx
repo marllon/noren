@@ -2,6 +2,7 @@ import { parseMarkdown } from "@noren/model";
 import type { MdBlock, MdCode, MdInline } from "@noren/model";
 import { useMemo } from "react";
 import type { ReactNode } from "react";
+import { useT } from "./i18n";
 
 // The Markdown of an answer of the AI, drawn as React elements. The text is parsed into a tree of
 // data (`parseMarkdown` in `@noren/model`) and every node becomes an element here, with its text as
@@ -49,6 +50,7 @@ interface CodeBlockProps {
 }
 
 function CodeBlock({ block, onInsert, complete }: CodeBlockProps) {
+  const t = useT();
   // A block that has not closed, or an answer that is still arriving, may be missing the end of
   // the command: the button waits for all of it.
   const ready = complete && !block.open && block.text.trim() !== "";
@@ -63,7 +65,7 @@ function CodeBlock({ block, onInsert, complete }: CodeBlockProps) {
             disabled={!ready}
             onClick={() => onInsert(block.text)}
           >
-            Insert in terminal
+            {t("ask.insertInTerminal")}
           </button>
         )}
       </div>

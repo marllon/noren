@@ -370,4 +370,380 @@ export const ptBR: Dictionary = {
   "settings.profilesFile": "Arquivo de configurações com perfis",
   "settings.fileProblem":
     "O config.jsonc tem um problema, então nada pode ser salvo até ele ser corrigido.",
+
+  // O aviso de problema no config.jsonc
+  "configNotice.title":
+    "O arquivo de configurações tem um problema, então as últimas configurações válidas continuam em uso.",
+  "configNotice.more.one": "mais 1 problema",
+  "configNotice.more.other": "mais {count} problemas",
+  "configNotice.dismiss": "Dispensar",
+
+  // O cabeçalho de ações da barra lateral
+  "actions.label": "Ações do projeto",
+  "actions.start": "Iniciar",
+  "actions.stop": "Parar",
+  "actions.startNamed": "Iniciar {name}",
+  "actions.stopNamed": "Parar {name}",
+  "actions.running": "Em execução",
+  "actions.idle": "Parada",
+
+  // A caixa de colar
+  "paste.title": "Colar {count} linhas?",
+  "paste.warning": "Cada linha pode ser executada como um comando.",
+  "paste.more": "… e mais {count}",
+  "paste.paste": "Colar",
+
+  // O seletor do Ctrl+Tab e a prévia de uma aba
+  "mru.label": "Abas recentes",
+  "output.none": "Nenhuma saída ainda",
+
+  // A janela rápida
+  "quick.title": "Terminal rápido",
+  "quick.promote": "Promover a aba",
+  "quick.promoteFailed": "Não foi possível promover: {reason}",
+  "quick.preview": "Prévia da janela rápida",
+
+  // Os favoritos da barra lateral
+  "favorites.label": "Favoritos",
+
+  // A busca na saída de todas as abas
+  "tabSearch.dialog": "Buscar em todas as abas",
+  "tabSearch.input": "Buscar texto em todas as abas",
+  "tabSearch.placeholder": "Buscar na saída de todas as abas abertas",
+  "tabSearch.matches": "Resultados",
+  "tabSearch.hint": "Digite para buscar na saída de todas as abas abertas.",
+  "tabSearch.none": "Nenhum resultado",
+  "tabSearch.truncated": "Mostrando só os primeiros resultados. Refine a busca.",
+
+  // A biblioteca
+  "library.label": "Biblioteca",
+  "library.sections": "Seções da biblioteca",
+  "library.section.archive": "Arquivo",
+  "library.section.closed": "Fechadas",
+  "library.search": "Buscar na biblioteca",
+  "library.placeholder": "Buscar por título, pasta ou saída",
+  "library.restore": "Restaurar {title}",
+  "library.delete": "Excluir {title}",
+  "library.noMatches": "Nenhum resultado",
+  "library.emptyArchive": "Nada no arquivo ainda.",
+  "library.emptyClosed": "Nenhuma aba fechada recentemente.",
+  "library.confirmTitle": "Excluir da biblioteca",
+  "library.confirmMessage": 'Excluir "{title}" de vez? A saída salva dela é excluída junto.',
+  "library.confirmDelete": "Excluir",
+  "library.untitled": "Aba sem título",
+  "library.deletedSpace": "Espaço excluído",
+
+  // A caixa de um espaço
+  "spaceDialog.edit": "Editar espaço",
+  "spaceDialog.name": "Nome",
+  "spaceDialog.color": "Cor",
+  "spaceDialog.icon": "Ícone",
+  "spaceDialog.emoji": "Emoji",
+  "spaceDialog.emojiHint": "Opcional, substitui o ícone",
+  "spaceDialog.cwd": "Pasta inicial",
+  "spaceDialog.optional": "Opcional",
+  "spaceDialog.env": "Variáveis de ambiente",
+  "spaceDialog.envHint": "NOME=valor, uma por linha",
+  "spaceDialog.gitName": "Nome no Git",
+  "spaceDialog.gitNameHint": "Opcional, autor dos commits",
+  "spaceDialog.gitEmail": "E-mail no Git",
+  "spaceDialog.create": "Criar espaço",
+  "spaceDialog.needName": "Dê um nome ao espaço.",
+  "spaceDialog.needGlyph": "Use um único emoji como ícone.",
+  "spaceColor.blue": "Azul",
+  "spaceColor.coral": "Coral",
+  "spaceColor.green": "Verde",
+  "spaceColor.amber": "Âmbar",
+  "spaceColor.violet": "Violeta",
+  "spaceColor.teal": "Verde-azulado",
+  "spaceColor.rose": "Rosa",
+  "spaceColor.slate": "Ardósia",
+  "spaceIcon.terminal": "Terminal",
+  "spaceIcon.folder": "Pasta",
+  "spaceIcon.code": "Código",
+  "spaceIcon.rocket": "Foguete",
+  "spaceIcon.briefcase": "Maleta",
+  "spaceIcon.house": "Casa",
+  "spaceIcon.book-open": "Livro",
+  "spaceIcon.flask-conical": "Frasco",
+  "spaceIcon.server": "Servidor",
+  "spaceIcon.globe": "Globo",
+
+  // A imagem de fundo de um espaço
+  "background.title": "Imagem de fundo",
+  "background.hint":
+    "Um arquivo de imagem deste computador para o espaço “{name}”: um caminho completo ou um caminho dentro da pasta de configuração (backgrounds/sky.jpg). Endereços da web não são aceitos. Opacidade e desfoque vazios usam os das configurações ou do tema.",
+  "background.image": "Arquivo da imagem",
+  "background.opacity": "Opacidade (0 a 1)",
+  "background.blur": "Desfoque (px)",
+  "background.remove": "Remover imagem",
+  "background.apply": "Aplicar",
+
+  // Importar os perfis de um arquivo de configurações
+  "count.profile.one": "1 perfil",
+  "count.profile.other": "{count} perfis",
+  "profileImport.title": "Importar perfis",
+  "profileImport.message":
+    '{profiles} de "{file}" serão adicionados ao config.jsonc. Eles só entram na lista: nada é iniciado nem executado.',
+  "profileImport.list": "Perfis a importar",
+  "profileImport.hidden.one": "1 perfil oculto no arquivo foi ignorado.",
+  "profileImport.hidden.other": "{count} perfis ocultos no arquivo foram ignorados.",
+  "profileImport.leftOut": "Deixados de fora: {list}.",
+  "profileImport.import.one": "Importar 1 perfil",
+  "profileImport.import.other": "Importar {count} perfis",
+  "profileImport.failed": 'Não foi possível importar "{file}": {reason}',
+  "profileImport.tooLarge": "o arquivo é grande demais para ser um arquivo de configurações.",
+  "profileImport.unreadable": "não foi possível ler o arquivo.",
+  "profileImport.notSettings": "não é um arquivo de configurações.",
+  "profileImport.moreErrors": "{first} (e mais {count})",
+  "profileImport.none": "não há perfil para importar.",
+  "profileImport.noneWhy": "não há perfil para importar: {why}.",
+  "profileImport.areHidden.one": "1 perfil está oculto",
+  "profileImport.areHidden.other": "{count} perfis estão ocultos",
+  "profileImport.nothingToStart.one": "1 perfil não tem o que iniciar ({name}: {reason})",
+  "profileImport.nothingToStart.other": "{count} perfis não têm o que iniciar ({name}: {reason})",
+  "profileImport.namesAnd": "{first} e {second}",
+  "profileImport.namesMore": "{first}, {second} e mais {rest}",
+  "profileImport.done":
+    'Importados {profiles}: {names}. Abra um com "Nova aba ..." na paleta de comandos.',
+
+  // O painel Perguntar
+  "ask.label": "Perguntar",
+  "ask.close": "Fechar Perguntar",
+  "ask.lookingProvider": "Procurando um provedor...",
+  "ask.context": "Contexto",
+  "ask.chip.selection": "Seleção",
+  "ask.chip.lastOutput": "Última saída",
+  "ask.chip.screen": "Tela",
+  "ask.chip.tab": "@ Aba",
+  "ask.commandChip": "Comando: {command}",
+  "ask.removeCommand": "Remover o comando",
+  "ask.removeTab": "Remover a aba {title}",
+  "ask.tabsToAdd": "Abas para adicionar",
+  "ask.noOtherTab": "Não há outra aba.",
+  "ask.conversation": "Conversa",
+  "ask.empty":
+    "Pergunte sobre o seu shell ou o seu trabalho. As etiquetas acima adicionam contexto do terminal; você vê exatamente o que será enviado antes de qualquer envio.",
+  "ask.exchange": "Pergunta: {question}",
+  "ask.waiting": "Aguardando a resposta...",
+  "ask.stopped": "Interrompido.",
+  "ask.couldNot": "A IA não conseguiu responder.",
+  "ask.endedNoResult": "A resposta terminou sem um resultado.",
+  "ask.inserted": "Colocado no prompt. Só é executado quando você pressiona Enter no terminal.",
+  "ask.noTerminal": "Não há terminal para colocar isso.",
+  "ask.nothingAnswers": "Nada pode responder ainda. Para obter uma primeira resposta:",
+  "ask.where.panel": "este painel",
+  "ask.where.dialog": "esta janela",
+  "ask.step.ollama":
+    "Instale o Ollama, inicie-o e instale um modelo nele (ollama pull seguido do nome de um modelo). Depois feche {where} e abra de novo.",
+  "ask.step.provider":
+    "Ou abra as Configurações, depois IA, e adicione um provedor seu: o tipo, o endereço da API dele e um modelo. A chave vai para o cofre de chaves do sistema, nunca para o config.jsonc.",
+  "ask.step.choose":
+    "No mesmo lugar, escolha o provedor e o modelo para {function} e pressione Salvar.",
+  "ask.review": "Prévia do que será enviado",
+  "ask.sendsTo": "Isto vai para {target}. Nada é enviado até você pressionar Enviar.",
+  "ask.theProvider": "o provedor",
+  "ask.send": "Enviar",
+  "ask.edit": "Editar",
+  "ask.stop": "Parar",
+  "ask.preview": "Prévia",
+  "ask.question": "Pergunta",
+  "ask.placeholder": "Faça uma pergunta (Enter para ver a prévia, Shift+Enter para nova linha)",
+  "ask.insertInTerminal": "Inserir no terminal",
+  "ask.explainQuestion": "Por que este comando falhou e como eu corrijo?",
+  "ask.left.selection": "Seleção: nada está selecionado no terminal.",
+  "ask.left.lastNone": "Última saída: nenhum comando terminou neste painel ainda.",
+  "ask.left.lastEmpty": "Última saída: o último comando não imprimiu nada.",
+  "ask.left.screen": "Tela: a tela está vazia.",
+  "ask.left.tabGone": "Uma aba que você adicionou não existe mais.",
+  "ask.left.tabEmpty": "Aba {title}: ainda não tem texto.",
+  "ask.off.space": "A IA está desligada para este espaço. Ligue no menu do espaço.",
+  "ask.off.global": "A IA está desligada. Ligue em Configurações, na seção IA.",
+  "ask.emptyQuestion": "Digite uma pergunta primeiro.",
+  "ask.questionTooLong": "A pergunta é longa demais. Encurte e tente de novo.",
+  "ask.secrets.none": "Nenhum segredo foi encontrado no que será enviado.",
+  "ask.secrets.one": "1 segredo foi trocado por um marcador ({kinds}).",
+  "ask.secrets.other": "{count} segredos foram trocados por marcadores ({kinds}).",
+  "ask.chipName.selection": "A seleção",
+  "ask.chipName.lastOutput": "A saída do último comando",
+  "ask.chipName.screen": "A tela visível",
+  "ask.chipName.command": "A saída do comando",
+  "ask.chipName.tab": "Uma aba",
+  "ask.end.start": "no início",
+  "ask.end.end": "no fim",
+  "ask.cut": "Texto cortado ({chip}): {removed} caracteres omitidos {end}.",
+
+  // A caixa que pede um comando
+  "commandAsk.title": "Pedir um comando",
+  "commandAsk.for": "Para {shell} em {os}.",
+  "commandAsk.aiOff":
+    "A IA está desligada aqui. Ligue em Configurações, na seção IA, e no menu do espaço.",
+  "commandAsk.empty": "Digite o que você quer fazer depois do ponto de interrogação.",
+  "commandAsk.tooLong": "O pedido é longo demais. Encurte e tente de novo.",
+  "commandAsk.sentTo": "Enviado para {target}.",
+  "commandAsk.waiting": "Aguardando o comando...",
+  "commandAsk.result": "O comando, para colocar no seu prompt:",
+  "commandAsk.moreLines": "A resposta tinha mais linhas; só a primeira é usada.",
+  "commandAsk.runsOnEnter": "Só é executado quando você pressiona Enter no terminal.",
+  "commandAsk.commandTooLong": "O comando que voltou é longo demais para colocar no prompt.",
+  "commandAsk.noCommand": "A resposta não tinha comando.",
+  "commandAsk.insert": "Inserir no prompt",
+
+  // Os provedores de IA, nas configurações
+  "providers.title": "Provedores",
+  "providers.noneReady": "Nenhum provedor está pronto para responder ainda. Para ter um:",
+  "providers.step.ollama":
+    "Para usar o Ollama: instale-o, inicie-o e instale um modelo nele (ollama pull seguido do nome de um modelo). Depois pressione “Verificar o Ollama de novo”.",
+  "providers.step.own":
+    "Ou adicione abaixo um provedor seu: o tipo, o endereço da API dele e um modelo. Se ele precisar de chave de API, cole no campo da chave; ela vai para o cofre de chaves do sistema, nunca para o config.jsonc.",
+  "providers.step.turnOn":
+    "Ligue a IA acima, escolha um provedor e um modelo para cada função e pressione Salvar.",
+  "providers.ollamaModels": "Modelos do Ollama",
+  "providers.checkAgain": "Verificar o Ollama de novo",
+  "providers.testOllama": "Testar a conexão com o Ollama",
+  "providers.test": "Testar conexão",
+  "providers.summary": "{kind}, {url}, modelo {model}",
+  "providers.keyStored": "Há uma chave de API guardada no cofre de chaves.",
+  "providers.keyNone": "Nenhuma chave de API guardada.",
+  "providers.keyLabel": "Chave de API de {id}",
+  "providers.storeKeyLabel": "Guardar a chave de {id}",
+  "providers.storeKey": "Guardar chave",
+  "providers.removeKeyLabel": "Remover a chave de {id}",
+  "providers.removeKey": "Remover chave",
+  "providers.testLabel": "Testar a conexão com {id}",
+  "providers.removeProviderLabel": "Remover o provedor {id}",
+  "providers.removeProvider": "Remover provedor",
+  "providers.addGroup": "Adicionar um provedor",
+  "providers.id": "Id do provedor",
+  "providers.kind": "Tipo do provedor",
+  "providers.address": "Endereço do provedor",
+  "providers.model": "Modelo do provedor",
+  "providers.newKey": "Chave de API do provedor (opcional)",
+  "providers.add": "Adicionar provedor",
+  "providers.footnote":
+    "Adicionar e remover um provedor grava o config.jsonc na hora; o resto desta tela é gravado por Salvar. A chave vai para o cofre de chaves do seu sistema e nunca é gravada no config.jsonc.",
+  "providers.added": "{id} adicionado.",
+  "providers.addedKey": "{id} adicionado, e a chave dele foi guardada no cofre de chaves.",
+  "providers.addedNoKey": "{id} adicionado, mas a chave dele não foi guardada: {reason}",
+  "providers.removed": "{id} removido.",
+  "providers.testing": "Testando a conexão...",
+  "providers.testFailed": "Não foi possível testar a conexão: {reason}",
+  "providers.pasteFirst": "Cole a chave no campo primeiro.",
+  "providers.keyStoredNote": "A chave foi guardada no cofre de chaves.",
+  "providers.keyNotStored": "A chave não foi guardada: {reason}",
+  "providers.keyRemoved": "A chave foi removida do cofre de chaves.",
+  "providers.keyNotRemoved": "A chave não foi removida: {reason}",
+  "providers.ollama.looking": "Procurando o Ollama neste computador...",
+  "providers.ollama.notFound": "O Ollama não foi encontrado neste computador.",
+  "providers.ollama.noModel": "O Ollama está em execução, mas não há modelo instalado nele.",
+  "providers.ollama.one": "O Ollama está em execução, com 1 modelo instalado:",
+  "providers.ollama.other": "O Ollama está em execução, com {count} modelos instalados:",
+  "providers.connection.works": "A conexão funciona.",
+  "providers.connection.failed": "A conexão falhou: {message}",
+
+  // As descrições dos campos do config.jsonc, pelo caminho no esquema (`item` é uma entrada de lista)
+  "field.root": "O arquivo de configurações do Noren (config.jsonc). Toda configuração é opcional.",
+  "field.$schema": "Onde fica o Esquema JSON deste arquivo, para o editor.",
+  "field.language":
+    'O idioma da interface: "en" (inglês), "pt-BR" (português do Brasil) ou "system", que segue o idioma do computador e usa o inglês quando o Noren não o tem.',
+  "field.appearance": "Como a janela se parece e como está organizada.",
+  "field.appearance.theme":
+    'O id do tema, como "noren-dusk". "system", ou nenhum valor, segue o esquema claro ou escuro do sistema. Um id que o Noren não tem também segue o sistema.',
+  "field.appearance.window": "A própria janela: o efeito atrás dela e a opacidade da interface.",
+  "field.appearance.window.effect":
+    'O que o sistema pinta atrás da janela: "mica" ou "acrylic" no Windows 11, "vibrancy" no macOS, "none" para uma janela comum e opaca. Um sistema que não pinta o efeito mantém a janela opaca.',
+  "field.appearance.window.opacity":
+    "A opacidade da interface, de 0,3 (deixa passar a maior parte do que está atrás da janela) a 1 (sólida). Sem valor (ou null) a janela é sólida e, com um efeito ligado, usa a opacidade do tema.",
+  "field.appearance.background": "A imagem atrás dos terminais.",
+  "field.appearance.background.image":
+    "Um arquivo de imagem deste computador mostrado atrás dos terminais: um caminho absoluto ou um caminho dentro da pasta de configuração do app (como backgrounds/sky.jpg). Um endereço da web é recusado. null não mostra imagem, mesmo onde o tema tem uma. A imagem de um espaço vale mais que esta.",
+  "field.appearance.background.opacity":
+    "Quanto da imagem aparece, de 0 (nada) a 1 (sólida). Sem valor (ou null) quem decide é o tema.",
+  "field.appearance.background.blur":
+    "Quanto a imagem é desfocada, em pixels. Sem valor (ou null) quem decide é o tema (nenhum).",
+  "field.appearance.sidebar": "A barra lateral.",
+  "field.appearance.sidebar.position": "Em que lado da janela fica a barra lateral.",
+  "field.appearance.sidebar.width": "Largura da barra lateral em pixels.",
+  "field.appearance.sidebar.compact":
+    "Modo compacto: a barra lateral sai do layout e aparece sobre ele quando o ponteiro toca a borda da janela.",
+  "field.appearance.sidebar.keepOpen":
+    "No modo compacto, mantém a barra lateral aberta em vez de escondê-la.",
+  "field.appearance.density": "Quanto espaço as linhas da barra lateral ocupam.",
+  "field.appearance.tabs":
+    "Onde ficam as abas: a árvore na barra lateral ou uma barra acima do terminal.",
+  "field.appearance.paneHeaders":
+    "Mostra um cabeçalho com o título e os botões em cada painel de uma aba.",
+  "field.terminal": "O terminal: a fonte, o cursor, o histórico de rolagem e o sino.",
+  "field.terminal.font": "O texto do terminal.",
+  "field.terminal.font.family":
+    'As fontes do terminal, por nome, separadas por vírgulas: a primeira encontrada neste computador é usada, como "Cascadia Code, Consolas, monospace". Só nomes de famílias de fonte são aceitos (um endereço da web, um ponto e vírgula ou uma chave é erro).',
+  "field.terminal.font.size":
+    "O tamanho do texto em pixels. Ctrl+= e Ctrl+- o mudam na janela aberta e Ctrl+0 volta a este tamanho; eles não alteram o arquivo.",
+  "field.terminal.font.lineHeight":
+    "A altura de uma linha de texto, como múltiplo do tamanho da fonte. 1 é o mais apertado que o terminal consegue desenhar.",
+  "field.terminal.font.ligatures":
+    "Junta os caracteres que uma fonte de programação desenha como um só sinal (por exemplo => ou !=). Aceito, mas ainda sem efeito: o terminal desenha cada caractere sozinho.",
+  "field.terminal.cursor": "O cursor do terminal.",
+  "field.terminal.cursor.style": "O formato do cursor.",
+  "field.terminal.cursor.blink": "Se o cursor pisca.",
+  "field.terminal.scrollback":
+    "Quantas linhas o terminal guarda acima da tela, de 0 (nenhuma) a 100.000. Cada linha ocupa memória em cada terminal aberto.",
+  "field.terminal.bell":
+    'O que o terminal faz quando um programa toca o sino: "none", "visual" (o painel pisca), "sound" (um bipe curto) ou "both". A aba é marcada como não lida em qualquer caso.',
+  "field.terminal.saveScrollback":
+    "Guarda as últimas 2.000 linhas de cada painel quando o Noren fecha e a cada minuto enquanto o painel está em uso, e as mostra de novo, esmaecidas, quando o painel abre. false nunca guarda histórico, em nenhum espaço, e remove os arquivos já guardados. Um espaço também pode desligar isso só para ele.",
+  "field.mods":
+    'Os arquivos CSS da pasta de mods (ao lado deste arquivo) ligados para todos os espaços, como nomes de arquivo, tipo "compact-tabs.css", na ordem em que são aplicados: o último vence. Um arquivo que não está na pasta é ignorado.',
+  "field.profiles":
+    "Perfis de shell seus, listados na paleta de comandos depois dos que o Noren encontra na máquina. Um id que a máquina já tem é recusado quando os perfis são carregados.",
+  "field.profiles.item": "Um perfil de shell seu.",
+  "field.profiles.item.id": 'O id do perfil, como "dev-shell". Único entre os perfis.',
+  "field.profiles.item.name": "O nome mostrado na paleta de comandos.",
+  "field.profiles.item.program":
+    'O programa que inicia o shell, como "pwsh.exe" ou um caminho completo. %NOME% é trocado pela variável de ambiente NOME quando uma sessão começa.',
+  "field.profiles.item.args": "Os argumentos do programa, um item para cada.",
+  "field.profiles.item.cwd":
+    "A pasta em que uma sessão deste perfil começa, a menos que o espaço ou a aba indique uma. %NOME% é trocado pela variável de ambiente NOME.",
+  "field.keybindings": "Atalhos de teclado.",
+  "field.keybindings.preset":
+    "Qual conjunto de atalhos vale: safe mantém as teclas que um shell usa, browser usa as teclas de um navegador da web.",
+  "field.notifications": "Notificações do sistema.",
+  "field.notifications.enabled":
+    "Desligado: o Noren nunca pede ao sistema que mostre uma notificação.",
+  "field.notifications.longCommandSeconds":
+    "Um comando que roda por mais do que este número de segundos notifica quando termina fora de vista.",
+  "field.archive":
+    "Arquivamento automático: abas que ninguém usa vão para o arquivo com a saída guardada e voltam pela biblioteca.",
+  "field.archive.enabled":
+    "Desligado: o Noren nunca coloca uma aba no arquivo por conta própria. Uma aba que você arquiva ou fecha não é afetada.",
+  "field.archive.afterHours":
+    "Quantas horas uma aba fica parada antes de ir para o arquivo: sem comando em execução, sem saída, sem nada não lido e fora da tela. Abas fixadas e favoritos nunca são arquivados. Uma fração vale (0,5 é meia hora).",
+  "field.ai":
+    "A IA, desligada até você ligá-la: provedores (o Ollama deste computador e os que você adicionar) e qual deles cada função usa. O Noren nunca executa o que a IA sugere.",
+  "field.ai.enabled":
+    "Desligado: nenhuma função de IA é oferecida e nada é enviado a um provedor. Um espaço também pode desligar a IA só para ele; é preciso que os dois estejam ligados.",
+  "field.ai.providers":
+    'Provedores de IA seus, além do Ollama deste computador que o Noren já conhece (id "ollama"). A chave de API de cada um fica no cofre de chaves do sistema e nunca neste arquivo.',
+  "field.ai.providers.item": "Um provedor de IA seu.",
+  "field.ai.providers.item.id":
+    'O id do provedor, como "my-openai". Único entre os provedores; "ollama" já é usado pelo Ollama que o Noren conhece. A chave de API fica no cofre de chaves do sistema com este id.',
+  "field.ai.providers.item.kind":
+    '"openai-compatible" para Ollama, LM Studio, vLLM, OpenRouter, OpenAI, Groq e similares (o endereço é a raiz da API, como "https://api.openai.com/v1"); "anthropic" para a API da Anthropic (como "https://api.anthropic.com").',
+  "field.ai.providers.item.baseUrl":
+    "O endereço da API, até a raiz. Só http e https; nunca ponha uma chave nele, a chave vai para o cofre de chaves do sistema.",
+  "field.ai.providers.item.model":
+    "O modelo que este provedor usa quando uma função não indica um em ai.defaults.",
+  "field.ai.defaults":
+    "O provedor e o modelo que cada função usa por padrão (ask, explain, command). Uma função que não está na lista não tem padrão.",
+  "field.ai.defaults.ask": "Para o painel Perguntar.",
+  "field.ai.defaults.ask.provider": 'O id de um provedor: "ollama" ou um listado em ai.providers.',
+  "field.ai.defaults.ask.model": "O modelo a consultar.",
+  "field.ai.defaults.explain": "Para explicar o erro de um comando.",
+  "field.ai.defaults.explain.provider":
+    'O id de um provedor: "ollama" ou um listado em ai.providers.',
+  "field.ai.defaults.explain.model": "O modelo a consultar.",
+  "field.ai.defaults.command": "Para escrever um comando a partir de uma descrição.",
+  "field.ai.defaults.command.provider":
+    'O id de um provedor: "ollama" ou um listado em ai.providers.',
+  "field.ai.defaults.command.model": "O modelo a consultar.",
 };

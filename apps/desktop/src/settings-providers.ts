@@ -12,6 +12,7 @@ import type {
   ConfigEdit,
   OllamaModels,
 } from "@noren/model";
+import { t } from "./i18n";
 import { AI_FUNCTION_LABELS, schemaProblem } from "./settings-sections";
 
 // The pure part of the Providers part of the AI section of the settings screen: the form that adds
@@ -145,12 +146,12 @@ export type OllamaFound = OllamaModels | undefined;
 
 /** The line under Ollama: what was found on this computer. */
 export function ollamaLine(found: OllamaFound): string {
-  if (found === undefined) return "Looking for Ollama on this computer...";
-  if (!found.found) return "Ollama was not found on this computer.";
-  if (found.models.length === 0) return "Ollama is running, but no model is installed in it.";
+  if (found === undefined) return t("providers.ollama.looking");
+  if (!found.found) return t("providers.ollama.notFound");
+  if (found.models.length === 0) return t("providers.ollama.noModel");
   return found.models.length === 1
-    ? "Ollama is running, with 1 model installed:"
-    : `Ollama is running, with ${found.models.length} models installed:`;
+    ? t("providers.ollama.one")
+    : t("providers.ollama.other", { count: found.models.length });
 }
 
 /**
@@ -163,16 +164,18 @@ export function needsSteps(config: Config, found: OllamaFound): boolean {
   return !found.found || found.models.length === 0;
 }
 
-/** The steps that lead to a provider, shown while `needsSteps` holds. */
-export const PROVIDER_STEPS: readonly string[] = [
-  "To use Ollama: install it, start it, and install a model in it (ollama pull followed by the name of a model). Then press “Check Ollama again”.",
-  "Or add a provider of your own below: the kind, the address of its API and a model. If it needs an API key, paste it in the key box; it goes to the keychain of your system, never to config.jsonc.",
-  "Turn the AI on above, choose a provider and a model for each function, and press Save.",
+/** The steps that lead to a provider, shown while `needsSteps` holds, in the language in force. */
+export const providerSteps = (): readonly string[] => [
+  t("providers.step.ollama"),
+  t("providers.step.own"),
+  t("providers.step.turnOn"),
 ];
 
 /** What a connection test said, in a sentence for the person. */
 export function connectionLine(result: AiConnectionResult): string {
-  return result.ok ? "The connection works." : `The connection failed: ${result.message}`;
+  return result.ok
+    ? t("providers.connection.works")
+    : t("providers.connection.failed", { message: result.message });
 }
 
 /** The message of a failure, with `secret` (the key that was being stored) taken out of it. */

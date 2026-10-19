@@ -12,6 +12,7 @@ import type {
   ShellProfile,
   Space,
 } from "@noren/model";
+import { t } from "./i18n";
 
 // The Ask panel without the screen: which chips the person chose and what they read from the
 // terminal, which provider and model answer, the words of the preview, and how an answer that
@@ -74,15 +75,15 @@ export function readAskChips(choice: AskChoice, sources: AskSources): ReadChips 
   const left: string[] = [];
   if (choice.selection) {
     const text = attempt(() => sources.selection()) ?? "";
-    if (text.trim() === "") left.push("Selection: nothing is selected in the terminal.");
+    if (text.trim() === "") left.push(t("ask.left.selection"));
     else chips.push({ kind: "selection", text });
   }
   if (choice.lastOutput) {
     const output = attempt(() => sources.lastOutput());
     if (output === undefined) {
-      left.push("Last output: no command has finished in this pane yet.");
+      left.push(t("ask.left.lastNone"));
     } else if (output.text.trim() === "") {
-      left.push("Last output: the last command printed nothing.");
+      left.push(t("ask.left.lastEmpty"));
     } else {
       chips.push({
         kind: "lastOutput",
@@ -93,13 +94,13 @@ export function readAskChips(choice: AskChoice, sources: AskSources): ReadChips 
   }
   if (choice.screen) {
     const text = attempt(() => sources.screen()) ?? "";
-    if (text.trim() === "") left.push("Screen: the screen is empty.");
+    if (text.trim() === "") left.push(t("ask.left.screen"));
     else chips.push({ kind: "screen", text });
   }
   for (const itemId of choice.tabs) {
     const tab = attempt(() => sources.tab(itemId));
-    if (tab === undefined) left.push("A tab you added is gone.");
-    else if (tab.text.trim() === "") left.push(`Tab ${tab.title}: it has no text yet.`);
+    if (tab === undefined) left.push(t("ask.left.tabGone"));
+    else if (tab.text.trim() === "") left.push(t("ask.left.tabEmpty", { title: tab.title }));
     else chips.push({ kind: "tab", title: tab.title, text: tab.text });
   }
   return { chips, left };
@@ -132,8 +133,11 @@ export interface ExplainRequest {
   truncated: boolean;
 }
 
-/** What the Explain button asks. The person sees it in the preview and may change it with Edit. */
-export const EXPLAIN_QUESTION = "Why did this command fail, and how do I fix it?";
+/**
+ * What the Explain button asks, in the language in force. The person sees it in the preview and may
+ * change it with Edit.
+ */
+export const explainQuestion = (): string => t("ask.explainQuestion");
 
 /** The chip that carries the command and its output. */
 export function explainChip(request: ExplainRequest): AskChip {
@@ -224,18 +228,14 @@ export function askTarget(
   };
 }
 
-const FUNCTION_NAMES: Readonly<Record<AskFunction, string>> = {
-  ask: "Ask",
-  explain: "Explain",
-  command: "Command",
-};
-
 /** The steps to a first provider, shown while nothing could answer `fn`. */
 export function askSteps(fn: AskFunction = "ask"): readonly string[] {
   return [
-    `Install Ollama, start it and install a model in it (ollama pull followed by the name of a model). Then close ${fn === "command" ? "this" : "this panel"} and open it again.`,
-    "Or open Settings, then AI, and add a provider of your own: the kind, the address of its API and a model. A key goes to the keychain of your system, never to config.jsonc.",
-    `In the same place, choose the provider and the model for ${FUNCTION_NAMES[fn]}, and press Save.`,
+    t("ask.step.ollama", {
+      where: fn === "command" ? t("ask.where.dialog") : t("ask.where.panel"),
+    }),
+    t("ask.step.provider"),
+    t("ask.step.choose", { function: t(`settings.ai.${fn}`) }),
   ];
 }
 
@@ -268,47 +268,37 @@ export function shellNameOf(
 /** Why the AI is off here, for the notice of the shortcut that cannot open the panel. */
 export function askOffNotice(config: Pick<Config, "ai">, space: Pick<Space, "aiEnabled">): string {
   if (aiIsOn(config, space)) return "";
-  return config.ai?.enabled === true
-    ? "The AI is off for this space. Turn it on in the space menu."
-    : "The AI is off. Turn it on in Settings, in the AI section.";
+  return config.ai?.enabled === true ? t("ask.off.space") : t("ask.off.global");
 }
 
 /** What to say when `buildAskMessages` refuses. */
 export function refusalText(reason: AskRefusal, config: Pick<Config, "ai">): string {
   switch (reason) {
     case "ai-off":
-      return config.ai?.enabled === true
-        ? "The AI is off for this space. Turn it on in the space menu."
-        : "The AI is off. Turn it on in Settings, in the AI section.";
+      return config.ai?.enabled === true ? t("ask.off.space") : t("ask.off.global");
     case "empty-question":
-      return "Type a question first.";
+      return t("ask.emptyQuestion");
     case "question-too-long":
-      return "The question is too long. Shorten it and try again.";
+      return t("ask.questionTooLong");
   }
 }
 
 /** The line of the preview about the secrets that were swapped for markers. */
 export function secretsLine(redactions: number, kinds: readonly RedactionKind[]): string {
-  if (redactions === 0) return "No secret was found in what will be sent.";
-  const what =
-    redactions === 1
-      ? "1 secret was replaced by a marker"
-      : `${redactions} secrets were replaced by markers`;
-  return `${what} (${kinds.join(", ")}).`;
+  if (redactions === 0) return t("ask.secrets.none");
+  const joined = kinds.join(", ");
+  return redactions === 1
+    ? t("ask.secrets.one", { kinds: joined })
+    : t("ask.secrets.other", { count: redactions, kinds: joined });
 }
-
-const CHIP_NAMES: Readonly<Record<AskChip["kind"], string>> = {
-  selection: "The selection",
-  lastOutput: "The output of the last command",
-  screen: "The visible screen",
-  command: "The output of the command",
-  tab: "A tab",
-};
 
 /** The line of the preview about a chip that was too long and was cut. */
 export function cutLine(cut: AskCut): string {
-  const end = cut.from === "end" ? "the end" : "the start";
-  return `${CHIP_NAMES[cut.chip]} was cut: ${cut.removed} characters left out from ${end}.`;
+  return t("ask.cut", {
+    chip: t(`ask.chipName.${cut.chip}`),
+    removed: cut.removed,
+    end: cut.from === "end" ? t("ask.end.end") : t("ask.end.start"),
+  });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -379,9 +369,9 @@ export function askRequestId(seq: number, now: number): string {
 export function statusNote(exchange: AskExchange): string | undefined {
   switch (exchange.status) {
     case "stopped":
-      return "Stopped.";
+      return t("ask.stopped");
     case "failed":
-      return exchange.error ?? "The AI could not answer.";
+      return exchange.error ?? t("ask.couldNot");
     default:
       return undefined;
   }

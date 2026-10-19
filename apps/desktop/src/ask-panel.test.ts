@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Config } from "@noren/model";
 import {
   ASK_STEPS,
-  EXPLAIN_QUESTION,
+  explainQuestion,
   NO_CHOICE,
   applyAskEvent,
   askNeedsOllama,
@@ -328,7 +328,7 @@ describe("explaining a command", () => {
   });
 
   it("asks why it failed and how to fix it", () => {
-    expect(EXPLAIN_QUESTION).toContain("fail");
+    expect(explainQuestion()).toContain("fail");
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ArchivedItem, ClosedItem, Item, Workspace } from "@noren/model";
 import { fixturePane, fixtureSpace, fixtureTab } from "./closed-fixtures";
-import { UNTITLED_TAB, filterLibrary, libraryEntries } from "./library-entries";
+import { untitledTab, filterLibrary, libraryEntries } from "./library-entries";
 
 // The library lists the archive and the closed tabs and narrows them by title and folder.
 
@@ -71,7 +71,7 @@ describe("libraryEntries", () => {
   it("names a tab with no title, and leaves the folder out when the pane never had one", () => {
     const ws = workspace({ archive: [archived("a", 1), archived("b", 2, "/x", "   ")] });
     const entries = libraryEntries(ws, "archive");
-    expect(entries.map((e) => e.title)).toEqual([UNTITLED_TAB, UNTITLED_TAB]);
+    expect(entries.map((e) => e.title)).toEqual([untitledTab(), untitledTab()]);
     expect(entries[1]).not.toHaveProperty("cwd");
     expect(entries[0]).toHaveProperty("cwd", "/x");
   });

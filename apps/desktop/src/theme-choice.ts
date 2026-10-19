@@ -1,56 +1,57 @@
-// Which theme the user picked in the palette. No choice means "follow the system" (the theme the
-// operating system's color scheme gives). Pure: `use-theme.ts` keeps the value live.
-//
-// Provisional storage: the browser's `localStorage` under `noren.ui.theme`, until the settings
-// file of NOR-F8-01 takes over.
+import { SYSTEM_THEME, findTheme } from "@noren/model";
+import type { Config, ConfigChange, ConfigManager } from "@noren/model";
 
-import { THEMES } from "./theme";
-
-/** Key of the theme choice in the browser storage. */
-export const THEME_KEY = "noren.ui.theme";
+// Which theme the user picked. It is a setting of the file (`appearance.theme` in config.jsonc):
+// the id of a theme, or `system` (or no value) to follow the color scheme of the operating system.
+// Pure: the choice in force is read from the settings, and picking one in the palette is planned
+// into a change that `ConfigManager.update` writes, the same call as the settings screen, so the
+// comments of the file stay and the window follows the file.
 
 /** The id of a known theme, or `null` to follow the system. */
 export type ThemeChoice = string | null;
 
+/** Where the choice is in the file. */
+export const THEME_PATH: readonly string[] = ["appearance", "theme"];
+
 /**
- * Reads the saved choice. Anything that is not the id of a known theme (no value, broken JSON,
- * another shape, an id this build does not have) is `null`: follow the system.
+ * The choice the settings make: the id of the theme they name, or `null` (follow the system) when
+ * they name none, name `system`, or name a theme this build does not have.
  */
-export function parseThemeChoice(raw: string | null): ThemeChoice {
-  if (raw === null) return null;
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  const id = (value as Record<string, unknown>)["id"];
-  return typeof id === "string" && THEMES.some((theme) => theme.id === id) ? id : null;
+export function themeChoiceOf(config: Config): ThemeChoice {
+  const id = config.appearance?.theme;
+  return id !== undefined && findTheme(id) !== undefined ? id : null;
 }
 
-/** The part of the browser storage the choice needs (so tests can hand in a plain object). */
-export interface ThemeStorage {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
+/** The answer: the changes to write (none when the file already says it), or why it is refused. */
+export type ThemePlan = { changes: ConfigChange[] } | { refusal: string };
+
+/**
+ * Plans picking `choice`. A theme is written as its id; the system is written as `system`, but only
+ * when the file says something else (a file with no choice already follows the system).
+ */
+export function planThemeChoice(config: Config, choice: ThemeChoice): ThemePlan {
+  const written = config.appearance?.theme;
+  if (choice === null) {
+    if (written === undefined || written === SYSTEM_THEME) return { changes: [] };
+    return { changes: [{ path: THEME_PATH, value: SYSTEM_THEME }] };
+  }
+  if (findTheme(choice) === undefined) return { refusal: `There is no theme "${choice}".` };
+  if (written === choice) return { changes: [] };
+  return { changes: [{ path: THEME_PATH, value: choice }] };
 }
 
-/** The saved choice, or `null` (follow the system) when there is none, the storage is missing or throws. */
-export function loadThemeChoice(storage: ThemeStorage | undefined): ThemeChoice {
-  try {
-    return parseThemeChoice(storage?.getItem(THEME_KEY) ?? null);
-  } catch {
-    return null;
-  }
-}
-
-/** Saves the choice (`null` clears it); a storage that refuses is ignored, the choice still applies. */
-export function saveThemeChoice(storage: ThemeStorage | undefined, choice: ThemeChoice): void {
-  try {
-    if (choice === null) storage?.removeItem(THEME_KEY);
-    else storage?.setItem(THEME_KEY, JSON.stringify({ id: choice }));
-  } catch {
-    // The choice only lasts until the page closes.
-  }
+/**
+ * Writes the choice into the file through `ConfigManager.update`. Resolves to the notice to show
+ * when the choice is refused, the file has a problem of its own or the write fails; `undefined`
+ * when it worked (or there was nothing to write).
+ */
+export async function runThemeChoice(
+  manager: Pick<ConfigManager, "state" | "update">,
+  choice: ThemeChoice,
+): Promise<string | undefined> {
+  const plan = planThemeChoice(manager.state.config, choice);
+  if ("refusal" in plan) return plan.refusal;
+  if (plan.changes.length === 0) return undefined;
+  const result = await manager.update(plan.changes);
+  return result.ok ? undefined : result.message;
 }

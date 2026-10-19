@@ -1,6 +1,7 @@
 import { findNodeAtLocation, getNodeValue, parseTree, printParseErrorCode } from "jsonc-parser";
 import type { Node as JsonNode, ParseError } from "jsonc-parser";
 import { z } from "zod";
+import { THEME_ID_PATTERN } from "./theme";
 
 // The settings file `config.jsonc`: its schema, and reading its text. The file is JSON with
 // comments and trailing commas (the person edits it by hand); everything is optional, so a file
@@ -43,8 +44,16 @@ const sidebarSchema = z
   })
   .meta({ description: "The sidebar." });
 
+/** The value of `appearance.theme` that follows the color scheme of the system, as a missing one does. */
+export const SYSTEM_THEME = "system";
+
 const appearanceSchema = z
   .strictObject({
+    theme: setting(
+      z.union([z.literal(SYSTEM_THEME), z.string().regex(THEME_ID_PATTERN)]),
+      'The id of the theme, such as "noren-dusk". "system", or no value, follows the light or dark scheme of the system. An id Noren does not have also follows the system.',
+      SYSTEM_THEME,
+    ),
     sidebar: sidebarSchema.optional(),
     density: setting(
       z.enum(["comfortable", "compact"]),

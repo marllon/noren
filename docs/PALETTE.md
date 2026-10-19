@@ -4,14 +4,14 @@ Ctrl+Shift+P opens the palette: one search box over what Noren can jump to or ru
 
 ## What it lists
 
-| Kind    | Entry                                                                                      | Enter                                                                         |
-| ------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| Tab     | Title of every tab of every space, with the space name and the folder of the focused pane  | Shows the space that owns the tab, then the tab (same as a Favorites tile)    |
-| Space   | Name of every space, with its tab count and default folder                                 | Shows the space (same as its button in the switcher)                          |
-| Action  | Every action of the registry, with the chord in force for the current preset and overrides | Runs the action's command (same as pressing its chord)                        |
-| Profile | "New <profile> tab" for every shell profile of the machine, with the space it opens in     | A new tab in the active space that starts that profile (same call as New tab) |
-| Folder  | A folder a shell reported through OSC 7, short form as the title, "Recent folder" below    | A new tab in that folder, with the profile of the space                       |
-| Theme   | "Theme: <name>" for every theme, and "Follow system theme"; the one in use says so         | Applies the theme and keeps the choice (see Themes below)                     |
+| Kind    | Entry                                                                                      | Enter                                                                                     |
+| ------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Tab     | Title of every tab of every space, with the space name and the folder of the focused pane  | Shows the space that owns the tab, then the tab (same as a Favorites tile)                |
+| Space   | Name of every space, with its tab count and default folder                                 | Shows the space (same as its button in the switcher)                                      |
+| Action  | Every action of the registry, with the chord in force for the current preset and overrides | Runs the action's command (same as pressing its chord)                                    |
+| Profile | "New <profile> tab" for every shell profile of the machine, with the space it opens in     | A new tab in the active space that starts that profile (same call as New tab)             |
+| Folder  | A folder a shell reported through OSC 7, short form as the title, "Recent folder" below    | A new tab in that folder, with the profile of the space                                   |
+| Theme   | "Theme: <name>" for every theme, and "Follow system theme"; the one in use says so         | Saves the theme in the settings file (see Themes below); the highlighted one is previewed |
 
 Entries run the same calls as a click or a shortcut; the palette has no commands of its own. The command mark actions (_Previous prompt_, _Next prompt_, _Select command output_, _Copy last command output_) act on the focused pane of the tab on screen, and when there is nothing to do they say why in the notice (see [SHELL_INTEGRATION.md](SHELL_INTEGRATION.md)). _Go to last unread tab_ shows the pane that rang or notified last (see [KEYBINDINGS.md](KEYBINDINGS.md)), and says `Nothing unread` in the notice when there is none. An action that is refused (a split past the pane limit) shows the usual notice. The layout actions (_Switch sidebar side_, _Widen sidebar_, _Narrow sidebar_, _Switch density_, _Toggle compact mode_, _Toggle keep sidebar open_, _Toggle tabs on top_; category **Layout**, so `>layout` lists them) write the one setting they change into `config.jsonc` with its comments in place and the window follows the file; when they are refused or the write fails, the notice says why (see [KEYBINDINGS.md](KEYBINDINGS.md)). _Open settings_ opens the settings screen (see [CONFIG.md](CONFIG.md)) and leaves the keyboard to it; closing the screen gives the keyboard back to the terminal. "Open palette" is not listed: running it from the palette would only open it again.
 
@@ -50,4 +50,10 @@ The list is read when the palette opens. Picking a folder only opens a shell the
 
 ## Themes
 
-A theme entry applies the theme at once and saves the choice in `localStorage` under `noren.ui.theme` (provisional until NOR-F8-01). Without a choice, or with a value that is corrupt or names a theme this build does not have, the theme follows `prefers-color-scheme` as before; the entry "Follow system theme" clears the choice.
+Eight themes come with Noren: Noren Dusk (dark) and Noren Paper (light), the two Noren was born with, and six more: Noren Nightshade, Noren Fjord, Noren Midnight and Noren Meadow (dark), Noren Dune and Noren Oat (light). The palette lists "Theme: <name>" for each, and "Follow system theme". The entry in use says so ("in use" for a theme, "In use" for the system).
+
+- **Live preview.** The theme highlighted in the list (with the arrows, or with the pointer, or because it is the only one a search leaves) is applied to the whole window at once, the terminals included, without being saved. Moving the highlight to another theme previews that one; to anything that is not a theme (a tab, an action...) shows the saved theme again.
+- **Escape** (or a click outside the palette) closes it and puts the saved theme back. Nothing is written.
+- **Enter** (or a click) on the highlighted entry saves it: it writes `appearance.theme` in `config.jsonc` through the same call as the settings screen, so the comments of the file stay, and the window already shows it (see [CONFIG.md](CONFIG.md)). "Follow system theme" writes `"system"`; when the file has no choice at all it writes nothing, because it already follows the system. If the file has a problem of its own, or the disk refuses the write, the usual notice says so and the saved theme stays.
+
+The choice is a setting of the file, not of the browser storage: it also changes when the file changes (an editor, a script), with no reload. A theme the file names but this build does not have follows the system, like no choice. The way a theme is made, and where the six others come from, is in [CONFIG.md](CONFIG.md) and in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).

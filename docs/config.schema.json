@@ -9,6 +9,20 @@
     "appearance": {
       "type": "object",
       "properties": {
+        "theme": {
+          "description": "The id of the theme, such as \"noren-dusk\". \"system\", or no value, follows the light or dark scheme of the system. An id Noren does not have also follows the system.",
+          "default": "system",
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "system"
+            },
+            {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+            }
+          ]
+        },
         "sidebar": {
           "type": "object",
           "properties": {

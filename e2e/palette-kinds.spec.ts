@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { seedConfig } from "./settings-fixture";
 
 // The palette entries for shell profiles, recent folders (from OSC 7) and themes.
 
@@ -90,7 +91,8 @@ test.describe("themes", () => {
     expect(await rootVar(page, "--nr-bg")).toBe(DUSK_BG);
 
     await openPalette(page);
-    await expect(ofKind(page, "theme")).toHaveCount(3);
+    // The eight themes and the choice to follow the system.
+    await expect(ofKind(page, "theme")).toHaveCount(9);
     await page.keyboard.type("paper");
     await expect(options(page)).toHaveCount(1);
     await expect(options(page).first()).toHaveAttribute("data-nr-kind", "theme");
@@ -123,10 +125,10 @@ test.describe("themes", () => {
     await expect.poll(() => rootVar(page, "--nr-bg")).toBe(PAPER_BG);
   });
 
-  test("a corrupt saved choice follows the system", async ({ page }) => {
-    await page.addInitScript(() => {
-      window.localStorage.setItem("noren.ui.theme", "{not json");
-    });
+  test("a theme the settings file names but this build does not have follows the system", async ({
+    page,
+  }) => {
+    await seedConfig(page, '{ "appearance": { "theme": "no-such-theme" } }');
     await page.goto("/");
     await expect.poll(() => rootVar(page, "--nr-bg")).toBe(DUSK_BG);
     await page.emulateMedia({ colorScheme: "light" });

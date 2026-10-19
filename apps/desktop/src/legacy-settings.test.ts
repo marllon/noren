@@ -4,14 +4,21 @@ import { KEYBINDINGS_KEY } from "./keybindings";
 import {
   NOTIFICATION_SETTINGS_KEY,
   legacyChanges,
+  THEME_KEY,
   legacyValues,
   migrateLegacySettings,
+  parseLegacyTheme,
   parseNotificationSettings,
 } from "./legacy-settings";
 import type { LegacyStorage, LegacyStorageArea } from "./legacy-settings";
 import { LAYOUT_KEY } from "./layout";
 
-const nothing: LegacyStorage = { layout: null, notifications: null, keybindings: null };
+const nothing: LegacyStorage = {
+  layout: null,
+  notifications: null,
+  keybindings: null,
+  theme: null,
+};
 
 describe("parseNotificationSettings", () => {
   it("is on with a limit of 30 s when nothing is saved", () => {
@@ -60,6 +67,7 @@ describe("legacyValues", () => {
         }),
         notifications: '{"enabled":true,"longCommandSeconds":30}',
         keybindings: '{"preset":"safe","overrides":{}}',
+        theme: null,
       }),
     ).toEqual({});
   });
@@ -78,6 +86,7 @@ describe("legacyValues", () => {
         }),
         notifications: '{"enabled":false,"longCommandSeconds":90}',
         keybindings: '{"preset":"browser"}',
+        theme: null,
       }),
     ).toEqual({
       side: "right",
@@ -95,8 +104,38 @@ describe("legacyValues", () => {
 
   it("ignores text that is not usable", () => {
     expect(
-      legacyValues({ layout: "garbage", notifications: "[]", keybindings: "{not json" }),
+      legacyValues({
+        layout: "garbage",
+        notifications: "[]",
+        keybindings: "{not json",
+        theme: "{",
+      }),
     ).toEqual({});
+  });
+});
+
+describe("parseLegacyTheme", () => {
+  it("reads the id of a theme this build has", () => {
+    expect(parseLegacyTheme('{"id":"noren-paper"}')).toBe("noren-paper");
+    expect(parseLegacyTheme('{"id":"noren-fjord"}')).toBe("noren-fjord");
+  });
+
+  it("is nothing for anything else: no value, broken JSON, another shape, an unknown id", () => {
+    for (const raw of [
+      null,
+      "",
+      "noren-dusk",
+      "{",
+      "[]",
+      "null",
+      "42",
+      "{}",
+      '{"id":3}',
+      '{"id":null}',
+      '{"id":"no-such-theme"}',
+    ]) {
+      expect(parseLegacyTheme(raw), String(raw)).toBeNull();
+    }
   });
 });
 
@@ -105,12 +144,14 @@ describe("legacyChanges", () => {
     layout: JSON.stringify({ side: "right", width: 300, paneHeaders: true }),
     notifications: '{"longCommandSeconds":45}',
     keybindings: '{"preset":"browser"}',
+    theme: '{"id":"noren-paper"}',
   };
 
   it("asks for each choice, in the order of the file", () => {
     expect(
       legacyChanges(stored, {}).map((change) => [change.path.join("."), change.value]),
     ).toEqual([
+      ["appearance.theme", "noren-paper"],
       ["appearance.sidebar.position", "right"],
       ["appearance.sidebar.width", 300],
       ["appearance.paneHeaders", true],
@@ -121,7 +162,7 @@ describe("legacyChanges", () => {
 
   it("leaves out what the file already says: the file wins", () => {
     const changes = legacyChanges(stored, {
-      appearance: { sidebar: { position: "left" }, paneHeaders: false },
+      appearance: { sidebar: { position: "left" }, paneHeaders: false, theme: "noren-dusk" },
       keybindings: { preset: "safe" },
     });
     expect(changes.map((change) => change.path.join("."))).toEqual([
@@ -272,6 +313,46 @@ describe("migrateLegacySettings", () => {
     backend.setConfigSaveFailure(undefined);
     expect(await migrateLegacySettings(area, manager)).toBe("moved");
     expect(manager.state.config.keybindings?.preset).toBe("browser");
+  });
+
+  describe("the theme", () => {
+    it("moves the old choice to appearance.theme, keeps the comments, and removes the old key", async () => {
+      const { backend, manager } = await started(
+        '// mine\n{\n  "appearance": { "tabs": "top" }, // up there\n}\n',
+      );
+      const { area, data } = memoryStorage({ [THEME_KEY]: '{"id":"noren-midnight"}' });
+      expect(await migrateLegacySettings(area, manager)).toBe("moved");
+      expect(manager.state.config.appearance).toEqual({ theme: "noren-midnight", tabs: "top" });
+      expect(backend.configContent).toContain("// mine");
+      expect(backend.configContent).toContain("// up there");
+      expect(data.size).toBe(0);
+      expect(backend.callsTo("saveConfig")).toHaveLength(1);
+    });
+
+    it("lets the file win over the old choice", async () => {
+      const { backend, manager } = await started('{ "appearance": { "theme": "noren-dusk" } }');
+      const { area, data } = memoryStorage({ [THEME_KEY]: '{"id":"noren-paper"}' });
+      expect(await migrateLegacySettings(area, manager)).toBe("moved");
+      expect(manager.state.config.appearance?.theme).toBe("noren-dusk");
+      expect(backend.callsTo("saveConfig")).toHaveLength(0);
+      expect(data.size).toBe(0);
+    });
+
+    it("drops a choice that cannot be used, writing nothing", async () => {
+      const { backend, manager } = await started(null);
+      const { area, data } = memoryStorage({ [THEME_KEY]: "{not json" });
+      expect(await migrateLegacySettings(area, manager)).toBe("moved");
+      expect(backend.callsTo("saveConfig")).toHaveLength(0);
+      expect(data.size).toBe(0);
+    });
+
+    it("waits for the next start when the file has a problem, and loses nothing", async () => {
+      const { backend, manager } = await started("{ nope");
+      const { area, data } = memoryStorage({ [THEME_KEY]: '{"id":"noren-paper"}' });
+      expect(await migrateLegacySettings(area, manager)).toBe("postponed");
+      expect(backend.callsTo("saveConfig")).toHaveLength(0);
+      expect(data.get(THEME_KEY)).toBe('{"id":"noren-paper"}');
+    });
   });
 
   it("does not fail when the storage is blocked", async () => {

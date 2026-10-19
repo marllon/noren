@@ -82,6 +82,12 @@ describe("theme entries", () => {
     expect(ofKind(entries, "theme")).toMatchObject([
       { title: "Theme: Noren Dusk", themeId: "noren-dusk", current: true, detail: "Dark · in use" },
       { title: "Theme: Noren Paper", themeId: "noren-paper", current: false, detail: "Light" },
+      { title: "Theme: Noren Nightshade", themeId: "noren-nightshade", detail: "Dark" },
+      { title: "Theme: Noren Fjord", themeId: "noren-fjord", detail: "Dark" },
+      { title: "Theme: Noren Midnight", themeId: "noren-midnight", detail: "Dark" },
+      { title: "Theme: Noren Meadow", themeId: "noren-meadow", detail: "Dark" },
+      { title: "Theme: Noren Dune", themeId: "noren-dune", detail: "Light" },
+      { title: "Theme: Noren Oat", themeId: "noren-oat", detail: "Light" },
       { title: "Follow system theme", themeId: null, current: false },
     ]);
   });
@@ -89,8 +95,7 @@ describe("theme entries", () => {
   it("marks the system choice when no theme was picked", async () => {
     const themes = ofKind(await entriesFor(null), "theme");
     expect(themes.map((entry) => entry.kind === "theme" && entry.current)).toEqual([
-      false,
-      false,
+      ...THEMES.map(() => false),
       true,
     ]);
   });
@@ -98,6 +103,7 @@ describe("theme entries", () => {
   it("finds a theme by part of its name", async () => {
     const entries = await entriesFor();
     expect(titles(searchEntries(entries, "paper"))).toEqual(["Theme: Noren Paper"]);
+    expect(titles(searchEntries(entries, "fjord"))).toEqual(["Theme: Noren Fjord"]);
     expect(titles(searchEntries(entries, "follow system"))).toEqual(["Follow system theme"]);
   });
 });

@@ -1,13 +1,14 @@
-import { DEFAULT_NOTIFICATION_SETTINGS } from "@noren/model";
+import { DEFAULT_NOTIFICATION_SETTINGS, findTheme } from "@noren/model";
 import type { Config, ConfigChange, ConfigManager, NotificationSettings } from "@noren/model";
 import { KEYBINDINGS_KEY, parseKeybindings, serializeKeybindings } from "./keybindings";
 import { LAYOUT_KEY, parseLayout } from "./layout";
 import { DEFAULT_SETTINGS, SETTING_PATHS, settingsSetBy } from "./settings-screen";
 import type { SettingKey, SettingsValues } from "./settings-screen";
+import { THEME_PATH } from "./theme-choice";
 
-// Before the settings screen, the layout, the notification settings and the shortcut preset lived
-// in the browser storage (`noren.ui.layout`, `noren.ui.notifications` and the `preset` of
-// `noren.ui.keybindings`). They are in `config.jsonc` now, and the storage is no longer read for
+// Before the settings screen, the layout, the notification settings, the shortcut preset and the
+// theme lived in the browser storage (`noren.ui.layout`, `noren.ui.notifications`, the `preset` of
+// `noren.ui.keybindings` and `noren.ui.theme`). They are in `config.jsonc` now, and the storage is no longer read for
 // them. What a person had chosen is moved into the file once, at the first start after the
 // upgrade, and the old keys are removed; the user's own shortcuts (`overrides`) stay in the
 // storage until they get a place in the file.
@@ -15,11 +16,15 @@ import type { SettingKey, SettingsValues } from "./settings-screen";
 /** Key of the notification settings in the browser storage, as earlier builds kept them. */
 export const NOTIFICATION_SETTINGS_KEY = "noren.ui.notifications";
 
+/** Key of the theme choice in the browser storage, as earlier builds kept it. */
+export const THEME_KEY = "noren.ui.theme";
+
 /** The raw text of each key of the old storage, `null` when it is not there. */
 export interface LegacyStorage {
   layout: string | null;
   notifications: string | null;
   keybindings: string | null;
+  theme: string | null;
 }
 
 /** What the part of the browser storage the migration needs looks like (so tests can hand in a map). */
@@ -49,6 +54,23 @@ export function parseNotificationSettings(raw: string | null): NotificationSetti
     settings.longCommandMs = Math.round(longCommandSeconds * 1000);
   }
   return settings;
+}
+
+/**
+ * Reads the old theme choice, `{"id":"noren-paper"}`. Anything that is not the id of a theme this
+ * build has (no value, broken JSON, another shape, an unknown id) is `null`: nothing to move.
+ */
+export function parseLegacyTheme(raw: string | null): string | null {
+  if (raw === null) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const id = (value as Record<string, unknown>)["id"];
+  return typeof id === "string" && findTheme(id) !== undefined ? id : null;
 }
 
 const LAYOUT_KEYS: readonly SettingKey[] = [
@@ -99,6 +121,11 @@ export function legacyChanges(stored: LegacyStorage, config: Config): ConfigChan
       changes.push({ path: SETTING_PATHS[key], value });
     }
   }
+  // The theme sits first in `appearance`, so it goes in the order of the file as well.
+  const theme = parseLegacyTheme(stored.theme);
+  if (theme !== null && config.appearance?.theme === undefined) {
+    changes.unshift({ path: THEME_PATH, value: theme });
+  }
   return changes;
 }
 
@@ -142,9 +169,17 @@ export async function migrateLegacySettings(
     layout: read(storage, LAYOUT_KEY),
     notifications: read(storage, NOTIFICATION_SETTINGS_KEY),
     keybindings: read(storage, KEYBINDINGS_KEY),
+    theme: read(storage, THEME_KEY),
   };
   const hasPreset = holdsPreset(stored.keybindings);
-  if (stored.layout === null && stored.notifications === null && !hasPreset) return "nothing";
+  if (
+    stored.layout === null &&
+    stored.notifications === null &&
+    stored.theme === null &&
+    !hasPreset
+  ) {
+    return "nothing";
+  }
 
   // A file that does not parse cannot be edited, and a failed move must not lose the old choices.
   if (manager.state.errors.length > 0) return "postponed";
@@ -156,6 +191,7 @@ export async function migrateLegacySettings(
   try {
     storage.removeItem(LAYOUT_KEY);
     storage.removeItem(NOTIFICATION_SETTINGS_KEY);
+    storage.removeItem(THEME_KEY);
     if (hasPreset) {
       const { overrides } = parseKeybindings(stored.keybindings);
       if (Object.keys(overrides).length === 0) storage.removeItem(KEYBINDINGS_KEY);

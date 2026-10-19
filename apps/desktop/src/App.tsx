@@ -99,7 +99,13 @@ import {
   PaneContextMenu,
 } from "./TreeMenus";
 import type { OutputActions } from "./TreeMenus";
-import { setThemeChoice, useTheme, useThemeChoice } from "./use-theme";
+import {
+  chooseTheme,
+  clearThemePreview,
+  previewTheme,
+  useTheme,
+  useThemeChoice,
+} from "./use-theme";
 import type { TerminalHandle } from "./TerminalView";
 import {
   activeItemIdOf,
@@ -855,6 +861,16 @@ function Shell({ store }: { store: WorkspaceStore }) {
     focusTerminal();
   }, [focusTerminal]);
 
+  // The theme highlighted in the palette shows at once, unsaved; whatever closes the palette
+  // without choosing one (Escape, a click outside, another entry) puts the saved theme back.
+  useEffect(() => {
+    if (!paletteOpen) clearThemePreview();
+  }, [paletteOpen]);
+  const onPaletteHighlight = useCallback((entry: PaletteEntry | undefined) => {
+    if (entry?.kind === "theme") previewTheme(entry.themeId);
+    else clearThemePreview();
+  }, []);
+
   const keybindings = useKeybindings();
   const paletteEntries = useMemo(
     () =>
@@ -877,8 +893,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
     else if (entry.kind === "space") activateSpace(entry.spaceId);
     else if (entry.kind === "profile") newTab({ profileId: entry.profileId });
     else if (entry.kind === "folder") newTab({ cwd: entry.path });
-    else if (entry.kind === "theme") setThemeChoice(entry.themeId);
-    else if (entry.action.command.kind === "search-all") {
+    else if (entry.kind === "theme") {
+      // Enter saves the theme highlighted; `chooseTheme` keeps it on screen until the file has it.
+      void chooseTheme(entry.themeId).then((problem) => {
+        if (problem !== undefined) showNotice(problem);
+      });
+    } else if (entry.action.command.kind === "search-all") {
       // The search takes the keyboard itself; the palette must not hand it to the terminal.
       openSearch();
       return;
@@ -1202,7 +1222,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
         <TabSearch tabs={searchText} onPick={pickSearchHit} onClose={closeSearch} />
       )}
       {paletteOpen && (
-        <CommandPalette entries={paletteEntries} onRun={runPaletteEntry} onClose={closePalette} />
+        <CommandPalette
+          entries={paletteEntries}
+          onRun={runPaletteEntry}
+          onClose={closePalette}
+          onHighlight={onPaletteHighlight}
+        />
       )}
       {settingsOpen && (
         <SettingsDialog

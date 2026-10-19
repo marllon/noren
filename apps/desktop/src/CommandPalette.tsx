@@ -10,6 +10,11 @@ interface CommandPaletteProps {
   onRun(entry: PaletteEntry): void;
   /** Escape or a click outside. */
   onClose(): void;
+  /**
+   * The highlighted entry changed (the arrows, the pointer, or a new search), or nothing is
+   * highlighted (`undefined`). A theme entry shows its theme at once, unsaved.
+   */
+  onHighlight?(entry: PaletteEntry | undefined): void;
 }
 
 /** The entries of one kind, in the order `searchEntries` gave them. */
@@ -26,9 +31,18 @@ const KINDS: readonly EntryKind[] = ["tab", "space", "action", "profile", "folde
  * not filter on its own). The prefixes `>`, `@` and `#` limit the list to commands (the actions,
  * profiles, folders and themes), tabs or spaces.
  */
-export function CommandPalette({ entries, onRun, onClose }: CommandPaletteProps) {
+export function CommandPalette({ entries, onRun, onClose, onHighlight }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
+  // The highlighted entry is controlled: `cmdk` only reports a change of it when it is.
+  const [highlighted, setHighlighted] = useState("");
   const results = useMemo(() => searchEntries(entries, query), [entries, query]);
+
+  // `cmdk` hands back the value it was given (the id), trimmed and, in some versions, lower-cased.
+  const onValueChange = (value: string) => {
+    setHighlighted(value);
+    const wanted = value.trim().toLowerCase();
+    onHighlight?.(results.find((entry) => entry.id.toLowerCase() === wanted));
+  };
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
@@ -56,7 +70,13 @@ export function CommandPalette({ entries, onRun, onClose }: CommandPaletteProps)
         aria-label="Command palette"
         onKeyDown={onKeyDown}
       >
-        <Command shouldFilter={false} loop label="Command palette">
+        <Command
+          shouldFilter={false}
+          loop
+          label="Command palette"
+          value={highlighted}
+          onValueChange={onValueChange}
+        >
           <Command.Input
             autoFocus
             value={query}

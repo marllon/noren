@@ -19,8 +19,9 @@ function recorder() {
 }
 
 describe("themes", () => {
-  it("ships Dusk (dark) and Paper (light) with the spec's colors for Dusk", () => {
-    expect(THEMES.map((t) => [t.id, t.kind])).toEqual([
+  it("ships Dusk (dark) and Paper (light) first, with the spec's colors for Dusk", () => {
+    expect(THEMES).toHaveLength(8);
+    expect(THEMES.slice(0, 2).map((t) => [t.id, t.kind])).toEqual([
       ["noren-dusk", "dark"],
       ["noren-paper", "light"],
     ]);

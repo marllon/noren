@@ -50,6 +50,7 @@ Every setting is optional. Unknown settings are an error, so a typo does not go 
 ```jsonc
 {
   "appearance": {
+    "theme": "system", // a theme id such as "noren-dusk"; "system" or no value follows the system
     "sidebar": {
       "position": "left", // "left" | "right"
       "width": 200, // whole pixels, 180 to 480
@@ -70,12 +71,34 @@ Every setting is optional. Unknown settings are an error, so a typo does not go 
 }
 ```
 
-The values above are the defaults. More sections (terminal, profiles, auto-archive, AI) arrive with the tasks that need them; the schema is the list of what exists now. Your own shortcuts (the keys you record for an action) and a few other preferences (the theme, the recent folders, the answers to the question about running a project action) are still kept in the browser storage of the window, not in this file, until their settings get a place here.
+The values above are the defaults. More sections (terminal, profiles, auto-archive, AI) arrive with the tasks that need them; the schema is the list of what exists now. Your own shortcuts (the keys you record for an action) and a few other preferences (the recent folders, the answers to the question about running a project action) are still kept in the browser storage of the window, not in this file, until their settings get a place here.
+
+## Themes
+
+`appearance.theme` is the id of the theme. Without it, or with `"system"`, the theme follows the light or dark color scheme of the operating system (Noren Dusk when it is dark, Noren Paper when it is light), live. The id has to be lower case words joined by hyphens; one that is not is an error of the file, and an id that is well formed but that this build does not have follows the system, with no error.
+
+The eight built-in themes:
+
+| Id                 | Name             | Kind  |
+| ------------------ | ---------------- | ----- |
+| `noren-dusk`       | Noren Dusk       | dark  |
+| `noren-paper`      | Noren Paper      | light |
+| `noren-nightshade` | Noren Nightshade | dark  |
+| `noren-fjord`      | Noren Fjord      | dark  |
+| `noren-midnight`   | Noren Midnight   | dark  |
+| `noren-meadow`     | Noren Meadow     | dark  |
+| `noren-dune`       | Noren Dune       | light |
+| `noren-oat`        | Noren Oat        | light |
+
+You pick one in the command palette (_Theme: <name>_, see [PALETTE.md](PALETTE.md)), which previews the highlighted theme live and, on Enter, writes the id here like the settings screen does (the comments stay), or by writing the id in the file yourself. The six themes after the first two are ports of color schemes published under permissive licenses; where each comes from, and its license, is in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+
+A theme is data, in the format of the spec (`ThemeSchema` in `packages/model/src/theme.ts`; the type `Theme` comes from it): `id`, `name`, `kind` (`dark` or `light`), `ui` (the colors `bg`, `surface`, `text`, `muted`, `accent`, `border`, and `radius`, `blur`, `opacity`), `terminal` (`foreground`, `background`, `cursor`, `selection` and the 16 `ansi` colors), `font` and `background`. Colors are `#rrggbb` (the selection may add an alpha, `#rrggbbaa`); an unknown field, a missing one, a color that is not a color or a number out of its range makes the theme invalid. Every built-in theme goes through the schema when the app starts, and a test holds all of them to a contrast of at least 4.5:1 (WCAG 2.x, level AA) between `ui.text` and `ui.bg`, and between `terminal.foreground` and `terminal.background`. The interface reads a theme only through the `--nr-*` variables (see the API for mods in the spec).
 
 ## What happened to the choices made before the settings screen
 
-Before the settings screen, the layout, the notification settings and the shortcut preset were kept in the browser storage of the window (`noren.ui.layout`, `noren.ui.notifications` and the `preset` of `noren.ui.keybindings`), with a small panel in the title bar to change them. That panel is gone and the storage is no longer read for them. So that nobody loses what they chose, the first start after the upgrade **moves those choices into the file once**:
+Before the settings screen, the layout, the notification settings and the shortcut preset were kept in the browser storage of the window (`noren.ui.layout`, `noren.ui.notifications` and the `preset` of `noren.ui.keybindings`), with a small panel in the title bar to change them, and the theme was kept in `noren.ui.theme`. That panel is gone and the storage is no longer read for them. So that nobody loses what they chose, the first start after the upgrade **moves those choices into the file once**:
 
+- the theme you had picked in the palette (`noren.ui.theme`) becomes `appearance.theme`, unless the file already names one;
 - only what is not the default is written (a width of 200, the left side, comfortable density... are the defaults and add nothing), in the same way the screen writes it, with your comments in place if the file already exists, and the file is created if it does not;
 - a setting the file already has is left as the file says: **the file wins**;
 - after that the old keys are removed (for the shortcuts only the `preset` goes; your own recorded keys stay);
@@ -90,3 +113,4 @@ Before the settings screen, the layout, the notification settings and the shortc
 - **Editing the text.** `editConfigText(text, changes)` (`packages/model/src/config-edit.ts`) is the only way the app writes the file. A setting the text already has gets only its value replaced (`modify` and `applyEdits` of `jsonc-parser`); a new one is inserted by hand as a line of its own, indented like its neighbors, under the line of the setting before it (so the comment at the end of that line stays with it), in the order the schema lists the settings, creating the groups it needs; an object written on one line stays on one line; line breaks (LF or CRLF), indentation and a byte order mark are kept. `modify`'s own formatting is not used for an insertion because it reformats every line it touches. A change cannot take a setting out: that would take the comments around it with it.
 - `ConfigManager.update(changes)` reads the file now, refuses when it has a problem or when the result would not be valid (nothing is written), edits it, saves it through the backend and applies the new text at once; the watcher then reports the same text and it is ignored. Updates queue up, so two quick ones both land.
 - The screen is `SettingsDialog.tsx`; what it shows and what Save writes is the pure `settings-screen.ts` (`settingsOf`, `planSave`). `layout-store.ts`, `notification-settings.ts` and `keybindings-store.ts` read the settings in force; `legacy-settings.ts` is the one-time move described above.
+- The theme: `theme-choice.ts` reads `appearance.theme` from the settings in force (`themeChoiceOf`) and plans picking one (`planThemeChoice`, `runThemeChoice`, which hands the change to `ConfigManager.update`). `use-theme.ts` holds the preview of the palette over the saved choice: `previewTheme`, `clearThemePreview` and `chooseTheme`, which keeps the chosen theme on screen until the file has it, so the window does not flicker back. The built-in themes are in `packages/model/src/builtin-themes.ts`.

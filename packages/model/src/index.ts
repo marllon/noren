@@ -28,8 +28,19 @@ export type {
   RunResult,
 } from "./project-actions";
 export {
+  MIN_TEXT_CONTRAST,
+  THEME_ID_PATTERN,
+  ThemeSchema,
+  contrastRatio,
+  parseTheme,
+  relativeLuminance,
+} from "./theme";
+export type { AnsiPalette, ParseThemeResult, Theme } from "./theme";
+export { NOREN_DUSK, NOREN_PAPER, THEMES, findTheme } from "./builtin-themes";
+export {
   ConfigSchema,
   SIDEBAR_MAX_WIDTH,
+  SYSTEM_THEME,
   SIDEBAR_MIN_WIDTH,
   configJsonSchema,
   describeConfigError,

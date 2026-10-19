@@ -23,10 +23,11 @@ export type Preset = "safe" | "browser";
 
 export const PRESETS: readonly Preset[] = ["safe", "browser"];
 
-export type ActionCategory = "Tabs" | "Panes" | "Spaces";
+export type ActionCategory = "General" | "Tabs" | "Panes" | "Spaces";
 
 /** What an action does; the shell turns it into store calls. */
 export type ActionCommand =
+  | { kind: "palette" }
   | { kind: "new-tab" }
   | { kind: "close" }
   | { kind: "split"; dir: "row" | "column" }
@@ -61,6 +62,14 @@ const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
  * the shell's Ctrl+W, Ctrl+T and Ctrl+1..9 for the terminal; the browser preset takes them.
  */
 export const ACTIONS: readonly ActionDef[] = [
+  {
+    id: "palette.open",
+    title: "Open palette",
+    category: "General",
+    command: { kind: "palette" },
+    repeat: false,
+    chords: { safe: "Ctrl+Shift+KeyP", browser: "Ctrl+Shift+KeyP" },
+  },
   {
     id: "tab.new",
     title: "New tab",

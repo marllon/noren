@@ -7,7 +7,7 @@ Every Noren shortcut is an action in one registry (`apps/desktop/src/keybindings
 One listener on the window, in the capture phase, reads every `keydown`:
 
 1. The resolver looks the press up. No action: the listener returns and the key goes on to the terminal.
-2. The key goes to a text field (a rename box, a dialog field): the listener returns, so the shortcuts never act while the user types.
+2. The key goes to a text field (a rename box, a dialog field, the search box of the command palette): the listener returns, so the shortcuts never act while the user types. This is also why Ctrl+Shift+P does nothing while the palette is open.
 3. Otherwise the listener calls `preventDefault` and `stopPropagation`, so the terminal never sees the key, and runs the action. Holding the key repeats only the actions that allow it (moving the focus, resizing a pane).
 
 A key is a shortcut only when it matches an action, and a shortcut that is bound but cannot act (go to tab 7 with three tabs, split past the pane limit) is still swallowed.
@@ -22,6 +22,7 @@ The **safe** preset is the default. It does not fight the shell: Ctrl+T, Ctrl+W 
 
 | Action                        | Safe preset           | Browser preset        |
 | ----------------------------- | --------------------- | --------------------- |
+| Open palette                  | Ctrl+Shift+P          | Ctrl+Shift+P          |
 | New tab                       | Ctrl+Shift+T          | Ctrl+T                |
 | Close pane                    | Ctrl+Shift+W          | Ctrl+W                |
 | Split right                   | Ctrl+Shift+D          | Ctrl+Shift+D          |
@@ -36,7 +37,7 @@ The browser preset is opt-in. It takes Ctrl+T, Ctrl+W and Ctrl+1..9 away from th
 
 A preset gives each action at most one chord. Where the browser preset moves an action, the safe chord is free again (Ctrl+Shift+T does nothing there, until an action that needs it exists).
 
-Only the actions that exist today are registered. Later tasks add theirs (the palette, reopen closed, the MRU switcher, search) to the same registry.
+Only the actions that exist today are registered. Later tasks add theirs (reopen closed, the MRU switcher, search) to the same registry. The command palette lists these same actions with the chord in force; see [PALETTE.md](PALETTE.md).
 
 ## Overrides and conflicts
 

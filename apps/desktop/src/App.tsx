@@ -22,6 +22,7 @@ import { handleDeepLink, setDeepLinkHandler } from "./deep-link";
 import { createDeepLinkHandler } from "./deep-link-handler";
 import { startDeepLinkReceiver } from "./deep-link-receiver";
 import { tauriBridge } from "./tauri-backend";
+import { CommandPalette } from "./CommandPalette";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FavoritesGrid } from "./FavoritesGrid";
 import { resolveFavorites } from "./favorites";
@@ -53,8 +54,11 @@ import type { SplitLayoutContext } from "./SplitLayout";
 import { joinedPaneCount, paneDropAction, paneLimitNotice, paneSwapAction } from "./sidebar-drop";
 import type { PaneDrop } from "./sidebar-drop";
 import { keyboardResize } from "./split-layout";
-import { currentResolver, isRecording } from "./keybindings-store";
+import { currentResolver, isRecording, useKeybindings } from "./keybindings-store";
+import { resolveBindings } from "./keybindings";
 import type { ActionCommand } from "./keybindings";
+import { buildEntries } from "./palette";
+import type { PaletteEntry } from "./palette";
 import { typesText } from "./split-keys";
 import { DropZones, TreeDnd } from "./TreeDnd";
 import { createWheelGesture, wheelTravel } from "./spaces";
@@ -301,6 +305,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const [overlay, setOverlay] = useState<Overlay | null>(null);
   const [selection, setSelection] = useState<SpaceSelection>({ spaceId: "", ids: [] });
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const handles = useRef(new Map<Id, TerminalHandle>());
   const theme = useTheme();
   const colors = useMemo(() => terminalTheme(theme), [theme]);
@@ -441,6 +446,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     const action = paneSwapAction(activeId, paneId, otherPaneId);
     if (action) dispatch(action);
   };
+  const modalOpen = useRef(false);
   // The one keyboard listener: every Noren shortcut goes through the resolver. Captured on the
   // window, so a key that is a shortcut never reaches the terminal and any other key does.
   useEffect(() => {
@@ -454,6 +460,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
       event.stopPropagation();
       // Holding the key must not split, close or zoom over and over.
       if (event.repeat && !action.repeat) return;
+      if (action.command.kind === "palette") {
+        // Not over a menu or dialog: they hold the keyboard.
+        if (!modalOpen.current) setPaletteOpen(true);
+        return;
+      }
       const refusal = runCommand(store, action.command);
       if (refusal !== undefined) showNotice(refusal);
     };
@@ -551,10 +562,45 @@ function Shell({ store }: { store: WorkspaceStore }) {
     handles.current.set(paneId, handle);
   };
 
-  /** A tile of the Favorites grid: show the space that owns the tab, then the tab. */
-  const onOpenFavorite = (favorite: ResolvedFavorite) => {
-    dispatch({ type: "space/activate", spaceId: favorite.spaceId });
-    dispatch({ type: "space/set-active-item", spaceId: favorite.spaceId, itemId: favorite.id });
+  /** Shows the space that owns a tab, then the tab (a Favorites tile and the palette use it). */
+  const showTab = (spaceId: Id, itemId: Id) => {
+    dispatch({ type: "space/activate", spaceId });
+    dispatch({ type: "space/set-active-item", spaceId, itemId });
+  };
+
+  const onOpenFavorite = (favorite: ResolvedFavorite) => showTab(favorite.spaceId, favorite.id);
+
+  /** Closes the palette and gives the keyboard back to the terminal of the tab on screen. */
+  const closePalette = useCallback(() => {
+    setPaletteOpen(false);
+    // After the render that hides the palette and shows the tab it may have switched to.
+    requestAnimationFrame(() => {
+      const state = store.getState();
+      const itemId = activeItemIdOf(state);
+      const item = itemId === undefined ? undefined : activeSpaceOf(state.workspace).items[itemId];
+      const pane = item && focusedPane(item);
+      if (pane) handles.current.get(pane.id)?.focus();
+    });
+  }, [store]);
+
+  const keybindings = useKeybindings();
+  const paletteEntries = useMemo(
+    () =>
+      paletteOpen
+        ? buildEntries({ workspace, chords: resolveBindings(keybindings).chords, home })
+        : [],
+    [paletteOpen, workspace, keybindings, home],
+  );
+
+  /** An entry of the palette: the same calls a click or a shortcut makes. */
+  const runPaletteEntry = (entry: PaletteEntry) => {
+    if (entry.kind === "tab") showTab(entry.spaceId, entry.itemId);
+    else if (entry.kind === "space") activateSpace(entry.spaceId);
+    else {
+      const refusal = runCommand(store, entry.action.command);
+      if (refusal !== undefined) showNotice(refusal);
+    }
+    closePalette();
   };
 
   // The actions the sidebar tree and the top tab bar share: same selection, menus and renaming.
@@ -694,6 +740,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
   }
 
   const { pending } = projectActions;
+  modalOpen.current = overlay !== null || pending !== null;
   const confirmNode = pending !== null && (
     <ConfirmDialog
       title="Run project action"
@@ -810,6 +857,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
       </TreeDnd>
       {overlayNode}
       {confirmNode}
+      {paletteOpen && (
+        <CommandPalette entries={paletteEntries} onRun={runPaletteEntry} onClose={closePalette} />
+      )}
     </div>
   );
 }

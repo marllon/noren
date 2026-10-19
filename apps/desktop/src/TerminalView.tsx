@@ -21,6 +21,8 @@ export interface TerminalHandle {
   readLines(): string[];
   /** Renderer in use: the WebGL addon, or xterm's DOM renderer after a fallback. */
   renderer(): "webgl" | "dom";
+  /** Gives the terminal the keyboard. */
+  focus(): void;
 }
 
 interface TerminalViewProps {
@@ -265,6 +267,7 @@ export function TerminalView({
         return lines;
       },
       renderer: () => (webgl ? "webgl" : "dom"),
+      focus: () => term.focus(),
     });
     if (activeRef.current) term.focus();
 

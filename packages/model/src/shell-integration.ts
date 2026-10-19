@@ -4,7 +4,10 @@ import { decodeUtf8, encodeUtf8 } from "./utf8";
 // sequences (`ESC ] <payload> BEL`, or `ESC \` as terminator instead of BEL):
 //
 //   OSC 7 ; file://host/path        the folder the shell is in
-//   OSC 9 ; 9 ; path                the folder, as cmd reports it (other OSC 9 are not ours)
+//   OSC 9 ; 9 ; path                the folder, as cmd reports it
+//   OSC 9 ; text                    a notification (OSC 9 ; <number> ; ... are not: 9;4 is a progress bar)
+//   OSC 777 ; notify ; title ; body a notification
+//   BEL outside a sequence          the terminal bell
 //   OSC 133 ; A                     the prompt starts
 //   OSC 133 ; B                     the prompt ended, the user types
 //   OSC 133 ; C                     the command starts running
@@ -14,6 +17,7 @@ import { decodeUtf8, encodeUtf8 } from "./utf8";
 // The parser turns the output of a terminal session into those events. It reads bytes, so a
 // sequence that arrives cut anywhere (even inside a multi-byte character) gives the same events
 // as the same bytes in one piece. Everything else in the stream, and every other OSC, is ignored.
+// A BEL that ends an OSC is its terminator, not a bell.
 // The text of a sequence comes from a program running in the terminal, so nothing in it is trusted.
 
 /** The shell reported its working folder (OSC 7). `path` is a plain path, `C:/x` on Windows. */
@@ -49,16 +53,36 @@ export interface CommandLineEvent {
   readonly text: string;
 }
 
+/** The program rang the bell (a BEL byte outside any sequence). */
+export interface BellEvent {
+  readonly kind: "bell";
+}
+
+/**
+ * The program asked for a notification (OSC 9 or OSC 777;notify). The text is plain: control
+ * characters are gone and it is cut at {@link MAX_NOTIFICATION_CHARS}. `title` is absent for OSC 9.
+ */
+export interface NotificationEvent {
+  readonly kind: "notification";
+  readonly title?: string;
+  readonly body: string;
+}
+
 export type ShellEvent =
   | CwdEvent
   | PromptStartEvent
   | PromptEndEvent
   | CommandStartEvent
   | CommandEndEvent
-  | CommandLineEvent;
+  | CommandLineEvent
+  | BellEvent
+  | NotificationEvent;
 
 /** Largest payload (bytes between `ESC ]` and the terminator) that is kept; longer is dropped. */
 export const DEFAULT_MAX_OSC_BYTES = 8192;
+
+/** Longest title or body of a notification, in characters; the rest is cut. */
+export const MAX_NOTIFICATION_CHARS = 500;
 
 /** Longest folder path taken from OSC 7; anything longer is not a folder a person works in. */
 const MAX_PATH = 4096;
@@ -120,6 +144,7 @@ export class ShellIntegrationParser {
     switch (this.#mode) {
       case "ground":
         if (byte === ESC) this.#mode = "escape";
+        else if (byte === BEL) events.push({ kind: "bell" });
         return;
       case "escape":
         this.#afterEscape(byte);
@@ -186,11 +211,25 @@ export function parseOsc(payload: string): ShellEvent | undefined {
       return path === undefined ? undefined : { kind: "cwd", path };
     }
     case "9": {
-      // OSC 9 is also the notification sequence (and 9;4 a progress bar): only `9;9;path`, the
-      // folder reported by cmd, is read here. Everything else after `9;` is left alone.
-      if (!rest.startsWith("9;")) return undefined;
-      const path = pathFromPlainPath(rest.slice(2));
-      return path === undefined ? undefined : { kind: "cwd", path };
+      // `9;9;path` is the folder reported by cmd. Other `9;<number>[;...]` are commands of a
+      // terminal that is not this one (`9;4` is a progress bar), so they are not notifications;
+      // text that does not start that way is the iTerm2 notification.
+      if (rest.startsWith("9;")) {
+        const path = pathFromPlainPath(rest.slice(2));
+        return path === undefined ? undefined : { kind: "cwd", path };
+      }
+      if (/^\d+(;|$)/.test(rest)) return undefined;
+      const body = notificationText(rest);
+      return body === "" ? undefined : { kind: "notification", body };
+    }
+    case "777": {
+      // `777;notify;title;body`; a body may hold `;`. Other 777 commands are not ours.
+      if (rest !== "notify" && !rest.startsWith("notify;")) return undefined;
+      const parts = rest.split(";").slice(1);
+      const title = notificationText(parts[0] ?? "");
+      const body = notificationText(parts.slice(1).join(";"));
+      if (title === "" && body === "") return undefined;
+      return { kind: "notification", ...(title !== "" ? { title } : {}), body };
     }
     case "133":
       return parseMark(rest);
@@ -199,6 +238,16 @@ export function parseOsc(payload: string): ShellEvent | undefined {
     default:
       return undefined;
   }
+}
+
+/** The text of a notification as kept: control characters out, trimmed, cut at the limit. */
+function notificationText(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  const plain = text.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").trim();
+  const chars = Array.from(plain);
+  return chars.length > MAX_NOTIFICATION_CHARS
+    ? chars.slice(0, MAX_NOTIFICATION_CHARS).join("").trim()
+    : plain;
 }
 
 function parseMark(params: string): ShellEvent | undefined {

@@ -6,6 +6,7 @@ import { arbWorkspace } from "./arbitraries";
 import { checkInvariants } from "./invariants";
 import { reduce, reduceStrict } from "./reducer";
 import { layoutPanes, liveSessionIds } from "./sessions";
+import { shownItem, visiblePanes } from "./unread";
 import { deepFreeze, testContext } from "./test-helpers";
 import { treeGroups } from "./tree";
 import { DEFAULT_MAX_PANES, type Id, type Item, type Workspace } from "./types";
@@ -51,6 +52,8 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "pane/set-location": true,
   "pane/command-start": true,
   "pane/command-end": true,
+  "pane/notify": true,
+  "pane/clear-unread": true,
 };
 const TYPES = Object.keys(ACTION_TYPES) as ActionType[];
 
@@ -75,6 +78,8 @@ const PANE_ACTIONS = new Set<ActionType>([
   "pane/set-location",
   "pane/command-start",
   "pane/command-end",
+  "pane/notify",
+  "pane/clear-unread",
 ]);
 
 const itemIdsOf = (ws: Workspace): Set<Id> =>
@@ -165,7 +170,13 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "pane/set-location":
     case "pane/command-start":
     case "pane/command-end":
+    case "pane/notify":
       return !hasPane(ws, action.itemId, action.paneId);
+    case "pane/clear-unread":
+      return (
+        !itemIdsOf(ws).has(action.itemId) ||
+        (action.paneId !== undefined && !hasPane(ws, action.itemId, action.paneId))
+      );
     case "pane/swap":
       return (
         !hasPane(ws, action.itemId, action.paneId) ||
@@ -289,7 +300,9 @@ function checkPaneDelta(ws: Workspace, next: Workspace, action: Action, where: (
     case "pane/set-status":
     case "pane/set-location":
     case "pane/command-start":
-    case "pane/command-end": {
+    case "pane/command-end":
+    case "pane/notify":
+    case "pane/clear-unread": {
       // The same panes, only arranged differently, and every session still there.
       const sessions = liveSessionIds(next);
       const kept = [...liveSessionIds(ws)].every((id) => sessions.has(id));
@@ -300,6 +313,15 @@ function checkPaneDelta(ws: Workspace, next: Workspace, action: Action, where: (
     }
     default:
       break;
+  }
+}
+
+/** The panes the active space shows are not unread, whatever the action that just ran. */
+function checkNothingUnreadOnScreen(ws: Workspace, where: () => string): void {
+  const space = ws.spaces.find((s) => s.id === ws.activeSpaceId);
+  const item = space && shownItem(space);
+  if (item && visiblePanes(item).some((pane) => pane.unread || pane.bell)) {
+    throw new Error(`${where()}: a pane on screen is unread`);
   }
 }
 
@@ -375,6 +397,7 @@ function playSequences(numRuns: number, maxPanes?: number): void {
           if (next !== ws) checkPaneDelta(ws, next, action, where);
           if (next !== ws) checkOrigin(ws, next, action, where);
           if (next !== ws) checkActiveItems(ws, next, action, where);
+          if (next !== ws) checkNothingUnreadOnScreen(next, where);
 
           generated.set(action.type, (generated.get(action.type) ?? 0) + 1);
           if (next === ws) {

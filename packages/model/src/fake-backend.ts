@@ -168,6 +168,12 @@ class FakeSession {
     this.#flush();
   }
 
+  /** Output the program wrote on its own, as is (a bell, a notification), with no prompt after it. */
+  print(text: string): void {
+    this.#write(text);
+    this.#flush();
+  }
+
   /** Keyboard input. Typed while a command runs, only Ctrl+C is honored. */
   input(text: string): void {
     for (const ch of text) {
@@ -374,6 +380,7 @@ class FakeSession {
  * - `echo`, `pwd`, `ls` (fixed output), `cd` (relative, absolute, `~`, `..`; any path is accepted),
  *   `true`, `false` (exit 1), `exit [N]` (ends the session), `sleep N` (seconds, on the injected
  *   clock), `seq N`; anything else answers 127
+ * - `sendOutput` writes anything to a session as if its program had printed it
  * - Ctrl+C interrupts `sleep`; other input typed while a command runs is dropped
  * - `.noren/actions.json` texts live in memory (`setActionsFile`); `runCommand` only records the
  *   command and answers the configured exit code
@@ -527,6 +534,14 @@ export class FakeBackend implements Backend {
     });
     this.#sessions.set(id, session);
     return id;
+  }
+
+  /**
+   * Makes the program of a session write `text` to the terminal, as is: a BEL, an OSC 9 or OSC 777
+   * sequence, anything. Not a `Backend` call, so it is not recorded; an ended session throws.
+   */
+  sendOutput(id: SessionId, text: string): void {
+    this.#alive(id).print(text);
   }
 
   async write(id: SessionId, data: string | Uint8Array): Promise<void> {

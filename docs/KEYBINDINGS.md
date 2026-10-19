@@ -35,6 +35,7 @@ The **safe** preset is the default. It does not fight the shell: Ctrl+T, Ctrl+W 
 | Next recent tab               | Ctrl+Tab              | Ctrl+Tab              |
 | Previous recent tab           | Ctrl+Shift+Tab        | Ctrl+Shift+Tab        |
 | Search all tabs               | Ctrl+Shift+Alt+F      | Ctrl+Shift+Alt+F      |
+| Go to last unread tab         | Ctrl+Shift+U          | Ctrl+Shift+U          |
 | Previous / next prompt        | Ctrl+Up / Ctrl+Down   | Ctrl+Up / Ctrl+Down   |
 | Select command output         | none                  | none                  |
 | Copy last command output      | none                  | none                  |
@@ -43,7 +44,7 @@ The browser preset is opt-in. It takes Ctrl+T, Ctrl+W and Ctrl+1..9 away from th
 
 A preset gives each action at most one chord. Where the browser preset moves an action, the safe chord is free again (Ctrl+Shift+T does nothing there, until an action that needs it exists).
 
-Only the actions that exist today are registered. Later tasks add theirs (reopen closed, last unread) to the same registry. The command palette lists these same actions with the chord in force; see [PALETTE.md](PALETTE.md).
+Only the actions that exist today are registered. Later tasks add theirs (reopen closed) to the same registry. The command palette lists these same actions with the chord in force; see [PALETTE.md](PALETTE.md).
 
 ## Overrides and conflicts
 
@@ -87,6 +88,10 @@ Ctrl+Up and Ctrl+Down (the same in both presets; "Previous prompt" and "Next pro
 These are the only registry actions whose key is not always taken. The listener asks the focused terminal first: if it has no command mark to go to (a shell without integration, a tab with no command yet, a program such as an editor on the alternate screen), or the keyboard is not in a terminal, the listener returns before `preventDefault`, and Ctrl+Up reaches the shell as it did before. With a mark the press is taken even when there is no further prompt in that direction (the first prompt, or the live end), so the shell does not get a Ctrl+Up that was only half ours. Up and Down with other modifiers are not ours: Alt+arrows focus a pane and Ctrl+Alt+Shift+arrows resize one, as before.
 
 "Select command output" and "Copy last command output" are registry actions with no chord in either preset (an action may have none). They show as _None_ in the shortcuts screen, where a chord can be recorded for them, and they are always in the palette. A press of a chord recorded for them says in a notice why it did nothing.
+
+## The last unread tab
+
+Ctrl+Shift+U (the same in both presets; "Go to last unread tab", `tab.last-unread`, category _Tabs_, so the shortcuts screen shows and records it and the palette lists it) shows the pane that became unread last, in any space: it chooses that tab, focuses the pane and shows its space, which clears its marks. Pressing it again goes to the next most recent unread pane. With nothing unread it says so in the notice and changes nothing. The key does not repeat when held. See [SHELL_INTEGRATION.md](SHELL_INTEGRATION.md) for what marks a pane unread and what clears it.
 
 ## The search over all tabs
 

@@ -1149,6 +1149,19 @@ body {
   cursor: pointer;
 }
 
+.space-button {
+  position: relative;
+}
+
+/* The unread dot and the bell of the tabs in a space, on the corner of its icon. */
+.space-marks {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: flex;
+  gap: 2px;
+}
+
 .space-button:hover {
   background: color-mix(in srgb, var(--nr-text) 8%, transparent);
 }

@@ -27,6 +27,12 @@ export interface PaneLocationTrackerOptions {
    * the command starts; `durationMs` is the time between the two on `clock`.
    */
   onCommand?(event: PaneCommandEvent): void;
+  /**
+   * Called when the program asks for attention: the bell (a BEL byte) or a notification (OSC 9 or
+   * OSC 777;notify). The tracker does not know if the user is looking at the pane; the receiver
+   * decides what it means.
+   */
+  onAttention?(event: PaneAttentionEvent): void;
   /** Time source of the duration of a command. Default: the wall clock. */
   clock?: Pick<Clock, "now">;
   /**
@@ -41,6 +47,10 @@ export interface PaneLocationTrackerOptions {
 export type PaneCommandEvent =
   | { kind: "start"; text?: string }
   | { kind: "end"; text?: string; exitCode?: number; durationMs?: number };
+
+/** What the program of a pane asked for: the bell, or a notification with its text. */
+export type PaneAttentionEvent =
+  { kind: "bell" } | { kind: "notification"; title?: string; body: string };
 
 /** What one lookup of the branch answers for: a folder, and whether it goes on the pane. */
 interface Lookup {
@@ -64,6 +74,8 @@ interface Lookup {
  * (133;D with the exit code), and tells `onCommand`. A command that ends without having been seen
  * to start (the shell says only 633;E and 133;D) is reported when it ends, without a duration; a
  * 133;D with nothing before it (the first prompt of some shells) is not a command.
+ *
+ * The bell and the notifications (OSC 9, OSC 777) go to `onAttention` as they come.
  *
  * A chunk that holds several of these gives one lookup, not several. Only one lookup is in flight
  * at a time: requests that come meanwhile are replaced by the newest one, so a flood of prompts
@@ -118,6 +130,14 @@ export class PaneLocationTracker {
         this.#line = event.text;
       } else if (event.kind === "command-start") {
         this.#startCommand();
+      } else if (event.kind === "bell") {
+        this.#options.onAttention?.({ kind: "bell" });
+      } else if (event.kind === "notification") {
+        this.#options.onAttention?.({
+          kind: "notification",
+          ...(event.title !== undefined ? { title: event.title } : {}),
+          body: event.body,
+        });
       }
     }
     if (refresh && this.#cwd !== undefined) {

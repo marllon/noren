@@ -3,7 +3,7 @@ import type { GitInfo } from "./backend";
 import { FakeBackend } from "./fake-backend";
 import { ManualClock } from "./clock";
 import { PaneLocationTracker } from "./pane-location";
-import type { PaneCommandEvent, PaneLocation } from "./pane-location";
+import type { PaneAttentionEvent, PaneCommandEvent, PaneLocation } from "./pane-location";
 import { encodeUtf8 } from "./utf8";
 
 // This package has no DOM or Node typings; the test runtime provides the timer.
@@ -428,5 +428,62 @@ describe("PaneLocationTracker commands", () => {
       onLocation: () => undefined,
     });
     expect(() => tracker.feed(line("ls") + osc("133;C") + osc("133;D;0"))).not.toThrow();
+  });
+});
+
+describe("PaneLocationTracker attention", () => {
+  function attention() {
+    const events: PaneAttentionEvent[] = [];
+    const tracker = new PaneLocationTracker({
+      gitInfo: () => Promise.resolve(null),
+      onLocation: () => undefined,
+      onAttention: (event) => events.push(event),
+    });
+    return { tracker, events };
+  }
+
+  it("reports the bell and the notifications in order, and nothing else", () => {
+    const { tracker, events } = attention();
+    tracker.feed(
+      `build done${BEL}${osc("9;Needs input")}${osc("9;4;1;50")}${osc("777;notify;Agent;Waiting")}` +
+        osc("0;title") +
+        prompt("/proj"),
+    );
+    expect(events).toEqual([
+      { kind: "bell" },
+      { kind: "notification", body: "Needs input" },
+      { kind: "notification", title: "Agent", body: "Waiting" },
+    ]);
+  });
+
+  it("reads the same events however the output is cut", () => {
+    const bytes = encodeUtf8(`a${BEL}${osc("9;Hi ✓")}${osc("777;notify;T;B")}`);
+    const whole = attention();
+    whole.tracker.feed(bytes);
+    const cut = attention();
+    for (const byte of bytes) cut.tracker.feed(Uint8Array.of(byte));
+    expect(whole.events).toHaveLength(3);
+    expect(cut.events).toEqual(whole.events);
+  });
+
+  it("without onAttention they are ignored", () => {
+    const tracker = new PaneLocationTracker({
+      gitInfo: () => Promise.resolve(null),
+      onLocation: () => undefined,
+    });
+    expect(() => tracker.feed(`${BEL}${osc("9;x")}`)).not.toThrow();
+  });
+
+  it("follows what a program of the fake backend writes to its session", async () => {
+    const backend = new FakeBackend();
+    const { tracker, events } = attention();
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    backend.onOutput(id, (bytes) => tracker.feed(bytes));
+    backend.sendOutput(id, BEL);
+    backend.sendOutput(id, osc("9;Done"));
+    expect(events).toEqual([{ kind: "bell" }, { kind: "notification", body: "Done" }]);
+    // A plain command is not attention.
+    await backend.write(id, "echo hi\r");
+    expect(events).toHaveLength(2);
   });
 });

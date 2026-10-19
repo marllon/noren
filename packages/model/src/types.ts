@@ -124,8 +124,15 @@ export interface Pane {
   runningCommand?: RunningCommand;
   /** The command that ended last: its line, exit code and duration (each only when known). */
   lastCommand?: LastCommand;
+  /** Something happened here (output that asks for attention) while the pane was not on screen. */
   unread: boolean;
+  /** The terminal bell rang while the pane was not on screen. */
   bell: boolean;
+  /**
+   * When the pane became unread, on the timeline of `Item.lastActivityAt`: the order Ctrl+Shift+U
+   * follows. Absent when the pane is not unread, and in a state saved before this field.
+   */
+  unreadAt?: number;
   /** File of the scrollback snapshot. */
   scrollbackRef?: string;
 }

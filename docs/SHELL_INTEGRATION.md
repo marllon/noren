@@ -2,7 +2,7 @@
 
 A shell that Noren starts can tell the terminal where it is and what it is doing, using escape sequences (OSC) that are written into its output. Nothing is run on behalf of the user: the script only prints these sequences, and the interface reads them.
 
-This page describes what exists today (tasks NOR-F7-01a, NOR-F7-01b, NOR-F7-02a, NOR-F7-02b and NOR-F7-03): the OSC parser, the scripts for PowerShell, bash, zsh and cmd, the folder and git branch of each pane and its last command in the sidebar, the automatic tab title, and the command marks in the terminal. Notifications (NOR-F7-04) come later, so nothing else in the interface reads these events yet.
+This page describes what exists today (tasks NOR-F7-01a, NOR-F7-01b, NOR-F7-02a, NOR-F7-02b, NOR-F7-03 and NOR-F7-04a): the OSC parser, the scripts for PowerShell, bash, zsh and cmd, the folder and git branch of each pane and its last command in the sidebar, the automatic tab title, the command marks in the terminal, and the unread and bell marks of tabs, groups and spaces. System notifications (NOR-F7-04b) come later.
 
 | Shell                               | Folder  | Prompt `A`/`B` | `C`, `D` with exit code | `E` command line |
 | ----------------------------------- | ------- | -------------- | ----------------------- | ---------------- |
@@ -23,6 +23,14 @@ This page describes what exists today (tasks NOR-F7-01a, NOR-F7-01b, NOR-F7-02a,
 | `OSC 133 ; D [; code]`       | `command-end`   | The command ended, with its exit code when the shell knows it. |
 | `OSC 633 ; E ; command line` | `command-line`  | The text of the command, escaped (see below).                  |
 
+The scripts send the rows above. A program that runs in the shell can also ask for attention, with no script involved; the parser reads these too:
+
+| Sequence                          | Event          | Meaning                                       |
+| --------------------------------- | -------------- | --------------------------------------------- |
+| BEL (`0x07`) outside a sequence   | `bell`         | The terminal bell.                            |
+| `OSC 9 ; text`                    | `notification` | A notification with a body (the iTerm2 form). |
+| `OSC 777 ; notify ; title ; body` | `notification` | A notification with a title and a body.       |
+
 `OSC` is `ESC ]`. A sequence ends with BEL (`0x07`) or ST (`ESC \`). The scripts use BEL.
 
 One command gives this order: `A`, the prompt text, `B`, the user types, `E`, `C`, the output of the command, `D;code`, then `7` and `A` of the next prompt. The first prompt has no `D`, and an empty line has none either.
@@ -39,6 +47,7 @@ for (const chunk of outputChunks) {
   for (const event of parser.feed(chunk)) {
     // { kind: "cwd", path } | { kind: "prompt-start" } | { kind: "prompt-end" }
     // | { kind: "command-start" } | { kind: "command-end", exitCode } | { kind: "command-line", text }
+    // | { kind: "bell" } | { kind: "notification", title?, body }
   }
 }
 ```
@@ -46,8 +55,11 @@ for (const chunk of outputChunks) {
 - `feed` takes bytes (`Uint8Array`) or text and returns the events that finished in that chunk, in order.
 - It reads bytes, so a sequence cut anywhere between two chunks (even inside a multi-byte character) gives the same events as the same bytes in one piece. A property test checks that any way of cutting the stream gives the same events.
 - The only thing it keeps between calls is the beginning of a sequence that has not ended. That is capped at `maxOscBytes` (default 8192). A longer sequence is dropped up to its end and the parser carries on with the next one.
-- Any OSC that is not one of the above (window title, notifications, ...) is ignored. An ESC that is not followed by `\` inside a sequence, or a CAN or SUB byte, abandons the sequence.
-- `OSC 9` is also the notification sequence (and `9;4` a progress bar), which NOR-F7-04 will read. The parser takes only `9;9;path` as a folder, and only when the path is absolute (a drive letter, or a leading `/` or `\`), has no control character, is at most 4096 characters, and may be in double quotes. Backslashes become `/`, so `C:\Users\me` is `C:/Users/me`, like an `OSC 7` path. Any other `OSC 9` gives no event here.
+- Any OSC that is not one of the above (window title, ...) is ignored. An ESC that is not followed by `\` inside a sequence, or a CAN or SUB byte, abandons the sequence.
+- `OSC 9` has three uses. `9;9;path` is the folder as cmd reports it, taken only when the path is absolute (a drive letter, or a leading `/` or `\`), has no control character, is at most 4096 characters, and may be in double quotes; backslashes become `/`, so `C:\Users\me` is `C:/Users/me`, like an `OSC 7` path. `9;<number>` or `9;<number>;...` (`9;4` is a progress bar, and ConEmu has more) belongs to another terminal and gives no event. Any other `9;text` is a notification whose body is the text.
+- `OSC 777;notify;title;body` is a notification; the body may hold `;`, and either part may be empty but not both. Other `OSC 777` commands give no event.
+- The text of a notification comes from a program and is plain: control characters become spaces, the ends are trimmed, and each of title and body is cut at 500 characters (`MAX_NOTIFICATION_CHARS`). A notification with nothing to say gives no event.
+- A BEL that ends an OSC is its terminator, not a bell. A BEL anywhere else in the stream (also one that follows a cancelled or too long sequence) is a `bell` event.
 - Text in a sequence comes from a program in the terminal and is not trusted: an `OSC 7` that is not a plain `file:` URL with a path (or whose path has a control character or is longer than 4096 characters) gives no event, and `133;D` takes only a plain integer as code.
 - `pathFromFileUri` is the same reading of an `OSC 7` URL that `apps/desktop/src/osc7.ts` does for the recent folders of the palette. The two are kept apart for now: the recent folders still come from the OSC 7 handler of xterm.js, and the folder and branch of a pane (next section) come from the parser; a later task makes the app use the shared one.
 
@@ -160,6 +172,19 @@ The profile's own arguments stay, so `-NoProfile` or `-MTA` (PowerShell), `-o vi
 
 The folder comes from the app: the scripts are bundle resources (`bundle.resources` in `tauri.conf.json`, installed as `resources/shell-integration/` in the resource folder; the zsh dotfiles have their own pattern because `*` does not go into folders), and `bridge.rs` resolves that folder with Tauri's resource path and hands it to `noren-core`. `noren --smoke` fails when a PowerShell session does not print `OSC 133;A`, and when any of the scripts, including the zsh dotfiles, is missing from the resource folder, which is how a missing resource is caught in a build.
 
+## Unread and bell marks
+
+The same tracker reports the bell and the notifications to `onAttention`; the app turns each into the `pane/notify` action through `store.notifyPane` (a bell sets `bell: true`, a notification only marks the pane).
+
+- **What is marked.** `Pane.unread` and `Pane.bell`, which the model already had, and the new `Pane.unreadAt` (the time the pane became unread, on the clock of the reducer). A bell sets both marks, `OSC 9` and `OSC 777` set `unread`. The text of the notification is not kept in the pane (NOR-F7-04b uses it for the system notification).
+- **Only what the user did not see.** A pane that is on screen is never marked: it is in the tab the active space shows and zoom does not hide it (every pane of a split that is not zoomed counts as on screen). `isPaneVisible` in `packages/model/src/unread.ts` is the rule. The action changes nothing when the pane already has the marks, and a program that keeps ringing does not change the saved file at every bell: `unreadAt` is the time of the first mark, and a bell after a plain notification only adds `bell`.
+- **Viewing clears.** After every action that changed the workspace, the reducer clears the marks of the panes on screen, so showing the tab (a click, a shortcut, the palette, the search, the switcher), showing the space, or bringing back a pane that zoom hid reads it. A pane that zoom hides stays marked until it is shown. `pane/clear-unread` clears a pane (or all panes of a tab) without showing it.
+- **Where it shows.** The tab in the sidebar and in the tab bar gets the unread dot and the bell (`data-nr-indicator="unread"` and `"bell"`), as before. A group shows the marks of the tabs inside it at any depth, also when it is folded (`groupMarks`), and each space in the switcher shows them for all its tabs, pinned ones included, on the corner of its icon (`spaceMarks`, `data-nr-part="space-marks"`). Group and space buttons keep their name; the words (`Unread output`, `Bell`) are their description for assistive technology.
+- **Last unread.** `lastUnread` (pure, in the model) is the marked pane with the greatest `unreadAt`, in any space; panes with the same time (and panes saved before `unreadAt` existed) go in space order, then sidebar order, then layout order. Ctrl+Shift+U (`tab.last-unread`, see [KEYBINDINGS.md](KEYBINDINGS.md)) shows it: the tab is chosen, the pane focused and the space shown, in that order, so the pane is the one that is read. A second press goes to the next most recent one; with nothing unread the notice says `Nothing unread`.
+- **Saved.** The marks are part of the saved state, so a tab that rang while the app was closed still shows it after a restart (`unreadAt` is optional in the file, so older files load).
+- **Web mode and tests.** `FakeBackend.sendOutput(sessionId, text)` writes anything to a session as if its program had printed it, and the test hook has `sendOutput(paneId, text)` for a pane of any tab. The fake shell itself never rings.
+- **Not done yet.** System notifications and the rule for a long command that ends in a tab out of sight are NOR-F7-04b. A terminal of a tab that is not on screen stays mounted, so its output reaches the parser; a tab that is closed is not marked.
+
 ## Tests
 
 - `cargo test -p noren-core` covers the spec for every shell (integration on and off, the user's profile arguments kept, login and non-login bash, the `ZDOTDIR` of the user handed over, the `PROMPT` of the user kept, profiles that choose what runs left alone) and runs real shells in a PTY with the scripts, without a window:
@@ -171,8 +196,9 @@ The folder comes from the app: the scripts are bundle resources (`bundle.resourc
 
 - zsh is only covered by the spec tests: the scripts were written against the zsh documentation but were not run, because the development machine has no zsh. Run them in a real zsh before relying on them.
 - `pnpm e2e` (`e2e/command-meta.spec.ts`): a `sleep 3` shows as running, then as the last command with `exit 0` and `3.0s` once the page moves the fake clock; `false` shows `exit 1` and the next command replaces it; the title follows the command, then the folder, then the number; a title the user typed does not change; each pane of a split shows its command; the last command survives a reload.
-- `pnpm test` covers the parser (`packages/model/src/shell-integration.test.ts`), including `OSC 9;9`, the tracker (`pane-location.test.ts`, also against a `FakeBackend` session), the `pane/set-location`, `pane/command-start` and `pane/command-end` actions, the title rules (`auto-title.test.ts`) and the store wiring.
+- `pnpm test` covers the parser (`packages/model/src/shell-integration.test.ts`), including `OSC 9;9`, the notifications (`OSC 9` text, `OSC 777;notify`, and the progress bar and numbered commands that are not notifications) and the bell, all cut at every byte, the tracker (`pane-location.test.ts`, also against a `FakeBackend` session), the `pane/set-location`, `pane/command-start` and `pane/command-end` actions, the title rules (`auto-title.test.ts`) and the store wiring.
 - `pnpm test` also covers the command marks: `CommandMarks` with scripted cursors (`command-marks.test.ts`: a prompt with no command, a `D` with no `C`, a `C` with no prompt, a lost `D`, scrollback trimmed row by row, the steps between prompts, a property test over any order of events) and, against the real xterm.js parser, markers and decorations in Node with no window (`apps/desktop/src/command-marks-view.test.ts`: the same marks however the output is cut at every byte, the ruler mark only for the failed command, trimmed scrollback, `CSI 3 J` and `ESC c`, the alternate screen, wrapped output, selecting and copying), plus `command-output.test.ts` for the words of the notices and the registry actions in `keybindings.test.ts`.
 - `cargo test -p noren-core` also covers `read_head` on temporary folders (a repository on a branch, nested subfolders, a worktree with a `.git` file and a `gitdir:` line, absolute and relative, a detached `HEAD`, folders outside any repository, unusable `.git` entries) and, in `tests/git_real.rs`, against repositories made by the real `git` (a worktree and a detached `HEAD` in the form git writes them; it skips with a warning when `git` is not installed).
 - `pnpm e2e` (`e2e/command-marks.spec.ts`): three commands with `false` in the middle show three marks, one of them failed, and exactly one red stretch in the ruler (read from the pixels of its canvas); Ctrl+Up and Ctrl+Down step through the prompts, scroll the view and never reach the shell, while with no mark the same keys are written to it; the output of the last command is copied to the clipboard (one row, several rows, nothing, before any command) and selected from the palette, the pane menu and the tab menu; each pane of a split has its own marks.
 - `pnpm e2e` (`e2e/pane-location.spec.ts`): a `cd` into a repository shows the folder and branch in the sidebar item and a `cd` out removes the branch; a branch changed under the shell shows at the next prompt; the location is saved and back after a reload; each pane of a split follows its own shell.
+- `pnpm e2e` (`e2e/unread.spec.ts`): a tab in the background that gets `OSC 9` shows the unread dot on its item, its group and its space; a bell and an `OSC 777` notification mark a tab too while progress and the folder do not; a tab in another space marks that space; the tab on screen is never marked; Ctrl+Shift+U goes to the tab that became unread last (in another space first), then to the older one, every mark clears, and then it says `Nothing unread`; clicking a tab clears it; the marks survive a reload; the palette and the shortcuts screen list the action. `pnpm test` covers the rules (`unread.test.ts`: marking, the pane on screen, zoom, clearing by viewing, `lastUnread`; the reducer property test checks that no pane on screen is ever marked) and the store (`unread-store.test.ts`, through a `FakeBackend` session).

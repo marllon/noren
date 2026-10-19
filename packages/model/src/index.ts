@@ -42,6 +42,8 @@ export { reduce, validEnv } from "./reducer";
 export { restoreWorkspace } from "./restore";
 export type { RestoreOptions, RestoreResult } from "./restore";
 export { layoutPanes, liveSessionIds } from "./sessions";
+export { isPaneVisible, lastUnread, shownItem, visiblePanes } from "./unread";
+export type { PaneTarget } from "./unread";
 export { findGroup, findGroupSlot, findItemSlot, treeGroups, treeItemIds } from "./tree";
 export type { ItemSlot } from "./tree";
 export {
@@ -78,7 +80,12 @@ export { FakeBackend } from "./fake-backend";
 export type { FakeBackendOptions, FakeCall, FakeCommandRun, FakeSessionInfo } from "./fake-backend";
 export { OutputStream } from "./output-stream";
 export { PaneLocationTracker } from "./pane-location";
-export type { PaneCommandEvent, PaneLocation, PaneLocationTrackerOptions } from "./pane-location";
+export type {
+  PaneAttentionEvent,
+  PaneCommandEvent,
+  PaneLocation,
+  PaneLocationTrackerOptions,
+} from "./pane-location";
 export { CommandMarks, joinRows, markFailed } from "./command-marks";
 export type {
   BufferRow,
@@ -95,6 +102,7 @@ export type {
 export { decodeUtf8, encodeUtf8 } from "./utf8";
 export {
   DEFAULT_MAX_OSC_BYTES,
+  MAX_NOTIFICATION_CHARS,
   ShellIntegrationParser,
   parseOsc,
   pathFromFileUri,
@@ -102,10 +110,12 @@ export {
   unescapeCommandLine,
 } from "./shell-integration";
 export type {
+  BellEvent,
   CommandEndEvent,
   CommandLineEvent,
   CommandStartEvent,
   CwdEvent,
+  NotificationEvent,
   PromptEndEvent,
   PromptStartEvent,
   ShellEvent,

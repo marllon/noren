@@ -334,5 +334,6 @@ function checkPane(value: unknown, path: string): void {
   });
   bool(pane["unread"], `${path}.unread`);
   bool(pane["bell"], `${path}.bell`);
+  optional(pane, "unreadAt", path, num);
   optional(pane, "scrollbackRef", path, str);
 }

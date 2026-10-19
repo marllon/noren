@@ -223,6 +223,19 @@ export type Action =
       exitCode?: number;
       durationMs?: number;
     }
+  /**
+   * The pane's program asked for attention (a bell, or an OSC 9 or OSC 777 notification): the pane
+   * becomes unread, and `bell` also sets its bell mark. A pane on screen (in the item the active
+   * space shows, not hidden by zoom) is where the user is looking, so it is never marked. An unknown
+   * pane, or marks the pane already has, leave the workspace as it is.
+   */
+  | { type: "pane/notify"; itemId: Id; paneId: Id; bell?: boolean }
+  /**
+   * Clears the unread and bell marks of `paneId`, or of every pane of the item without it. Nothing
+   * to clear leaves the workspace as it is. Showing a pane clears it without this action (see
+   * `reduce`).
+   */
+  | { type: "pane/clear-unread"; itemId: Id; paneId?: Id }
   /** Focus the neighbor by layout geometry (ends zoom); no neighbor, no change. */
   | { type: "pane/focus-direction"; itemId: Id; direction: "left" | "right" | "up" | "down" };
 

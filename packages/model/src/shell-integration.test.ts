@@ -2,6 +2,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MAX_OSC_BYTES,
+  MAX_NOTIFICATION_CHARS,
   ShellIntegrationParser,
   encodeUtf8,
   parseOsc,
@@ -73,9 +74,10 @@ describe("each kind of sequence", () => {
     expect(parseAll(osc(`9;9;C:\\${"a".repeat(5000)}`))).toEqual([]);
   });
 
-  it("other OSC 9 sequences are not read as a folder (notifications and progress stay free)", () => {
-    expect(parseAll(osc("9;Build finished"))).toEqual([]);
-    expect(parseAll(osc("9;C:\\Users\\me"))).toEqual([]);
+  it("other OSC 9 sequences are not read as a folder", () => {
+    expect(parseAll(osc("9;C:\\Users\\me"))).toEqual([
+      { kind: "notification", body: "C:\\Users\\me" },
+    ]);
     expect(parseAll(osc("9;4;1;50"))).toEqual([]);
     expect(parseAll(osc("9;99;C:\\x"))).toEqual([]);
     expect(parseAll(osc("9"))).toEqual([]);
@@ -83,7 +85,76 @@ describe("each kind of sequence", () => {
     // A folder between two of them is still found, and the others do not hide it.
     expect(
       parseAll(`${osc("9;Done")}${osc("9;9;C:\\w", ST)}${osc("9;4;0;0")}${osc("133;A")}`),
-    ).toEqual([{ kind: "cwd", path: "C:/w" }, { kind: "prompt-start" }]);
+    ).toEqual([
+      { kind: "notification", body: "Done" },
+      { kind: "cwd", path: "C:/w" },
+      { kind: "prompt-start" },
+    ]);
+  });
+
+  it("OSC 9 with text is a notification; the progress bar and the other numbered commands are not", () => {
+    expect(parseAll(osc("9;Build finished"))).toEqual([
+      { kind: "notification", body: "Build finished" },
+    ]);
+    expect(parseAll(osc("9;Needs input", ST))).toEqual([
+      { kind: "notification", body: "Needs input" },
+    ]);
+    expect(parseAll(osc("9;3 tests failed"))).toEqual([
+      { kind: "notification", body: "3 tests failed" },
+    ]);
+    expect(parseAll(osc("9;déjà vu ✓"))).toEqual([{ kind: "notification", body: "déjà vu ✓" }]);
+    // 9;4 is a progress bar, 9;9 the folder, the other numbers are commands of another terminal.
+    for (const payload of ["9;4", "9;4;1;50", "9;4;0;0", "9;1;1000", "9;2;hi", "9;12", "9;9"]) {
+      expect(parseAll(osc(payload)), payload).toEqual([]);
+    }
+    // Nothing to say is not a notification.
+    expect(parseAll(osc("9;"))).toEqual([]);
+    expect(parseAll(osc("9;   "))).toEqual([]);
+  });
+
+  it("the text of a notification is plain: no control characters, trimmed, cut when long", () => {
+    expect(parseAll(osc("9;  a\u0001b\tc  "))).toEqual([{ kind: "notification", body: "a b c" }]);
+    const long = "é".repeat(MAX_NOTIFICATION_CHARS + 50);
+    expect(parseAll(osc(`9;${long}`))).toEqual([
+      { kind: "notification", body: "é".repeat(MAX_NOTIFICATION_CHARS) },
+    ]);
+  });
+
+  it("OSC 777;notify gives a title and a body", () => {
+    expect(parseAll(osc("777;notify;Build;All tests passed"))).toEqual([
+      { kind: "notification", title: "Build", body: "All tests passed" },
+    ]);
+    expect(parseAll(osc("777;notify;Build;a;b;c", ST))).toEqual([
+      { kind: "notification", title: "Build", body: "a;b;c" },
+    ]);
+    expect(parseAll(osc("777;notify;Only a title"))).toEqual([
+      { kind: "notification", title: "Only a title", body: "" },
+    ]);
+    expect(parseAll(osc("777;notify;;Only a body"))).toEqual([
+      { kind: "notification", body: "Only a body" },
+    ]);
+  });
+
+  it("OSC 777 that is not a notification, or says nothing, gives nothing", () => {
+    expect(parseAll(osc("777;notify"))).toEqual([]);
+    expect(parseAll(osc("777;notify;;"))).toEqual([]);
+    expect(parseAll(osc("777;preexec"))).toEqual([]);
+    expect(parseAll(osc("777;notifyx;a;b"))).toEqual([]);
+    expect(parseAll(osc("777"))).toEqual([]);
+  });
+
+  it("a BEL outside a sequence is the bell; the BEL that ends a sequence is not", () => {
+    expect(parseAll(BEL)).toEqual([{ kind: "bell" }]);
+    expect(parseAll(`a${BEL}b${BEL}`)).toEqual([{ kind: "bell" }, { kind: "bell" }]);
+    expect(parseAll(osc("0;window title"))).toEqual([]);
+    expect(parseAll(osc("133;A", BEL))).toEqual([{ kind: "prompt-start" }]);
+    expect(parseAll(osc("9;4;1;50"))).toEqual([]);
+    // A sequence dropped for being too long ends with its BEL silently.
+    expect(new ShellIntegrationParser({ maxOscBytes: 4 }).feed(osc("0;a long title"))).toEqual([]);
+    // A cancelled sequence has no terminator: the BEL after it rings.
+    expect(parseAll(`${ESC}]133;A\x18${BEL}`)).toEqual([{ kind: "bell" }]);
+    // A bell after a sequence is a bell.
+    expect(parseAll(`${osc("133;A")}${BEL}`)).toEqual([{ kind: "prompt-start" }, { kind: "bell" }]);
   });
 
   it("OSC 133 marks the prompt and the command", () => {
@@ -159,8 +230,11 @@ describe("terminators", () => {
   });
 
   it("CAN and SUB cancel a sequence", () => {
-    expect(parseAll(`${ESC}]133;A\x18${BEL}${osc("133;B")}`)).toEqual([{ kind: "prompt-end" }]);
-    expect(parseAll(`${ESC}]133;A\x1a${BEL}`)).toEqual([]);
+    expect(parseAll(`${ESC}]133;A\x18${BEL}${osc("133;B")}`)).toEqual([
+      { kind: "bell" },
+      { kind: "prompt-end" },
+    ]);
+    expect(parseAll(`${ESC}]133;A\x1a${BEL}`)).toEqual([{ kind: "bell" }]);
   });
 
   it("a lone ESC, or ESC ESC ], still opens a sequence", () => {
@@ -186,7 +260,7 @@ describe("a stream", () => {
 
   it("ignores unknown OSC sequences and other escapes", () => {
     const text =
-      `${osc("0;window title")}${osc("9;4;1;50")}${osc("777;notify;a;b")}${ESC}[31mred${ESC}[0m` +
+      `${osc("0;window title")}${osc("9;4;1;50")}${osc("777;preexec")}${ESC}[31mred${ESC}[0m` +
       `${osc("133;A")}${osc("1337;x=y", ST)}${osc("")}`;
     expect(parseAll(text)).toEqual([{ kind: "prompt-start" }]);
   });
@@ -214,14 +288,16 @@ describe("a stream", () => {
     parser.feed(`${ESC}]133;`);
     parser.reset();
     expect(parser.pendingBytes).toBe(0);
-    expect(parser.feed(`A${BEL}`)).toEqual([]);
+    // What came before is forgotten: the rest is plain text, and its BEL is a bell, not a terminator.
+    expect(parser.feed(`A${BEL}`)).toEqual([{ kind: "bell" }]);
   });
 });
 
 describe("a sequence split between chunks", () => {
   const stream =
     `lead${osc("133;D;3")}${osc("7;file://pc/C:/my%20dir", ST)}${osc("133;A")}` +
-    `${osc("633;E;echo ✓ \\x3b x")}${osc("133;C")}${osc("9;Note")}${osc("9;9;E:\\ünï\\d", ST)}tail`;
+    `${osc("633;E;echo ✓ \\x3b x")}${osc("133;C")}${osc("9;Note ✓")}${osc("9;9;E:\\ünï\\d", ST)}` +
+    `${osc("777;notify;T;B ü", ST)}${BEL}tail`;
   const bytes = encodeUtf8(stream);
   const whole = parseAll(stream);
 
@@ -232,7 +308,10 @@ describe("a sequence split between chunks", () => {
       { kind: "prompt-start" },
       { kind: "command-line", text: "echo ✓ ; x" },
       { kind: "command-start" },
+      { kind: "notification", body: "Note ✓" },
       { kind: "cwd", path: "E:/ünï/d" },
+      { kind: "notification", title: "T", body: "B ü" },
+      { kind: "bell" },
     ]);
   });
 

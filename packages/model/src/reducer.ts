@@ -18,6 +18,7 @@ import {
   swapPanes,
 } from "./layout";
 import { layoutPanes, withoutSessions } from "./sessions";
+import { isMarked, isPaneVisible, mapPanes, shownItem, visiblePanes, withoutMarks } from "./unread";
 import {
   editChildren,
   findGroup,
@@ -28,6 +29,7 @@ import {
   removeItemNodes,
   replaceGroupWithChildren,
   resolveIndex,
+  spaceItemIds,
   treeGroups,
   treeItemIds,
   updateGroup,
@@ -70,11 +72,12 @@ export function reduce(ws: Workspace, action: Action, ctx: ReducerContext): Work
 
 /**
  * `reduce` without the safety net: tests use it so a bug cannot hide behind a no-op. Every space
- * the action changed ends with a valid active item (see `settleActive`).
+ * the action changed ends with a valid active item (see `settleActive`), and the panes on screen
+ * are not unread (see `clearViewed`).
  */
 export function reduceStrict(ws: Workspace, action: Action, ctx: ReducerContext): Workspace {
   const next = applyAction(ws, action, ctx);
-  return next === ws ? ws : settleActive(ws, next, action);
+  return next === ws ? ws : clearViewed(settleActive(ws, next, action));
 }
 
 function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Workspace {
@@ -214,6 +217,10 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       return startPaneCommand(ws, action);
     case "pane/command-end":
       return endPaneCommand(ws, action);
+    case "pane/notify":
+      return notifyPane(ws, action, ctx);
+    case "pane/clear-unread":
+      return clearUnread(ws, action);
     default:
       return assertNever(action, ws);
   }
@@ -338,15 +345,6 @@ function idPool(ws: Workspace, ctx: ReducerContext): () => Id {
 
 function pushClosed(closed: readonly ClosedItem[], entries: readonly ClosedItem[]): ClosedItem[] {
   return [...closed, ...entries].slice(-MAX_CLOSED);
-}
-
-/** Item ids of a space in visual order: pinned, then the tree depth-first. */
-function spaceItemIds(space: Space): Id[] {
-  const ordered = new Set(
-    [...space.pinned, ...treeItemIds(space.tree)].filter((id) => Object.hasOwn(space.items, id)),
-  );
-  for (const id of Object.keys(space.items)) ordered.add(id);
-  return [...ordered];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1163,6 +1161,62 @@ function endPaneCommand(
     ...located.item,
     layout: withPane(located.item.layout, next),
   });
+}
+
+function notifyPane(
+  ws: Workspace,
+  action: Extract<Action, { type: "pane/notify" }>,
+  ctx: ReducerContext,
+): Workspace {
+  const located = locate(ws, action.itemId);
+  const pane = located && findPane(located.item.layout, action.paneId);
+  if (!located || !pane) return ws;
+  // The user is looking at it: there is nothing they missed.
+  if (isPaneVisible(ws, located.space.id, located.item.id, pane.id)) return ws;
+  const bell = action.bell === true;
+  if (pane.unread && (pane.bell || !bell)) return ws;
+  // The time is kept from the first mark, so a program that keeps ringing does not change the
+  // workspace (and the saved file) at every bell.
+  const next: Pane = {
+    ...pane,
+    unread: true,
+    bell: pane.bell || bell,
+    unreadAt: pane.unread ? (pane.unreadAt ?? ctx.clock.now()) : ctx.clock.now(),
+  };
+  return replaceItem(ws, located.space, {
+    ...located.item,
+    layout: withPane(located.item.layout, next),
+  });
+}
+
+function clearUnread(
+  ws: Workspace,
+  action: Extract<Action, { type: "pane/clear-unread" }>,
+): Workspace {
+  const located = locate(ws, action.itemId);
+  if (!located) return ws;
+  const layout = mapPanes(located.item.layout, (pane) =>
+    action.paneId === undefined || pane.id === action.paneId ? withoutMarks(pane) : pane,
+  );
+  return layout === located.item.layout
+    ? ws
+    : replaceItem(ws, located.space, { ...located.item, layout });
+}
+
+/**
+ * The panes on screen have nothing unread: showing a tab (or a space, or a pane that zoom hid)
+ * is reading it. Runs after every action that changed the workspace, so no action has to know.
+ */
+function clearViewed(ws: Workspace): Workspace {
+  const space = findSpace(ws, ws.activeSpaceId);
+  const item = space && shownItem(space);
+  if (!space || !item || !visiblePanes(item).some(isMarked)) return ws;
+  const seen = new Set(visiblePanes(item).map((pane) => pane.id));
+  const layout = mapPanes(item.layout, (pane) => (seen.has(pane.id) ? withoutMarks(pane) : pane));
+  // A space from an old file may have no active item: the one it shows becomes it, like in
+  // `settleActive`, so a space this changes always has a valid one.
+  const shown = space.activeItemId === item.id ? space : withActiveItem(space, item.id);
+  return replaceItem(ws, shown, { ...item, layout });
 }
 
 function focusDirection(ws: Workspace, itemId: Id, direction: unknown): Workspace {

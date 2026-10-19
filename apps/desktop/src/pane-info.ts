@@ -1,5 +1,5 @@
-import { layoutPanes } from "@noren/model";
-import type { Item, Pane } from "@noren/model";
+import { layoutPanes, treeItemIds } from "@noren/model";
+import type { GroupNode, Item, Pane, Space } from "@noren/model";
 
 const ELLIPSIS = "…";
 
@@ -169,6 +169,35 @@ export const BELL_LABEL = "Bell";
 /** Tooltip of the error indicator. */
 export function failureLabel(code: number | null): string {
   return code === null ? "Exited with an error" : `Exited with code ${code}`;
+}
+
+/** Notice of the shortcut that goes to the last unread tab when there is none. */
+export const NOTHING_UNREAD_NOTICE = "Nothing unread";
+
+/** The unread and bell marks of the panes below a group or a space. */
+export interface UnreadMarks {
+  unread: boolean;
+  bell: boolean;
+}
+
+function marksOf(items: readonly (Item | undefined)[]): UnreadMarks {
+  const panes = items.flatMap((item) => (item ? layoutPanes(item.layout) : []));
+  return { unread: panes.some((pane) => pane.unread), bell: panes.some((pane) => pane.bell) };
+}
+
+/** Whether any tab inside the group, at any depth, holds an unread pane or a bell. */
+export function groupMarks(space: Space, group: GroupNode): UnreadMarks {
+  return marksOf(treeItemIds(group.children).map((id) => space.items[id]));
+}
+
+/** Whether any tab of the space, pinned or not, holds an unread pane or a bell. */
+export function spaceMarks(space: Space): UnreadMarks {
+  return marksOf(Object.values(space.items));
+}
+
+/** The marks of a group or a space in words, for assistive technology. */
+export function marksWords(marks: UnreadMarks): string[] {
+  return [...(marks.unread ? [UNREAD_LABEL] : []), ...(marks.bell ? [BELL_LABEL] : [])];
 }
 
 /** The indicators of a summary in words, in the order the sidebar draws them. */

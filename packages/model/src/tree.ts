@@ -1,10 +1,19 @@
-import type { GroupNode, Id, Node } from "./types";
+import type { GroupNode, Id, Node, Space } from "./types";
 
 // Pure helpers over the sidebar tree (`Space.tree`). None of them mutates its input.
 
 /** Item ids in visual (depth-first) order. */
 export function treeItemIds(nodes: readonly Node[]): Id[] {
   return nodes.flatMap((node) => (node.kind === "item" ? [node.id] : treeItemIds(node.children)));
+}
+
+/** Item ids of a space in visual order: pinned, then the tree depth-first. */
+export function spaceItemIds(space: Space): Id[] {
+  const ordered = new Set(
+    [...space.pinned, ...treeItemIds(space.tree)].filter((id) => Object.hasOwn(space.items, id)),
+  );
+  for (const id of Object.keys(space.items)) ordered.add(id);
+  return [...ordered];
 }
 
 /** Every group, outer before inner. */

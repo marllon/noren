@@ -38,6 +38,7 @@ export type ActionCommand =
   | { kind: "tab"; index: number }
   | { kind: "mru"; delta: 1 | -1 }
   | { kind: "search-all" }
+  | { kind: "last-unread" }
   | { kind: "prompt"; direction: "previous" | "next" }
   | { kind: "select-output" }
   | { kind: "copy-output" };
@@ -98,6 +99,14 @@ export const ACTIONS: readonly ActionDef[] = [
     command: { kind: "mru", delta: -1 },
     repeat: true,
     chords: { safe: "Ctrl+Shift+Tab", browser: "Ctrl+Shift+Tab" },
+  },
+  {
+    id: "tab.last-unread",
+    title: "Go to last unread tab",
+    category: "Tabs",
+    command: { kind: "last-unread" },
+    repeat: false,
+    chords: { safe: "Ctrl+Shift+KeyU", browser: "Ctrl+Shift+KeyU" },
   },
   {
     id: "tab.search-all",

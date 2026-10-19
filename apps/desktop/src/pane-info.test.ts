@@ -1,12 +1,16 @@
-import type { Item, LayoutNode, Pane } from "@noren/model";
+import { treeGroups } from "@noren/model";
+import type { GroupNode, Item, LayoutNode, Pane, Space } from "@noren/model";
 import { describe, expect, it } from "vitest";
 import {
   commandInfo,
   commandWords,
   failureLabel,
   formatDuration,
+  groupMarks,
   indicatorLabels,
+  marksWords,
   shortCwd,
+  spaceMarks,
   summarizeItem,
 } from "./pane-info";
 
@@ -275,5 +279,73 @@ describe("summarizeItem commands", () => {
     };
     expect(summarizeItem(item(split, "p1")).running).toBe(true);
     expect(summarizeItem(item(leaf(pane("p1")), "p1")).running).toBe(false);
+  });
+});
+
+describe("the marks of a group and of a space", () => {
+  const tab = (id: string, extra: Partial<Pane> = {}): Item =>
+    item(leaf(pane(`p-${id}`, extra)), `p-${id}`);
+  const space: Space = {
+    id: "s1",
+    name: "Main",
+    icon: "terminal",
+    color: "#6b8afd",
+    modIds: [],
+    defaults: { env: {} },
+    aiEnabled: true,
+    saveScrollback: true,
+    pinned: ["a"],
+    tree: [
+      {
+        kind: "group",
+        id: "outer",
+        name: "outer",
+        color: "teal",
+        collapsed: true,
+        children: [
+          { kind: "item", id: "b" },
+          {
+            kind: "group",
+            id: "inner",
+            name: "inner",
+            color: "red",
+            collapsed: false,
+            children: [{ kind: "item", id: "c" }],
+          },
+        ],
+      },
+      { kind: "item", id: "d" },
+    ],
+    items: {
+      a: tab("a", { unread: true }),
+      b: tab("b"),
+      c: tab("c", { unread: true, bell: true }),
+      d: tab("d"),
+    },
+  };
+  const group = (id: string): GroupNode => {
+    const found = treeGroups(space.tree).find((g) => g.id === id);
+    if (!found) throw new Error(id);
+    return found;
+  };
+
+  it("a group has the marks of its tabs at any depth, and not those outside", () => {
+    expect(groupMarks(space, group("outer"))).toEqual({ unread: true, bell: true });
+    expect(groupMarks(space, group("inner"))).toEqual({ unread: true, bell: true });
+    const quiet: Space = { ...space, items: { ...space.items, c: tab("c") } };
+    expect(groupMarks(quiet, group("outer"))).toEqual({ unread: false, bell: false });
+  });
+
+  it("a space has the marks of all its tabs, pinned ones included", () => {
+    expect(spaceMarks(space)).toEqual({ unread: true, bell: true });
+    const onlyPinned: Space = { ...space, items: { ...space.items, c: tab("c") } };
+    expect(spaceMarks(onlyPinned)).toEqual({ unread: true, bell: false });
+    expect(spaceMarks({ ...space, items: {} })).toEqual({ unread: false, bell: false });
+  });
+
+  it("says them in words", () => {
+    expect(marksWords({ unread: false, bell: false })).toEqual([]);
+    expect(marksWords({ unread: true, bell: false })).toEqual(["Unread output"]);
+    expect(marksWords({ unread: true, bell: true })).toEqual(["Unread output", "Bell"]);
   });
 });

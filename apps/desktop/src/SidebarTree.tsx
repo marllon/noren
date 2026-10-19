@@ -20,11 +20,13 @@ import {
   commandWords,
   exitText,
   failureLabel,
+  groupMarks,
   indicatorLabels,
+  marksWords,
   shortCwd,
   summarizeItem,
 } from "./pane-info";
-import type { CommandInfo, ItemSummary } from "./pane-info";
+import type { CommandInfo, ItemSummary, UnreadMarks } from "./pane-info";
 import type { MenuPoint } from "./SpaceMenu";
 import type { ClickModifiers, TreeRow } from "./sidebar-tree";
 import { DRAG_HELP_ID, DragRow, useOutsideDrop } from "./TreeDnd";
@@ -65,6 +67,24 @@ interface InlineNameProps {
   onCancel(): void;
 }
 
+/** The unread dot and the bell of a tab, group or space (the same marks wherever they sit). */
+export function MarkBadges({ marks }: { marks: UnreadMarks }) {
+  return (
+    <>
+      {marks.unread && (
+        <span className="tab-badge" data-nr-indicator="unread" title={UNREAD_LABEL}>
+          <span className="unread-dot" />
+        </span>
+      )}
+      {marks.bell && (
+        <span className="tab-badge" data-nr-indicator="bell" title={BELL_LABEL}>
+          <Bell size={12} aria-hidden="true" />
+        </span>
+      )}
+    </>
+  );
+}
+
 /** The status marks of a tab (running, failed, unread, bell); read through the tab's description. */
 export function TabBadges({ summary }: { summary: ItemSummary }) {
   return (
@@ -79,16 +99,7 @@ export function TabBadges({ summary }: { summary: ItemSummary }) {
           <CircleAlert size={12} aria-hidden="true" />
         </span>
       )}
-      {summary.unread && (
-        <span className="tab-badge" data-nr-indicator="unread" title={UNREAD_LABEL}>
-          <span className="unread-dot" />
-        </span>
-      )}
-      {summary.bell && (
-        <span className="tab-badge" data-nr-indicator="bell" title={BELL_LABEL}>
-          <Bell size={12} aria-hidden="true" />
-        </span>
-      )}
+      <MarkBadges marks={summary} />
     </span>
   );
 }
@@ -308,6 +319,9 @@ export function SidebarTree({
           </li>
         );
       }
+      const marks = groupMarks(space, group);
+      const words = marksWords(marks);
+      const descriptionId = `group-info-${group.id}`;
       return (
         <DragRow key={group.id} id={group.id} kind="group" style={indent}>
           {(drag) => (
@@ -320,6 +334,7 @@ export function SidebarTree({
               data-nr-depth={row.depth}
               aria-label={group.name}
               aria-expanded={!group.collapsed}
+              aria-describedby={words.length > 0 ? descriptionId : undefined}
               {...drag.buttonProps}
               onClick={() => onToggleGroup(group)}
               onDoubleClick={() => onStartEdit(edit)}
@@ -339,6 +354,16 @@ export function SidebarTree({
               )}
               <span className="group-dot" style={{ background: group.color }} aria-hidden="true" />
               <span className="group-name">{group.name}</span>
+              {words.length > 0 && (
+                <span className="tab-badges" data-nr-part="group-marks" aria-hidden="true">
+                  <MarkBadges marks={marks} />
+                </span>
+              )}
+              {words.length > 0 && (
+                <span id={descriptionId} className="sr-only">
+                  {words.join(". ")}
+                </span>
+              )}
               <span
                 className="group-count"
                 data-nr-part="group-count"

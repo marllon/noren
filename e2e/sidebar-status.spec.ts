@@ -44,7 +44,8 @@ test("the second line shows the short folder and the branch, only when there is 
 test("unread and bell are shown from the saved state; the others are not", async ({ page }) => {
   await expect(indicator(page, "logs", "unread")).toHaveAttribute("title", "Unread output");
   await expect(indicator(page, "deploy", "bell")).toHaveAttribute("title", "Bell");
-  await expect(list(page).locator("[data-nr-indicator]")).toHaveCount(2);
+  // On the tabs: the group that holds them (and the switcher) show the marks as well.
+  await expect(list(page).locator('[data-nr-part="item"] [data-nr-indicator]')).toHaveCount(2);
 });
 
 test("exit 2 in a tab shows the error indicator with the code in the tooltip, and it is saved", async ({

@@ -1,6 +1,7 @@
 import {
   DEFAULT_PROFILE_ID,
   StateWriter,
+  lastUnread,
   layoutPanes,
   liveSessionIds,
   reduce,
@@ -16,6 +17,7 @@ import type {
   Item,
   LayoutNode,
   Pane,
+  PaneAttentionEvent,
   PaneCommandEvent,
   PaneLocation,
   Space,
@@ -122,6 +124,17 @@ export interface WorkspaceState {
    * `setPaneLocation`, the pane is found by its id and a report that changes nothing changes nothing.
    */
   setPaneCommand(paneId: Id, event: PaneCommandEvent): void;
+  /**
+   * Records that the program of a pane asked for attention (a bell, or a notification): the pane
+   * is marked unread unless it is on screen. The pane is found by its id; a pane that is gone
+   * changes nothing.
+   */
+  notifyPane(paneId: Id, event: PaneAttentionEvent): void;
+  /**
+   * Shows the pane that became unread last: its space, its tab and the pane itself, which reads
+   * it. Returns whether there was one; nothing unread changes nothing.
+   */
+  showLastUnread(): boolean;
   /** Writes the pending state now (window closing). */
   flush(): Promise<void>;
 }
@@ -458,6 +471,29 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
           });
         }
         retitle(itemId);
+      },
+
+      notifyPane(paneId, event) {
+        const { workspace, dispatch } = get();
+        const itemId = findItemOfPane(workspace, paneId);
+        if (itemId === undefined) return;
+        dispatch({
+          type: "pane/notify",
+          itemId,
+          paneId,
+          ...(event.kind === "bell" ? { bell: true } : {}),
+        });
+      },
+
+      showLastUnread() {
+        const { workspace, dispatch } = get();
+        const target = lastUnread(workspace);
+        if (target === undefined) return false;
+        // The pane gets the focus before its space is shown, so it is the one that is read.
+        dispatch({ type: "space/set-active-item", spaceId: target.spaceId, itemId: target.itemId });
+        dispatch({ type: "pane/focus", itemId: target.itemId, paneId: target.paneId });
+        dispatch({ type: "space/activate", spaceId: target.spaceId });
+        return true;
       },
 
       flush() {

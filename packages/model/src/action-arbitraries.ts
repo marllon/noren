@@ -460,5 +460,32 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
         ),
       ),
     ),
+    weighted(
+      6,
+      target.chain(({ itemId, paneId }) =>
+        fc.record(
+          {
+            type: tag("pane/notify"),
+            itemId: fc.constant(itemId),
+            paneId: fc.constant(paneId),
+            bell: fc.boolean(),
+          },
+          { requiredKeys: ["type", "itemId", "paneId"] },
+        ),
+      ),
+    ),
+    weighted(
+      2,
+      target.chain(({ itemId, paneId }) =>
+        fc.record(
+          {
+            type: tag("pane/clear-unread"),
+            itemId: fc.constant(itemId),
+            paneId: fc.constant(paneId),
+          },
+          { requiredKeys: ["type", "itemId"] },
+        ),
+      ),
+    ),
   );
 }

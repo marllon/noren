@@ -49,7 +49,7 @@ import {
 } from "./sidebar-tree";
 import type { ClickModifiers, Selection } from "./sidebar-tree";
 import { sidebarMode } from "./layout";
-import { shortCwd } from "./pane-info";
+import { NOTHING_UNREAD_NOTICE, shortCwd } from "./pane-info";
 import { updateLayout, useLayout } from "./layout-store";
 import { SidebarResizer } from "./SidebarResizer";
 import { SidebarTree } from "./SidebarTree";
@@ -130,6 +130,11 @@ export interface NorenTestHook {
    * pane. There is no way to split from the interface before the split interactions arrive.
    */
   split(dir: "row" | "column", paneId?: string): string | undefined;
+  /**
+   * Makes the program of a pane (in any tab or space) write `text` to its terminal, as is: a BEL,
+   * an OSC 9 or OSC 777 sequence. Returns `false` when no pane has that id or it has no session.
+   */
+  sendOutput(paneId: string, text: string): boolean;
   /** Every command line the backend was asked to run in a short process (stop commands), in order. */
   commandRuns(): { cwd: string; command: string }[];
   /** Makes the next short commands end with this exit code (0 by default). */
@@ -179,6 +184,7 @@ function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTermi
         gitInfo: (folder) => backend.gitInfo(folder),
         onLocation: (location) => store.getState().setPaneLocation(pane.id, location),
         onCommand: (event) => store.getState().setPaneCommand(pane.id, event),
+        onAttention: (event) => store.getState().notifyPane(pane.id, event),
         // The fake shell of web mode runs on a clock the tests move, so a command lasts as long
         // as they say.
         clock: backend instanceof FakeBackend ? backend.clock : realClock,
@@ -281,6 +287,8 @@ function runCommand(store: WorkspaceStore, command: ActionCommand): string | und
     case "new-tab":
       state.newTab();
       return undefined;
+    case "last-unread":
+      return state.showLastUnread() ? undefined : NOTHING_UNREAD_NOTICE;
     case "tab": {
       const tabId = spaceItemIds(activeSpaceOf(state.workspace))[command.index];
       if (tabId !== undefined) state.activateItem(tabId);
@@ -754,6 +762,17 @@ function Shell({ store }: { store: WorkspaceStore }) {
         },
         renderer: () => current()?.renderer() ?? "dom",
         writeCalls: () => fake.callsTo("write").length,
+        sendOutput: (paneId, text) => {
+          for (const space of store.getState().workspace.spaces) {
+            for (const item of Object.values(space.items)) {
+              const sessionId = layoutPanes(item.layout).find((p) => p.id === paneId)?.sessionId;
+              if (sessionId === undefined) continue;
+              fake.sendOutput(Number(sessionId), text);
+              return true;
+            }
+          }
+          return false;
+        },
         commandRuns: () => fake.commands.map(({ cwd, command }) => ({ cwd, command })),
         failCommands: (code) => fake.setCommandExitCode(code),
         actionsReads: () => fake.callsTo("readActionsFile").length,

@@ -68,6 +68,13 @@ export const WEB_WINDOW_EFFECTS_KEY = "noren.web.window-effects";
  */
 export const WEB_IMAGES_KEY = "noren.web.images";
 
+/**
+ * Key of the models of the Ollama this page pretends to have installed, in web mode: a JSON list of
+ * model names (`["llama3"]`). Without it there is no Ollama here, which is what most computers are.
+ * The e2e tests seed it before the page loads.
+ */
+export const WEB_AI_OLLAMA_KEY = "noren.web.ai-ollama";
+
 /** What web mode needs of the browser storage. */
 export type StateStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -178,6 +185,19 @@ export function seededImages(
   }
 }
 
+/** The models seeded under `WEB_AI_OLLAMA_KEY`, or `undefined` when there is no usable seed (no Ollama). */
+export function seededOllamaModels(storage: Pick<Storage, "getItem">): string[] | undefined {
+  try {
+    const raw = storage.getItem(WEB_AI_OLLAMA_KEY);
+    if (raw === null) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (!Array.isArray(value)) return undefined;
+    return (value as unknown[]).filter((name): name is string => typeof name === "string");
+  } catch {
+    return undefined;
+  }
+}
+
 /** The text seeded under `WEB_CONFIG_KEY`, or `null` when there is none or the storage is blocked. */
 export function seededConfig(storage: Pick<Storage, "getItem">): string | null {
   try {
@@ -249,12 +269,14 @@ export class WebBackend extends FakeBackend {
     const mods = seededMods(storage);
     const images = seededImages(storage);
     const scrollback = seededScrollback(storage);
+    const ollamaModels = seededOllamaModels(storage);
     super({
       ...(profiles !== undefined ? { profiles } : {}),
       ...(userThemes !== undefined ? { userThemes } : {}),
       ...(mods !== undefined ? { mods } : {}),
       ...(images !== undefined ? { images } : {}),
       ...(scrollback !== undefined ? { scrollback } : {}),
+      ...(ollamaModels !== undefined ? { ollamaModels } : {}),
       windowEffects: seededWindowEffects(storage),
       config: seededConfig(storage),
     });

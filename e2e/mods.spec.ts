@@ -117,6 +117,10 @@ const menu = (page: Page, spaceName: string): Locator =>
 const modItem = (inMenu: Locator, name: string): Locator =>
   inMenu.locator('[role="menuitemcheckbox"]', { hasText: name });
 
+/** Every mod in the menu of a space; the switch of the AI of the space is a checkbox item too, and is not one. */
+const modItems = (inMenu: Locator): Locator =>
+  inMenu.getByRole("menuitemcheckbox").filter({ hasNotText: "AI in this space" });
+
 /** Two spaces, "Main" and "Work", with "Work" active. */
 async function addWorkSpace(page: Page): Promise<void> {
   await page.getByRole("button", { name: "New space", exact: true }).click();
@@ -562,7 +566,7 @@ test.describe("mods for one space", () => {
     // The menu of the space lists the mods; turn one on for "Work".
     let work = await openSpaceMenu(page, "Work");
     // The mark of a mod that is on is drawn in front of its name, so the names are read as a part.
-    await expect(work.getByRole("menuitemcheckbox")).toHaveText([
+    await expect(modItems(work)).toHaveText([
       new RegExp(`${ACCENT}$`),
       new RegExp(`${DIM}$`),
       new RegExp(`${TINTED}$`),
@@ -667,7 +671,7 @@ test.describe("mods for one space", () => {
   test("a folder with no mods adds nothing to the menu of a space", async ({ page }) => {
     await start(page, {});
     const main = await openSpaceMenu(page, "Main");
-    await expect(main.getByRole("menuitemcheckbox")).toHaveCount(0);
+    await expect(modItems(main)).toHaveCount(0);
     await expect(main.getByText("Mods", { exact: true })).toHaveCount(0);
   });
 });

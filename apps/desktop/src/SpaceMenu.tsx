@@ -30,6 +30,10 @@ interface SpaceMenuProps {
   onBackground(): void;
   /** The user took the picture of the space away. */
   onClearBackground(): void;
+  /** The AI is on in the settings (`ai.enabled`); a space can still turn it off for itself. */
+  aiOn: boolean;
+  /** The user turned the AI on or off for this space; the menu stays open. */
+  onAi(enabled: boolean): void;
   onEdit(): void;
   onMove(delta: -1 | 1): void;
   onDelete(): void;
@@ -49,6 +53,8 @@ export function SpaceMenu({
   hasBackground,
   onBackground,
   onClearBackground,
+  aiOn,
+  onAi,
   onEdit,
   onMove,
   onDelete,
@@ -129,6 +135,18 @@ export function SpaceMenu({
         </div>
         {item("Background image…", onBackground)}
         {hasBackground && item("Remove background image", onClearBackground)}
+        <div className="menu-heading" role="presentation">
+          AI
+        </div>
+        <button
+          type="button"
+          role="menuitemcheckbox"
+          aria-checked={space.aiEnabled}
+          title={aiOn ? undefined : "The AI is off in the settings, so it is off in every space"}
+          onClick={() => onAi(!space.aiEnabled)}
+        >
+          AI in this space
+        </button>
         {/* Nothing is drawn for a folder with no mods, so the menu stays as it was. */}
         {mods.length > 0 && (
           <div className="menu-heading" role="presentation">

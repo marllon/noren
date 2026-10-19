@@ -23,10 +23,12 @@ import { useModFiles } from "./mods-store";
 import { commitProfileImport, readProfileFile, takenProfileIds } from "./profile-import";
 import type { ProfileImportPlan } from "./profile-import";
 import { ProfileImportDialog } from "./ProfileImportDialog";
+import { ProvidersPanel } from "./ProvidersPanel";
 import { useProfiles } from "./profiles-store";
 import { QUICK_TOGGLE_ACTION, quickShortcutLine } from "./quick-shortcut";
 import { useQuickShortcutStatus } from "./quick-shortcut-store";
 import { importSchemeFile } from "./scheme-import";
+import { NumberBox, SelectBox } from "./SettingsFields";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { addUserThemes, getUserThemes } from "./user-themes-store";
 import {
@@ -39,7 +41,7 @@ import {
 import type { SettingsDraft } from "./settings-screen";
 import { withNewProfile, withProfileEdited, withoutProfile } from "./settings-profiles";
 import type { ProfileField, ProfileRow } from "./settings-profiles";
-import { aiProviderIds, fontChoice } from "./settings-sections";
+import { AI_FUNCTION_LABELS, aiProviderIds, fontChoice } from "./settings-sections";
 import type { AiTargetDraft } from "./settings-sections";
 import { useWindowEffectReport, windowEffectNote } from "./window-effect-store";
 
@@ -91,50 +93,6 @@ function Toggle({ label, checked, disabled = false, onChange }: ToggleProps) {
   );
 }
 
-interface NumberBoxProps {
-  label: string;
-  value: string;
-  problem: string | undefined;
-  /** A box for a path or other text rather than a number. */
-  text?: boolean;
-  /** A box wide enough for a list of names or a path. */
-  wide?: boolean;
-  onChange(text: string): void;
-}
-
-function NumberBox({
-  label,
-  value,
-  problem,
-  text = false,
-  wide = false,
-  onChange,
-}: NumberBoxProps) {
-  const hintId = useId();
-  return (
-    <div className={wide ? "settings-number settings-wide" : "settings-number"}>
-      <label className="settings-option">
-        <span>{label}</span>
-        <input
-          type="text"
-          inputMode={text ? "text" : "decimal"}
-          spellCheck={text ? false : undefined}
-          autoComplete={text ? "off" : undefined}
-          value={value}
-          aria-invalid={problem !== undefined ? true : undefined}
-          aria-describedby={problem !== undefined ? hintId : undefined}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      </label>
-      {problem !== undefined && (
-        <span id={hintId} className="settings-hint" role="alert">
-          {problem}
-        </span>
-      )}
-    </div>
-  );
-}
-
 interface TextAreaProps {
   label: string;
   value: string;
@@ -159,45 +117,6 @@ function TextArea({ label, value, problem, onChange }: TextAreaProps) {
           onChange={(event) => onChange(event.target.value)}
         />
       </label>
-      {problem !== undefined && (
-        <span id={hintId} className="settings-hint" role="alert">
-          {problem}
-        </span>
-      )}
-    </div>
-  );
-}
-
-interface SelectBoxProps {
-  label: string;
-  value: string;
-  options: readonly { value: string; label: string }[];
-  problem: string | undefined;
-  onChange(value: string): void;
-}
-
-/** A drop-down list with its label; a problem is told under it, where the choice is made. */
-function SelectBox({ label, value, options, problem, onChange }: SelectBoxProps) {
-  const hintId = useId();
-  const selectId = useId();
-  return (
-    <div className="settings-number">
-      <div className="settings-option">
-        <label htmlFor={selectId}>{label}</label>
-        <select
-          id={selectId}
-          value={value}
-          aria-invalid={problem !== undefined ? true : undefined}
-          aria-describedby={problem !== undefined ? hintId : undefined}
-          onChange={(event) => onChange(event.target.value)}
-        >
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </div>
       {problem !== undefined && (
         <span id={hintId} className="settings-hint" role="alert">
           {problem}
@@ -249,12 +168,6 @@ const BELLS: readonly { value: BellStyle; label: string }[] = BELL_STYLES.map((v
   label: BELL_LABELS[value],
 }));
 
-const AI_FUNCTION_LABELS: Readonly<Record<AiFunction, string>> = {
-  ask: "Ask",
-  explain: "Explain",
-  command: "Command",
-};
-
 const AI_FUNCTION_HINTS: Readonly<Record<AiFunction, string>> = {
   ask: "For the Ask panel.",
   explain: "For explaining the error of a command.",
@@ -281,7 +194,7 @@ const KEY_PRESETS: readonly { value: Preset; label: string }[] = [
 
 interface SettingsDialogProps {
   /** Where an imported color scheme is written (the themes folder). */
-  backend: Pick<Backend, "saveUserTheme" | "listMonospaceFonts">;
+  backend: Pick<Backend, "saveUserTheme" | "listMonospaceFonts" | "ai">;
   onClose(): void;
 }
 
@@ -775,6 +688,8 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                   checked={shown.ai.enabled}
                   onChange={(enabled) => changeAi({ enabled })}
                 />
+                <ProvidersPanel backend={backend} />
+                <h4>Default provider and model</h4>
                 {AI_FUNCTIONS.map((fn) => {
                   const problem = plan.aiProblems[fn];
                   return (
@@ -806,7 +721,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 <p className="settings-hint">
                   Off until you turn it on: nothing is sent to any provider while it is off. A
                   function with no provider and no model has no default. Providers of your own are
-                  listed under ai.providers in config.jsonc.
+                  kept under ai.providers in config.jsonc, where you can edit them by hand.
                 </p>
               </section>
               <section className="settings-section" aria-label="Mods" data-nr-part="settings-mods">

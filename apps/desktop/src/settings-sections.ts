@@ -301,6 +301,13 @@ export const AI_PATHS: Readonly<Record<AiKey, readonly string[]>> = {
   command: ["ai", "defaults", "command"],
 };
 
+/** The name of each function of the AI on the screen. */
+export const AI_FUNCTION_LABELS: Readonly<Record<AiFunction, string>> = {
+  ask: "Ask",
+  explain: "Explain",
+  command: "Command",
+};
+
 export const NO_AI_TARGET: AiTarget = { provider: "", model: "" };
 
 export const DEFAULT_AI_VALUES: AiValues = {

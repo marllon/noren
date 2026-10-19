@@ -226,6 +226,12 @@ export interface NorenTestHook {
    * so a reload finds them.
    */
   setMod(name: string, text: string | null): void;
+  /** The providers lists handed to the AI side (`ai.configure`), in order, as the ids of each list. */
+  aiConfigures(): string[][];
+  /** The provider ids a key was stored or taken out for (`ai.setKey`), in order. The key is never recorded. */
+  aiKeyCalls(): string[];
+  /** The key held for a provider in the fake keychain, `undefined` for none: lets a test check where it did not go. */
+  storedAiKey(providerId: string): string | undefined;
   /** Makes saving `config.jsonc` fail with this message (the disk refused); `null` undoes it. */
   failConfigSaves(message: string | null): void;
   /** Number of times the app was asked to write `config.jsonc`. */
@@ -1077,6 +1083,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
         openUrl: (url) => handleDeepLink(url),
         setConfig: (text) => fake.setConfig(text),
         setMod: (name, text) => fake.setMod(name, text),
+        aiConfigures: () =>
+          fake
+            .callsTo("ai.configure")
+            .map((call) => (call.args[0] as { id: string }[]).map((provider) => provider.id)),
+        aiKeyCalls: () => fake.callsTo("ai.setKey").map((call) => String(call.args[0])),
+        storedAiKey: (providerId) => fake.storedAiKey(providerId),
         failConfigSaves: (message) =>
           fake.setConfigSaveFailure(message === null ? undefined : new Error(message)),
         configSaves: () => fake.callsTo("saveConfig").length,
@@ -1433,6 +1445,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         onClearBackground={() => {
           dispatch({ type: "space/set-background", spaceId: overlaySpace.id, background: null });
           close();
+        }}
+        aiOn={configState.config.ai?.enabled === true}
+        onAi={(enabled) => {
+          dispatch({ type: "space/set-ai", spaceId: overlaySpace.id, enabled });
         }}
         onEdit={() => setOverlay({ kind: "edit", spaceId: overlaySpace.id })}
         onMove={(delta) => {

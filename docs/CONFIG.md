@@ -24,7 +24,7 @@ The **Settings** button (the gear in the title bar), or **Open settings** in the
 - **Shortcuts**: which preset is in force (safe or browser), and a button that opens the screen to see and record the keys of every action (see [KEYBINDINGS.md](KEYBINDINGS.md)).
 - **Notifications**: system notifications on or off, and how many seconds a command runs before it notifies when it ends out of sight.
 - **Auto-archive**: the switch for putting idle tabs in the archive and the hours a tab is left alone before it goes (see [Auto-archive](#auto-archive)).
-- **AI**: the switch for the AI (`ai.enabled`, off until you turn it on) and, for each function (Ask, Explain and Command), the provider (Ollama, or one listed under `ai.providers` in the file) and the model typed as text (`ai.defaults.ask`, `ai.defaults.explain` and `ai.defaults.command`). A function needs both: a provider with no model, or a model with no provider, is refused where you type it. Choose no provider and empty the model to take the function out of the file. The providers themselves, and the keys, are not edited here.
+- **AI**: the switch for the AI (`ai.enabled`, off until you turn it on) and, for each function (Ask, Explain and Command), the provider (Ollama, or one listed under `ai.providers` in the file) and the model typed as text (`ai.defaults.ask`, `ai.defaults.explain` and `ai.defaults.command`). A function needs both: a provider with no model, or a model with no provider, is refused where you type it. Choose no provider and empty the model to take the function out of the file. Above them is **Providers** (see [The AI](#the-ai)): Ollama with the models found on this computer, the providers of `ai.providers` with their key and a connection test, a form that adds one and a button that removes one. Unlike the rest of the screen those act at once, and are not part of the draft.
 - **Mods**: the CSS files of the `mods` folder, a box for each to turn it on for every space, and arrows that move the ones that are on earlier or later (the mod applied last wins). A name that is on but has no file in the folder stays listed, marked, so you can turn it off. It is a draft like the rest and Save writes the whole `mods` list (see [Mods](#mods)).
 - **Import**: **Import color scheme...** (the same as the palette action: a theme from a color scheme file, see [THEMING.md](THEMING.md)) and **Import profiles...** (the shell profiles of another program's settings file, see [Profiles](#profiles)). Unlike the other sections these act at once and are not part of the draft: a color scheme is added as soon as the file is read, and profiles are added when you confirm the preview. What happened is told under the buttons.
 
@@ -106,10 +106,15 @@ Every setting is optional. Unknown settings are an error, so a typo does not go 
     "enabled": true, // false: never put a tab in the archive on its own
     "afterHours": 12, // hours a tab is left alone before it is archived; a fraction is fine
   },
+  "ai": {
+    "enabled": false, // nothing is sent to any provider until this is true, see The AI below
+    "providers": [], // providers of your own; no key goes here, it lives in the system keychain
+    "defaults": {}, // { "ask": { "provider": "ollama", "model": "llama3" } } and the same for "explain" and "command"
+  },
 }
 ```
 
-The values above are the defaults. More sections (AI) arrive with the tasks that need them; the schema is the list of what exists now. Your own shortcuts (the keys you record for an action) and a few other preferences (the recent folders, the answers to the question about running a project action) are still kept in the browser storage of the window, not in this file, until their settings get a place here.
+The values above are the defaults. The schema is the list of what exists now. Your own shortcuts (the keys you record for an action) and a few other preferences (the recent folders, the answers to the question about running a project action) are still kept in the browser storage of the window, not in this file, until their settings get a place here.
 
 ## The terminal
 
@@ -152,6 +157,56 @@ The space has no checkbox for this in the interface yet; until it does, a space 
 A tab is **left alone** when none of these is true: a command is running in one of its panes (the shell said so through OSC 133, see [SHELL_INTEGRATION.md](SHELL_INTEGRATION.md)), a pane printed something, a pane is unread or has a bell nobody has looked at, or it is the tab on screen. A **pinned** tab and a **favorite** are never archived. The check runs every minute, so a tab goes within a minute of reaching the time. The time counts from the last output of the tab, from the moment it was last on screen and from the moment Noren opened, at the latest: a Noren that was closed for days does not archive every tab a minute after it opens.
 
 The settings are read at every check, so a saved change applies without a restart. A shell without the Noren integration never reports a running command, so a program that prints nothing for hours looks quiet to the archive: turn the archive off, or pin the tab, if you run such programs.
+
+## The AI
+
+The AI is optional and off until you turn it on. `ai.enabled` is `false` unless the file says `true`, and while it is off nothing is offered and nothing is sent to any provider. Even when it is on, **a space can turn it off for itself** (see below).
+
+### Providers
+
+A provider is a service that answers questions: the Ollama on this computer, or one of your own. Ollama is always there, with the id `ollama`, and needs nothing in the file. Your own go in `ai.providers`, each with exactly four settings:
+
+```jsonc
+"ai": {
+  "enabled": true,
+  "providers": [
+    { "id": "my-openai", "kind": "openai-compatible", "baseUrl": "https://api.openai.com/v1", "model": "gpt-x" },
+    { "id": "work", "kind": "anthropic", "baseUrl": "https://api.anthropic.com", "model": "a-model" },
+  ],
+  "defaults": {
+    "ask": { "provider": "ollama", "model": "llama3" },
+    "explain": { "provider": "work", "model": "a-model" },
+  },
+}
+```
+
+- `id` is lower case letters, digits, `-` and `_`, up to 64, starting with a letter or a digit. It is unique, `ollama` is taken, and it is the name of the key in the keychain.
+- `kind` is `openai-compatible` (Ollama, LM Studio, vLLM, OpenRouter, OpenAI, Groq and the like; the address is the API root) or `anthropic`.
+- `baseUrl` starts with `http://` or `https://`, names a host, and has no user name or password in it.
+- `model` is the model the provider uses when a function does not name one.
+- `defaults.ask`, `defaults.explain` and `defaults.command` each name a `provider` (`ollama` or an id of the list) and a `model`. The AI section of the settings screen edits them.
+
+There is no setting for a key, and one written in a provider is an error of the file: a key is never in `config.jsonc`.
+
+### Keys
+
+An API key is stored in the **keychain of your system** (Credential Manager on Windows, the Keychain on macOS, the Secret Service on Linux) under the id of its provider, and only there. In the settings screen, type or paste it in the **API key** box of the provider (or of the form that adds one) and press **Store key**: the box is emptied at once, and the key goes to the keychain and nowhere else, not to this file, not to the saved state, not to a log. **Remove key** takes it out of the keychain, and **Remove provider** takes the key out with the provider. The screen tells whether a key is stored; it can never show it again.
+
+### The providers part of the settings screen
+
+- **Ollama** is always listed. Noren asks the Ollama of this computer (`http://localhost:11434`) for the models it has installed and lists them; **Check Ollama again** asks again after you installed one. Ollama not running is not an error: the line says it was not found.
+- Each provider of the file shows its kind, address and model, whether a key is stored, and **Test connection**. The test asks the provider for its list of models with the stored key: it costs nothing, needs no model and sends no question. The result is written under the provider: that the connection works, or why it does not (a rejected key, an address that does not answer, no answer in time). The text never holds the key.
+- **Add provider** takes an id, a kind, an address, a model and, if the provider needs one, a key. It appends the provider to `ai.providers` right away, keeping every comment of the file (the list is created when the file has none), and stores the key if there is one. What is refused is told under its box and writes nothing: an id that is empty, badly written, `ollama` or already used; an address that is not an `http` or `https` one, or has a user name or password in it; an empty model; more than 50 providers.
+- **Remove provider** takes only that entry out of the file. A provider that a function uses in `ai.defaults` is **not removed**: the screen says which functions use it. Choose another provider for them (or none), press Save, and remove it then.
+- While the file lists no provider and Ollama is not running or has no model, the part shows the **steps** to a first one: install Ollama and a model in it, or add a provider of your own, then turn the AI on and choose a provider and a model for each function.
+
+### From the file to the app
+
+The providers of the file are handed to the Rust side, the only one that talks to a provider, when Noren starts and every time the list changes: by the settings screen, by your editor, by a reload. A change to any other setting hands nothing over. If the Rust side refuses the list the settings screen says why, in the Providers part, and the app goes on with the providers it had.
+
+### The AI in one space
+
+A space has its own switch, in its menu (right-click the space, or the **Space options** button): **AI in this space**. A new space has it on. The AI works in a space only when the settings turn it on **and** the space has not turned it off; off in either place means off. The choice belongs to the space, so it is kept in `state.json` with the rest of the space, not in this file. When the AI is off in the settings the menu says so, and the switch of the space has no effect until it is on.
 
 ## The window and the background
 
@@ -247,5 +302,6 @@ Before the settings screen, the layout, the notification settings and the shortc
 - **The terminal.** The keys are `terminalSchema` in `config.ts`; the limits, the defaults and the rule for font names are `terminal-options.ts` (`parseFontFamilies`, `safeFontFamily`, `terminalOptionsOf`, `nextZoom`), with the defaults held to what `TerminalView` hard-coded before. The interface reads the options through `terminal-options-store.ts` (the settings in force with the zoom of the window over the size, the same object while nothing changes) and `TerminalView` applies a new set to its xterm without recreating it; the bell is `bell.ts`. `Backend.listMonospaceFonts()` answers the monospaced families installed on the machine, once each and in alphabetical order, only names (`fontNameList` holds every backend to that). In `noren-core` it is `fonts.rs` (`list_monospace_families`, over the `fontdb` crate, MIT, which scans the system font folders and reads the names and the fixed-pitch flag of each file); the Tauri command is `fonts_list_monospace`. It only reads: the smoke run lists the fonts and never writes. The web build cannot list the fonts of a visitor, so its backend answers the families the terminal falls back to. The tests hold the rest: `terminal-options.test.ts`, `terminal-config.test.ts`, `fonts.rs` (it finds at least one monospaced family on Windows and macOS) and `e2e/terminal-options.spec.ts`.
 - **Saved scrollback.** The key is `terminal.saveScrollback` in `terminalSchema` (the default is `DEFAULT_SAVE_SCROLLBACK` in `packages/model/src/scrollback.ts`, which also holds the limits: `SCROLLBACK_SAVE_LINES`, `SCROLLBACK_SAVE_INTERVAL_MS`, `MAX_SCROLLBACK_BYTES`, mirrored by `MAX_SCROLLBACK_BYTES` in Rust). `savesScrollback(setting, space)` is the one place that decides whether a pane keeps a snapshot, and `cleanSnapshot` is the filter (`restoredTerminalText` runs it again on the way in and adds the dimming and the marker line). The files are `scrollback.rs` in `noren-core` (`ScrollbackStore`: the id of the pane becomes a file name, so `is_valid_pane_id` accepts only ASCII letters, digits, `-` and `_` and not a Windows device name, in Rust and in `isScrollbackPaneId` with the same cases), the Tauri commands `scrollback_load`, `scrollback_save`, `scrollback_list` and `scrollback_delete`, and `Backend.loadScrollback`, `saveScrollback`, `listScrollback` and `deleteScrollback`. The smoke run reads the folder and never writes or removes in it (`ScrollbackState::without_writing`); it proves the write path in a folder of its own in the temp folder, which it removes. `scrollback-saver.ts` is the timer and the rules (an injectable clock, the panes with activity, the removal when a space or the setting says never), `scrollback-restore.ts` reads the snapshots when the app opens, `scrollback-service.ts` ties them to the terminals and the closing of the window (`close-handler.ts` and `lifecycle.rs` keep the window open until the page has saved, see [ARCHITECTURE.md](ARCHITECTURE.md)), and the action `pane/set-scrollback` keeps `Pane.scrollbackRef` (the name of the file) in `state.json`. The tests: `scrollback.test.ts` (including a list of hostile sequences and a property test on any text), `scrollback.rs`, `scrollback-saver.test.ts` and `e2e/scrollback.spec.ts`.
 - **Window and background.** The keys are `windowSchema` and `backgroundSchema` in `config.ts`; the path check is `backgroundImageProblem` (`background.ts`), mirrored by `path_problem` in `crates/noren-core/src/background.rs` and tested with the same cases. The boxes of the screen that may be empty (`OPTIONAL_PATHS` in `settings-screen.ts`) are written as `null` when emptied. See [THEMING.md](THEMING.md#for-contributors) for the rest.
+- **The AI.** The keys are `AiProviderSchema` (`ai.ts`) and the `ai` object in `config.ts`; `aiProvidersProblem` is the check the backend repeats. The providers part of the screen is `ProvidersPanel.tsx`; what adding and removing write, and the words it uses, are the pure `settings-providers.ts` (`planAddProvider` appends to `ai.providers`, `planRemoveProvider` removes by index and refuses a provider that `ai.defaults` names), both written through `ConfigManager.update` like the rest. The key box is not a controlled input: it is read when the button is pressed, handed to `Backend.ai.setKey` and wiped, so no state of the page ever holds it, and the text of a failure has it taken out. `ai-providers-sync.ts` (`AiProvidersSync`, the instance `aiProvidersSync` in `config-store.ts`, started by `boot.ts`) hands `ai.providers` to `Backend.ai.configure` at start and at every change of the list, one call after the other, and keeps the reason of a refusal. In the web build the fake Ollama is seeded with the browser storage key `noren.web.ai-ollama` (a JSON list of model names; without it there is no Ollama), and the test hook has `aiConfigures()`, `aiKeyCalls()` and `storedAiKey(id)`. The tests: `settings-providers.test.ts`, `ai-providers-sync.test.ts` and `e2e/ai-providers.spec.ts`.
 - The screen is `SettingsDialog.tsx`; what it shows and what Save writes is the pure `settings-screen.ts` (`settingsOf`, `planSave`). `layout-store.ts`, `notification-settings.ts` and `keybindings-store.ts` read the settings in force; `legacy-settings.ts` is the one-time move described above.
 - The theme: `theme-choice.ts` reads `appearance.theme` from the settings in force (`themeChoiceOf`) and plans picking one (`planThemeChoice`, `runThemeChoice`, which hands the change to `ConfigManager.update`). `effectiveThemeChoice` there is the order above (pure, tested), `space-theme.ts` lists what a space can pick, and `use-theme.ts` follows the active space of the store (`followActiveSpaceTheme`, started at boot) and holds the preview of the palette over the saved choice: `previewTheme`, `clearThemePreview` and `chooseTheme`, which keeps the chosen theme on screen until the file has it, so the window does not flicker back. The built-in themes are in `packages/model/src/builtin-themes.ts`; `user-themes-store.ts` holds the list of them and of the user's (see [THEMING.md](THEMING.md)), and `theme-choice.ts` looks a theme up in the list it is given (the built-in ones by default, the whole list where the window asks).

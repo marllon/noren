@@ -1460,6 +1460,7 @@ body {
 }
 
 .settings-wide input[type="text"],
+.settings-wide input[type="password"],
 .settings-wide textarea {
   box-sizing: border-box;
   width: 100%;
@@ -1508,6 +1509,41 @@ body {
 .settings-hint {
   margin: 0;
   color: var(--nr-muted);
+  font-size: 12px;
+}
+
+/* The providers of the AI in the settings screen: Ollama, the providers of the file, the form that adds one. */
+.settings-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-self: stretch;
+}
+
+.settings-section h4 {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nr-muted);
+}
+
+.settings-providers h4 {
+  margin-top: 0;
+}
+
+.settings-steps ol {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.settings-steps li + li {
+  margin-top: 4px;
+}
+
+.settings-models {
+  margin: 0;
+  padding-left: 18px;
   font-size: 12px;
 }
 

@@ -4,7 +4,7 @@ import { archiveClock, startAutoArchive } from "./auto-archive-service";
 import { createBackend, insideTauri } from "./backend";
 import { startBackgroundImages } from "./background-image-store";
 import { followWindowClose } from "./close-handler";
-import { configManager } from "./config-store";
+import { aiProvidersSync, configManager } from "./config-store";
 import { loadHome } from "./home";
 import { realClock } from "./real-clock";
 import { migrateLegacySettings } from "./legacy-settings";
@@ -58,6 +58,9 @@ export async function bootWorkspace(
     // The settings first, so the first frame already has the side of the sidebar. A file that is
     // missing, unreadable or invalid never stops the app: the defaults and an error notice stand in.
     await configManager.start(target);
+    // The providers of the file go to the AI side now and at every change of the list. A refusal is
+    // told in the settings screen and never stops the app.
+    aiProvidersSync.follow(configManager, target.ai);
     // The pictures of a background are read through the backend.
     startBackgroundImages(target);
     // What earlier builds kept in the browser storage (layout, notifications, shortcut preset)

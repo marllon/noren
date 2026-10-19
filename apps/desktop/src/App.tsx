@@ -1,5 +1,5 @@
 import { emit } from "@tauri-apps/api/event";
-import { FakeBackend, treeGroups } from "@noren/model";
+import { FakeBackend, layoutPanes, treeGroups } from "@noren/model";
 import type { GroupNode, Id, Item, Pane, Space } from "@noren/model";
 import type { ITheme } from "@xterm/xterm";
 import { Suspense, use, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -31,6 +31,8 @@ import type { SpaceFormValues } from "./SpaceDialog";
 import { SpaceMenu } from "./SpaceMenu";
 import type { MenuPoint } from "./SpaceMenu";
 import { SpaceSwitcher } from "./SpaceSwitcher";
+import { SplitLayout } from "./SplitLayout";
+import type { SplitLayoutContext } from "./SplitLayout";
 import { DropZones, TreeDnd } from "./TreeDnd";
 import { createWheelGesture, spaceShortcutIndex, wheelTravel } from "./spaces";
 import { TerminalView } from "./TerminalView";
@@ -57,6 +59,17 @@ export interface NorenTestHook {
   killedSessions(): number[];
   /** Options of every `createSession` call the backend received, in order. */
   sessionStarts(): { profileId?: string; cwd?: string; env?: Record<string, string> }[];
+  /** Ids of the panes of the active tab, in layout order. */
+  paneIds(): string[];
+  /** Id of the focused pane of the active tab. */
+  focusedPaneId(): string | undefined;
+  /** Text of every line of one pane's terminal, whichever tab it is in. */
+  paneLines(paneId: string): string[];
+  /**
+   * Splits a pane of the active tab (the focused one by default) and returns the id of the new
+   * pane. There is no way to split from the interface before the split interactions arrive.
+   */
+  split(dir: "row" | "column", paneId?: string): string | undefined;
 }
 
 declare global {
@@ -65,45 +78,72 @@ declare global {
   }
 }
 
-/** The pane a tab shows: the focused one (splits arrive in phase 5). */
-function shownPane(item: Item): Pane | undefined {
-  const find = (layout: Item["layout"]): Pane | undefined => {
-    if (layout.kind === "pane")
-      return layout.pane.id === item.focusedPaneId ? layout.pane : undefined;
-    for (const child of layout.children) {
-      const found = find(child);
-      if (found) return found;
-    }
-    return undefined;
-  };
-  return find(item.layout);
+/** The pane of the item that has the keyboard. */
+function focusedPane(item: Item): Pane | undefined {
+  return layoutPanes(item.layout).find((pane) => pane.id === item.focusedPaneId);
 }
 
 interface PaneTerminalProps {
   store: WorkspaceStore;
   space: Space;
   pane: Pane;
+  /** True when the terminal should hold the keyboard: its tab shows and it is the focused pane. */
   active: boolean;
   colors: ITheme;
   onReady(paneId: Id, handle: TerminalHandle): void;
 }
 
-/** One terminal bound to one pane; it stays mounted (hidden) while another tab shows. */
+/** One terminal bound to one pane. */
 function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTerminalProps) {
   const { profileId, cwd, env } = sessionStartOptions(space, pane);
   return (
-    <div className="pane-slot" data-nr-part="pane" hidden={!active}>
-      <TerminalView
-        backend={backend}
-        theme={colors}
-        active={active}
-        {...(pane.sessionId !== undefined ? { attach: Number(pane.sessionId) } : {})}
-        {...(profileId !== undefined ? { profileId } : {})}
-        {...(cwd !== undefined ? { cwd } : {})}
-        {...(env !== undefined ? { env } : {})}
-        onSessionStart={(id) => store.getState().attachSession(pane.id, String(id))}
-        onReady={(handle) => onReady(pane.id, handle)}
+    <TerminalView
+      backend={backend}
+      theme={colors}
+      active={active}
+      {...(pane.sessionId !== undefined ? { attach: Number(pane.sessionId) } : {})}
+      {...(profileId !== undefined ? { profileId } : {})}
+      {...(cwd !== undefined ? { cwd } : {})}
+      {...(env !== undefined ? { env } : {})}
+      onSessionStart={(id) => store.getState().attachSession(pane.id, String(id))}
+      onReady={(handle) => onReady(pane.id, handle)}
+    />
+  );
+}
+
+interface ItemViewProps {
+  store: WorkspaceStore;
+  space: Space;
+  item: Item;
+  /** True when this is the tab on screen; the others stay mounted, hidden. */
+  shown: boolean;
+  colors: ITheme;
+  onReady(paneId: Id, handle: TerminalHandle): void;
+}
+
+/** The layout of one tab: its panes as nested resizable panels, a terminal in each. */
+function ItemView({ store, space, item, shown, colors, onReady }: ItemViewProps) {
+  const dispatch = useStore(store, (state) => state.dispatch);
+  const context: SplitLayoutContext = {
+    focusedPaneId: item.focusedPaneId,
+    framed: item.layout.kind === "split",
+    renderPane: (pane) => (
+      <PaneTerminal
+        key={pane.id}
+        store={store}
+        space={space}
+        pane={pane}
+        active={shown && pane.id === item.focusedPaneId}
+        colors={colors}
+        onReady={onReady}
       />
+    ),
+    onFocusPane: (paneId) => dispatch({ type: "pane/focus", itemId: item.id, paneId }),
+    onResize: (path, sizes) => dispatch({ type: "pane/resize", itemId: item.id, path, sizes }),
+  };
+  return (
+    <div className="pane-slot" data-nr-part="item-layout" hidden={!shown}>
+      <SplitLayout layout={item.layout} context={context} />
     </div>
   );
 }
@@ -274,11 +314,34 @@ function Shell({ store }: { store: WorkspaceStore }) {
         const itemId = activeItemIdOf(state);
         const item =
           itemId === undefined ? undefined : activeSpaceOf(state.workspace).items[itemId];
-        const pane = item && shownPane(item);
+        const pane = item && focusedPane(item);
         return pane && handles.current.get(pane.id);
+      };
+      const activeItem = () => {
+        const state = store.getState();
+        const itemId = activeItemIdOf(state);
+        return itemId === undefined ? undefined : activeSpaceOf(state.workspace).items[itemId];
       };
       window.__norenTest = {
         lines: () => current()?.readLines() ?? [],
+        paneIds: () => {
+          const item = activeItem();
+          return item ? layoutPanes(item.layout).map((pane) => pane.id) : [];
+        },
+        focusedPaneId: () => activeItem()?.focusedPaneId,
+        paneLines: (paneId) => handles.current.get(paneId)?.readLines() ?? [],
+        split: (dir, paneId) => {
+          const item = activeItem();
+          if (!item) return undefined;
+          store.getState().dispatch({
+            type: "pane/split",
+            itemId: item.id,
+            paneId: paneId ?? item.focusedPaneId,
+            dir,
+            side: "after",
+          });
+          return activeItem()?.focusedPaneId;
+        },
         renderer: () => current()?.renderer() ?? "dom",
         writeCalls: () => fake.callsTo("write").length,
         killedSessions: () => fake.callsTo("kill").map((call) => Number(call.args[0])),
@@ -504,21 +567,17 @@ function Shell({ store }: { store: WorkspaceStore }) {
         <section className="content" aria-label="Content">
           {workspace.spaces.map((s) => (
             <div key={s.id} className="space-layer" hidden={s.id !== space.id}>
-              {Object.values(s.items).flatMap((item) => {
-                const pane = shownPane(item);
-                if (!pane) return [];
-                return [
-                  <PaneTerminal
-                    key={pane.id}
-                    store={store}
-                    space={s}
-                    pane={pane}
-                    active={s.id === space.id && item.id === activeId}
-                    colors={colors}
-                    onReady={recordHandle}
-                  />,
-                ];
-              })}
+              {Object.values(s.items).map((item) => (
+                <ItemView
+                  key={item.id}
+                  store={store}
+                  space={s}
+                  item={item}
+                  shown={s.id === space.id && item.id === activeId}
+                  colors={colors}
+                  onReady={recordHandle}
+                />
+              ))}
             </div>
           ))}
         </section>

@@ -743,6 +743,60 @@ body {
   display: none;
 }
 
+/* One pane of a tab: the terminal, and in a split a frame on the focused one. */
+.pane-frame {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pane-frame[data-nr-focused="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 1px solid var(--nr-accent);
+  pointer-events: none;
+}
+
+.split-group {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.split-panel {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.split-separator {
+  flex: none;
+  background: var(--nr-border);
+  transition: background 120ms ease-out;
+}
+
+.split-separator[data-nr-dir="row"] {
+  width: 1px;
+}
+
+.split-separator[data-nr-dir="column"] {
+  height: 1px;
+}
+
+.split-separator[data-separator="hover"],
+.split-separator[data-separator="active"] {
+  background: var(--nr-accent);
+}
+
 .space-switcher {
   display: flex;
   flex-wrap: wrap;

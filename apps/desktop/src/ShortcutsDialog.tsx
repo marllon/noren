@@ -1,5 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
+import { useLanguage, useT } from "./i18n";
+import { actionName } from "./i18n/names";
 import { updateKeybindings, setRecording, useKeybindings } from "./keybindings-store";
 import {
   changeBinding,
@@ -26,6 +28,8 @@ interface ShortcutsDialogProps {
  * holds is refused with a warning and nothing changes.
  */
 export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
+  const t = useT();
+  const language = useLanguage();
   const titleId = useId();
   const searchRef = useRef<HTMLInputElement>(null);
   const keybindings = useKeybindings();
@@ -35,7 +39,8 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
   const [recordingId, setRecordingId] = useState<string>();
   const [feedback, setFeedback] = useState<Feedback>();
 
-  const rows = useMemo(() => shortcutRows(keybindings), [keybindings]);
+  // The rows say the actions in words, so a change of language makes them again.
+  const rows = useMemo(() => shortcutRows(keybindings), [keybindings, language]);
   const shown = useMemo(() => filterRows(rows, query), [rows, query]);
   const shellKeys = presetShellKeys("browser");
 
@@ -48,10 +53,12 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
     const result = changeBinding(current, actionId, change);
     const title = rows.find((row) => row.id === actionId)?.title ?? actionId;
     if (!result.ok) {
-      const holders = result.holders.map((holder) => `"${holder.title}"`).join(", ");
+      const holders = result.holders
+        .map((holder) => `"${actionName(holder.id, holder.title)}"`)
+        .join(", ");
       setFeedback({
         kind: "conflict",
-        text: `${formatChord(result.chord)} is already used by ${holders}. "${title}" keeps its shortcut; nothing changed.`,
+        text: t("shortcuts.conflict", { chord: formatChord(result.chord), holders, title }),
       });
       return;
     }
@@ -61,8 +68,8 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
       kind: "status",
       text:
         chord === undefined
-          ? `"${title}" has no shortcut now.`
-          : `"${title}" is now ${formatChord(chord)}.`,
+          ? t("shortcuts.hasNone", { title })
+          : t("shortcuts.isNow", { title, chord: formatChord(chord) }),
     });
   };
 
@@ -85,7 +92,7 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
       }
       setRecordingId(undefined);
       if (key.kind === "cancel") {
-        setFeedback({ kind: "status", text: "Recording cancelled." });
+        setFeedback({ kind: "status", text: t("shortcuts.cancelled") });
         return;
       }
       applyRef.current(recordingId, { kind: "set", chord: key.chord });
@@ -101,7 +108,7 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
     setRecordingId(actionId);
     setFeedback({
       kind: "status",
-      text: `Press the new shortcut for "${title}", or Escape to cancel.`,
+      text: t("shortcuts.prompt", { title }),
     });
   };
 
@@ -121,19 +128,19 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
         aria-labelledby={titleId}
         onKeyDown={onKeyDown}
       >
-        <h2 id={titleId}>Keyboard shortcuts</h2>
+        <h2 id={titleId}>{t("shortcuts.title")}</h2>
         <input
           ref={searchRef}
           type="text"
-          aria-label="Search shortcuts"
-          placeholder="Search by action, category or keys"
+          aria-label={t("shortcuts.searchLabel")}
+          placeholder={t("shortcuts.searchPlaceholder")}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
         <p className="shortcuts-note">
           {keybindings.preset === "browser"
-            ? `The browser preset is on: ${shellKeys.join(", ")} no longer reach the terminal, so a shell program that uses them does not receive them.`
-            : `The browser preset would take ${shellKeys.join(", ")} away from the terminal, so a shell program that uses them would not receive them.`}
+            ? t("shortcuts.noteBrowserOn", { keys: shellKeys.join(", ") })
+            : t("shortcuts.noteBrowserOff", { keys: shellKeys.join(", ") })}
         </p>
         <div className="shortcuts-feedback">
           <p role="status">{feedback?.kind === "status" ? feedback.text : ""}</p>
@@ -143,18 +150,21 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
             </p>
           )}
         </div>
-        <ul className="shortcuts-list" aria-label="Shortcuts">
+        <ul className="shortcuts-list" aria-label={t("shortcuts.list")}>
           {shown.map((row) => (
             <li key={row.id} className="shortcuts-row">
               <span className="shortcuts-title">{row.title}</span>
               <span className="shortcuts-category">{row.category}</span>
-              <kbd className="shortcuts-chord" aria-label={`Shortcut for ${row.title}`}>
-                {row.chord === undefined ? "None" : formatChord(row.chord)}
+              <kbd
+                className="shortcuts-chord"
+                aria-label={t("shortcuts.forAction", { title: row.title })}
+              >
+                {row.chord === undefined ? t("shortcuts.none") : formatChord(row.chord)}
               </kbd>
               <span className="shortcuts-buttons">
                 <button
                   type="button"
-                  aria-label={`Record shortcut for ${row.title}`}
+                  aria-label={t("shortcuts.record", { title: row.title })}
                   aria-pressed={recordingId === row.id}
                   onClick={() =>
                     recordingId === row.id
@@ -162,32 +172,32 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
                       : startRecording(row.id, row.title)
                   }
                 >
-                  {recordingId === row.id ? "Press keys" : "Record"}
+                  {recordingId === row.id ? t("shortcuts.pressKeys") : t("common.record")}
                 </button>
                 <button
                   type="button"
-                  aria-label={`Reset shortcut for ${row.title}`}
+                  aria-label={t("shortcuts.reset", { title: row.title })}
                   disabled={!row.overridden}
                   onClick={() => apply(row.id, { kind: "reset" })}
                 >
-                  Reset
+                  {t("common.reset")}
                 </button>
                 <button
                   type="button"
-                  aria-label={`Remove shortcut for ${row.title}`}
+                  aria-label={t("shortcuts.remove", { title: row.title })}
                   disabled={row.chord === undefined}
                   onClick={() => apply(row.id, { kind: "remove" })}
                 >
-                  Remove
+                  {t("common.remove")}
                 </button>
               </span>
             </li>
           ))}
         </ul>
-        {shown.length === 0 && <p className="shortcuts-empty">No shortcut matches.</p>}
+        {shown.length === 0 && <p className="shortcuts-empty">{t("shortcuts.empty")}</p>}
         <div className="dialog-actions">
           <button type="button" className="primary" onClick={onClose}>
-            Close
+            {t("common.close")}
           </button>
         </div>
       </div>

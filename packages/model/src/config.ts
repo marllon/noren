@@ -79,6 +79,12 @@ const sidebarSchema = z
 /** The value of `appearance.theme` that follows the color scheme of the system, as a missing one does. */
 export const SYSTEM_THEME = "system";
 
+/** The languages of the interface, and the value of `language` that follows the language of the system. */
+export const LANGUAGES = ["en", "pt-BR"] as const;
+export const SYSTEM_LANGUAGE = "system";
+export const LANGUAGE_SETTINGS = [SYSTEM_LANGUAGE, ...LANGUAGES] as const;
+export type LanguageSetting = (typeof LANGUAGE_SETTINGS)[number];
+
 const windowSchema = z
   .strictObject({
     effect: setting(
@@ -398,6 +404,11 @@ export const ConfigSchema = z
       .string()
       .optional()
       .meta({ description: "Where the JSON Schema of this file is, for the editor." }),
+    language: setting(
+      z.enum(LANGUAGE_SETTINGS),
+      'The language of the interface: "en" (English), "pt-BR" (Brazilian Portuguese), or "system", which follows the language of the computer and falls back to English when Noren does not have it.',
+      SYSTEM_LANGUAGE,
+    ),
     appearance: appearanceSchema.optional(),
     terminal: terminalSchema.optional(),
     mods: modsSchema.optional(),

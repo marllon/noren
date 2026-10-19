@@ -5,10 +5,11 @@ import {
   MIN_WINDOW_OPACITY,
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
+  SYSTEM_LANGUAGE,
   backgroundImageProblem,
   sameModList,
 } from "@noren/model";
-import type { Config, ConfigEdit, WindowEffect } from "@noren/model";
+import type { Config, ConfigEdit, LanguageSetting, WindowEffect } from "@noren/model";
 import type { Preset } from "./keybindings";
 import { DEFAULT_LAYOUT, layoutFromConfig } from "./layout";
 import type { Layout } from "./layout";
@@ -48,6 +49,8 @@ export interface SettingsValues extends Layout {
   longCommandSeconds: number;
   /** The effect the system paints behind the window. */
   windowEffect: WindowEffect;
+  /** The language of the interface: one of ours, or the language of the system. */
+  language: LanguageSetting;
 }
 
 export type SettingKey = keyof SettingsValues;
@@ -65,6 +68,7 @@ export const SETTING_PATHS: Readonly<Record<SettingKey, readonly string[]>> = {
   notifications: ["notifications", "enabled"],
   longCommandSeconds: ["notifications", "longCommandSeconds"],
   windowEffect: ["appearance", "window", "effect"],
+  language: ["language"],
 };
 
 const KEYS = Object.keys(SETTING_PATHS) as SettingKey[];
@@ -75,6 +79,7 @@ export const DEFAULT_SETTINGS: SettingsValues = {
   notifications: DEFAULT_NOTIFICATION_SETTINGS.enabled,
   longCommandSeconds: DEFAULT_NOTIFICATION_SETTINGS.longCommandMs / 1000,
   windowEffect: DEFAULT_WINDOW_EFFECT,
+  language: SYSTEM_LANGUAGE,
 };
 
 /** The settings in force: what the file says, and the default for what it does not say. */
@@ -92,6 +97,7 @@ export function settingsOf(config: Config): SettingsValues {
     ...(config.appearance?.window?.effect !== undefined
       ? { windowEffect: config.appearance.window.effect }
       : {}),
+    ...(config.language !== undefined ? { language: config.language } : {}),
   };
 }
 
@@ -102,6 +108,7 @@ export function settingsSetBy(config: Config): ReadonlySet<SettingKey> {
   if (config.notifications?.enabled !== undefined) set.add("notifications");
   if (config.notifications?.longCommandSeconds !== undefined) set.add("longCommandSeconds");
   if (config.appearance?.window?.effect !== undefined) set.add("windowEffect");
+  if (config.language !== undefined) set.add("language");
   return set;
 }
 

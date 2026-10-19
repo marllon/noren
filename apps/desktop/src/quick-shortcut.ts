@@ -1,4 +1,5 @@
 import type { Backend } from "@noren/model";
+import { t } from "./i18n";
 import { formatChord } from "./shortcuts-screen";
 
 // The global shortcut of the quick terminal is registered with the system by the Rust side. The chord
@@ -77,11 +78,11 @@ export class QuickShortcutSync {
  */
 export function quickShortcutLine(chord: string | undefined, status: QuickShortcutStatus): string {
   if (chord === undefined) {
-    return "Quick terminal: no shortcut. Record one in Keyboard shortcuts.";
+    return t("quick.noShortcut");
   }
   const shown = formatChord(chord);
   if (status.kind === "refused" && status.chord === chord) {
-    return `Quick terminal: ${shown} is not available (${status.reason}). Pick another in Keyboard shortcuts.`;
+    return t("quick.refused", { chord: shown, reason: status.reason });
   }
-  return `Quick terminal: ${shown} shows and hides it from any program. Change it in Keyboard shortcuts.`;
+  return t("quick.ok", { chord: shown });
 }

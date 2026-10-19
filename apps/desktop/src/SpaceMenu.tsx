@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent } from "react";
 import type { Space } from "@noren/model";
+import { useT } from "./i18n";
 import type { SpaceModOption } from "./mod-options";
 import type { SpaceThemeOption } from "./space-theme";
 
@@ -60,6 +61,7 @@ export function SpaceMenu({
   onDelete,
   onClose,
 }: SpaceMenuProps) {
+  const t = useT();
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -106,18 +108,18 @@ export function SpaceMenu({
         ref={menuRef}
         className="space-menu"
         role="menu"
-        aria-label={`${space.name} options`}
+        aria-label={t("spaceMenu.label", { name: space.name })}
         style={{ left: point.x, bottom: window.innerHeight - point.y }}
         onMouseDown={(event) => event.stopPropagation()}
         onContextMenu={(event) => event.preventDefault()}
         onKeyDown={onKeyDown}
       >
-        {item("Edit space…", onEdit)}
-        {item("Move left", () => onMove(-1), index === 0)}
-        {item("Move right", () => onMove(1), index === count - 1)}
-        {count > 1 && item("Delete space…", onDelete)}
+        {item(t("spaceMenu.edit"), onEdit)}
+        {item(t("spaceMenu.moveLeft"), () => onMove(-1), index === 0)}
+        {item(t("spaceMenu.moveRight"), () => onMove(1), index === count - 1)}
+        {count > 1 && item(t("spaceMenu.delete"), onDelete)}
         <div className="menu-heading" role="presentation">
-          Theme
+          {t("spaceMenu.theme")}
         </div>
         {themes.map((option) => (
           <button
@@ -131,26 +133,26 @@ export function SpaceMenu({
           </button>
         ))}
         <div className="menu-heading" role="presentation">
-          Background
+          {t("spaceMenu.background")}
         </div>
-        {item("Background image…", onBackground)}
-        {hasBackground && item("Remove background image", onClearBackground)}
+        {item(t("spaceMenu.backgroundImage"), onBackground)}
+        {hasBackground && item(t("spaceMenu.removeBackground"), onClearBackground)}
         <div className="menu-heading" role="presentation">
-          AI
+          {t("spaceMenu.ai")}
         </div>
         <button
           type="button"
           role="menuitemcheckbox"
           aria-checked={space.aiEnabled}
-          title={aiOn ? undefined : "The AI is off in the settings, so it is off in every space"}
+          title={aiOn ? undefined : t("spaceMenu.aiOff")}
           onClick={() => onAi(!space.aiEnabled)}
         >
-          AI in this space
+          {t("spaceMenu.aiInSpace")}
         </button>
         {/* Nothing is drawn for a folder with no mods, so the menu stays as it was. */}
         {mods.length > 0 && (
           <div className="menu-heading" role="presentation">
-            Mods
+            {t("spaceMenu.mods")}
           </div>
         )}
         {mods.map((mod) => (
@@ -163,15 +165,15 @@ export function SpaceMenu({
             disabled={mod.global}
             title={
               mod.global
-                ? "On for every space; turn it off in the settings"
+                ? t("spaceMenu.modGlobal")
                 : mod.missing
-                  ? "Not in the mods folder, so it is ignored"
+                  ? t("spaceMenu.modMissingHint")
                   : undefined
             }
             onClick={() => onMod(mod.name, !mod.on)}
           >
-            {mod.global ? `${mod.name} (all spaces)` : mod.name}
-            {mod.missing ? " (missing)" : ""}
+            {mod.global ? t("spaceMenu.modAllSpaces", { name: mod.name }) : mod.name}
+            {mod.missing ? ` ${t("spaceMenu.modMissing")}` : ""}
           </button>
         ))}
       </div>

@@ -5,6 +5,8 @@
 
 import type { Id, ShellProfile, Workspace } from "@noren/model";
 import { itemTitle } from "./favorites";
+import { t, tabCount } from "./i18n";
+import { actionName, categoryName } from "./i18n/names";
 import { ACTIONS } from "./keybindings";
 import type { ActionDef, ChordMap } from "./keybindings";
 import { shortCwd, summarizeItem } from "./pane-info";
@@ -144,18 +146,14 @@ export function buildSpaceThemeEntries(
     id: option.themeId === null ? "space-theme:global" : `space-theme:${option.themeId}`,
     title: option.label,
     detail: option.current
-      ? `In use in ${spaceName}`
+      ? t("palette.spaceThemeInUse", { name: spaceName })
       : option.themeId === null
-        ? "Follow the global theme"
-        : `For ${spaceName}`,
+        ? t("palette.spaceThemeFollow")
+        : t("palette.spaceThemeFor", { name: spaceName }),
     keywords: [spaceName, "theme", "space"],
     themeId: option.themeId,
     current: option.current,
   }));
-}
-
-function plural(count: number, one: string): string {
-  return `${count} ${one}${count === 1 ? "" : "s"}`;
 }
 
 /**
@@ -191,7 +189,7 @@ export function buildEntries(sources: EntrySources): PaletteEntry[] {
     }
     const folder = space.defaults.cwd;
     const short = folder !== undefined ? shortCwd(folder, home) : "";
-    const count = plural(itemIds.length, "tab");
+    const count = tabCount(itemIds.length);
     spaces.push({
       kind: "space",
       id: `space:${space.id}`,
@@ -211,9 +209,13 @@ export function buildEntries(sources: EntrySources): PaletteEntry[] {
     return {
       kind: "action",
       id: `action:${action.id}`,
-      title: action.title,
-      detail: action.category,
-      keywords: [action.category, ...(chord !== undefined ? [chord] : [])],
+      title: actionName(action.id, action.title),
+      detail: categoryName(action.category),
+      keywords: [
+        action.category,
+        categoryName(action.category),
+        ...(chord !== undefined ? [chord] : []),
+      ],
       action,
       ...(chord !== undefined ? { chord } : {}),
     };
@@ -222,8 +224,8 @@ export function buildEntries(sources: EntrySources): PaletteEntry[] {
   const profiles = (sources.profiles ?? []).map((profile): ProfileEntry => ({
     kind: "profile",
     id: `profile:${profile.id}`,
-    title: `New ${profile.name} tab`,
-    detail: where !== "" ? `in ${where}` : "",
+    title: t("palette.newProfileTab", { name: profile.name }),
+    detail: where !== "" ? t("palette.inSpace", { name: where }) : "",
     keywords: [profile.id, "shell", "profile", ...(where !== "" ? [where] : [])],
     profileId: profile.id,
   }));
@@ -233,7 +235,7 @@ export function buildEntries(sources: EntrySources): PaletteEntry[] {
       kind: "folder",
       id: `folder:${path}`,
       title: short !== "" ? short : path,
-      detail: "Recent folder · new tab",
+      detail: t("palette.recentFolder"),
       keywords: [path, "recent", "folder"],
       path,
     };
@@ -245,8 +247,8 @@ export function buildEntries(sources: EntrySources): PaletteEntry[] {
       themes.push({
         kind: "theme",
         id: `theme:${theme.id}`,
-        title: `Theme: ${theme.name}`,
-        detail: `${theme.kind === "dark" ? "Dark" : "Light"}${choice === theme.id ? " · in use" : ""}`,
+        title: t("palette.theme", { name: theme.name }),
+        detail: `${theme.kind === "dark" ? t("palette.themeDark") : t("palette.themeLight")}${choice === theme.id ? ` · ${t("palette.inUse")}` : ""}`,
         keywords: [theme.name, theme.kind, "theme"],
         themeId: theme.id,
         current: choice === theme.id,
@@ -255,8 +257,8 @@ export function buildEntries(sources: EntrySources): PaletteEntry[] {
     themes.push({
       kind: "theme",
       id: "theme:system",
-      title: "Follow system theme",
-      detail: choice === null ? "In use" : "Light or dark, as the system",
+      title: t("palette.followSystem"),
+      detail: choice === null ? t("palette.inUseCapital") : t("palette.lightOrDark"),
       keywords: ["theme", "system", "auto", "light", "dark"],
       themeId: null,
       current: choice === null,
@@ -352,13 +354,7 @@ export function searchEntries(entries: readonly PaletteEntry[], query: string): 
   return result;
 }
 
-/** The heading each kind of entry is listed under. */
-export const KIND_HEADINGS: Readonly<Record<EntryKind, string>> = {
-  tab: "Tabs",
-  space: "Spaces",
-  action: "Actions",
-  profile: "Profiles",
-  folder: "Recent folders",
-  theme: "Themes",
-  "space-theme": "Theme for this space",
-};
+/** The heading each kind of entry is listed under, in the language in force. */
+export function kindHeading(kind: EntryKind): string {
+  return t(`palette.group.${kind}`);
+}

@@ -1,5 +1,6 @@
 import { layoutPanes } from "@noren/model";
 import type { Id, Item, LayoutNode, Pane } from "@noren/model";
+import { t } from "./i18n";
 import { commandInfo, shortCwd } from "./pane-info";
 import type { CommandInfo } from "./pane-info";
 
@@ -52,17 +53,19 @@ export function isSplitItem(item: Item): boolean {
 
 /** Status of a pane as the sidebar words it: `running`, `idle` or `exit N` (`exit` with no code). */
 export function paneStatusText(pane: Pane): string {
-  if (pane.status === "running" || pane.runningCommand !== undefined) return "running";
+  if (pane.status === "running" || pane.runningCommand !== undefined) return t("pane.running");
   if (pane.status === "exited")
-    return pane.exitCode === undefined ? "exit" : `exit ${pane.exitCode}`;
-  return "idle";
+    return pane.exitCode === undefined
+      ? t("pane.exit")
+      : t("pane.exitCode", { code: pane.exitCode });
+  return t("pane.idle");
 }
 
 /** The title a pane goes by: its short folder, or `Terminal` when it has none. */
 export function paneTitleText(pane: Pane, defaultCwd?: string, home?: string): string {
   const cwd = pane.cwd ?? defaultCwd;
   const short = cwd !== undefined ? shortCwd(cwd, home) : "";
-  return short !== "" ? short : "Terminal";
+  return short !== "" ? short : t("pane.title");
 }
 
 /** One line of the pane list under a split item. */

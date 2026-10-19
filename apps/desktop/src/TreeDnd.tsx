@@ -38,6 +38,7 @@ import {
 } from "./sidebar-drop";
 import type { DragSource, DropTarget, OutsideDrop, PaneDrop, PaneZone } from "./sidebar-drop";
 import type { TreeRow } from "./sidebar-tree";
+import { t, useT } from "./i18n";
 import { spaceItemIds } from "./workspace-store";
 
 // Drag and drop of the sidebar on top of @dnd-kit. The library only moves the pointer (or the
@@ -49,9 +50,6 @@ const ACTIVATION_DISTANCE = 6;
 
 /** Id of the text that tells keyboard and screen reader users how to move a row; the list points to it. */
 export const DRAG_HELP_ID = "tree-drag-help";
-
-const INSTRUCTIONS =
-  "To move this item, press Space. Use the up and down arrow keys to choose a place, Space to drop it there, or Escape to cancel.";
 
 interface DragState {
   /** The place in the tree the dragged row would land in. */
@@ -144,7 +142,7 @@ function paneSourceOf(data: unknown): PaneSource | undefined {
   if (typeof data !== "object" || data === null) return undefined;
   const { kind, id, title } = data as { kind?: unknown; id?: unknown; title?: unknown };
   return kind === "pane" && typeof id === "string"
-    ? { paneId: id, title: typeof title === "string" ? title : "Terminal" }
+    ? { paneId: id, title: typeof title === "string" ? title : t("pane.title") }
     : undefined;
 }
 
@@ -168,8 +166,8 @@ interface Place {
 const NOWHERE: Place = { target: null, outside: null, pane: null, swap: null };
 
 const SIDE_WORDS = {
-  row: { before: "left", after: "right" },
-  column: { before: "above", after: "below" },
+  row: { before: "drag.side.left", after: "drag.side.right" },
+  column: { before: "drag.side.above", after: "drag.side.below" },
 } as const;
 
 interface TreeDndProps {
@@ -206,6 +204,8 @@ export function TreeDnd({
   onPaneSwap,
   children,
 }: TreeDndProps) {
+  // Draws again when the language changes: the instructions and announcements are read from `t`.
+  useT();
   const [place, setPlace] = useState<Place>(NOWHERE);
   const [status, setStatus] = useState("");
   /** What the ghost says: the name of the tab, group or pane being dragged. */
@@ -216,7 +216,7 @@ export function TreeDnd({
   /** The name of a tab or group, for what is read aloud and shown on the ghost. */
   const labelOf = (id: Id): string => {
     const item = space.items[id];
-    if (item) return item.title ?? `Tab ${order.indexOf(id) + 1}`;
+    if (item) return item.title ?? t("tree.tabDefault", { n: order.indexOf(id) + 1 });
     return treeGroups(space.tree).find((group) => group.id === id)?.name ?? id;
   };
 
@@ -225,18 +225,18 @@ export function TreeDnd({
     paneSourceOf(active.data.current)?.title ?? labelOf(String(active.id));
 
   const describe = ({ target: spot, outside: away, pane: beside, swap: other }: Place): string => {
-    if (other !== null) return "Swap places with this pane.";
-    if (beside) return `Open beside the pane, on the ${SIDE_WORDS[beside.dir][beside.side]}.`;
+    if (other !== null) return t("drag.swap");
+    if (beside) return t("drag.beside", { side: t(SIDE_WORDS[beside.dir][beside.side]) });
     if (away) {
-      if (away.kind === "pinned") return "Pin this tab.";
-      if (away.kind === "favorites") return "Add this tab to the favorites.";
+      if (away.kind === "pinned") return t("drag.pin");
+      if (away.kind === "favorites") return t("drag.favorite");
       const name = spaces.find((candidate) => candidate.id === away.spaceId)?.name ?? away.spaceId;
-      return `Move to space ${name}.`;
+      return t("drag.moveToSpace", { name });
     }
-    if (!spot) return "No change at this spot.";
+    if (!spot) return t("drag.noChange");
     const name = labelOf(spot.rowId);
-    if (spot.edge === "inside") return `Into group ${name}.`;
-    return spot.edge === "before" ? `Before ${name}.` : `After ${name}.`;
+    if (spot.edge === "inside") return t("drag.inside", { name });
+    return spot.edge === "before" ? t("drag.before", { name }) : t("drag.after", { name });
   };
 
   /** The place under the pointer or keyboard cursor, from the data of a drag event. */
@@ -355,11 +355,11 @@ export function TreeDnd({
   );
 
   const announcements: Announcements = {
-    onDragStart: ({ active }) => `Picked up ${labelOfActive(active)}.`,
+    onDragStart: ({ active }) => t("drag.pickedUp", { name: labelOfActive(active) }),
     onDragOver: () => undefined,
     onDragMove: () => undefined,
-    onDragEnd: ({ active }) => `Dropped ${labelOfActive(active)}.`,
-    onDragCancel: ({ active }) => `Move of ${labelOfActive(active)} cancelled.`,
+    onDragEnd: ({ active }) => t("drag.dropped", { name: labelOfActive(active) }),
+    onDragCancel: ({ active }) => t("drag.cancelled", { name: labelOfActive(active) }),
   };
 
   const onDragMove = (event: DragMoveEvent) => {
@@ -410,7 +410,10 @@ export function TreeDnd({
       <DndContext
         sensors={sensors}
         collisionDetection={rowCollision}
-        accessibility={{ announcements, screenReaderInstructions: { draggable: INSTRUCTIONS } }}
+        accessibility={{
+          announcements,
+          screenReaderInstructions: { draggable: t("drag.instructions") },
+        }}
         onDragStart={onDragStart}
         onDragMove={onDragMove}
         onDragEnd={onDragEnd}
@@ -425,7 +428,7 @@ export function TreeDnd({
           )}
         </DragOverlay>
         <span id={DRAG_HELP_ID} className="sr-only">
-          {INSTRUCTIONS}
+          {t("drag.instructions")}
         </span>
         <div className="sr-only" role="status" aria-live="polite" data-nr-part="drop-status">
           {status}
@@ -595,6 +598,7 @@ interface DropZonesProps {
  * button and only show while a drag is under way, so the sidebar at rest looks the same.
  */
 export function DropZones({ pinned, favorites }: DropZonesProps) {
+  const t = useT();
   const dragging = useDragging();
   if (!pinned && !favorites) return null;
   return (
@@ -604,8 +608,8 @@ export function DropZones({ pinned, favorites }: DropZonesProps) {
       data-nr-state={dragging ? "dragging" : undefined}
       aria-hidden="true"
     >
-      {pinned && <DropZone drop={{ kind: "pinned" }} label="Pinned" />}
-      {favorites && <DropZone drop={{ kind: "favorites" }} label="Favorites" />}
+      {pinned && <DropZone drop={{ kind: "pinned" }} label={t("tree.pinned")} />}
+      {favorites && <DropZone drop={{ kind: "favorites" }} label={t("tree.favorites")} />}
     </div>
   );
 }

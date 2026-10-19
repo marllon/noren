@@ -165,14 +165,17 @@ export { codeBlocksOf, markdownText, parseMarkdown } from "./markdown";
 export type { MdBlock, MdCode, MdInline } from "./markdown";
 export {
   ConfigSchema,
+  LANGUAGES,
+  LANGUAGE_SETTINGS,
   SIDEBAR_MAX_WIDTH,
+  SYSTEM_LANGUAGE,
   SYSTEM_THEME,
   SIDEBAR_MIN_WIDTH,
   configJsonSchema,
   describeConfigError,
   parseConfigText,
 } from "./config";
-export type { Config, ConfigError, ParseConfigResult } from "./config";
+export type { Config, ConfigError, LanguageSetting, ParseConfigResult } from "./config";
 export {
   BELL_STYLES,
   CURSOR_STYLES,

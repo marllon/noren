@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Pin, Plus } from "lucide-react";
 import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
 import type { GroupNode, Id, Space } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
+import { tabCount, useT } from "./i18n";
 import { indicatorLabels, summarizeItem } from "./pane-info";
 import type { ClickModifiers } from "./sidebar-tree";
 import { InlineName, TabBadges } from "./SidebarTree";
@@ -47,6 +48,7 @@ export function TabBar({
   onCancelEdit,
   onNewTab,
 }: TabBarProps) {
+  const t = useT();
   const order = spaceItemIds(space);
   const modifiersOf = (event: MouseEvent): ClickModifiers => ({
     toggle: event.ctrlKey || event.metaKey,
@@ -66,7 +68,7 @@ export function TabBar({
     const header =
       editing?.kind === "group" && editing.id === group.id ? (
         <InlineName
-          label="Group name"
+          label={t("tree.groupName")}
           initial={group.name}
           onCommit={(value, restoreFocus) => onCommitEdit(edit, value, restoreFocus)}
           onCancel={onCancelEdit}
@@ -100,7 +102,7 @@ export function TabBar({
           <span
             className="group-count"
             data-nr-part="group-count"
-            title={count === 1 ? "1 tab" : `${count} tabs`}
+            title={tabCount(count)}
             aria-hidden="true"
           >
             {count}
@@ -129,13 +131,13 @@ export function TabBar({
   const renderItem = (node: Extract<BarNode, { kind: "item" }>) => {
     const item = space.items[node.id];
     if (!item) return null;
-    const label = item.title ?? `Tab ${order.indexOf(node.id) + 1}`;
+    const label = item.title ?? t("tree.tabDefault", { n: order.indexOf(node.id) + 1 });
     const edit: Editing = { kind: "item", id: node.id };
     if (editing?.kind === "item" && editing.id === node.id) {
       return (
         <li key={node.id} role="none" className="bar-slot">
           <InlineName
-            label="Tab name"
+            label={t("tree.tabName")}
             initial={label}
             onCommit={(value, restoreFocus) => onCommitEdit(edit, value, restoreFocus)}
             onCancel={onCancelEdit}
@@ -204,16 +206,21 @@ export function TabBar({
   };
 
   return (
-    <nav className="tab-bar" aria-label="Tab bar" onKeyDown={onBarKeyDown}>
-      <ul className="bar-list bar-root" data-nr-part="tabbar" role="tablist" aria-label="Tabs">
+    <nav className="tab-bar" aria-label={t("tabBar.label")} onKeyDown={onBarKeyDown}>
+      <ul
+        className="bar-list bar-root"
+        data-nr-part="tabbar"
+        role="tablist"
+        aria-label={t("tree.tabs")}
+      >
         {barNodes(space).map(renderNode)}
       </ul>
       <button
         type="button"
         className="bar-new"
         data-nr-bar-control=""
-        aria-label="New tab"
-        title="New tab"
+        aria-label={t("tabBar.newTab")}
+        title={t("tabBar.newTab")}
         onClick={onNewTab}
       >
         <Plus size={14} aria-hidden="true" />

@@ -1,7 +1,7 @@
 import { THEMES } from "@noren/model";
 import { describe, expect, it } from "vitest";
 import { buildSpaceThemeEntries, searchEntries } from "./palette";
-import { USE_GLOBAL_THEME, spaceThemeOptions } from "./space-theme";
+import { spaceThemeOptions, useGlobalThemeLabel } from "./space-theme";
 
 describe("spaceThemeOptions", () => {
   it("lists the eight themes and Use global theme last", () => {
@@ -9,7 +9,7 @@ describe("spaceThemeOptions", () => {
     expect(options).toHaveLength(9);
     expect(options.slice(0, 8).map((option) => option.themeId)).toEqual(THEMES.map((t) => t.id));
     expect(options.slice(0, 8).map((option) => option.label)).toEqual(THEMES.map((t) => t.name));
-    expect(options[8]).toEqual({ themeId: null, label: USE_GLOBAL_THEME, current: true });
+    expect(options[8]).toEqual({ themeId: null, label: useGlobalThemeLabel(), current: true });
   });
 
   it("marks the theme of the space as the current one, and only it", () => {
@@ -33,7 +33,11 @@ describe("buildSpaceThemeEntries", () => {
   it("has one entry per option with unique ids", () => {
     expect(entries).toHaveLength(9);
     expect(new Set(entries.map((entry) => entry.id)).size).toBe(9);
-    expect(entries[8]).toMatchObject({ title: USE_GLOBAL_THEME, themeId: null, current: false });
+    expect(entries[8]).toMatchObject({
+      title: useGlobalThemeLabel(),
+      themeId: null,
+      current: false,
+    });
   });
 
   it("says which one is in use in the space", () => {

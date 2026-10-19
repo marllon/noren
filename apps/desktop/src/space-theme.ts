@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import type { Theme } from "./theme";
 
 // The choices a space offers for its own theme: the themes of the build, and "Use global theme" to
@@ -12,7 +13,8 @@ export interface SpaceThemeOption {
   current: boolean;
 }
 
-export const USE_GLOBAL_THEME = "Use global theme";
+/** The label of the choice that takes the space's own theme back, in the language in force. */
+export const useGlobalThemeLabel = (): string => t("spaceTheme.useGlobal");
 
 /**
  * The options in the order of `themes`, then "Use global theme" last. The current one is the theme
@@ -29,6 +31,6 @@ export function spaceThemeOptions(
       label: theme.name,
       current: theme.id === own,
     })),
-    { themeId: null, label: USE_GLOBAL_THEME, current: own === undefined },
+    { themeId: null, label: useGlobalThemeLabel(), current: own === undefined },
   ];
 }

@@ -1,6 +1,7 @@
 import { Ellipsis, Plus } from "lucide-react";
 import type { Id, Space } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
+import { useT } from "./i18n";
 import { marksWords, spaceMarks } from "./pane-info";
 import { MarkBadges } from "./SidebarTree";
 import { SpaceIcon } from "./SpaceIcon";
@@ -70,8 +71,9 @@ export function SpaceSwitcher({
   onNewSpace,
   onMenu,
 }: SpaceSwitcherProps) {
+  const t = useT();
   return (
-    <nav className="space-switcher" data-nr-part="space-switcher" aria-label="Spaces">
+    <nav className="space-switcher" data-nr-part="space-switcher" aria-label={t("spaces.nav")}>
       {spaces.map((space, index) => (
         <SpaceButton
           key={space.id}
@@ -85,8 +87,8 @@ export function SpaceSwitcher({
       <button
         type="button"
         className="space-button space-add"
-        aria-label="New space"
-        title="New space"
+        aria-label={t("spaces.new")}
+        title={t("spaces.new")}
         onClick={onNewSpace}
       >
         <Plus size={18} aria-hidden="true" />
@@ -94,8 +96,8 @@ export function SpaceSwitcher({
       <button
         type="button"
         className="space-button space-more"
-        aria-label="Space options"
-        title="Space options"
+        aria-label={t("spaces.options")}
+        title={t("spaces.options")}
         aria-haspopup="menu"
         onClick={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();

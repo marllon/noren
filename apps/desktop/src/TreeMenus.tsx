@@ -1,13 +1,11 @@
 import type { GroupNode, Id, Workspace } from "@noren/model";
 import { ContextMenu } from "./ContextMenu";
+import { useT } from "./i18n";
 import type { MenuEntry } from "./ContextMenu";
 import { itemMenuModel } from "./sidebar-tree";
 import type { MenuPoint } from "./SpaceMenu";
 import { activeSpaceOf } from "./workspace-store";
 import type { WorkspaceStore } from "./workspace-store";
-
-/** The default name of a group made from tabs; the name field opens right after so it is renamed. */
-export const NEW_GROUP_NAME = "New group";
 
 interface ItemContextMenuProps {
   store: WorkspaceStore;
@@ -54,6 +52,7 @@ export function ItemContextMenu({
   projectAction,
   outputActions,
 }: ItemContextMenuProps) {
+  const t = useT();
   const space = activeSpaceOf(workspace);
   const model = itemMenuModel(space, workspace.favorites, targets);
   const { dispatch, groupItems, closeItems, closeOthers } = store.getState();
@@ -68,15 +67,19 @@ export function ItemContextMenu({
       ? [
           {
             label: projectAction.running
-              ? `Stop ${projectAction.label}`
-              : `Run ${projectAction.label}`,
+              ? t("menu.stop", { name: projectAction.label })
+              : t("menu.run", { name: projectAction.label }),
             onSelect: run(projectAction.running ? projectAction.onStop : projectAction.onRun),
           },
         ]
       : []),
-    { label: "Rename", disabled: !model.single, onSelect: () => onRename(targets[0] ?? "") },
     {
-      label: model.allPinned ? "Unpin" : "Pin",
+      label: t("menu.rename"),
+      disabled: !model.single,
+      onSelect: () => onRename(targets[0] ?? ""),
+    },
+    {
+      label: model.allPinned ? t("menu.unpin") : t("menu.pin"),
       onSelect: run(
         each((itemId) => dispatch({ type: model.allPinned ? "item/unpin" : "item/pin", itemId })),
       ),
@@ -84,13 +87,13 @@ export function ItemContextMenu({
     ...(model.canReset
       ? [
           {
-            label: "Reset",
+            label: t("menu.reset"),
             onSelect: run(() => dispatch({ type: "item/reset", itemId: targets[0] ?? "" })),
           },
         ]
       : []),
     {
-      label: model.allFavorite ? "Remove from favorites" : "Add to favorites",
+      label: model.allFavorite ? t("menu.removeFavorite") : t("menu.addFavorite"),
       onSelect: run(
         each((itemId) =>
           dispatch({ type: model.allFavorite ? "item/unfavorite" : "item/favorite", itemId }),
@@ -98,38 +101,38 @@ export function ItemContextMenu({
       ),
     },
     {
-      label: "Add to new group",
+      label: t("menu.addToNewGroup"),
       disabled: !model.canGroup,
       onSelect: () => {
         onDone();
-        const groupId = groupItems(targets, NEW_GROUP_NAME);
+        const groupId = groupItems(targets, t("tree.newGroup"));
         if (groupId !== undefined) onGrouped(groupId);
       },
     },
     ...workspace.spaces
       .filter((other) => other.id !== space.id)
       .map((other, index): MenuEntry => ({
-        label: `Move to ${other.name}`,
+        label: t("menu.moveTo", { name: other.name }),
         separated: index === 0,
         onSelect: run(each((itemId) => dispatch({ type: "item/move", itemId, spaceId: other.id }))),
       })),
     ...(outputActions !== undefined && model.single
       ? [
           {
-            label: "Select command output",
+            label: t("menu.selectOutput"),
             separated: true,
             onSelect: run(outputActions.onSelect),
           },
-          { label: "Copy last command output", onSelect: run(outputActions.onCopy) },
+          { label: t("menu.copyOutput"), onSelect: run(outputActions.onCopy) },
         ]
       : []),
     {
-      label: model.single ? "Close" : `Close ${targets.length} tabs`,
+      label: model.single ? t("menu.close") : t("menu.closeMany", { count: targets.length }),
       separated: true,
       onSelect: run(() => closeItems(targets)),
     },
     {
-      label: "Close others",
+      label: t("menu.closeOthers"),
       disabled: model.others.length === 0,
       onSelect: run(() => closeOthers(targets)),
     },
@@ -137,7 +140,7 @@ export function ItemContextMenu({
 
   return (
     <ContextMenu
-      label={model.single ? "Tab options" : "Selected tabs options"}
+      label={model.single ? t("menu.tab") : t("menu.tabs")}
       point={point}
       entries={entries}
       onClose={onClose}
@@ -152,23 +155,24 @@ interface PaneContextMenuProps extends OutputActions {
 
 /** What the menu button of a pane header offers. */
 export function PaneContextMenu({ point, onClose, onSelect, onCopy }: PaneContextMenuProps) {
+  const t = useT();
   const entries: MenuEntry[] = [
     {
-      label: "Select command output",
+      label: t("menu.selectOutput"),
       onSelect: () => {
         onClose();
         onSelect();
       },
     },
     {
-      label: "Copy last command output",
+      label: t("menu.copyOutput"),
       onSelect: () => {
         onClose();
         onCopy();
       },
     },
   ];
-  return <ContextMenu label="Pane options" point={point} entries={entries} onClose={onClose} />;
+  return <ContextMenu label={t("menu.pane")} point={point} entries={entries} onClose={onClose} />;
 }
 
 interface FavoriteContextMenuProps {
@@ -180,16 +184,19 @@ interface FavoriteContextMenuProps {
 
 /** What a right click on a tile of the Favorites grid offers. */
 export function FavoriteContextMenu({ store, itemId, point, onClose }: FavoriteContextMenuProps) {
+  const t = useT();
   const entries: MenuEntry[] = [
     {
-      label: "Remove from favorites",
+      label: t("menu.removeFavorite"),
       onSelect: () => {
         onClose();
         store.getState().dispatch({ type: "item/unfavorite", itemId });
       },
     },
   ];
-  return <ContextMenu label="Favorite options" point={point} entries={entries} onClose={onClose} />;
+  return (
+    <ContextMenu label={t("menu.favorite")} point={point} entries={entries} onClose={onClose} />
+  );
 }
 
 interface GroupContextMenuProps {
@@ -208,23 +215,24 @@ export function GroupContextMenu({
   onClose,
   onRename,
 }: GroupContextMenuProps) {
+  const t = useT();
   const { dispatch } = store.getState();
   const run = (act: () => void) => () => {
     onClose();
     act();
   };
   const entries: MenuEntry[] = [
-    { label: "Rename", onSelect: () => onRename(group.id) },
+    { label: t("menu.rename"), onSelect: () => onRename(group.id) },
     {
-      label: group.collapsed ? "Expand" : "Collapse",
+      label: group.collapsed ? t("menu.expand") : t("menu.collapse"),
       onSelect: run(() =>
         dispatch({ type: "group/set-collapsed", groupId: group.id, collapsed: !group.collapsed }),
       ),
     },
     {
-      label: "Ungroup",
+      label: t("menu.ungroup"),
       onSelect: run(() => dispatch({ type: "group/ungroup", groupId: group.id })),
     },
   ];
-  return <ContextMenu label="Group options" point={point} entries={entries} onClose={onClose} />;
+  return <ContextMenu label={t("menu.group")} point={point} entries={entries} onClose={onClose} />;
 }

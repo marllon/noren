@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Group, Panel, Separator, useGroupRef } from "react-resizable-panels";
 import type { Layout } from "react-resizable-panels";
 import { menuPoint } from "./ContextMenu";
+import { useT } from "./i18n";
 import type { MenuPoint } from "./SpaceMenu";
 import { usePaneDrag, usePaneDrop } from "./TreeDnd";
 import {
@@ -110,6 +111,7 @@ interface PaneHeaderProps {
  * the handle that drags the pane onto the middle of another pane to swap them.
  */
 function PaneHeader({ pane, zoomed, actions, context }: PaneHeaderProps) {
+  const t = useT();
   const title = context.paneTitle(pane);
   const ZoomIcon = zoomed ? Minimize2 : Maximize2;
   // The pane swaps with the others of the tab on screen: with one pane there is nothing to swap.
@@ -128,7 +130,7 @@ function PaneHeader({ pane, zoomed, actions, context }: PaneHeaderProps) {
       <button
         type="button"
         className="pane-header-button"
-        aria-label="Pane menu"
+        aria-label={t("pane.menu")}
         aria-haspopup="menu"
         onClick={(event) => context.onPaneMenu(pane.id, menuPoint(event))}
       >
@@ -139,7 +141,7 @@ function PaneHeader({ pane, zoomed, actions, context }: PaneHeaderProps) {
           <button
             type="button"
             className="pane-header-button"
-            aria-label="Detach pane"
+            aria-label={t("pane.detach")}
             onClick={() => context.onDetachPane(pane.id)}
           >
             <SquareArrowOutUpRight size={12} aria-hidden="true" />
@@ -147,7 +149,7 @@ function PaneHeader({ pane, zoomed, actions, context }: PaneHeaderProps) {
           <button
             type="button"
             className="pane-header-button"
-            aria-label={zoomed ? "Restore pane" : "Zoom pane"}
+            aria-label={zoomed ? t("pane.restore") : t("pane.zoom")}
             aria-pressed={zoomed}
             onClick={() => context.onZoomPane(pane.id)}
           >
@@ -156,7 +158,7 @@ function PaneHeader({ pane, zoomed, actions, context }: PaneHeaderProps) {
           <button
             type="button"
             className="pane-header-button"
-            aria-label="Close pane"
+            aria-label={t("pane.close")}
             onClick={() => context.onClosePane(pane.id)}
           >
             <X size={12} aria-hidden="true" />

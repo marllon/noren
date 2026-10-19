@@ -6,6 +6,12 @@
       "description": "Where the JSON Schema of this file is, for the editor.",
       "type": "string"
     },
+    "language": {
+      "description": "The language of the interface: \"en\" (English), \"pt-BR\" (Brazilian Portuguese), or \"system\", which follows the language of the computer and falls back to English when Noren does not have it.",
+      "default": "system",
+      "type": "string",
+      "enum": ["system", "en", "pt-BR"]
+    },
     "appearance": {
       "type": "object",
       "properties": {

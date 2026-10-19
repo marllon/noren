@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from "react";
 import type { KeyboardEvent } from "react";
+import { useT } from "./i18n";
 
 interface ConfirmDialogProps {
   title: string;
@@ -23,6 +24,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const t = useT();
   const titleId = useId();
   const messageId = useId();
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -55,7 +57,7 @@ export function ConfirmDialog({
         {detail !== undefined && <pre className="dialog-detail">{detail}</pre>}
         <div className="dialog-actions">
           <button ref={cancelRef} type="button" onClick={onCancel}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button type="button" className={danger ? "danger" : undefined} onClick={onConfirm}>
             {confirmLabel}

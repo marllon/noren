@@ -33,6 +33,7 @@ const NO_SECTION_PROBLEMS = {
 };
 
 const EVERYTHING: Config = {
+  language: "pt-BR",
   appearance: {
     sidebar: { position: "right", width: 333, compact: true, keepOpen: true },
     density: "compact",
@@ -54,6 +55,7 @@ describe("settingsOf", () => {
       notifications: true,
       longCommandSeconds: 30,
       windowEffect: "none",
+      language: "system",
     });
   });
 
@@ -70,6 +72,7 @@ describe("settingsOf", () => {
       notifications: false,
       longCommandSeconds: 90,
       windowEffect: "mica",
+      language: "pt-BR",
     });
     expect(settingsOf({ keybindings: { preset: "browser" } })).toEqual({
       ...DEFAULT_SETTINGS,
@@ -182,6 +185,16 @@ describe("parseWidth and parseSeconds", () => {
 describe("planSave", () => {
   it("writes nothing for an untouched draft", () => {
     expect(planSave({}, {})).toEqual({ changes: [], problems: {}, ...NO_SECTION_PROBLEMS });
+  });
+
+  it("writes the language at the top of the file, and nothing when it is the one in force", () => {
+    expect(planSave({}, { language: "pt-BR" }).changes).toEqual([
+      { path: ["language"], value: "pt-BR" },
+    ]);
+    expect(planSave({ language: "pt-BR" }, { language: "pt-BR" }).changes).toEqual([]);
+    expect(planSave({ language: "pt-BR" }, { language: "system" }).changes).toEqual([
+      { path: ["language"], value: "system" },
+    ]);
   });
 
   it("writes only the settings that differ from the ones in force", () => {

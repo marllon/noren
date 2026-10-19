@@ -3,11 +3,14 @@ import { StrictMode } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { insideTauri } from "./backend";
+import { applyLanguageSetting } from "./i18n";
 import { perfMark } from "./perf-probe";
 import { quickPreviewEnabled, windowKindOf } from "./quick";
 import "./app.css";
 
 perfMark("page-script");
+// Until the settings file is read the language is the system's; `config-store.ts` follows the file.
+applyLanguageSetting(undefined);
 const root = document.getElementById("root");
 if (!root) {
   throw new Error("Missing #root element");

@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
-import { DEFAULT_WINDOW_EFFECT, WINDOW_EFFECT_LABELS } from "@noren/model";
+import { DEFAULT_WINDOW_EFFECT } from "@noren/model";
 import type { Backend, Config, WindowEffect, WindowEffectReport, WindowScheme } from "@noren/model";
+import { t } from "./i18n";
+import { effectName } from "./i18n/names";
 
 // The effect the window has. The one that is asked for is `appearance.window.effect` of the settings
 // file, painted dark or light like the theme in force (or like the system, when the theme
@@ -63,7 +65,7 @@ export function useWindowEffectReport(): WindowEffectReport | undefined {
 export function windowEffectNote(answer: WindowEffectReport | undefined): string {
   if (answer === undefined || answer.applied === answer.requested) return "";
   const why = answer.reason !== undefined && answer.reason !== "" ? ` ${answer.reason}` : "";
-  return `${WINDOW_EFFECT_LABELS[answer.requested]} was not applied, so the window stays opaque.${why}`;
+  return t("windowEffect.notApplied", { effect: effectName(answer.requested), reason: why });
 }
 
 /**

@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent } from "react";
+import { useT } from "./i18n";
 import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, widthAfterDrag, widthAfterKey } from "./layout";
 import type { SidebarSide } from "./layout";
 
@@ -25,6 +26,7 @@ export function SidebarResizer({
   onCommit,
   disabled = false,
 }: SidebarResizerProps) {
+  const t = useT();
   const drag = useRef<{ startX: number; startWidth: number; last: number; moved: boolean } | null>(
     null,
   );
@@ -71,12 +73,12 @@ export function SidebarResizer({
       data-nr-state={dragging ? "dragging" : undefined}
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize sidebar"
+      aria-label={t("window.resizeSidebar")}
       aria-valuemin={MIN_SIDEBAR_WIDTH}
       aria-valuemax={MAX_SIDEBAR_WIDTH}
       aria-valuenow={width}
       aria-disabled={disabled ? true : undefined}
-      title={disabled ? "The width cannot be saved while config.jsonc has a problem" : undefined}
+      title={disabled ? t("window.resizeBlocked") : undefined}
       tabIndex={disabled ? -1 : 0}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

@@ -67,7 +67,8 @@ import {
 } from "./sidebar-tree";
 import type { ClickModifiers, Selection } from "./sidebar-tree";
 import { sidebarMode } from "./layout";
-import { NOTHING_UNREAD_NOTICE, shortCwd } from "./pane-info";
+import { useLanguage, t, tabCount } from "./i18n";
+import { nothingUnreadNotice, shortCwd } from "./pane-info";
 import { peekLinesOfItem } from "./peek-source";
 import { configManager, useConfigState } from "./config-store";
 import { runLayoutCommand } from "./layout-actions";
@@ -414,7 +415,7 @@ function ItemView({
     paneTitle: (pane) => {
       const cwd = pane.cwd ?? space.defaults.cwd;
       const short = cwd !== undefined ? shortCwd(cwd, home) : "";
-      return short !== "" ? short : "Terminal";
+      return short !== "" ? short : t("pane.title");
     },
     renderPane: (pane) => (
       <PaneTerminal
@@ -468,7 +469,7 @@ function runCommand(store: WorkspaceStore, command: ActionCommand): string | und
       state.newTab();
       return undefined;
     case "last-unread":
-      return state.showLastUnread() ? undefined : NOTHING_UNREAD_NOTICE;
+      return state.showLastUnread() ? undefined : nothingUnreadNotice();
     case "font-zoom":
       // The font of every terminal of the window; the file keeps its size.
       zoomTerminalFont(command.change);
@@ -653,7 +654,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     } else {
       const item = space.items[target.id];
       // The placeholder ("Tab 3") is not a name the user chose; keep the title unlocked.
-      const placeholder = `Tab ${itemIds.indexOf(target.id) + 1}`;
+      const placeholder = t("tree.tabDefault", { n: itemIds.indexOf(target.id) + 1 });
       if (item && !(item.title === undefined && value.trim() === placeholder)) {
         dispatch({ type: "item/rename", itemId: target.id, title: value });
       }
@@ -1384,6 +1385,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
   }, []);
 
   const keybindings = useKeybindings();
+  // The screens say their words with `t`: a change of language draws the shell again.
+  const language = useLanguage();
   // The quick terminal's global shortcut follows the chord in force: registered at start and again
   // whenever the shortcuts screen or the preset changes it. A refusal (another program has the key)
   // is a notice.
@@ -1423,6 +1426,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
       themeChoice,
       themes,
       aiOn,
+      language,
     ],
   );
 
@@ -1699,12 +1703,15 @@ function Shell({ store }: { store: WorkspaceStore }) {
       />
     );
   } else if (overlaySpace !== undefined && overlay?.kind === "delete") {
-    const tabCount = spaceItemIds(overlaySpace).length;
+    const tabsInSpace = spaceItemIds(overlaySpace).length;
     overlayNode = (
       <ConfirmDialog
-        title="Delete space"
-        message={`Delete "${overlaySpace.name}"? Its ${tabCount === 1 ? "1 tab" : `${tabCount} tabs`} will be closed and the shells running in them will end.`}
-        confirmLabel="Delete space"
+        title={t("deleteSpace.title")}
+        message={t("deleteSpace.message", {
+          name: overlaySpace.name,
+          tabs: tabCount(tabsInSpace),
+        })}
+        confirmLabel={t("deleteSpace.confirm")}
         onCancel={close}
         onConfirm={() => {
           deleteSpace(overlaySpace.id);
@@ -1719,10 +1726,16 @@ function Shell({ store }: { store: WorkspaceStore }) {
     overlay !== null || pending !== null || settingsOpen || libraryOpen || commandAsk !== undefined;
   const confirmNode = pending !== null && (
     <ConfirmDialog
-      title="Run project action"
-      message={`Run "${pending.action.label}"? Noren will type the command below into the tab "${pending.action.tab}" and press Enter.${pending.action.stop !== undefined ? " The second line runs when you stop it." : ""} It comes from the project's .noren/actions.json.`}
+      title={t("runAction.title")}
+      message={t(
+        pending.action.stop !== undefined ? "runAction.messageWithStop" : "runAction.message",
+        {
+          label: pending.action.label,
+          tab: pending.action.tab,
+        },
+      )}
       detail={consentText(pending.action)}
-      confirmLabel="Run"
+      confirmLabel={t("runAction.confirm")}
       danger={false}
       onCancel={projectActions.cancelPending}
       onConfirm={projectActions.confirmPending}
@@ -1769,7 +1782,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
             className="sidebar"
             data-nr-part="sidebar"
             data-nr-state={autoHide ? (shown ? "revealed" : "hidden") : undefined}
-            aria-label="Sidebar"
+            aria-label={t("window.sidebar")}
             style={{ width: layout.width }}
             {...reveal.sidebar}
           >
@@ -1805,7 +1818,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
             )}
             <div className="sidebar-foot">
               <button type="button" className="new-tab" onClick={() => newTab()}>
-                New tab
+                {t("window.newTab")}
               </button>
               <DropZones pinned={space.pinned.length === 0} favorites={favorites.length === 0} />
             </div>
@@ -1819,7 +1832,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
           </aside>
           <div className="main">
             {tabsOnTop && <TabBar {...treeProps} onNewTab={() => newTab()} />}
-            <section className="content" aria-label="Content">
+            <section className="content" aria-label={t("window.content")}>
               {workspace.spaces.map((s) => {
                 const firstId = itemShownIn(s);
                 return (
@@ -1873,7 +1886,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
           type="file"
           hidden
           tabIndex={-1}
-          aria-label="Color scheme file"
+          aria-label={t("window.schemeFile")}
           data-nr-part="scheme-file"
           onChange={onSchemeFile}
         />
@@ -1897,7 +1910,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
             key={paletteMode}
             entries={paletteEntries}
             {...(paletteMode === "space-theme"
-              ? { placeholder: `Theme for ${space.name}  (Enter to keep, Esc to cancel)` }
+              ? { placeholder: t("palette.placeholderSpaceTheme", { name: space.name }) }
               : {})}
             onRun={runPaletteEntry}
             onClose={closePalette}

@@ -15,18 +15,19 @@ import { menuPoint } from "./ContextMenu";
 import { PeekPopover, peekId, usePeek } from "./Peek";
 import { layoutThumbnail, paneEntries } from "./item-panes";
 import type { PaneEntry } from "./item-panes";
+import { tabCount, t, useT } from "./i18n";
 import {
-  BELL_LABEL,
-  RUNNING_LABEL,
-  UNREAD_LABEL,
+  bellLabel,
   commandWords,
   exitText,
   failureLabel,
   groupMarks,
   indicatorLabels,
   marksWords,
+  runningLabel,
   shortCwd,
   summarizeItem,
+  unreadLabel,
 } from "./pane-info";
 import type { CommandInfo, ItemSummary, UnreadMarks } from "./pane-info";
 import type { MenuPoint } from "./SpaceMenu";
@@ -104,12 +105,12 @@ export function MarkBadges({ marks }: { marks: UnreadMarks }) {
   return (
     <>
       {marks.unread && (
-        <span className="tab-badge" data-nr-indicator="unread" title={UNREAD_LABEL}>
+        <span className="tab-badge" data-nr-indicator="unread" title={unreadLabel()}>
           <span className="unread-dot" />
         </span>
       )}
       {marks.bell && (
-        <span className="tab-badge" data-nr-indicator="bell" title={BELL_LABEL}>
+        <span className="tab-badge" data-nr-indicator="bell" title={bellLabel()}>
           <Bell size={12} aria-hidden="true" />
         </span>
       )}
@@ -122,7 +123,7 @@ export function TabBadges({ summary }: { summary: ItemSummary }) {
   return (
     <span className="tab-badges" aria-hidden="true">
       {summary.running && (
-        <span className="tab-badge" data-nr-indicator="running" title={RUNNING_LABEL}>
+        <span className="tab-badge" data-nr-indicator="running" title={runningLabel()}>
           <LoaderCircle size={12} className="spin" aria-hidden="true" />
         </span>
       )}
@@ -150,7 +151,7 @@ function CommandLine({ info, part }: { info: CommandInfo; part: string }) {
       )}
       {info.state === "running" ? (
         <span className="command-code" data-nr-part={`${part}-code`}>
-          running
+          {t("pane.running")}
         </span>
       ) : (
         <>
@@ -207,7 +208,7 @@ function PaneList({ itemId, label, entries, rowProps, onPaneClick }: PaneListPro
       className="item-panes"
       data-nr-part="item-panes"
       role="group"
-      aria-label={`Panes of ${label}`}
+      aria-label={t("tree.panesOf", { name: label })}
     >
       {entries.map((entry) => (
         <li key={entry.paneId} role="none">
@@ -285,6 +286,7 @@ export function InlineName({ label, initial, onCommit, onCancel }: InlineNamePro
  * dropped to pin it. It is only rendered when something is pinned (the drop zone stands in then).
  */
 function PinnedList({ children }: { children: ReactNode }) {
+  const t = useT();
   const drop = useOutsideDrop({ kind: "pinned" });
   return (
     <li
@@ -294,7 +296,7 @@ function PinnedList({ children }: { children: ReactNode }) {
       data-nr-part="pinned-list"
       data-nr-state={drop.over ? "over" : undefined}
     >
-      <ul className="pinned-list" role="group" aria-label="Pinned">
+      <ul className="pinned-list" role="group" aria-label={t("tree.pinned")}>
         {children}
       </ul>
     </li>
@@ -324,6 +326,7 @@ export function SidebarTree({
   onCancelEdit,
   onPeek,
 }: SidebarTreeProps) {
+  const t = useT();
   const order = spaceItemIds(space);
   const peek = usePeek(onPeek ?? noPeek);
   // A peek whose tab left the list (closed, moved to another space) goes with it.
@@ -445,7 +448,7 @@ export function SidebarTree({
         return (
           <li key={group.id} role="none" style={indent}>
             <InlineName
-              label="Group name"
+              label={t("tree.groupName")}
               initial={group.name}
               onCommit={(value, restoreFocus) => onCommitEdit(edit, value, restoreFocus)}
               onCancel={onCancelEdit}
@@ -455,7 +458,7 @@ export function SidebarTree({
       }
       const marks = groupMarks(space, group);
       const markWords = marksWords(marks);
-      const countWords = count === 1 ? "1 tab" : `${count} tabs`;
+      const countWords = tabCount(count);
       // The button is named by the group name alone (read from its content); the number of tabs and
       // the marks are its description.
       const words = [countWords, ...markWords];
@@ -516,13 +519,13 @@ export function SidebarTree({
 
     const item = space.items[row.id];
     if (!item) return null;
-    const label = item.title ?? `Tab ${order.indexOf(row.id) + 1}`;
+    const label = item.title ?? t("tree.tabDefault", { n: order.indexOf(row.id) + 1 });
     const edit: Editing = { kind: "item", id: row.id };
     if (editing?.kind === "item" && editing.id === row.id) {
       return (
         <li key={row.id} role="none" style={indent}>
           <InlineName
-            label="Tab name"
+            label={t("tree.tabName")}
             initial={label}
             onCommit={(value, restoreFocus) => onCommitEdit(edit, value, restoreFocus)}
             onCancel={onCancelEdit}
@@ -537,8 +540,8 @@ export function SidebarTree({
     // The button is named by the title alone; the rest is read as its description.
     const words = [
       ...indicatorLabels(summary),
-      ...(cwdText !== "" ? [`Folder ${cwdText}`] : []),
-      ...(summary.gitBranch !== undefined ? [`Branch ${summary.gitBranch}`] : []),
+      ...(cwdText !== "" ? [t("tree.folder", { path: cwdText })] : []),
+      ...(summary.gitBranch !== undefined ? [t("tree.branch", { name: summary.gitBranch })] : []),
       ...(summary.command !== undefined ? [commandWords(summary.command)] : []),
     ];
     const descriptionId = `tab-info-${row.id}`;
@@ -619,7 +622,7 @@ export function SidebarTree({
             tabIndex={-1}
             aria-hidden="true"
             aria-expanded={expanded}
-            aria-label={expanded ? "Hide panes" : "Show panes"}
+            aria-label={expanded ? t("tree.hidePanes") : t("tree.showPanes")}
             onClick={() => toggleFolded(row.id)}
           >
             {expanded ? (
@@ -668,7 +671,7 @@ export function SidebarTree({
         ref={treeRef}
         className="tab-list"
         role="tree"
-        aria-label="Tabs"
+        aria-label={t("tree.tabs")}
         aria-multiselectable="true"
         aria-describedby={DRAG_HELP_ID}
         onKeyDown={onTreeKeyDown}

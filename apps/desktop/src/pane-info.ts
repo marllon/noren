@@ -1,5 +1,6 @@
 import { layoutPanes, treeItemIds } from "@noren/model";
 import type { GroupNode, Item, Pane, Space } from "@noren/model";
+import { t } from "./i18n";
 
 const ELLIPSIS = "…";
 
@@ -104,15 +105,19 @@ export function commandInfo(pane: Pane | undefined): CommandInfo | undefined {
 
 /** The exit code of a command as the sidebar writes it, `exit 1`; empty while it runs or when unknown. */
 export function exitText(info: CommandInfo): string {
-  return info.exitCode === undefined ? "" : `exit ${info.exitCode}`;
+  return info.exitCode === undefined ? "" : t("pane.exitCode", { code: info.exitCode });
 }
 
 /** The command in words for assistive technology: `Running npm test`, `Last command npm test, exit 1, 2.5s`. */
 export function commandWords(info: CommandInfo): string {
   if (info.state === "running")
-    return info.text !== undefined ? `Running ${info.text}` : "Running a command";
+    return info.text !== undefined
+      ? t("pane.runningCommand", { command: info.text })
+      : t("pane.runningSome");
   const parts = [
-    info.text !== undefined ? `Last command ${info.text}` : "Last command",
+    info.text !== undefined
+      ? t("pane.lastCommand", { command: info.text })
+      : t("pane.lastCommandBare"),
     ...(info.exitCode !== undefined ? [exitText(info)] : []),
     ...(info.duration !== undefined ? [info.duration] : []),
   ];
@@ -160,19 +165,19 @@ export function summarizeItem(item: Item, defaultCwd?: string): ItemSummary {
 }
 
 /** Tooltip of the running indicator. */
-export const RUNNING_LABEL = "Running";
+export const runningLabel = (): string => t("pane.runningLabel");
 /** Tooltip of the unread indicator. */
-export const UNREAD_LABEL = "Unread output";
+export const unreadLabel = (): string => t("pane.unreadLabel");
 /** Tooltip of the bell indicator. */
-export const BELL_LABEL = "Bell";
+export const bellLabel = (): string => t("pane.bellLabel");
 
 /** Tooltip of the error indicator. */
 export function failureLabel(code: number | null): string {
-  return code === null ? "Exited with an error" : `Exited with code ${code}`;
+  return code === null ? t("pane.exitedError") : t("pane.exitedCode", { code });
 }
 
 /** Notice of the shortcut that goes to the last unread tab when there is none. */
-export const NOTHING_UNREAD_NOTICE = "Nothing unread";
+export const nothingUnreadNotice = (): string => t("pane.nothingUnread");
 
 /** The unread and bell marks of the panes below a group or a space. */
 export interface UnreadMarks {
@@ -197,15 +202,15 @@ export function spaceMarks(space: Space): UnreadMarks {
 
 /** The marks of a group or a space in words, for assistive technology. */
 export function marksWords(marks: UnreadMarks): string[] {
-  return [...(marks.unread ? [UNREAD_LABEL] : []), ...(marks.bell ? [BELL_LABEL] : [])];
+  return [...(marks.unread ? [unreadLabel()] : []), ...(marks.bell ? [bellLabel()] : [])];
 }
 
 /** The indicators of a summary in words, in the order the sidebar draws them. */
 export function indicatorLabels(summary: ItemSummary): string[] {
   return [
-    ...(summary.running ? [RUNNING_LABEL] : []),
+    ...(summary.running ? [runningLabel()] : []),
     ...(summary.failed !== undefined ? [failureLabel(summary.failed)] : []),
-    ...(summary.unread ? [UNREAD_LABEL] : []),
-    ...(summary.bell ? [BELL_LABEL] : []),
+    ...(summary.unread ? [unreadLabel()] : []),
+    ...(summary.bell ? [bellLabel()] : []),
   ];
 }

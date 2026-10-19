@@ -2,7 +2,8 @@ import { commandRequestOf } from "@noren/model";
 import { Command } from "cmdk";
 import { useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { KIND_HEADINGS, searchEntries } from "./palette";
+import { useT } from "./i18n";
+import { kindHeading, searchEntries } from "./palette";
 import type { EntryKind, PaletteEntry } from "./palette";
 
 interface CommandPaletteProps {
@@ -56,6 +57,7 @@ export function CommandPalette({
   onAskCommand,
   placeholder,
 }: CommandPaletteProps) {
+  const t = useT();
   const [query, setQuery] = useState("");
   // The highlighted entry is controlled: `cmdk` only reports a change of it when it is.
   const [highlighted, setHighlighted] = useState("");
@@ -96,13 +98,13 @@ export function CommandPalette({
         data-nr-part="palette"
         role="dialog"
         aria-modal="true"
-        aria-label="Command palette"
+        aria-label={t("palette.label")}
         onKeyDown={onKeyDown}
       >
         <Command
           shouldFilter={false}
           loop
-          label="Command palette"
+          label={t("palette.label")}
           value={highlighted}
           onValueChange={onValueChange}
         >
@@ -112,16 +114,14 @@ export function CommandPalette({
             onValueChange={setQuery}
             placeholder={
               placeholder ??
-              (onAskCommand !== undefined
-                ? "Search tabs, spaces and commands  (> commands, @ tabs, # spaces, ? ask for a command)"
-                : "Search tabs, spaces and commands  (> commands, @ tabs, # spaces)")
+              (onAskCommand !== undefined ? t("palette.placeholderAsk") : t("palette.placeholder"))
             }
           />
           <Command.List>
             {request !== undefined ? (
               request === "" ? (
                 <p className="palette-hint" data-nr-part="palette-ask-hint">
-                  Type what you want to do, such as ? list the biggest files here
+                  {t("palette.askHint")}
                 </p>
               ) : (
                 <Command.Item
@@ -130,18 +130,18 @@ export function CommandPalette({
                   data-nr-kind="ask-command"
                   onSelect={() => onAskCommand?.(request)}
                 >
-                  <span className="palette-title">Ask for a command: {request}</span>
-                  <span className="palette-detail">Shows what will be sent first</span>
+                  <span className="palette-title">{t("palette.askItem", { request })}</span>
+                  <span className="palette-detail">{t("palette.askDetail")}</span>
                 </Command.Item>
               )
             ) : (
-              <Command.Empty>No results</Command.Empty>
+              <Command.Empty>{t("palette.empty")}</Command.Empty>
             )}
             {KINDS.map((kind) => {
               const group = ofKind(results, kind);
               if (group.length === 0) return null;
               return (
-                <Command.Group key={kind} heading={KIND_HEADINGS[kind]}>
+                <Command.Group key={kind} heading={kindHeading(kind)}>
                   {group.map((entry) => (
                     <Command.Item
                       key={entry.id}

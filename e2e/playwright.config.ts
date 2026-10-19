@@ -8,7 +8,9 @@ export default defineConfig({
   testMatch: "**/*.spec.ts",
   outputDir: "../test-results",
   reporter: [["list"]],
-  use: { baseURL: url },
+  // The tests and the visual baselines read the interface in English: with "language" on "system"
+  // the browser's language decides, so it is fixed here (the language tests set their own).
+  use: { baseURL: url, locale: "en-US" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     command: `pnpm --filter @noren/desktop exec vite preview --host 127.0.0.1 --port ${port} --strictPort`,

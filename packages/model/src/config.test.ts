@@ -344,3 +344,18 @@ describe("parseConfigText properties", () => {
     );
   });
 });
+
+describe("the language setting", () => {
+  it("takes system, en and pt-BR, and nothing else", () => {
+    for (const language of ["system", "en", "pt-BR"]) {
+      expect(parseConfigText(`{ "language": "${language}" }`)).toEqual({
+        ok: true,
+        config: { language },
+      });
+    }
+    const [error] = errorsOf('{ "language": "fr" }');
+    expect(error?.path).toBe("language");
+    expect(error?.line).toBe(1);
+    expect(errorsOf('{ "language": 3 }')[0]?.path).toBe("language");
+  });
+});

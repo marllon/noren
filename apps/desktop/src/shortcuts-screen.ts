@@ -1,6 +1,8 @@
 // The pure parts of the shortcuts screen: the rows it lists, the search over them, what a recorded
 // key press may become and the check that refuses a chord another action already holds.
 
+import { t } from "./i18n";
+import { actionName, categoryName } from "./i18n/names";
 import { ACTIONS, chordOf, findConflicts, isChord, resolveBindings } from "./keybindings";
 import type { ActionDef, Keybindings, Preset, ShortcutEvent } from "./keybindings";
 
@@ -49,8 +51,8 @@ export function shortcutRows(keybindings: Keybindings): ShortcutRow[] {
   const refused = new Set(rejected.map((rejection) => rejection.actionId));
   return ACTIONS.map((action) => ({
     id: action.id,
-    title: action.title,
-    category: action.category,
+    title: actionName(action.id, action.title),
+    category: categoryName(action.category),
     chord: chords[action.id],
     presetChord: action.chords[keybindings.preset],
     overridden:
@@ -96,11 +98,11 @@ export function recordedKey(event: ShortcutEvent): RecordedKey {
   ) {
     return { kind: "cancel" };
   }
-  if (event.metaKey) return { kind: "invalid", hint: "The Meta key cannot be part of a shortcut." };
+  if (event.metaKey) return { kind: "invalid", hint: t("shortcuts.metaHint") };
   const chord = chordOf(event);
   if (chord === undefined) return { kind: "wait" };
   if (!isChord(chord)) {
-    return { kind: "invalid", hint: "Hold Ctrl or Alt together with a key." };
+    return { kind: "invalid", hint: t("shortcuts.modifierHint") };
   }
   return { kind: "chord", chord };
 }

@@ -2,6 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Copy, Minus, Settings, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { insideTauri } from "./backend";
+import { useT } from "./i18n";
 import { openSettings } from "./settings-ui";
 
 /** macOS keeps its native buttons (title bar overlay); Windows and Linux get our own. */
@@ -14,6 +15,7 @@ function windowAction(run: (win: ReturnType<typeof getCurrentWindow>) => Promise
 }
 
 function WindowControls() {
+  const t = useT();
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
@@ -44,7 +46,7 @@ function WindowControls() {
       <button
         type="button"
         className="window-button"
-        aria-label="Minimize"
+        aria-label={t("titleBar.minimize")}
         onClick={() => windowAction((win) => win.minimize())}
       >
         <Minus size={14} aria-hidden="true" />
@@ -52,7 +54,7 @@ function WindowControls() {
       <button
         type="button"
         className="window-button"
-        aria-label={maximized ? "Restore" : "Maximize"}
+        aria-label={maximized ? t("titleBar.restore") : t("titleBar.maximize")}
         onClick={() => windowAction((win) => win.toggleMaximize())}
       >
         {maximized ? (
@@ -64,7 +66,7 @@ function WindowControls() {
       <button
         type="button"
         className="window-button window-close"
-        aria-label="Close"
+        aria-label={t("titleBar.close")}
         onClick={() => windowAction((win) => win.close())}
       >
         <X size={14} aria-hidden="true" />
@@ -75,6 +77,7 @@ function WindowControls() {
 
 /** Own title bar: the window has no native frame. The empty area drags the window. */
 export function TitleBar() {
+  const t = useT();
   return (
     <header className={onMac ? "titlebar titlebar-mac" : "titlebar"} data-tauri-drag-region>
       <span className="titlebar-title" data-tauri-drag-region>
@@ -84,7 +87,7 @@ export function TitleBar() {
       <button
         type="button"
         className="window-button settings-button"
-        aria-label="Settings"
+        aria-label={t("titleBar.settings")}
         onClick={openSettings}
       >
         <Settings size={14} aria-hidden="true" />

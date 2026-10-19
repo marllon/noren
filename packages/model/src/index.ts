@@ -9,6 +9,15 @@ export type {
   Unsubscribe,
 } from "./backend";
 export type { Action, ActionType, Placement, ReducerContext, SpaceItemsFate } from "./actions";
+export { ACTIONS_FILE_PATH, parseActionsFile } from "./actions-file";
+export type { ParseActionsResult, ProjectAction } from "./actions-file";
+export { createProjectActions } from "./project-actions";
+export type {
+  ActionStatus,
+  ProjectActions,
+  ProjectActionsOptions,
+  RunResult,
+} from "./project-actions";
 export { ManualClock } from "./clock";
 export type { Clock } from "./clock";
 export { createDefaultWorkspace } from "./default-workspace";

@@ -21,6 +21,16 @@ interface ItemContextMenuProps {
   onRename(itemId: Id): void;
   /** A group was made from the tabs. */
   onGrouped(groupId: Id): void;
+  /** Set when the (single) tab is the one a project action runs in: the menu offers Run or Stop. */
+  projectAction?: ItemProjectAction;
+}
+
+/** The project action whose tab a menu is open on. */
+export interface ItemProjectAction {
+  label: string;
+  running: boolean;
+  onRun(): void;
+  onStop(): void;
 }
 
 /** What a right click on a tab (or on a multi-selection) offers. */
@@ -33,6 +43,7 @@ export function ItemContextMenu({
   onDone,
   onRename,
   onGrouped,
+  projectAction,
 }: ItemContextMenuProps) {
   const space = activeSpaceOf(workspace);
   const model = itemMenuModel(space, workspace.favorites, targets);
@@ -44,6 +55,16 @@ export function ItemContextMenu({
   const each = (action: (itemId: Id) => void) => () => targets.forEach(action);
 
   const entries: MenuEntry[] = [
+    ...(projectAction !== undefined && model.single
+      ? [
+          {
+            label: projectAction.running
+              ? `Stop ${projectAction.label}`
+              : `Run ${projectAction.label}`,
+            onSelect: run(projectAction.running ? projectAction.onStop : projectAction.onRun),
+          },
+        ]
+      : []),
     { label: "Rename", disabled: !model.single, onSelect: () => onRename(targets[0] ?? "") },
     {
       label: model.allPinned ? "Unpin" : "Pin",

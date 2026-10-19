@@ -31,8 +31,15 @@ A file that is not valid JSON, misses a field, has a field of the wrong type or 
 ## What the actions do
 
 - **Run** shows the tab named by `tab` in the space, opening it first if it does not exist, and types `command` and Enter into it. If the action is already running, only the tab is shown.
-- **Stop** with a `stop` command runs that command in a short process with no tab, in the default folder of the space. Without `stop`, it ends the session of the tab.
+- **Stop** with a `stop` command runs that command in a short process with no tab, in the default folder of the space; when it ends with code 0, the sessions of the tab end too. If it fails, the sessions stay and Noren shows why. Without `stop`, it ends the session of the tab.
 - **Status** is _running_ while the session of the action's tab is alive, and _idle_ when there is no tab or its session has ended.
+
+## In the interface
+
+- **Space header.** The sidebar shows a header above the tabs, with the name of the space and one row per action: a running indicator, the label and a **Start** or **Stop** button. It shows only for the active space, and only when that space has a default folder and a valid file with at least one action. A missing, unreadable or invalid file shows no header and no error. The header follows the file: it appears, changes or goes away within about 2 seconds of the file changing. Only the folder of the active space is watched.
+- **Tab menu.** The context menu of the tab an action runs in starts with **Run _label_** or **Stop _label_**.
+- **First run.** The first run of an action in a space asks first. The dialog shows the label and the exact command, and the stop command on a second line when there is one. **Cancel** (or Esc) runs nothing. The answer is remembered per space and action, together with the confirmed text: if the file later changes the `command` or the `stop`, Noren asks again. Changing only the label or the tab does not. Stopping never asks. The answer is kept in the browser storage of the app under `noren.ui.actionConsent` until the settings file (NOR-F8-01) takes it over.
+- **Web mode and tests.** The web build reads the file texts from the browser storage key `noren.web.actions`, a JSON object from folder to text, so tests can seed a file before the page loads and change it while it runs.
 
 ## Where the file is read and how stop runs
 

@@ -21,7 +21,7 @@ function must<T>(value: T | undefined): T {
 }
 
 /** A workspace store, a fake backend and the executor on top. `mount` plays the part of the UI. */
-function setup() {
+function setup(failStop?: Error) {
   const { ctx } = testContext();
   const backend = new FakeBackend();
   const first = createDefaultWorkspace();
@@ -43,6 +43,7 @@ function setup() {
     dispatch,
     backend,
     runStop: async (cwd, command) => {
+      if (failStop) throw failStop;
       stops.push({ cwd, command });
     },
   });
@@ -252,11 +253,35 @@ describe("project actions: stop", () => {
     return t;
   }
 
-  it("runs the stop command in the folder of the space and leaves the tab alone", async () => {
+  it("runs the stop command in the folder of the space, then ends the sessions of the tab", async () => {
     const t = await running(loop);
+    const session = t.sessionOf("loop");
     await t.actions.stop(t.spaceId, loop);
     expect(t.stops).toEqual([{ cwd: "/proj", command: "loop parar" }]);
+    expect(t.backend.callsTo("kill").map((call) => call.args)).toEqual([[session]]);
+    expect(t.actions.status(t.spaceId, loop)).toBe("idle");
+  });
+
+  it("opens the tab again on the next run after a stop command ended it", async () => {
+    const t = await running(loop);
+    await t.actions.stop(t.spaceId, loop);
+    const next = t.actions.run(t.spaceId, loop);
+    await settle();
+    await t.mount();
+    expect(await next).toBe("started");
+    expect(t.tabsTitled("loop")).toHaveLength(1);
+    expect(t.actions.status(t.spaceId, loop)).toBe("running");
+  });
+
+  it("keeps the sessions and rejects when the stop command fails", async () => {
+    const t = setup(new Error('The stop command "loop parar" ended with code 3'));
+    const run = t.actions.run(t.spaceId, loop);
+    await settle();
+    await t.mount();
+    await run;
+    await expect(t.actions.stop(t.spaceId, loop)).rejects.toThrow(/code 3/);
     expect(t.backend.callsTo("kill")).toHaveLength(0);
+    expect(t.actions.status(t.spaceId, loop)).toBe("running");
   });
 
   it("ends the session of the tab when there is no stop command", async () => {
@@ -281,6 +306,20 @@ describe("project actions: stop", () => {
     t.dispatch({ type: "space/set-defaults", spaceId: t.spaceId, cwd: " " });
     await expect(t.actions.stop(t.spaceId, loop)).rejects.toThrow(/no folder/);
     expect(t.stops).toHaveLength(0);
+  });
+});
+
+describe("project actions: tabOf", () => {
+  it("finds the tab the action opened, and nothing before there is one", async () => {
+    const t = setup();
+    expect(t.actions.tabOf(t.spaceId, dev)).toBeUndefined();
+    expect(t.actions.tabOf("nope", dev)).toBeUndefined();
+    const run = t.actions.run(t.spaceId, dev);
+    await settle();
+    await t.mount();
+    await run;
+    expect(t.actions.tabOf(t.spaceId, dev)).toBe(t.tabsTitled("dev")[0]?.id);
+    expect(t.actions.tabOf(t.spaceId, loop)).toBeUndefined();
   });
 });
 

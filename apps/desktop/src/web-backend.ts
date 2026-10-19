@@ -3,6 +3,12 @@ import { FakeBackend } from "@noren/model";
 /** Key of `state.json` in the browser's storage (web mode only). */
 export const WEB_STATE_KEY = "noren.web.state";
 
+/**
+ * Key of the `.noren/actions.json` texts in web mode: a JSON object from folder to file text. The
+ * e2e tests seed it before the page loads, and change it to see the file reload.
+ */
+export const WEB_ACTIONS_KEY = "noren.web.actions";
+
 export type StateStorage = Pick<Storage, "getItem" | "setItem">;
 
 /**
@@ -34,6 +40,24 @@ export class WebBackend extends FakeBackend {
     } catch {
       // Storage is blocked or full: the memory copy still serves this page load.
     }
+  }
+
+  /** The text seeded under `WEB_ACTIONS_KEY` for the folder, else the in-memory file. */
+  override async readActionsFile(cwd: string): Promise<string | null> {
+    const inMemory = await super.readActionsFile(cwd);
+    try {
+      const raw = this.#storage.getItem(WEB_ACTIONS_KEY);
+      if (raw !== null) {
+        const files: unknown = JSON.parse(raw);
+        if (typeof files === "object" && files !== null && !Array.isArray(files)) {
+          const text = (files as Record<string, unknown>)[cwd];
+          if (typeof text === "string") return text;
+        }
+      }
+    } catch {
+      // Storage is blocked or the seed is not JSON: fall back to the in-memory file.
+    }
+    return inMemory;
   }
 
   /** Keeps the broken text under a key of its own and leaves `state.json` for the next save. */

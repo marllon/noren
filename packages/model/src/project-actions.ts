@@ -35,13 +35,20 @@ export interface ProjectActions {
    */
   run(spaceId: Id, action: ProjectAction): Promise<RunResult>;
   /**
-   * With a `stop` command: runs it through `runStop` in the folder of the space. Without one: ends
-   * the session of the tab. Does nothing when there is nothing to end. Rejects for an unknown space,
-   * and for a `stop` command in a space with no folder.
+   * With a `stop` command: runs it through `runStop` in the folder of the space, and once it ends
+   * with code 0 ends the sessions of the tab too. Without one: ends the sessions of the tab. A
+   * `stop` command that fails rejects and leaves the sessions alone. Does nothing when there is
+   * nothing to end. Rejects for an unknown space, and for a `stop` command in a space with no
+   * folder.
    */
   stop(spaceId: Id, action: ProjectAction): Promise<void>;
   /** `running` while the session of the action's tab is alive; `idle` without a tab or after it ended. */
   status(spaceId: Id, action: ProjectAction): ActionStatus;
+  /**
+   * Id of the tab of the action in the space: the one this executor opened or found for it, else
+   * the tab whose title is the action's `tab` name. `undefined` when there is none.
+   */
+  tabOf(spaceId: Id, action: ProjectAction): Id | undefined;
   /** Called when a session ends, which changes a status without changing the workspace. */
   onExit(listener: () => void): Unsubscribe;
   /** Stops listening to the backend and the workspace; runs waiting for a session give up. */
@@ -201,10 +208,12 @@ export function createProjectActions(options: ProjectActionsOptions): ProjectAct
         if (space.defaults.cwd === undefined) {
           throw new Error(`Space "${space.name}" has no folder to run the stop command in`);
         }
+        // A failing stop command rejects here, so the sessions stay and the caller reports it.
         await runStop(space.defaults.cwd, action.stop);
-        return;
       }
-      const item = findTab(space, action);
+      // The stop command ended with code 0 (or there is none): the tab's shells end too, so the
+      // status returns to idle and the next run opens the tab again.
+      const item = findTab(spaceOf(spaceId), action);
       if (!item) return;
       for (const session of liveSessions(item)) await backend.kill(Number(session));
     },
@@ -213,6 +222,11 @@ export function createProjectActions(options: ProjectActionsOptions): ProjectAct
       const space = getWorkspace().spaces.find((s) => s.id === spaceId);
       const item = space && findTab(space, action);
       return item && liveSessions(item).length > 0 ? "running" : "idle";
+    },
+
+    tabOf(spaceId, action) {
+      const space = getWorkspace().spaces.find((s) => s.id === spaceId);
+      return space && findTab(space, action)?.id;
     },
 
     onExit(listener) {

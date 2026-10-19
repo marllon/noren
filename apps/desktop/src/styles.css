@@ -1383,3 +1383,100 @@ body {
 .app-body[data-nr-density="compact"] .bar-group {
   padding: 1px 6px;
 }
+
+/* The header of the active space in the sidebar: the project actions, with Start or Stop. */
+.space-header {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--nr-border);
+}
+
+.space-header-title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--nr-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.space-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.space-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 0;
+}
+
+.action-dot {
+  flex: none;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--nr-muted);
+  border-radius: 50%;
+}
+
+.action-dot[data-nr-indicator="running"] {
+  border-color: var(--nr-space-color);
+  background: var(--nr-space-color);
+}
+
+.action-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) * 0.6);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.action-button:hover:not(:disabled) {
+  border-color: var(--nr-accent);
+}
+
+.action-button:disabled {
+  color: var(--nr-muted);
+  cursor: default;
+}
+
+.dialog-detail {
+  max-height: 160px;
+  margin: 8px 0 12px;
+  padding: 8px;
+  overflow: auto;
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-bg);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

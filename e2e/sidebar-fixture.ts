@@ -56,6 +56,13 @@ export const SPLIT_FIXTURE = { itemId: "i7", title: "servers", first: "p7", seco
 /** Home folder of the in-memory backend, so folders under it show as `~`. */
 export const FAKE_HOME = "/home/fake";
 
+interface SidebarOptions {
+  secondSpace?: boolean;
+  split?: boolean;
+  /** Default folder of the space "Main" (the folder its `.noren/actions.json` is read from). */
+  cwd?: string;
+}
+
 /**
  * A saved workspace for the sidebar: one pinned tab, a group of three tabs and two loose ones, with
  * folders, a git branch, an unread tab and a tab with a bell. The tab "build" has no flags: the
@@ -63,7 +70,7 @@ export const FAKE_HOME = "/home/fake";
  * ("elsewhere"), for the tests that drop a tab on another space. `split` adds the tab "servers"
  * (`SPLIT_FIXTURE`) with two panes, one in `/srv/api` and one in `/srv/web`, after "deploy".
  */
-export function sidebarState(options: { secondSpace?: boolean; split?: boolean } = {}): string {
+export function sidebarState(options: SidebarOptions = {}): string {
   const second = {
     id: "s2",
     name: "Other",
@@ -91,7 +98,7 @@ export function sidebarState(options: { secondSpace?: boolean; split?: boolean }
         icon: "terminal",
         color: "#6b8afd",
         modIds: [],
-        defaults: { env: {} },
+        defaults: { env: {}, ...(options.cwd !== undefined ? { cwd: options.cwd } : {}) },
         aiEnabled: true,
         saveScrollback: true,
         pinned: ["i1"],
@@ -147,14 +154,47 @@ export function sidebarState(options: { secondSpace?: boolean; split?: boolean }
 }
 
 /** Seeds the saved workspace before the page loads; it only writes when nothing is saved yet. */
-export async function seedSidebarState(
-  page: Page,
-  options: { secondSpace?: boolean; split?: boolean } = {},
-): Promise<void> {
+export async function seedSidebarState(page: Page, options: SidebarOptions = {}): Promise<void> {
   await page.addInitScript(
     ({ key, state }) => {
       if (window.localStorage.getItem(key) === null) window.localStorage.setItem(key, state);
     },
     { key: WEB_STATE_KEY, state: sidebarState(options) },
+  );
+}
+
+// Key of the `.noren/actions.json` texts in the browser storage of web mode (web-backend.ts).
+const WEB_ACTIONS_KEY = "noren.web.actions";
+
+/** Default folder of the space "Main" in the actions tests. */
+export const ACTIONS_CWD = "/srv/proj";
+
+/** An action with a stop command, and one without (stopping it ends the tab's shell). */
+export const ACTIONS_TEXT = JSON.stringify({
+  actions: [
+    { id: "loop", label: "Loop", command: "loop", stop: "loop parar", tab: "loop" },
+    { id: "dev", label: "Dev server", command: "pnpm dev", tab: "dev" },
+  ],
+});
+
+/** Seeds the text of `.noren/actions.json` of a folder before the page loads (only when none is saved). */
+export async function seedActionsFile(page: Page, cwd: string, text: string): Promise<void> {
+  await page.addInitScript(
+    ({ key, folder, content }) => {
+      if (window.localStorage.getItem(key) === null) {
+        window.localStorage.setItem(key, JSON.stringify({ [folder]: content }));
+      }
+    },
+    { key: WEB_ACTIONS_KEY, folder: cwd, content: text },
+  );
+}
+
+/** Replaces the text of `.noren/actions.json` of a folder while the page runs; the next poll sees it. */
+export async function changeActionsFile(page: Page, cwd: string, text: string): Promise<void> {
+  await page.evaluate(
+    ({ key, folder, content }) => {
+      window.localStorage.setItem(key, JSON.stringify({ [folder]: content }));
+    },
+    { key: WEB_ACTIONS_KEY, folder: cwd, content: text },
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { WEB_STATE_KEY, WebBackend } from "./web-backend";
+import { WEB_ACTIONS_KEY, WEB_STATE_KEY, WebBackend } from "./web-backend";
 import type { StateStorage } from "./web-backend";
 
 function memoryStorage(): StateStorage & { keys(): string[] } {
@@ -50,5 +50,27 @@ describe("WebBackend", () => {
     const backend = new WebBackend(blocked);
     await backend.saveState("kept");
     expect(await backend.loadState()).toBe("kept");
+  });
+
+  it("reads the actions file of a folder from the seeded storage key", async () => {
+    const storage = memoryStorage();
+    storage.setItem(WEB_ACTIONS_KEY, JSON.stringify({ "/proj": '{"actions":[]}' }));
+    const backend = new WebBackend(storage);
+    expect(await backend.readActionsFile("/proj")).toBe('{"actions":[]}');
+    expect(await backend.readActionsFile("/other")).toBeNull();
+    // A later change of the key shows on the next read.
+    storage.setItem(WEB_ACTIONS_KEY, JSON.stringify({ "/proj": "changed" }));
+    expect(await backend.readActionsFile("/proj")).toBe("changed");
+  });
+
+  it("falls back to the in-memory actions file when the seed is missing or broken", async () => {
+    const storage = memoryStorage();
+    const backend = new WebBackend(storage);
+    backend.setActionsFile("/proj", "memory");
+    expect(await backend.readActionsFile("/proj")).toBe("memory");
+    storage.setItem(WEB_ACTIONS_KEY, "not json");
+    expect(await backend.readActionsFile("/proj")).toBe("memory");
+    storage.setItem(WEB_ACTIONS_KEY, "[1]");
+    expect(await backend.readActionsFile("/proj")).toBe("memory");
   });
 });

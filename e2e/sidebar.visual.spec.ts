@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { seedSidebarState } from "./sidebar-fixture";
+import { ACTIONS_CWD, ACTIONS_TEXT, seedActionsFile, seedSidebarState } from "./sidebar-fixture";
 
 // Baselines are per operating system (Windows only, D7): `pnpm e2e:visual`.
 
@@ -43,6 +43,25 @@ async function openSplitSidebar(page: Page): Promise<void> {
   await page.mouse.move(900, 500);
 }
 
+const header = (page: Page) => page.getByRole("region", { name: "Project actions", exact: true });
+
+/** Loads the space "Main" with a folder and an `.noren/actions.json`. Ends on "api", nothing hovered. */
+async function openActionsSidebar(page: Page): Promise<void> {
+  await seedSidebarState(page, { cwd: ACTIONS_CWD });
+  await seedActionsFile(page, ACTIONS_CWD, ACTIONS_TEXT);
+  await page.goto("/");
+  await expect(header(page).getByRole("button", { name: "Start Loop", exact: true })).toBeVisible();
+  await expect(tab(page, "api")).toBeVisible();
+}
+
+/** Puts the pointer and the focus away so the capture has no hover or focus ring. */
+async function settleCapture(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  });
+  await page.mouse.move(900, 500);
+}
+
 for (const scheme of ["dark", "light"] as const) {
   test.describe(`${scheme} scheme`, () => {
     test.use({ colorScheme: scheme });
@@ -64,6 +83,34 @@ for (const scheme of ["dark", "light"] as const) {
         `sidebar-split-${scheme}.png`,
         { animations: "disabled", caret: "hide" },
       );
+    });
+
+    test(`@visual the sidebar with the space header and its actions (${scheme})`, async ({
+      page,
+    }) => {
+      await openActionsSidebar(page);
+      await settleCapture(page);
+      await expect(page.locator('[data-nr-part="sidebar"]')).toHaveScreenshot(
+        `sidebar-actions-${scheme}.png`,
+        { animations: "disabled", caret: "hide" },
+      );
+    });
+
+    test(`@visual the space header with one action running (${scheme})`, async ({ page }) => {
+      await openActionsSidebar(page);
+      await header(page).getByRole("button", { name: "Start Dev server", exact: true }).click();
+      await page
+        .getByRole("alertdialog", { name: "Run project action", exact: true })
+        .getByRole("button", { name: "Run", exact: true })
+        .click();
+      await expect(
+        header(page).getByRole("button", { name: "Stop Dev server", exact: true }),
+      ).toBeVisible();
+      await settleCapture(page);
+      await expect(header(page)).toHaveScreenshot(`space-header-running-${scheme}.png`, {
+        animations: "disabled",
+        caret: "hide",
+      });
     });
   });
 }

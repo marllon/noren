@@ -15,7 +15,9 @@ import {
 import { useStore } from "zustand";
 import { insideTauri } from "./backend";
 import { backend, booted } from "./boot";
+import { consentText } from "./action-consent";
 import { loadHome } from "./home";
+import { ActionsHeader } from "./ActionsHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FavoritesGrid } from "./FavoritesGrid";
 import { resolveFavorites } from "./favorites";
@@ -34,6 +36,7 @@ import { updateLayout, useLayout } from "./layout-store";
 import { SidebarResizer } from "./SidebarResizer";
 import { SidebarTree } from "./SidebarTree";
 import { TabBar } from "./TabBar";
+import { useProjectActions } from "./use-project-actions";
 import { useSidebarReveal } from "./use-sidebar-reveal";
 import type { Editing } from "./SidebarTree";
 import { SpaceDialog } from "./SpaceDialog";
@@ -85,6 +88,12 @@ export interface NorenTestHook {
    * pane. There is no way to split from the interface before the split interactions arrive.
    */
   split(dir: "row" | "column", paneId?: string): string | undefined;
+  /** Every command line the backend was asked to run in a short process (stop commands), in order. */
+  commandRuns(): { cwd: string; command: string }[];
+  /** Makes the next short commands end with this exit code (0 by default). */
+  failCommands(code: number): void;
+  /** Number of times the backend was asked to read an actions file. */
+  actionsReads(): number;
 }
 
 declare global {
@@ -377,6 +386,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     setNotice(text);
     noticeTimer.current = setTimeout(() => setNotice(""), NOTICE_MS);
   }, []);
+  const projectActions = useProjectActions(store, backend, space, showNotice);
   /** A tab was dropped on a pane of the tab on screen: join it, or say why it cannot be. */
   const onPaneDrop = (sourceId: Id, drop: PaneDrop) => {
     if (activeId === undefined) return;
@@ -475,6 +485,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
         },
         renderer: () => current()?.renderer() ?? "dom",
         writeCalls: () => fake.callsTo("write").length,
+        commandRuns: () => fake.commands.map(({ cwd, command }) => ({ cwd, command })),
+        failCommands: (code) => fake.setCommandExitCode(code),
+        actionsReads: () => fake.callsTo("readActionsFile").length,
         killedSessions: () => fake.callsTo("kill").map((call) => Number(call.args[0])),
         sessionStarts: () =>
           fake.callsTo("createSession").map((call) => {
@@ -535,6 +548,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
       : undefined;
   let overlayNode: React.ReactNode = null;
   if (overlay?.kind === "item-menu") {
+    const tabAction =
+      overlay.targets.length === 1
+        ? projectActions.actionOfTab(overlay.targets[0] ?? "")
+        : undefined;
     overlayNode = (
       <ItemContextMenu
         store={store}
@@ -548,6 +565,16 @@ function Shell({ store }: { store: WorkspaceStore }) {
         }}
         onRename={(itemId) => startEdit({ kind: "item", id: itemId })}
         onGrouped={(groupId) => setEditing({ kind: "group", id: groupId })}
+        {...(tabAction !== undefined
+          ? {
+              projectAction: {
+                label: tabAction.label,
+                running: projectActions.statusOf(tabAction) === "running",
+                onRun: () => projectActions.run(tabAction),
+                onStop: () => projectActions.stop(tabAction),
+              },
+            }
+          : {})}
       />
     );
   } else if (
@@ -625,12 +652,24 @@ function Shell({ store }: { store: WorkspaceStore }) {
     );
   }
 
+  const { pending } = projectActions;
+  const confirmNode = pending !== null && (
+    <ConfirmDialog
+      title="Run project action"
+      message={`Run "${pending.action.label}"? Noren will type the command below into the tab "${pending.action.tab}" and press Enter.${pending.action.stop !== undefined ? " The second line runs when you stop it." : ""} It comes from the project's .noren/actions.json.`}
+      detail={consentText(pending.action)}
+      confirmLabel="Run"
+      danger={false}
+      onCancel={projectActions.cancelPending}
+      onConfirm={projectActions.confirmPending}
+    />
+  );
   const autoHide = sidebarMode(layout) === "auto-hide";
   const tabsOnTop = layout.tabs === "top";
   // A menu or dialog opened from the sidebar keeps it shown, even though the pointer left it. The
   // tab and group menus of the top bar do not: they do not come from the sidebar.
   const fromTabBar = tabsOnTop && (overlay?.kind === "item-menu" || overlay?.kind === "group-menu");
-  const shown = reveal.revealed || (overlay !== null && !fromTabBar);
+  const shown = reveal.revealed || pending !== null || (overlay !== null && !fromTabBar);
   return (
     <div
       className="app-body"
@@ -680,6 +719,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
               }
             />
           )}
+          <ActionsHeader spaceName={space.name} ui={projectActions} />
           {!tabsOnTop && (
             <SidebarTree {...treeProps} rows={rows} home={home} onPaneClick={onPaneClick} />
           )}
@@ -728,6 +768,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
         </div>
       </TreeDnd>
       {overlayNode}
+      {confirmNode}
     </div>
   );
 }

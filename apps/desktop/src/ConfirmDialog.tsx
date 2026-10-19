@@ -5,6 +5,10 @@ interface ConfirmDialogProps {
   title: string;
   message: string;
   confirmLabel: string;
+  /** Text shown as is under the message (a command line), in a block that keeps line breaks. */
+  detail?: string;
+  /** Styles the confirm button as destructive. Defaults to true. */
+  danger?: boolean;
   onConfirm(): void;
   onCancel(): void;
 }
@@ -14,6 +18,8 @@ export function ConfirmDialog({
   title,
   message,
   confirmLabel,
+  detail,
+  danger = true,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -46,11 +52,12 @@ export function ConfirmDialog({
         <p id={messageId} className="dialog-message">
           {message}
         </p>
+        {detail !== undefined && <pre className="dialog-detail">{detail}</pre>}
         <div className="dialog-actions">
           <button ref={cancelRef} type="button" onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className="danger" onClick={onConfirm}>
+          <button type="button" className={danger ? "danger" : undefined} onClick={onConfirm}>
             {confirmLabel}
           </button>
         </div>

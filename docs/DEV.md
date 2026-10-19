@@ -107,6 +107,12 @@ Where data lives (identifier `io.github.marllon.noren`):
 | Workspace state (`state.json`: spaces, groups, tabs, layout), created on the first save   | `%APPDATA%\io.github.marllon.noren\`                |
 | Interface preferences (theme, layout, pane headers), kept in the WebView's `localStorage` | `%LOCALAPPDATA%\io.github.marllon.noren\EBWebView\` |
 
+`noren://` links: the installer registers the scheme for the current user (`Software\Classes\noren`)
+and the uninstaller removes it; a debug or `target/` build registers nothing (see
+[DEEP_LINKS.md](DEEP_LINKS.md)). `pnpm smoke` runs `noren --smoke` and then
+`noren --smoke-deeplink <link>`, both with a hidden window; the second keeps its state in a temp
+folder, never in the real `state.json`.
+
 Both paths were checked on disk: the WebView folder after an install, and `state.json` after a
 release build saved a state (the folder does not exist until the first save). Deleting both folders
 resets the app to a fresh install.

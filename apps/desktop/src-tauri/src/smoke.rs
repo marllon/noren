@@ -2,18 +2,20 @@
 //! real shell session through the same code path as the `session_create` command.
 
 use std::io::Write;
+use std::path::PathBuf;
 use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use noren_core::SessionId;
+use noren_core::{SessionId, StateStore};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Listener, Manager};
 
-use crate::bridge::{self, AppState};
+use crate::bridge::{self, AppState, STATE_FILE_NAME};
+use crate::deeplink::{self, Links};
 
 pub const SMOKE_FLAG: &str = "--smoke";
 /// Text the smoke session must print on a line of its own.
@@ -225,9 +227,197 @@ pub fn arm(app: &tauri::App) {
     });
 }
 
+/// What the deep-link smoke run was asked to prove, and the folder that holds its own state.
+#[derive(Clone, Debug)]
+pub struct DeepLinkTarget {
+    /// The raw link given after `--smoke-deeplink`.
+    pub url: String,
+    /// The folder the link names, decoded.
+    pub folder: String,
+    /// A fresh folder for `state.json`, so the user's real file is neither read nor written.
+    pub state_dir: PathBuf,
+}
+
+impl DeepLinkTarget {
+    /// Deletes the state folder this run made (only that one).
+    pub fn remove_state_dir(&self) {
+        let _ = std::fs::remove_dir_all(&self.state_dir);
+    }
+}
+
+/// A folder name in the temp folder that no earlier run used.
+fn fresh_state_dir() -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    std::env::temp_dir().join(format!("noren-smoke-deeplink-{}-{nanos}", process::id()))
+}
+
+/// Reads the arguments of `--smoke-deeplink <link>`: the link must look like a `noren://` link and
+/// name a folder, which is what the run checks.
+pub fn deeplink_target(args: &[String]) -> Result<DeepLinkTarget, String> {
+    let url = deeplink::smoke_deeplink_arg(args).ok_or_else(|| {
+        format!(
+            "{} needs a noren:// link after it",
+            deeplink::SMOKE_DEEPLINK_FLAG
+        )
+    })?;
+    if !deeplink::looks_like_link(&url) {
+        return Err(format!("{url:?} is not a noren:// link"));
+    }
+    let folder = deeplink::folder_of_link(&url)
+        .ok_or_else(|| format!("the link {url:?} has no usable path parameter to check"))?;
+    Ok(DeepLinkTarget {
+        url,
+        folder,
+        state_dir: fresh_state_dir(),
+    })
+}
+
+/// The store of the deep-link run: an empty `state.json` in its own folder.
+pub fn deeplink_state_store(target: &DeepLinkTarget) -> StateStore {
+    StateStore::new(target.state_dir.join(STATE_FILE_NAME))
+}
+
+/// Compares the folder the interface reports for the active space with the one in the link, by
+/// the same rules the interface uses to pick a space for a link.
+fn check_reported_folder(expected: &str, reported: Option<&str>) -> Result<(), String> {
+    match reported {
+        None => Err("the interface reported no folder for the active space".to_string()),
+        Some(folder) if deeplink::same_folder(folder, expected) => Ok(()),
+        Some(folder) => Err(format!(
+            "the active space has the folder {folder:?}, expected {expected:?}"
+        )),
+    }
+}
+
+/// Like [`fail`], and removes the state folder of the run first.
+fn fail_deeplink(app: &AppHandle, target: &DeepLinkTarget, message: &str) -> ! {
+    target.remove_state_dir();
+    fail(app, message)
+}
+
+/// Deep-link smoke mode (`noren --smoke-deeplink <link>`): the link goes the way a link from the
+/// system goes on a first start (the command line, then the interface asks for it), the interface
+/// applies it and reports the folder of the space it shows, and that folder must be the link's.
+/// Then the same checks as `--smoke` (a real shell session, the window still hidden) and
+/// `SMOKE DEEPLINK OK`, exit 0. Anything else within `SMOKE_TIMEOUT` ends with code 1.
+pub fn arm_deeplink(app: &tauri::App, target: DeepLinkTarget) {
+    let started = Instant::now();
+    let ready = Arc::new(AtomicBool::new(false));
+
+    let (tx, rx) = mpsc::channel::<Option<String>>();
+    app.state::<Links>().watch_reports(tx);
+
+    let listener_ready = Arc::clone(&ready);
+    app.listen("app-ready", move |_event| {
+        if !listener_ready.swap(true, Ordering::SeqCst) {
+            print_line("SMOKE app-ready received");
+        }
+    });
+
+    let handle = app.handle().clone();
+    thread::spawn(move || {
+        let remaining = (started + SMOKE_TIMEOUT).saturating_duration_since(Instant::now());
+        let reported = match rx.recv_timeout(remaining) {
+            Ok(folder) => folder,
+            Err(_) => {
+                let seen = if ready.load(Ordering::SeqCst) {
+                    "the interface started but never reported the link as applied"
+                } else {
+                    "app-ready not received"
+                };
+                fail_deeplink(
+                    &handle,
+                    &target,
+                    &format!("{seen} within {}s", SMOKE_TIMEOUT.as_secs()),
+                );
+            }
+        };
+        let result = check_reported_folder(&target.folder, reported.as_deref())
+            .inspect(|()| {
+                print_line(&format!(
+                    "SMOKE link applied, active folder {}",
+                    target.folder
+                ))
+            })
+            .and_then(|()| check_session(&handle, started + SMOKE_TIMEOUT))
+            .and_then(|()| check_window_hidden(&handle));
+        match result {
+            Ok(()) => {
+                print_line("SMOKE window hidden");
+                print_line(&format!("SMOKE DEEPLINK OK {}", target.url));
+                handle.exit(0);
+            }
+            Err(message) => fail_deeplink(&handle, &target, &message),
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn args(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    #[test]
+    fn the_deeplink_target_reads_the_link_and_its_folder() {
+        let list = args(&[
+            "noren.exe",
+            "--smoke-deeplink",
+            "noren://open?path=C%3A%5CTemp%5Cnoren%20smoke",
+        ]);
+        let target = deeplink_target(&list).unwrap();
+        assert_eq!(target.folder, "C:\\Temp\\noren smoke");
+        assert_eq!(target.url, "noren://open?path=C%3A%5CTemp%5Cnoren%20smoke");
+        assert!(target.state_dir.starts_with(std::env::temp_dir()));
+        assert!(!target.state_dir.exists());
+    }
+
+    #[test]
+    fn the_deeplink_target_refuses_what_it_cannot_check() {
+        assert!(deeplink_target(&args(&["noren.exe", "--smoke-deeplink"])).is_err());
+        assert!(deeplink_target(&args(&["noren.exe", "--smoke-deeplink", "--smoke"])).is_err());
+        assert!(
+            deeplink_target(&args(&["noren.exe", "--smoke-deeplink", "https://x.dev"])).is_err()
+        );
+        assert!(
+            deeplink_target(&args(&["noren.exe", "--smoke-deeplink", "noren://open"])).is_err()
+        );
+    }
+
+    #[test]
+    fn each_deeplink_run_has_its_own_state_folder() {
+        let list = args(&["noren.exe", "--smoke-deeplink", "noren://open?path=%2Fsrv"]);
+        let first = deeplink_target(&list).unwrap();
+        let second = deeplink_target(&list).unwrap();
+        assert_ne!(first.state_dir, second.state_dir);
+        let store = deeplink_state_store(&first);
+        assert_eq!(store.path(), first.state_dir.join("state.json"));
+    }
+
+    #[test]
+    fn the_reported_folder_must_match_the_link() {
+        assert!(check_reported_folder("C:\\Temp\\a b", Some("c:/temp/a b/")).is_ok());
+        assert!(check_reported_folder("/srv/proj", Some("/srv/proj")).is_ok());
+        let wrong = check_reported_folder("/srv/proj", Some("/srv/other")).unwrap_err();
+        assert!(wrong.contains("/srv/other") && wrong.contains("/srv/proj"));
+        assert!(check_reported_folder("/srv/proj", None).is_err());
+    }
+
+    #[test]
+    fn removing_the_state_folder_only_touches_that_folder() {
+        let list = args(&["noren.exe", "--smoke-deeplink", "noren://open?path=%2Fsrv"]);
+        let target = deeplink_target(&list).unwrap();
+        std::fs::create_dir_all(&target.state_dir).unwrap();
+        std::fs::write(target.state_dir.join("state.json"), b"{}").unwrap();
+        target.remove_state_dir();
+        assert!(!target.state_dir.exists());
+        // Removing it again is harmless.
+        target.remove_state_dir();
+    }
 
     #[test]
     fn only_the_smoke_run_keeps_the_window_hidden() {

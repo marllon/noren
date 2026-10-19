@@ -23,6 +23,13 @@
       "csp": null
     }
   },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["noren"]
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "icon": [

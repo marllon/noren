@@ -20,6 +20,8 @@ import { loadHome } from "./home";
 import { ActionsHeader } from "./ActionsHeader";
 import { handleDeepLink, setDeepLinkHandler } from "./deep-link";
 import { createDeepLinkHandler } from "./deep-link-handler";
+import { startDeepLinkReceiver } from "./deep-link-receiver";
+import { tauriBridge } from "./tauri-backend";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FavoritesGrid } from "./FavoritesGrid";
 import { resolveFavorites } from "./favorites";
@@ -406,6 +408,16 @@ function Shell({ store }: { store: WorkspaceStore }) {
     );
     return () => setDeepLinkHandler(undefined);
   }, [store, showNotice]);
+  // In the desktop app the Rust side delivers the links the system hands over. After the handler
+  // effect above, so a waiting link finds the handler registered.
+  useEffect(() => {
+    if (!insideTauri) return undefined;
+    return startDeepLinkReceiver({
+      bridge: tauriBridge(),
+      apply: handleDeepLink,
+      activeFolder: () => activeSpaceOf(store.getState().workspace).defaults.cwd,
+    });
+  }, [store]);
   /** A tab was dropped on a pane of the tab on screen: join it, or say why it cannot be. */
   const onPaneDrop = (sourceId: Id, drop: PaneDrop) => {
     if (activeId === undefined) return;

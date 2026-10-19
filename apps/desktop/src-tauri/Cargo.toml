@@ -15,3 +15,13 @@ tauri = { version = "2", features = [] }
 # Derive macros for the command DTOs (profile list, session-exit payload, write payload).
 # Already in the dependency tree through Tauri; MIT OR Apache-2.0.
 serde = { version = "1", features = ["derive"] }
+# Needed by tauri::generate_context! once tauri.conf.json has a plugins section (the plugin
+# configuration is embedded as JSON). Already in the dependency tree through Tauri; MIT OR Apache-2.0.
+serde_json = "1"
+# Receives the noren:// links: the plugin is what lets tauri.conf.json declare the scheme that the
+# installer registers (no runtime registration is done), and it delivers links on macOS.
+# 2.6.2, Apache-2.0 OR MIT.
+tauri-plugin-deep-link = "2"
+# A second launch (a link clicked while Noren is open) hands its arguments to the running
+# instance and exits, instead of opening a second window. 2.5.4, Apache-2.0 OR MIT.
+tauri-plugin-single-instance = "2"

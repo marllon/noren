@@ -1,9 +1,12 @@
-// Real-app smoke test: debug build without bundle, then `noren --smoke`.
-// Exits with the app's exit code; requires "SMOKE OK" and "noren-smoke-ok" (printed after a real
-// shell session echoed it) and "SMOKE window hidden" (the main window stayed hidden) on stdout.
+// Real-app smoke test: debug build without bundle, then `noren --smoke` and `noren --smoke-deeplink`.
+// Exits with the app's exit code. The first run must print "SMOKE OK" and "noren-smoke-ok" (printed
+// after a real shell session echoed it) and "SMOKE window hidden" (the main window stayed hidden);
+// the second must print "SMOKE DEEPLINK OK" (a noren://open link reached the interface and the
+// space on screen has the folder of the link) and "SMOKE window hidden".
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -36,20 +39,35 @@ if (build.status !== 0) fail(`build failed with exit code ${build.status}`);
 const binary = resolve(root, "target", "debug", isWindows ? "noren.exe" : "noren");
 if (!existsSync(binary)) fail(`binary not found: ${binary}`);
 
-const run = spawnSync(binary, ["--smoke"], {
-  cwd: root,
-  encoding: "utf8",
-  timeout: 60_000,
-  killSignal: "SIGKILL",
-});
-if (run.error) fail(`could not run ${binary}: ${run.error.message}`);
+/** Runs the binary in a hidden smoke mode and requires every text in `required` on stdout. */
+function runSmoke(args, required) {
+  const run = spawnSync(binary, args, {
+    cwd: root,
+    encoding: "utf8",
+    timeout: 60_000,
+    killSignal: "SIGKILL",
+  });
+  if (run.error) fail(`could not run ${binary}: ${run.error.message}`);
 
-process.stdout.write(run.stdout ?? "");
-process.stderr.write(run.stderr ?? "");
+  process.stdout.write(run.stdout ?? "");
+  process.stderr.write(run.stderr ?? "");
 
-if (run.status !== 0) fail(`noren --smoke exited with code ${run.status}`);
-const stdout = run.stdout ?? "";
-if (!stdout.includes("SMOKE window hidden")) fail("SMOKE window hidden not found in the output");
-if (!stdout.includes("SMOKE OK")) fail("SMOKE OK not found in the output");
-if (!stdout.includes("noren-smoke-ok")) fail("noren-smoke-ok not found in the output");
+  if (run.status !== 0) fail(`noren ${args[0]} exited with code ${run.status}`);
+  const stdout = run.stdout ?? "";
+  for (const text of required) {
+    if (!stdout.includes(text)) fail(`${text} not found in the output of noren ${args[0]}`);
+  }
+}
+
+runSmoke(["--smoke"], ["SMOKE window hidden", "SMOKE OK", "noren-smoke-ok"]);
+
+// The deep-link run: a folder made here (its name has a space) goes in a noren://open link, and the
+// app must end up showing a space that has that folder. It keeps its state in a folder of its own.
+const folder = mkdtempSync(join(tmpdir(), "noren smoke "));
+try {
+  const link = `noren://open?path=${encodeURIComponent(folder)}`;
+  runSmoke(["--smoke-deeplink", link], ["SMOKE window hidden", "SMOKE DEEPLINK OK"]);
+} finally {
+  rmSync(folder, { recursive: true, force: true });
+}
 process.exit(0);

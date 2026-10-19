@@ -25,6 +25,9 @@ import { startDeepLinkReceiver } from "./deep-link-receiver";
 import { tauriBridge } from "./tauri-backend";
 import { CommandPalette } from "./CommandPalette";
 import { MruSwitcherView } from "./MruSwitcher";
+import { TabSearch } from "./TabSearch";
+import { collectSearchTabs } from "./tab-search";
+import type { SearchHit, SearchTab, TabHits } from "./tab-search";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FavoritesGrid } from "./FavoritesGrid";
 import { resolveFavorites } from "./favorites";
@@ -82,6 +85,10 @@ import type { NewSpaceInput, SessionStartOptions, WorkspaceStore } from "./works
 /** Read-only view of the active terminal, published only when the backend is the in-memory one. */
 export interface NorenTestHook {
   lines(): string[];
+  /** Text selected in the active terminal (empty when nothing is). */
+  selection(): string;
+  /** Buffer row at the top of the active terminal's view and the number of rows in view. */
+  viewport(): { top: number; rows: number };
   renderer(): "webgl" | "dom";
   /** Number of `write` calls the backend received. */
   writeCalls(): number;
@@ -313,6 +320,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const [selection, setSelection] = useState<SpaceSelection>({ spaceId: "", ids: [] });
   const [editing, setEditing] = useState<Editing | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // The search over all tabs: the text of every tab, read when it opened (null while it is closed).
+  const [searchText, setSearchText] = useState<SearchTab[] | null>(null);
   const handles = useRef(new Map<Id, TerminalHandle>());
   const theme = useTheme();
   const themeChoice = useThemeChoice();
@@ -490,6 +499,39 @@ function Shell({ store }: { store: WorkspaceStore }) {
     });
   }, [store]);
 
+  /** Opens the search over all tabs on the text the terminals hold now. */
+  const openSearch = useCallback(() => {
+    setPaletteOpen(false);
+    setSearchText(
+      collectSearchTabs(store.getState().workspace, (paneId) =>
+        handles.current.get(paneId)?.readLines(),
+      ),
+    );
+  }, [store]);
+
+  /** Closes the search and gives the keyboard back to the terminal of the tab on screen. */
+  const closeSearch = useCallback(() => {
+    setSearchText(null);
+    focusTerminal();
+  }, [focusTerminal]);
+
+  /**
+   * Goes to a line of the search: shows its tab (and space), focuses the pane and selects the line
+   * in the terminal. The tab may have been hidden until now, so the terminal is told after the
+   * render that shows it, and once more after the next frame, when it has its size back.
+   */
+  const pickSearchHit = (tab: TabHits, hit: SearchHit) => {
+    setSearchText(null);
+    showTab(tab.spaceId, tab.itemId);
+    dispatch({ type: "pane/focus", itemId: tab.itemId, paneId: hit.paneId });
+    requestAnimationFrame(() => {
+      const handle = handles.current.get(hit.paneId);
+      handle?.revealLine(hit.row);
+      handle?.focus();
+      requestAnimationFrame(() => handle?.revealLine(hit.row));
+    });
+  };
+
   const mru = useMruSwitcher({ store, handles, onCommit: showTab, onEnd: focusTerminal });
   // The key listener below is set up once; it reaches the switcher through this ref.
   const mruRef = useRef(mru);
@@ -523,7 +565,14 @@ function Shell({ store }: { store: WorkspaceStore }) {
       if (event.repeat && !action.repeat) return;
       if (action.command.kind === "palette") {
         // Not over a menu or dialog: they hold the keyboard.
-        if (!modalOpen.current) setPaletteOpen(true);
+        if (!modalOpen.current) {
+          setSearchText(null);
+          setPaletteOpen(true);
+        }
+        return;
+      }
+      if (action.command.kind === "search-all") {
+        if (!modalOpen.current) openSearch();
         return;
       }
       if (action.command.kind === "mru") {
@@ -538,7 +587,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
       window.removeEventListener("keydown", onKeyDown, true);
       clearTimeout(noticeTimer.current);
     };
-  }, [store, showNotice]);
+  }, [store, showNotice, openSearch]);
 
   // A horizontal wheel (or Shift+wheel) over the sidebar steps to the neighbor space and stops at
   // the ends. The listener is not passive so it can cancel the event, and it does that only when it
@@ -581,6 +630,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
       };
       window.__norenTest = {
         lines: () => current()?.readLines() ?? [],
+        selection: () => current()?.selection() ?? "",
+        viewport: () => current()?.viewport() ?? { top: 0, rows: 0 },
         paneIds: () => {
           const item = activeItem();
           return item ? layoutPanes(item.layout).map((pane) => pane.id) : [];
@@ -658,7 +709,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
     else if (entry.kind === "profile") newTab({ profileId: entry.profileId });
     else if (entry.kind === "folder") newTab({ cwd: entry.path });
     else if (entry.kind === "theme") setThemeChoice(entry.themeId);
-    else if (entry.action.command.kind === "mru") {
+    else if (entry.action.command.kind === "search-all") {
+      // The search takes the keyboard itself; the palette must not hand it to the terminal.
+      openSearch();
+      return;
+    } else if (entry.action.command.kind === "mru") {
       // No modifier is held in the palette: go straight to the tab the chord would end on.
       setPaletteOpen(false);
       mru.jump(entry.action.command.delta);
@@ -925,6 +980,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
       {overlayNode}
       {confirmNode}
       {mru.rows !== undefined && <MruSwitcherView rows={mru.rows} />}
+      {searchText !== null && (
+        <TabSearch tabs={searchText} onPick={pickSearchHit} onClose={closeSearch} />
+      )}
       {paletteOpen && (
         <CommandPalette entries={paletteEntries} onRun={runPaletteEntry} onClose={closePalette} />
       )}

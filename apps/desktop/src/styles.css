@@ -1751,3 +1751,115 @@ body {
   text-overflow: ellipsis;
   white-space: pre;
 }
+
+.tab-search {
+  box-sizing: border-box;
+  width: min(680px, 92%);
+  border: 1px solid var(--nr-border);
+  border-radius: var(--nr-radius);
+  background: var(--nr-surface);
+  color: var(--nr-text);
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--nr-bg) 70%, transparent);
+  overflow: hidden;
+}
+
+.tab-search-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--nr-border);
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+}
+
+.tab-search-list {
+  max-height: min(420px, 60vh);
+  padding: 6px;
+  overflow-y: auto;
+}
+
+.tab-search-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 2px;
+  color: var(--nr-muted);
+  font-size: 11px;
+}
+
+.tab-search-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.tab-search-title {
+  flex: none;
+  max-width: 55%;
+  overflow: hidden;
+  color: var(--nr-text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-search-space {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-search-count {
+  flex: none;
+}
+
+.tab-search-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 3px 8px;
+  border-radius: calc(var(--nr-radius) / 2);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tab-search-row[data-nr-state="selected"] {
+  background: color-mix(in srgb, var(--nr-text) 12%, transparent);
+}
+
+.tab-search-line {
+  flex: none;
+  min-width: 3ch;
+  color: var(--nr-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.tab-search-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.tab-search-text mark {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--nr-accent) 40%, transparent);
+  color: inherit;
+}
+
+.tab-search-status {
+  padding: 10px 14px;
+  border-top: 1px solid var(--nr-border);
+  color: var(--nr-muted);
+  font-size: 12px;
+}

@@ -100,6 +100,37 @@ describe("the recent-tab switcher", () => {
   });
 });
 
+describe("the search over all tabs", () => {
+  it("is one action on Ctrl+Shift+Alt+F in both presets, and it does not repeat", () => {
+    const action = ACTIONS.find((a) => a.id === "tab.search-all");
+    expect(action?.title).toBe("Search all tabs");
+    expect(action?.category).toBe("Tabs");
+    expect(action?.command).toEqual({ kind: "search-all" });
+    expect(action?.repeat).toBe(false);
+    for (const preset of PRESETS) expect(action?.chords[preset]).toBe("Ctrl+Alt+Shift+KeyF");
+  });
+
+  it("resolves Ctrl+Shift+Alt+F to it in the safe and the browser preset", () => {
+    for (const keybindings of [safe, browser]) {
+      expect(commandOf(keybindings, press("KeyF", ctrlAltShift))).toEqual({ kind: "search-all" });
+    }
+  });
+
+  it("leaves F with other modifiers to the terminal", () => {
+    expect(commandOf(safe, press("KeyF"))).toBeUndefined();
+    expect(commandOf(safe, press("KeyF", ctrl))).toBeUndefined();
+    expect(commandOf(safe, press("KeyF", ctrlShift))).toBeUndefined();
+    expect(commandOf(safe, press("KeyF", ctrlAlt))).toBeUndefined();
+    expect(commandOf(safe, press("KeyF", { ...ctrlAltShift, metaKey: true }))).toBeUndefined();
+  });
+
+  it("can be moved to another chord by an override", () => {
+    const moved: Keybindings = { preset: "safe", overrides: { "tab.search-all": "Alt+KeyG" } };
+    expect(commandOf(moved, press("KeyF", ctrlAltShift))).toBeUndefined();
+    expect(commandOf(moved, press("KeyG", alt))).toEqual({ kind: "search-all" });
+  });
+});
+
 describe("chordOf", () => {
   it("writes the modifiers in a fixed order before the physical key", () => {
     expect(chordOf(press("KeyT", ctrlShift))).toBe("Ctrl+Shift+KeyT");

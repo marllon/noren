@@ -34,12 +34,13 @@ The **safe** preset is the default. It does not fight the shell: Ctrl+T, Ctrl+W 
 | Go to tab 1..9                | Alt+1..9              | Ctrl+1..9             |
 | Next recent tab               | Ctrl+Tab              | Ctrl+Tab              |
 | Previous recent tab           | Ctrl+Shift+Tab        | Ctrl+Shift+Tab        |
+| Search all tabs               | Ctrl+Shift+Alt+F      | Ctrl+Shift+Alt+F      |
 
 The browser preset is opt-in. It takes Ctrl+T, Ctrl+W and Ctrl+1..9 away from the terminal, so a shell program that uses them (for example a readline "transpose characters" or a "delete word") no longer receives them.
 
 A preset gives each action at most one chord. Where the browser preset moves an action, the safe chord is free again (Ctrl+Shift+T does nothing there, until an action that needs it exists).
 
-Only the actions that exist today are registered. Later tasks add theirs (reopen closed, search) to the same registry. The command palette lists these same actions with the chord in force; see [PALETTE.md](PALETTE.md).
+Only the actions that exist today are registered. Later tasks add theirs (reopen closed, last unread) to the same registry. The command palette lists these same actions with the chord in force; see [PALETTE.md](PALETTE.md).
 
 ## Overrides and conflicts
 
@@ -75,3 +76,7 @@ Ctrl+Tab and Ctrl+Shift+Tab (the same in both presets; "Next recent tab" and "Pr
 - With a single tab nothing happens. The overlay never takes the keyboard: the terminal keeps it until the switch.
 
 The list lives in memory only (it starts again when the app opens): a tab that shows goes to the front, a closed tab drops out, and tabs never shown follow in sidebar order. The pure part (order, wrapping, preview lines) is in `apps/desktop/src/mru.ts`; the walk and the overlay are `use-mru-switcher.ts` and `MruSwitcher.tsx`. From the command palette the two actions go straight to the previous tab (Next) or the least recently used one (Previous), since no key is held there.
+
+## The search over all tabs
+
+Ctrl+Shift+Alt+F (the same in both presets; "Search all tabs" in the registry, so the shortcuts screen shows and records it, and the palette lists it) opens a search over the output of every open tab of every space. The screen writes the chord as `Ctrl+Alt+Shift+F`, the fixed order of chord text. The key goes to a text field like any other shortcut, so pressing it again while the box has the keyboard does nothing. See [SEARCH.md](SEARCH.md).

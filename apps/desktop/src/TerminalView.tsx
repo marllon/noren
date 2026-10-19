@@ -24,6 +24,16 @@ export interface TerminalHandle {
   renderer(): "webgl" | "dom";
   /** Gives the terminal the keyboard. */
   focus(): void;
+  /**
+   * Scrolls the buffer so that row `row` (0 is the top of the scrollback) sits in the middle of the
+   * view and selects the whole line, so it shows highlighted. Returns false when the row does not
+   * exist or holds no text.
+   */
+  revealLine(row: number): boolean;
+  /** The text now selected in the terminal (empty when nothing is). */
+  selection(): string;
+  /** The rows on screen: the buffer row at the top of the view and how many rows the view holds. */
+  viewport(): { top: number; rows: number };
 }
 
 interface TerminalViewProps {
@@ -280,6 +290,20 @@ export function TerminalView({
       },
       renderer: () => (webgl ? "webgl" : "dom"),
       focus: () => term.focus(),
+      revealLine: (row) => {
+        const buffer = term.buffer.active;
+        const length = buffer.getLine(row)?.translateToString(true).length ?? 0;
+        if (length === 0) return false;
+        const top = Math.max(
+          0,
+          Math.min(row - Math.floor(term.rows / 2), buffer.length - term.rows),
+        );
+        term.scrollToLine(top);
+        term.select(0, row, length);
+        return true;
+      },
+      selection: () => term.getSelection(),
+      viewport: () => ({ top: term.buffer.active.viewportY, rows: term.rows }),
     });
     if (activeRef.current) term.focus();
 

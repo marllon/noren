@@ -36,7 +36,8 @@ export type ActionCommand =
   | { kind: "resize"; direction: Direction }
   | { kind: "space"; index: number }
   | { kind: "tab"; index: number }
-  | { kind: "mru"; delta: 1 | -1 };
+  | { kind: "mru"; delta: 1 | -1 }
+  | { kind: "search-all" };
 
 export interface ActionDef {
   id: string;
@@ -94,6 +95,14 @@ export const ACTIONS: readonly ActionDef[] = [
     command: { kind: "mru", delta: -1 },
     repeat: true,
     chords: { safe: "Ctrl+Shift+Tab", browser: "Ctrl+Shift+Tab" },
+  },
+  {
+    id: "tab.search-all",
+    title: "Search all tabs",
+    category: "Tabs",
+    command: { kind: "search-all" },
+    repeat: false,
+    chords: { safe: "Ctrl+Alt+Shift+KeyF", browser: "Ctrl+Alt+Shift+KeyF" },
   },
   {
     id: "pane.close",

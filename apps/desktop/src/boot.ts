@@ -1,5 +1,6 @@
 import { SystemNotifier, restoreWorkspace, scrollbackAllowed } from "@noren/model";
 import type { Backend } from "@noren/model";
+import { archiveClock, startAutoArchive } from "./auto-archive-service";
 import { createBackend, insideTauri } from "./backend";
 import { startBackgroundImages } from "./background-image-store";
 import { followWindowClose } from "./close-handler";
@@ -100,6 +101,9 @@ export async function bootWorkspace(
       events,
     });
     if (snapshots !== undefined) void clearStaleSnapshots(store, target, snapshots.stale);
+    // The auto-archive: every minute, a tab nobody uses goes to the archive. Started after the
+    // scrollback service, so the output of a tab it puts away is written as it leaves.
+    startAutoArchive({ store, clock: archiveClock(target) });
     // In the app, closing the window waits for the page to save (the unload events below are not
     // enough: a call made while the window is torn down may never leave). The snapshots are started
     // first, which notes the files on the panes, so the state flushed with them has the notes.

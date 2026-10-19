@@ -1,6 +1,7 @@
 import { findNodeAtLocation, getNodeValue, parseTree, printParseErrorCode } from "jsonc-parser";
 import type { Node as JsonNode, ParseError } from "jsonc-parser";
 import { z } from "zod";
+import { DEFAULT_ARCHIVE_AFTER_HOURS, DEFAULT_ARCHIVE_ENABLED } from "./archive";
 import { MAX_BACKGROUND_BLUR, MAX_BACKGROUND_PATH, backgroundImageProblem } from "./background";
 import { MAX_MODS, MOD_FILE_NAME_PATTERN, isReservedModName } from "./mods";
 import { DEFAULT_SAVE_SCROLLBACK, SCROLLBACK_SAVE_LINES } from "./scrollback";
@@ -202,6 +203,24 @@ const terminalSchema = z
   })
   .meta({ description: "The terminal: its font, cursor, scrollback and bell." });
 
+const archiveSchema = z
+  .strictObject({
+    enabled: setting(
+      z.boolean(),
+      "Off: Noren never puts a tab in the archive on its own. A tab you archive or close yourself is not affected.",
+      DEFAULT_ARCHIVE_ENABLED,
+    ),
+    afterHours: setting(
+      z.number().positive(),
+      "How many hours a tab is left alone before it goes to the archive: with no command running, no output, nothing unread and not on screen. Pinned tabs and favorites are never archived. A fraction is fine (0.5 is half an hour).",
+      DEFAULT_ARCHIVE_AFTER_HOURS,
+    ),
+  })
+  .meta({
+    description:
+      "Auto-archive: tabs that nobody uses go to the archive with their saved output, and come back from the library.",
+  });
+
 const MOD_NAME_MESSAGE =
   'Not a mod file name: letters, digits, ".", "_" and "-" (the first a letter or digit), ending in ".css", and not a device name such as "con"';
 
@@ -293,6 +312,7 @@ export const ConfigSchema = z
     profiles: profilesSchema.optional(),
     keybindings: keybindingsSchema.optional(),
     notifications: notificationsSchema.optional(),
+    archive: archiveSchema.optional(),
   })
   .meta({
     title: "Noren settings",

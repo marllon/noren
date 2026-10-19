@@ -107,6 +107,7 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
   const itemIds = ws.spaces.flatMap((space) => Object.keys(space.items));
   const groupIds = ws.spaces.flatMap((space) => treeGroups(space.tree).map((group) => group.id));
   const closedIds = ws.closed.map((entry) => entry.item.id);
+  const archivedIds = ws.archive.map((entry) => entry.item.id);
 
   const spaceId = arbIdOf(spaceIds);
   const itemId = arbIdOf(itemIds);
@@ -295,6 +296,10 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
         { requiredKeys: ["type"] },
       ),
     ),
+    weighted(3, fc.record({ type: tag("item/archive"), itemId })),
+    weighted(2, fc.record({ type: tag("archive/restore"), itemId: arbIdOf(archivedIds) })),
+    weighted(1, fc.record({ type: tag("archive/delete"), itemId: arbIdOf(archivedIds) })),
+    weighted(1, fc.record({ type: tag("closed/delete"), itemId: arbIdOf(closedIds) })),
     weighted(
       2,
       fc.record(

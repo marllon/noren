@@ -155,6 +155,15 @@ export type {
   ConfigJson,
   ConfigValue,
 } from "./config-edit";
+export {
+  ARCHIVE_CHECK_INTERVAL_MS,
+  DEFAULT_ARCHIVE_AFTER_HOURS,
+  DEFAULT_ARCHIVE_ENABLED,
+  archiveSettingsOf,
+  idleItems,
+  itemInUse,
+} from "./archive";
+export type { ArchiveSettings, IdleCheck, IdleItem } from "./archive";
 export { ManualClock } from "./clock";
 export type { Clock } from "./clock";
 export { createDefaultWorkspace } from "./default-workspace";

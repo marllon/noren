@@ -246,6 +246,8 @@ Set on the root element of the page by the active theme (and the active space, f
 | `pane`           | One terminal pane.                                             |                                                   |
 | `pane-header`    | The header of a pane, when pane headers are on.                |                                                   |
 | `palette`        | The command palette.                                           |                                                   |
+| `library`        | The library of archived and closed tabs.                       |                                                   |
+| `library-row`    | One tab of the library.                                        | `selected`                                        |
 | `settings`       | The settings screen.                                           |                                                   |
 | `background`     | The picture behind the terminals, only while one is on screen. |                                                   |
 

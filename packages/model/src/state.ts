@@ -231,7 +231,10 @@ function checkShape(data: Obj): Workspace {
     checkEntry(v, p, "closedAt");
     checkPlace(v as Obj, p);
   });
-  list(data["archive"], "archive", (v, p) => checkEntry(v, p, "archivedAt"));
+  list(data["archive"], "archive", (v, p) => {
+    checkEntry(v, p, "archivedAt");
+    checkPlace(v as Obj, p);
+  });
   return data as unknown as Workspace;
 }
 
@@ -287,7 +290,10 @@ function checkEntry(value: unknown, path: string, timeKey: string): void {
   num(entry[timeKey], `${path}.${timeKey}`);
 }
 
-/** The place a closed item left (`ClosedPlace`); an old file has none, and a bad one is refused. */
+/**
+ * The place a closed or archived item left (`ClosedPlace`); an old file has none, and a bad one is
+ * refused.
+ */
 function checkPlace(entry: Obj, path: string): void {
   optional(entry, "place", path, (v, p) => {
     const place = obj(v, p);

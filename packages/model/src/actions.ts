@@ -105,6 +105,22 @@ export type Action =
    * of the tree of its space; with that space gone too, to the end of the tree of the active one.
    */
   | { type: "item/reopen"; itemId?: Id }
+  /**
+   * Puts an open item away in the archive: it leaves its space like a closed one (its sessions are
+   * dropped, it stops being a favorite) and the archive keeps it with the slot it left. This is what
+   * the auto-archive does to an idle item; the archive has no size limit.
+   */
+  | { type: "item/archive"; itemId: Id }
+  /**
+   * Brings an archived item back where it sat, exactly as `item/reopen` does for a closed one: the
+   * same space, list, group and position when they still exist, else the end of the tree of its
+   * space (or of the active one). The pane comes back clean, without a session.
+   */
+  | { type: "archive/restore"; itemId: Id }
+  /** Forgets an archived item for good (the app removes its scrollback files). */
+  | { type: "archive/delete"; itemId: Id }
+  /** Forgets a closed item for good, taking it off the stack (the app removes its scrollback files). */
+  | { type: "closed/delete"; itemId: Id }
   | {
       type: "item/rename";
       itemId: Id;
@@ -279,7 +295,7 @@ export type ActionType = Action["type"];
 export interface ReducerContext {
   /** Fresh ids. Ids already in the workspace are skipped, so a restarted counter is safe. */
   newId: IdGenerator;
-  /** Source of `lastActivityAt` and `closedAt`. */
+  /** Source of `lastActivityAt`, `closedAt` and `archivedAt`. */
   clock: Pick<Clock, "now">;
   /** Most panes one item may hold; an action that would pass it changes nothing. Default 4. */
   maxPanes?: number;

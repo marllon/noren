@@ -178,10 +178,17 @@ export interface ClosedPlace {
   index: number;
 }
 
+/**
+ * An item the auto-archive put away (or `item/archive` did): the whole item without sessions, the
+ * space it came from and the slot it left, as a closed item keeps them.
+ */
 export interface ArchivedItem {
   item: Item;
   spaceId: Id;
+  /** Same timeline as `Item.lastActivityAt`. */
   archivedAt: number;
+  /** Where the item sat in its space, so restoring can put it back there. Absent when it had none. */
+  place?: ClosedPlace;
 }
 
 /** Closed stack limit. */

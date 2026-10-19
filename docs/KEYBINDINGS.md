@@ -36,6 +36,7 @@ The **safe** preset is the default. It does not fight the shell: Ctrl+T, Ctrl+W 
 | Next recent tab               | Ctrl+Tab              | Ctrl+Tab              |
 | Previous recent tab           | Ctrl+Shift+Tab        | Ctrl+Shift+Tab        |
 | Search all tabs               | Ctrl+Shift+Alt+F      | Ctrl+Shift+Alt+F      |
+| Open library                  | Ctrl+Shift+Alt+L      | Ctrl+Shift+Alt+L      |
 | Go to last unread tab         | Ctrl+Shift+U          | Ctrl+Shift+U          |
 | Previous / next prompt        | Ctrl+Up / Ctrl+Down   | Ctrl+Up / Ctrl+Down   |
 | Increase font size            | Ctrl+=                | Ctrl+=                |
@@ -123,6 +124,10 @@ These keys were the shell's before: in a terminal Ctrl+- sends `0x1f`, which rea
 ## The last unread tab
 
 Ctrl+Shift+U (the same in both presets; "Go to last unread tab", `tab.last-unread`, category _Tabs_, so the shortcuts screen shows and records it and the palette lists it) shows the pane that became unread last, in any space: it chooses that tab, focuses the pane and shows its space, which clears its marks. Pressing it again goes to the next most recent unread pane. With nothing unread it says so in the notice and changes nothing. The key does not repeat when held. See [SHELL_INTEGRATION.md](SHELL_INTEGRATION.md) for what marks a pane unread and what clears it.
+
+## The library
+
+Ctrl+Shift+Alt+L (the same in both presets, free in both; "Open library", `tab.library`, category _Tabs_, so the shortcuts screen shows and records it and the palette lists it) opens the library, the list of the archived and the recently closed tabs. The screen writes the chord as `Ctrl+Alt+Shift+L`, the fixed order of chord text. The key goes to a text field like any other shortcut, so pressing it again while the library has the keyboard does nothing; Escape closes it. See [LIBRARY.md](LIBRARY.md).
 
 ## The search over all tabs
 

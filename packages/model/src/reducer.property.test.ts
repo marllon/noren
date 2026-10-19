@@ -28,6 +28,10 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "item/create": true,
   "item/close": true,
   "item/reopen": true,
+  "item/archive": true,
+  "archive/restore": true,
+  "archive/delete": true,
+  "closed/delete": true,
   "item/rename": true,
   "item/move": true,
   "item/pin": true,
@@ -123,7 +127,10 @@ function sessionsEndedBy(ws: Workspace, action: Action): Set<Id> {
     if (old?.sessionId !== undefined) ids.add(old.sessionId);
   }
   for (const space of ws.spaces) {
-    if (action.type === "item/close" && Object.hasOwn(space.items, action.itemId)) {
+    if (
+      (action.type === "item/close" || action.type === "item/archive") &&
+      Object.hasOwn(space.items, action.itemId)
+    ) {
       collect(Object.values(space.items).filter((item) => item.id === action.itemId));
     } else if (
       action.type === "space/delete" &&
@@ -155,6 +162,7 @@ function missingTarget(ws: Workspace, action: Action): boolean {
         (space) => space.id === action.spaceId && Object.hasOwn(space.items, action.itemId),
       );
     case "item/close":
+    case "item/archive":
     case "item/rename":
     case "item/move":
     case "item/pin":
@@ -162,6 +170,11 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "item/reset":
     case "item/favorite":
       return !itemIdsOf(ws).has(action.itemId);
+    case "archive/restore":
+    case "archive/delete":
+      return !ws.archive.some((entry) => entry.item.id === action.itemId);
+    case "closed/delete":
+      return !ws.closed.some((entry) => entry.item.id === action.itemId);
     case "item/unfavorite":
       return !ws.favorites.includes(action.itemId);
     case "group/ungroup":
@@ -230,7 +243,11 @@ function checkActiveItems(ws: Workspace, next: Workspace, action: Action, where:
     if (action.type === "space/set-active-item" && action.spaceId === space.id) {
       if (active !== action.itemId) fail("the chosen item did not become active");
     }
-    if (action.type === "item/create" || action.type === "item/reopen") {
+    if (
+      action.type === "item/create" ||
+      action.type === "item/reopen" ||
+      action.type === "archive/restore"
+    ) {
       const arrived = Object.keys(space.items).filter(
         (id) => !old || !Object.hasOwn(old.items, id),
       );
@@ -383,9 +400,10 @@ function playSequences(numRuns: number, maxPanes?: number): void {
               throw new Error(`${where()}: session ${id} vanished`);
             }
           }
-          // Whatever the reducer closes keeps no session.
-          for (const entry of next.closed) {
-            if (ws.closed.includes(entry)) continue;
+          // Whatever the reducer closes or archives keeps no session.
+          const keptEntries = new Set<object>([...ws.closed, ...ws.archive]);
+          for (const entry of [...next.closed, ...next.archive]) {
+            if (keptEntries.has(entry)) continue;
             for (const pane of layoutPanes(entry.item.layout)) {
               if (pane.sessionId !== undefined)
                 throw new Error(`${where()}: closed item has a session`);

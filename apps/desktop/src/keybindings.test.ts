@@ -164,6 +164,44 @@ describe("reopening a closed tab", () => {
   });
 });
 
+describe("the library", () => {
+  it("is one action in the Tabs category on Ctrl+Shift+Alt+L in both presets, and it does not repeat", () => {
+    const action = ACTIONS.find((a) => a.id === "tab.library");
+    expect(action?.title).toBe("Open library");
+    expect(action?.category).toBe("Tabs");
+    expect(action?.command).toEqual({ kind: "library" });
+    expect(action?.repeat).toBe(false);
+    for (const preset of PRESETS) expect(action?.chords[preset]).toBe("Ctrl+Alt+Shift+KeyL");
+  });
+
+  it("resolves its chord in the safe and the browser preset", () => {
+    for (const keybindings of [safe, browser]) {
+      expect(commandOf(keybindings, press("KeyL", ctrlAltShift))).toEqual({ kind: "library" });
+    }
+  });
+
+  it("shares its chord with no other action in either preset", () => {
+    for (const preset of PRESETS) {
+      const owners = ACTIONS.filter((a) => a.chords[preset] === "Ctrl+Alt+Shift+KeyL");
+      expect(owners.map((a) => a.id)).toEqual(["tab.library"]);
+    }
+  });
+
+  it("leaves L with other modifiers to the terminal", () => {
+    expect(commandOf(safe, press("KeyL"))).toBeUndefined();
+    expect(commandOf(safe, press("KeyL", ctrl))).toBeUndefined();
+    expect(commandOf(safe, press("KeyL", ctrlShift))).toBeUndefined();
+    expect(commandOf(safe, press("KeyL", ctrlAlt))).toBeUndefined();
+    expect(commandOf(safe, press("KeyL", { ...ctrlAltShift, metaKey: true }))).toBeUndefined();
+  });
+
+  it("can be moved to another chord by an override", () => {
+    const moved: Keybindings = { preset: "safe", overrides: { "tab.library": "Alt+KeyB" } };
+    expect(commandOf(moved, press("KeyL", ctrlAltShift))).toBeUndefined();
+    expect(commandOf(moved, press("KeyB", alt))).toEqual({ kind: "library" });
+  });
+});
+
 describe("the font size", () => {
   const find = (id: string) => ACTIONS.find((action) => action.id === id);
 

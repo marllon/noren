@@ -41,6 +41,7 @@ import {
   DEFAULT_MAX_PANES,
   MAX_CLOSED,
   MAX_GROUP_DEPTH,
+  type ArchivedItem,
   type ClosedItem,
   type ClosedPlace,
   type GroupNode,
@@ -168,6 +169,19 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       return closeItem(ws, action.itemId, ctx);
     case "item/reopen":
       return reopenItem(ws, action.itemId, ctx);
+    case "item/archive":
+      return archiveItem(ws, action.itemId, ctx);
+    case "archive/restore":
+      return restoreArchived(ws, action.itemId, ctx);
+    case "archive/delete":
+      return typeof action.itemId === "string" &&
+        ws.archive.some((e) => e.item.id === action.itemId)
+        ? { ...ws, archive: ws.archive.filter((entry) => entry.item.id !== action.itemId) }
+        : ws;
+    case "closed/delete":
+      return typeof action.itemId === "string" && ws.closed.some((e) => e.item.id === action.itemId)
+        ? { ...ws, closed: ws.closed.filter((entry) => entry.item.id !== action.itemId) }
+        : ws;
     case "item/rename":
       return renameItem(ws, action);
     case "item/move": {
@@ -453,7 +467,11 @@ function chooseActive(old: Space | undefined, space: Space, action: Action): Id 
   if (action.type === "item/join" && Object.hasOwn(space.items, action.targetItemId)) {
     return action.targetItemId;
   }
-  if (action.type === "item/create" || action.type === "item/reopen") {
+  if (
+    action.type === "item/create" ||
+    action.type === "item/reopen" ||
+    action.type === "archive/restore"
+  ) {
     const arrived = Object.keys(space.items).find((id) => !old || !Object.hasOwn(old.items, id));
     if (arrived !== undefined) return arrived;
   }
@@ -858,11 +876,53 @@ function reopenItem(ws: Workspace, itemId: Id | undefined, ctx: ReducerContext):
       : ws.closed.findIndex((entry) => entry.item.id === itemId);
   const entry = ws.closed[at];
   if (!entry) return ws;
+  const revived = revive(ws, entry, ctx);
+  return revived ? { ...revived, closed: revived.closed.filter((_, i) => i !== at) } : ws;
+}
+
+/** Puts an open item away in the archive, with the slot it leaves; its sessions are dropped. */
+function archiveItem(ws: Workspace, itemId: Id, ctx: ReducerContext): Workspace {
+  const located = locate(ws, itemId);
+  if (!located) return ws;
+  const place = placeOfItem(located.space, itemId);
+  const entry: ArchivedItem = {
+    item: withoutSessions(located.item),
+    spaceId: located.space.id,
+    archivedAt: ctx.clock.now(),
+    ...(place !== undefined ? { place } : {}),
+  };
+  return replaceSpace(
+    {
+      ...ws,
+      favorites: ws.favorites.filter((id) => id !== itemId),
+      archive: [...ws.archive, entry],
+    },
+    dropItem(located.space, itemId),
+  );
+}
+
+function restoreArchived(ws: Workspace, itemId: Id, ctx: ReducerContext): Workspace {
+  const at = ws.archive.findIndex((entry) => entry.item.id === itemId);
+  const entry = ws.archive[at];
+  if (!entry) return ws;
+  const revived = revive(ws, entry, ctx);
+  return revived ? { ...revived, archive: revived.archive.filter((_, i) => i !== at) } : ws;
+}
+
+/**
+ * The workspace with the item of a closed or archived entry back in a space, where it sat; the
+ * entry itself is left in its list for the caller to take out. `undefined` when it cannot be placed.
+ */
+function revive(
+  ws: Workspace,
+  entry: Pick<ClosedItem, "item" | "spaceId" | "place">,
+  ctx: ReducerContext,
+): Workspace | undefined {
   // Back to the space it came from, in the slot it left; with that space gone, to the end of the
   // tree of the active one.
   const home = findSpace(ws, entry.spaceId);
   const space = home ?? findSpace(ws, ws.activeSpaceId);
-  if (!space) return ws;
+  if (!space) return undefined;
   const placement = home ? placementOf(home, entry.place) : TREE_END;
   // A closed item holds no live session, whatever the state it was loaded from says.
   const stripped = withoutSessions(entry.item);
@@ -881,8 +941,7 @@ function reopenItem(ws: Workspace, itemId: Id | undefined, ctx: ReducerContext):
   }
   const arriving: Space = { ...space, items: { ...space.items, [item.id]: item } };
   const placed = place(arriving, item.id, placement);
-  if (!placed) return ws;
-  return replaceSpace({ ...ws, closed: ws.closed.filter((_, i) => i !== at) }, placed);
+  return placed ? replaceSpace(ws, placed) : undefined;
 }
 
 function renameItem(ws: Workspace, action: Extract<Action, { type: "item/rename" }>): Workspace {
@@ -1342,15 +1401,29 @@ function setPaneScrollback(
     return next;
   };
   if (!located) {
-    // A closed item keeps the notes of its panes too: its snapshot is written as it closes.
+    // A closed or archived item keeps the notes of its panes too: its snapshot is written as it
+    // leaves the space.
     const at = ws.closed.findIndex((entry) => entry.item.id === action.itemId);
     const entry = ws.closed[at];
-    const closedPane = entry && findPane(entry.item.layout, action.paneId);
-    if (!entry || !closedPane || closedPane.scrollbackRef === ref) return ws;
-    const layout = withPane(entry.item.layout, note(closedPane));
+    if (entry) {
+      const closedPane = findPane(entry.item.layout, action.paneId);
+      if (!closedPane || closedPane.scrollbackRef === ref) return ws;
+      const layout = withPane(entry.item.layout, note(closedPane));
+      return {
+        ...ws,
+        closed: ws.closed.map((e, i) => (i === at ? { ...e, item: { ...e.item, layout } } : e)),
+      };
+    }
+    const archivedAt = ws.archive.findIndex((e) => e.item.id === action.itemId);
+    const archived = ws.archive[archivedAt];
+    const archivedPane = archived && findPane(archived.item.layout, action.paneId);
+    if (!archived || !archivedPane || archivedPane.scrollbackRef === ref) return ws;
+    const layout = withPane(archived.item.layout, note(archivedPane));
     return {
       ...ws,
-      closed: ws.closed.map((e, i) => (i === at ? { ...e, item: { ...e.item, layout } } : e)),
+      archive: ws.archive.map((e, i) =>
+        i === archivedAt ? { ...e, item: { ...e.item, layout } } : e,
+      ),
     };
   }
   const pane = findPane(located.item.layout, action.paneId);

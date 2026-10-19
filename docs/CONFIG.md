@@ -98,10 +98,14 @@ Every setting is optional. Unknown settings are an error, so a typo does not go 
     "enabled": true, // false: never ask the system for a notification
     "longCommandSeconds": 30, // a longer command that ends out of sight notifies
   },
+  "archive": {
+    "enabled": true, // false: never put a tab in the archive on its own
+    "afterHours": 12, // hours a tab is left alone before it is archived; a fraction is fine
+  },
 }
 ```
 
-The values above are the defaults. More sections (auto-archive, AI) arrive with the tasks that need them; the schema is the list of what exists now. The `terminal` section is written in the file for now: the settings screen does not have a section for it yet. Your own shortcuts (the keys you record for an action) and a few other preferences (the recent folders, the answers to the question about running a project action) are still kept in the browser storage of the window, not in this file, until their settings get a place here.
+The values above are the defaults. More sections (AI) arrive with the tasks that need them; the schema is the list of what exists now. The `terminal` and `archive` sections are written in the file for now: the settings screen does not have a section for them yet. Your own shortcuts (the keys you record for an action) and a few other preferences (the recent folders, the answers to the question about running a project action) are still kept in the browser storage of the window, not in this file, until their settings get a place here.
 
 ## The terminal
 
@@ -132,6 +136,17 @@ Noren keeps what each pane showed, so that opening the app again does not start 
 - **Where it is lost.** Closing the window waits (up to a couple of seconds) for the snapshots to be written; if the app is ended without that wait (the process is killed, the computer loses power, the system shuts down), what was printed since the last minute is not in the file. The cursor position, the selection and the state of a running program are not saved.
 
 The space has no checkbox for this in the interface yet; until it does, a space that never saves is one with `"saveScrollback": false` in `state.json`.
+
+## Auto-archive
+
+`archive` decides which tabs Noren puts away on its own. A tab that nobody uses goes to the **archive**, keeping the place it had and the output it showed, and comes back from the library (see [LIBRARY.md](LIBRARY.md)).
+
+- `archive.enabled` is `true` unless the file says `false`. Off, nothing is archived on its own (a tab you close yourself still goes to the closed ones, and the library still works).
+- `archive.afterHours` is how many hours a tab has to be left alone before it is archived, `12` unless the file says otherwise. It must be above zero and a fraction is fine: `0.5` is half an hour, and a value of a few seconds' worth (such as `0.001`) is what the tests use. Zero, a negative number or text is an error of the file, shown with its line like any other.
+
+A tab is **left alone** when none of these is true: a command is running in one of its panes (the shell said so through OSC 133, see [SHELL_INTEGRATION.md](SHELL_INTEGRATION.md)), a pane printed something, a pane is unread or has a bell nobody has looked at, or it is the tab on screen. A **pinned** tab and a **favorite** are never archived. The check runs every minute, so a tab goes within a minute of reaching the time. The time counts from the last output of the tab, from the moment it was last on screen and from the moment Noren opened, at the latest: a Noren that was closed for days does not archive every tab a minute after it opens.
+
+The settings are read at every check, so a saved change applies without a restart. A shell without the Noren integration never reports a running command, so a program that prints nothing for hours looks quiet to the archive: turn the archive off, or pin the tab, if you run such programs.
 
 ## The window and the background
 

@@ -34,6 +34,7 @@ export type ActionCommand =
   | { kind: "palette" }
   | { kind: "new-tab" }
   | { kind: "reopen-closed" }
+  | { kind: "library" }
   | { kind: "close" }
   | { kind: "split"; dir: "row" | "column" }
   | { kind: "zoom" }
@@ -166,6 +167,14 @@ export const ACTIONS: readonly ActionDef[] = [
     command: { kind: "reopen-closed" },
     repeat: false,
     chords: { safe: "Ctrl+Alt+Shift+KeyT", browser: "Ctrl+Shift+KeyT" },
+  },
+  {
+    id: "tab.library",
+    title: "Open library",
+    category: "Tabs",
+    command: { kind: "library" },
+    repeat: false,
+    chords: { safe: "Ctrl+Alt+Shift+KeyL", browser: "Ctrl+Alt+Shift+KeyL" },
   },
   {
     id: "tab.mru-next",

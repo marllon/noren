@@ -308,6 +308,24 @@
       },
       "additionalProperties": false,
       "description": "System notifications."
+    },
+    "archive": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Off: Noren never puts a tab in the archive on its own. A tab you archive or close yourself is not affected.",
+          "default": true,
+          "type": "boolean"
+        },
+        "afterHours": {
+          "description": "How many hours a tab is left alone before it goes to the archive: with no command running, no output, nothing unread and not on screen. Pinned tabs and favorites are never archived. A fraction is fine (0.5 is half an hour).",
+          "default": 12,
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "description": "Auto-archive: tabs that nobody uses go to the archive with their saved output, and come back from the library."
     }
   },
   "additionalProperties": false,

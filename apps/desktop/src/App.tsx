@@ -123,7 +123,10 @@ import { ModStyles } from "./ModStyles";
 import { useModFiles } from "./mods-store";
 import { importSchemeFile } from "./scheme-import";
 import { useProfiles, useProfilesProblem } from "./profiles-store";
-import { NOTHING_CLOSED_NOTICE, reopenClosed } from "./reopen-closed";
+import { noteArchiveActivity } from "./auto-archive-service";
+import { Library } from "./Library";
+import type { LibraryEntry } from "./library-entries";
+import { GONE_FROM_LIBRARY_NOTICE, NOTHING_CLOSED_NOTICE, reopenClosed } from "./reopen-closed";
 import { restoredScrollbackOf } from "./scrollback-restore";
 import { noteTerminalActivity, registerTerminalSnapshot } from "./scrollback-service";
 import type { TerminalDrawing, TerminalHandle } from "./TerminalView";
@@ -292,6 +295,7 @@ function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTermi
       onOutput={(bytes) => {
         tracker.feed(bytes);
         noteTerminalActivity(pane.id);
+        noteArchiveActivity(pane.id);
       }}
     />
   );
@@ -475,6 +479,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const [paletteMode, setPaletteMode] = useState<"all" | "space-theme">("all");
   // The search over all tabs: the text of every tab, read when it opened (null while it is closed).
   const [searchText, setSearchText] = useState<SearchTab[] | null>(null);
+  // The library (archive and closed tabs) is open.
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const handles = useRef(new Map<Id, TerminalHandle>());
   const theme = useTheme();
   const themeChoice = useThemeChoice();
@@ -706,6 +712,48 @@ function Shell({ store }: { store: WorkspaceStore }) {
     });
   }, [store]);
 
+  /** Opens the library over everything else; the palette and the search give way to it. */
+  const openLibrary = useCallback(() => {
+    setPaletteOpen(false);
+    setSearchText(null);
+    setLibraryOpen(true);
+  }, []);
+  /** Closes the library and gives the keyboard back to the terminal of the tab on screen. */
+  const closeLibrary = useCallback(() => {
+    setLibraryOpen(false);
+    focusTerminal();
+  }, [focusTerminal]);
+  /**
+   * Brings a tab of the library back where it sat, with its saved output dimmed above a new shell
+   * in its folder, and shows it.
+   */
+  const restoreFromLibrary = useCallback(
+    (entry: LibraryEntry) => {
+      setLibraryOpen(false);
+      void reopenClosed({
+        store,
+        backend,
+        enabled: () => scrollbackAllowed(configManager.state.config.terminal),
+        now: () => Date.now(),
+        itemId: entry.itemId,
+        from: entry.section,
+      }).then((found) => {
+        if (!found) showNotice(GONE_FROM_LIBRARY_NOTICE);
+        focusTerminal();
+      });
+    },
+    [store, showNotice, focusTerminal],
+  );
+  /** Deletes a tab of the library for good; its saved output goes with it (see the scrollback service). */
+  const deleteFromLibrary = useCallback(
+    (entry: LibraryEntry) => {
+      store.getState().dispatch({
+        type: entry.section === "archive" ? "archive/delete" : "closed/delete",
+        itemId: entry.itemId,
+      });
+    },
+    [store],
+  );
   /** The terminal of the focused pane of the tab on screen. */
   const focusedHandle = useCallback((): TerminalHandle | undefined => {
     const state = store.getState();
@@ -847,6 +895,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) reopenTab();
         return;
       }
+      if (action.command.kind === "library") {
+        if (!modalOpen.current) openLibrary();
+        return;
+      }
       if (action.command.kind === "import-scheme") {
         if (!modalOpen.current) openSchemePicker();
         return;
@@ -880,6 +932,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     terminalAction,
     runLayout,
     reopenTab,
+    openLibrary,
   ]);
 
   // A horizontal wheel (or Shift+wheel) over the sidebar steps to the neighbor space and stops at
@@ -1099,6 +1152,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
     } else if (entry.action.command.kind === "reopen-closed") {
       // The tab comes back and takes the keyboard like any tab that is shown.
       reopenTab();
+    } else if (entry.action.command.kind === "library") {
+      // The library takes the keyboard itself; the palette must not hand it to the terminal.
+      openLibrary();
+      return;
     } else if (entry.action.command.kind === "import-scheme") {
       // The file picker takes over; the terminal gets the keyboard back with the palette's close.
       closePalette();
@@ -1332,7 +1389,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
   }
 
   const { pending } = projectActions;
-  modalOpen.current = overlay !== null || pending !== null || settingsOpen;
+  modalOpen.current = overlay !== null || pending !== null || settingsOpen || libraryOpen;
   const confirmNode = pending !== null && (
     <ConfirmDialog
       title="Run project action"
@@ -1469,6 +1526,15 @@ function Shell({ store }: { store: WorkspaceStore }) {
       {mru.rows !== undefined && <MruSwitcherView rows={mru.rows} />}
       {searchText !== null && (
         <TabSearch tabs={searchText} onPick={pickSearchHit} onClose={closeSearch} />
+      )}
+      {libraryOpen && (
+        <Library
+          workspace={workspace}
+          home={home}
+          onRestore={restoreFromLibrary}
+          onDelete={deleteFromLibrary}
+          onClose={closeLibrary}
+        />
       )}
       {paletteOpen && (
         <CommandPalette

@@ -12,15 +12,26 @@ import {
 } from "./settings-fixture";
 import { sidebarState } from "./sidebar-fixture";
 
-// The settings screen: appearance and layout, shortcuts and notifications. It is opened from the
+// The settings screen: appearance and layout, terminal, profiles, shortcuts, notifications and
+// auto-archive. It is opened from the
 // title bar and from the palette, edits are a draft until Save, and Save writes only the settings
 // that changed into `config.jsonc` (the web build keeps that text under `noren.web.config`), with
 // the comments of the file in place. The interface follows the file, so nothing reloads.
+
+interface Drawing {
+  fontFamily: string;
+  fontSize: number;
+  lineHeight: number;
+  cursorStyle: string;
+  cursorBlink: boolean;
+  scrollback: number;
+}
 
 interface Hook {
   configSaves(): number;
   failConfigSaves(message: string | null): void;
   setConfig(text: string | null): void;
+  terminalDrawing(): Drawing | undefined;
 }
 type HookWindow = Window & { __norenTest?: Hook; __stillHere?: boolean };
 
@@ -82,7 +93,14 @@ test.describe("opening the screen", () => {
     await start(page);
     const screen = await openSettings(page);
     await expect(screen.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
-    for (const name of ["Appearance", "Shortcuts", "Notifications"]) {
+    for (const name of [
+      "Appearance",
+      "Terminal",
+      "Profiles",
+      "Shortcuts",
+      "Notifications",
+      "Auto-archive",
+    ]) {
       await expect(screen.getByRole("region", { name, exact: true })).toBeVisible();
     }
     await radio(screen, "Right").check();
@@ -327,5 +345,308 @@ test.describe("when the file cannot be written", () => {
     );
     await changeSettings(page, (open) => radio(open, "Right").check());
     await expect(body(page)).toHaveAttribute("data-nr-side", "right");
+  });
+});
+
+// The Terminal, Profiles and Auto-archive sections: each one writes its own settings into the file
+// the same way as the first sections, with the comments of the file in place.
+
+const drawing = (page: Page): Promise<Drawing | undefined> =>
+  page.evaluate(() => (window as HookWindow).__norenTest?.terminalDrawing());
+
+const section = (screen: Locator, name: string) =>
+  screen.getByRole("region", { name, exact: true });
+const textbox = (scope: Locator, name: string) => scope.getByRole("textbox", { name, exact: true });
+
+const TERMINAL_FILE = `// My Noren settings, keep this line.
+{
+  "terminal": {
+    "font": { "size": 16 }, // my size
+    /* the cursor */
+    "cursor": { "style": "bar" },
+  },
+  "notifications": { "enabled": true }, // quiet
+}
+`;
+
+test.describe("the Terminal section", () => {
+  test("changes the terminal the moment it is saved, and the file keeps its comments", async ({
+    page,
+  }) => {
+    await start(page, TERMINAL_FILE);
+    await expect.poll(async () => (await drawing(page))?.fontSize).toBe(16);
+    expect((await drawing(page))?.cursorStyle).toBe("bar");
+    await markPage(page);
+
+    const screen = await openSettings(page);
+    const terminal = section(screen, "Terminal");
+    // The screen shows what the file says, and the defaults for what it does not.
+    await expect(textbox(terminal, "Font size (px)")).toHaveValue("16");
+    await expect(radio(terminal, "Bar")).toBeChecked();
+    await expect(textbox(terminal, "Scrollback (lines)")).toHaveValue("10000");
+    await expect(radio(terminal, "Only mark the tab")).toBeChecked();
+
+    await textbox(terminal, "Font size (px)").fill("20");
+    await radio(terminal, "Underline").check();
+    await checkbox(terminal, "Cursor blinks").uncheck();
+    await textbox(terminal, "Scrollback (lines)").fill("500");
+    await radio(terminal, "Flash and beep").check();
+    // The font comes from the list of monospaced fonts the backend has.
+    await terminal
+      .getByRole("combobox", { name: "Installed font", exact: true })
+      .selectOption("Consolas");
+    await expect(textbox(terminal, "Font list")).toHaveValue("Consolas, monospace");
+    await saveSettings(page);
+
+    // The terminal that was already running follows the file: no reload, the tab is still the one.
+    await expect
+      .poll(() => drawing(page))
+      .toMatchObject({
+        fontSize: 20,
+        cursorStyle: "underline",
+        cursorBlink: false,
+        scrollback: 500,
+        fontFamily: "Consolas, monospace",
+      });
+    expect(await samePage(page)).toBe(true);
+    await expect(tab(page, "api")).toHaveAttribute("aria-current", "true");
+
+    const text = (await configText(page)) ?? "";
+    for (const comment of [
+      "// My Noren settings, keep this line.",
+      "// my size",
+      "/* the cursor */",
+      "// quiet",
+    ]) {
+      expect(text).toContain(comment);
+    }
+    expect(text).toContain('"size": 20');
+    expect(text).toContain('"family": "Consolas, monospace"');
+    expect(text).toContain('"style": "underline"');
+    expect(text).toContain('"blink": false');
+    expect(text).toContain('"scrollback": 500');
+    expect(text).toContain('"bell": "both"');
+    expect(text).not.toContain('"size": 16');
+    expect(await saves(page)).toBe(1);
+  });
+
+  test("a value the schema refuses is shown where it is typed and nothing is written", async ({
+    page,
+  }) => {
+    await start(page, TERMINAL_FILE);
+    const screen = await openSettings(page);
+    const terminal = section(screen, "Terminal");
+    const size = textbox(terminal, "Font size (px)");
+    await size.fill("500");
+    await expect(size).toHaveAttribute("aria-invalid", "true");
+    await expect(terminal).toContainText("A number of pixels from 6 to 72.");
+    await expect(saveButton(screen)).toBeDisabled();
+
+    await size.fill("18");
+    await textbox(terminal, "Line height (1 to 3)").fill("0.5");
+    await expect(terminal).toContainText("A number from 1 to 3.");
+    await textbox(terminal, "Scrollback (lines)").fill("ten");
+    await expect(terminal).toContainText("A whole number of lines, from 0 to 100000.");
+    await textbox(terminal, "Font list").fill("url(http://example.com/a.woff)");
+    await expect(textbox(terminal, "Font list")).toHaveAttribute("aria-invalid", "true");
+    await expect(saveButton(screen)).toBeDisabled();
+
+    await textbox(terminal, "Line height (1 to 3)").fill("1.5");
+    await textbox(terminal, "Scrollback (lines)").fill("2000");
+    await textbox(terminal, "Font list").fill("Fira Code, monospace");
+    await expect(saveButton(screen)).toBeEnabled();
+    await cancelSettings(page);
+    expect(await saves(page)).toBe(0);
+    expect(await configText(page)).toBe(TERMINAL_FILE);
+    expect((await drawing(page))?.fontSize).toBe(16);
+  });
+});
+
+const PROFILES_FILE = `// My Noren settings, keep this line.
+{
+  /* my shells */
+  "profiles": [
+    // the first one
+    { "id": "dev", "name": "Dev Shell", "program": "pwsh.exe", "args": ["-NoLogo"] }, // keep
+    {
+      "id": "ops",
+      "name": "Ops",
+      "program": "bash", // the program
+    },
+  ],
+  "notifications": { "enabled": true }, // quiet
+}
+`;
+
+const profile = (screen: Locator, name: string) =>
+  section(screen, "Profiles").getByRole("group", { name, exact: true });
+const argsBox = (scope: Locator) => textbox(scope, "Arguments (one per line)");
+const addProfile = (screen: Locator) =>
+  section(screen, "Profiles").getByRole("button", { name: "Add profile", exact: true });
+
+/** The titles of the profile entries of the palette; the palette is closed again. */
+async function profileTitles(page: Page): Promise<string[]> {
+  await page.locator('[data-nr-part="pane"]:visible').first().click();
+  await page.keyboard.press("Control+Shift+P");
+  const palette = page.locator('[data-nr-part="palette"]');
+  await expect(palette).toBeVisible();
+  const titles = await palette.locator('[data-nr-kind="profile"] .palette-title').allTextContents();
+  await page.keyboard.press("Escape");
+  await expect(palette).toBeHidden();
+  return titles;
+}
+
+test.describe("the Profiles section", () => {
+  test("lists the profiles of the file, and adds one, keeping the comments", async ({ page }) => {
+    await start(page, PROFILES_FILE);
+    const screen = await openSettings(page);
+    await expect(textbox(profile(screen, "Dev Shell"), "Program")).toHaveValue("pwsh.exe");
+    await expect(argsBox(profile(screen, "Dev Shell"))).toHaveValue("-NoLogo");
+    await expect(textbox(profile(screen, "Ops"), "Program")).toHaveValue("bash");
+
+    await addProfile(screen).click();
+    const fresh = profile(screen, "New profile 3");
+    await textbox(fresh, "Name").fill("Build Box");
+    await textbox(fresh, "Program").fill("cmd.exe");
+    await argsBox(fresh).fill("/k\nvcvars64.bat");
+    await textbox(fresh, "Start folder").fill("D:\\build");
+    await saveSettings(page);
+
+    const text = (await configText(page)) ?? "";
+    for (const comment of [
+      "// My Noren settings, keep this line.",
+      "/* my shells */",
+      "// the first one",
+      "// keep",
+      "// the program",
+      "// quiet",
+    ]) {
+      expect(text).toContain(comment);
+    }
+    expect(text).toContain('"id": "build-box"');
+    expect(text).toContain('"args": ["/k", "vcvars64.bat"]');
+    expect(text).toContain('"cwd": "D:\\\\build"');
+    // The palette lists it with no reload.
+    await expect.poll(() => profileTitles(page)).toContain("New Build Box tab");
+  });
+
+  test("edits the name, the program, the arguments and the folder of a profile", async ({
+    page,
+  }) => {
+    await start(page, PROFILES_FILE);
+    const screen = await openSettings(page);
+    const ops = profile(screen, "Ops");
+    await textbox(ops, "Name").fill("Operations");
+    await textbox(ops, "Program").fill("fish");
+    await argsBox(ops).fill("-l");
+    await textbox(ops, "Start folder").fill("/srv");
+    await saveSettings(page);
+
+    const text = (await configText(page)) ?? "";
+    expect(text).toContain('"name": "Operations"');
+    expect(text).toContain('"program": "fish", // the program');
+    expect(text).toContain('"args": ["-l"]');
+    expect(text).toContain('"cwd": "/srv"');
+    expect(text).toContain('"id": "ops"');
+    expect(text).toContain("// the first one");
+    expect(text).toContain("// keep");
+    await expect.poll(() => profileTitles(page)).toContain("New Operations tab");
+    expect(await profileTitles(page)).not.toContain("New Ops tab");
+  });
+
+  test("removes a profile and nothing else", async ({ page }) => {
+    await start(page, PROFILES_FILE);
+    await expect.poll(() => profileTitles(page)).toContain("New Dev Shell tab");
+    const screen = await openSettings(page);
+    await profile(screen, "Dev Shell")
+      .getByRole("button", { name: "Remove profile", exact: true })
+      .click();
+    await expect(profile(screen, "Dev Shell")).toHaveCount(0);
+    await saveSettings(page);
+
+    const text = (await configText(page)) ?? "";
+    expect(text).not.toContain('"dev"');
+    expect(text).toContain('"id": "ops"');
+    for (const comment of [
+      "// My Noren settings, keep this line.",
+      "/* my shells */",
+      "// quiet",
+    ]) {
+      expect(text).toContain(comment);
+    }
+    await expect.poll(() => profileTitles(page)).not.toContain("New Dev Shell tab");
+    expect(await profileTitles(page)).toContain("New Ops tab");
+  });
+
+  test("a profile with no name or program is refused on the screen and nothing is written", async ({
+    page,
+  }) => {
+    await start(page, PROFILES_FILE);
+    const screen = await openSettings(page);
+    await addProfile(screen).click();
+    const fresh = profile(screen, "New profile 3");
+    await textbox(fresh, "Name").fill("Half done");
+    await expect(textbox(fresh, "Program")).toHaveAttribute("aria-invalid", "true");
+    await expect(saveButton(screen)).toBeDisabled();
+    await textbox(fresh, "Program").fill("zsh");
+    await expect(saveButton(screen)).toBeEnabled();
+    const opsProgram = textbox(profile(screen, "Ops"), "Program");
+    await opsProgram.fill("   ");
+    await expect(opsProgram).toHaveAttribute("aria-invalid", "true");
+    await expect(saveButton(screen)).toBeDisabled();
+    await cancelSettings(page);
+    expect(await configText(page)).toBe(PROFILES_FILE);
+    expect(await saves(page)).toBe(0);
+  });
+});
+
+const ARCHIVE_FILE = `// My Noren settings, keep this line.
+{
+  // Keep tabs a while.
+  "archive": { "enabled": true }, // on
+  "notifications": { "enabled": true },
+}
+`;
+
+test.describe("the Auto-archive section", () => {
+  test("writes the switch and the hours, keeping the comments", async ({ page }) => {
+    await start(page, ARCHIVE_FILE);
+    const screen = await openSettings(page);
+    const archive = section(screen, "Auto-archive");
+    await expect(checkbox(archive, "Archive idle tabs")).toBeChecked();
+    await expect(textbox(archive, "Archive after (hours)")).toHaveValue("12");
+
+    await checkbox(archive, "Archive idle tabs").uncheck();
+    await textbox(archive, "Archive after (hours)").fill("0.5");
+    await saveSettings(page);
+
+    expect(await configText(page)).toBe(
+      ARCHIVE_FILE.replace(
+        '"enabled": true }, // on',
+        '"enabled": false, "afterHours": 0.5 }, // on',
+      ),
+    );
+    // Opened again, the screen shows what was saved.
+    const again = section(await openSettings(page), "Auto-archive");
+    await expect(checkbox(again, "Archive idle tabs")).not.toBeChecked();
+    await expect(textbox(again, "Archive after (hours)")).toHaveValue("0.5");
+    await cancelSettings(page);
+  });
+
+  test("hours that are not above zero are refused where they are typed", async ({ page }) => {
+    await start(page, ARCHIVE_FILE);
+    const screen = await openSettings(page);
+    const archive = section(screen, "Auto-archive");
+    const hours = textbox(archive, "Archive after (hours)");
+    for (const text of ["0", "-2", "soon"]) {
+      await hours.fill(text);
+      await expect(hours).toHaveAttribute("aria-invalid", "true");
+      await expect(archive).toContainText("A number of hours above zero.");
+      await expect(saveButton(screen)).toBeDisabled();
+    }
+    await hours.fill("2");
+    await expect(saveButton(screen)).toBeEnabled();
+    await cancelSettings(page);
+    expect(await configText(page)).toBe(ARCHIVE_FILE);
   });
 });

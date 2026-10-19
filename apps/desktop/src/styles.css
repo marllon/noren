@@ -1442,8 +1442,66 @@ body {
   font: inherit;
 }
 
-.settings-number input[aria-invalid="true"] {
+.settings-number input[aria-invalid="true"],
+.settings-number textarea[aria-invalid="true"] {
   border-color: var(--nr-accent);
+}
+
+/* A box for a list of names, a path or the arguments of a program: the width of its section. */
+.settings-number.settings-wide {
+  align-self: stretch;
+}
+
+.settings-wide .settings-option {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.settings-wide input[type="text"],
+.settings-wide textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-bg);
+  color: inherit;
+  font: inherit;
+  resize: vertical;
+}
+
+.settings-section select {
+  max-width: 100%;
+  padding: 3px 6px;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-bg);
+  color: inherit;
+  font: inherit;
+}
+
+/* The profiles of the file in the settings screen: a box of fields for each one. */
+.settings-profiles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-self: stretch;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
 }
 
 .settings-hint {

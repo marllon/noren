@@ -24,6 +24,9 @@ import {
 } from "./settings-screen";
 import type { SettingKey } from "./settings-screen";
 
+/** What a plan says about the sections with their own boxes when none has a problem. */
+const NO_SECTION_PROBLEMS = { terminalProblems: {}, archiveProblems: {}, profileProblems: {} };
+
 const EVERYTHING: Config = {
   appearance: {
     sidebar: { position: "right", width: 333, compact: true, keepOpen: true },
@@ -173,7 +176,7 @@ describe("parseWidth and parseSeconds", () => {
 
 describe("planSave", () => {
   it("writes nothing for an untouched draft", () => {
-    expect(planSave({}, {})).toEqual({ changes: [], problems: {} });
+    expect(planSave({}, {})).toEqual({ changes: [], problems: {}, ...NO_SECTION_PROBLEMS });
   });
 
   it("writes only the settings that differ from the ones in force", () => {
@@ -206,7 +209,7 @@ describe("planSave", () => {
       "notifications.enabled",
       "notifications.longCommandSeconds",
     ]);
-    expect(plan.changes.map((change) => change.value)).toEqual([
+    expect(plan.changes.map((change) => ("value" in change ? change.value : undefined))).toEqual([
       "right",
       300,
       "browser",
@@ -219,6 +222,7 @@ describe("planSave", () => {
     expect(planSave({}, { side: "left", width: "200", notifications: true })).toEqual({
       changes: [],
       problems: {},
+      ...NO_SECTION_PROBLEMS,
     });
   });
 

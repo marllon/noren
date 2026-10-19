@@ -2,13 +2,15 @@ import { ArrowDown, ArrowUp } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, KeyboardEvent } from "react";
 import {
+  BELL_STYLES,
+  CURSOR_STYLES,
   WINDOW_EFFECTS,
   WINDOW_EFFECT_LABELS,
   describeConfigError,
   movedMod,
   withMod,
 } from "@noren/model";
-import type { Backend, WindowEffect } from "@noren/model";
+import type { Backend, BellStyle, CursorStyle, WindowEffect } from "@noren/model";
 import { useConfigState, configManager } from "./config-store";
 import { resolveBindings } from "./keybindings";
 import type { Preset } from "./keybindings";
@@ -25,8 +27,17 @@ import { useQuickShortcutStatus } from "./quick-shortcut-store";
 import { importSchemeFile } from "./scheme-import";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { addUserThemes, getUserThemes } from "./user-themes-store";
-import { compactAvailable, keepOpenAvailable, planSave, shownSettings } from "./settings-screen";
+import {
+  compactAvailable,
+  hasProblems,
+  keepOpenAvailable,
+  planSave,
+  shownSettings,
+} from "./settings-screen";
 import type { SettingsDraft } from "./settings-screen";
+import { withNewProfile, withProfileEdited, withoutProfile } from "./settings-profiles";
+import type { ProfileField, ProfileRow } from "./settings-profiles";
+import { fontChoice } from "./settings-sections";
 import { useWindowEffectReport, windowEffectNote } from "./window-effect-store";
 
 interface ChoiceProps<T extends string> {
@@ -83,13 +94,22 @@ interface NumberBoxProps {
   problem: string | undefined;
   /** A box for a path or other text rather than a number. */
   text?: boolean;
+  /** A box wide enough for a list of names or a path. */
+  wide?: boolean;
   onChange(text: string): void;
 }
 
-function NumberBox({ label, value, problem, text = false, onChange }: NumberBoxProps) {
+function NumberBox({
+  label,
+  value,
+  problem,
+  text = false,
+  wide = false,
+  onChange,
+}: NumberBoxProps) {
   const hintId = useId();
   return (
-    <div className="settings-number">
+    <div className={wide ? "settings-number settings-wide" : "settings-number"}>
       <label className="settings-option">
         <span>{label}</span>
         <input
@@ -97,6 +117,39 @@ function NumberBox({ label, value, problem, text = false, onChange }: NumberBoxP
           inputMode={text ? "text" : "decimal"}
           spellCheck={text ? false : undefined}
           autoComplete={text ? "off" : undefined}
+          value={value}
+          aria-invalid={problem !== undefined ? true : undefined}
+          aria-describedby={problem !== undefined ? hintId : undefined}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </label>
+      {problem !== undefined && (
+        <span id={hintId} className="settings-hint" role="alert">
+          {problem}
+        </span>
+      )}
+    </div>
+  );
+}
+
+interface TextAreaProps {
+  label: string;
+  value: string;
+  problem: string | undefined;
+  onChange(text: string): void;
+}
+
+/** A box of several lines, such as the arguments of a program, one to a line. */
+function TextArea({ label, value, problem, onChange }: TextAreaProps) {
+  const hintId = useId();
+  return (
+    <div className="settings-number settings-wide">
+      <label className="settings-option">
+        <span>{label}</span>
+        <textarea
+          rows={2}
+          spellCheck={false}
+          autoComplete="off"
           value={value}
           aria-invalid={problem !== undefined ? true : undefined}
           aria-describedby={problem !== undefined ? hintId : undefined}
@@ -131,6 +184,29 @@ const WINDOW_EFFECT_OPTIONS: readonly { value: WindowEffect; label: string }[] =
   (value) => ({ value, label: WINDOW_EFFECT_LABELS[value] }),
 );
 
+const CURSOR_LABELS: Readonly<Record<CursorStyle, string>> = {
+  block: "Block",
+  bar: "Bar",
+  underline: "Underline",
+};
+
+const CURSORS: readonly { value: CursorStyle; label: string }[] = CURSOR_STYLES.map((value) => ({
+  value,
+  label: CURSOR_LABELS[value],
+}));
+
+const BELL_LABELS: Readonly<Record<BellStyle, string>> = {
+  none: "Only mark the tab",
+  visual: "Flash the pane",
+  sound: "Beep",
+  both: "Flash and beep",
+};
+
+const BELLS: readonly { value: BellStyle; label: string }[] = BELL_STYLES.map((value) => ({
+  value,
+  label: BELL_LABELS[value],
+}));
+
 const KEY_PRESETS: readonly { value: Preset; label: string }[] = [
   { value: "safe", label: "Safe" },
   { value: "browser", label: "Browser" },
@@ -138,7 +214,7 @@ const KEY_PRESETS: readonly { value: Preset; label: string }[] = [
 
 interface SettingsDialogProps {
   /** Where an imported color scheme is written (the themes folder). */
-  backend: Pick<Backend, "saveUserTheme">;
+  backend: Pick<Backend, "saveUserTheme" | "listMonospaceFonts">;
   onClose(): void;
 }
 
@@ -171,22 +247,45 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
   const effectNote = windowEffectNote(useWindowEffectReport());
   const [importStatus, setImportStatus] = useState("");
   const [importPlan, setImportPlan] = useState<ProfileImportPlan>();
+  // The monospaced fonts this computer has, which the Terminal section offers for the font box.
+  const [fonts, setFonts] = useState<readonly string[]>([]);
 
   useEffect(() => {
     dialogRef.current?.querySelector<HTMLElement>("input, button")?.focus();
   }, []);
 
+  useEffect(() => {
+    let current = true;
+    backend.listMonospaceFonts().then(
+      (names) => {
+        if (current) setFonts(names);
+      },
+      () => {
+        // A computer whose fonts cannot be listed: the box still takes any list of names.
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [backend]);
+
   const shown = shownSettings(config, draft);
   const modFiles = useModFiles();
   const modRows = settingsModRows(modFiles, shown.mods);
-  const plan = planSave(config, draft);
+  const plan = planSave(config, draft, { takenProfileIds: takenProfileIds(config, profiles) });
   const [firstError] = errors;
   const canSave =
-    !saving &&
-    firstError === undefined &&
-    plan.changes.length > 0 &&
-    Object.keys(plan.problems).length === 0;
+    !saving && firstError === undefined && plan.changes.length > 0 && !hasProblems(plan);
   const change = (patch: SettingsDraft) => setDraft((now) => ({ ...now, ...patch }));
+  const changeTerminal = (patch: NonNullable<SettingsDraft["terminal"]>) =>
+    setDraft((now) => ({ ...now, terminal: { ...now.terminal, ...patch } }));
+  const changeArchive = (patch: NonNullable<SettingsDraft["archive"]>) =>
+    setDraft((now) => ({ ...now, archive: { ...now.archive, ...patch } }));
+  // The rows of the list are one draft: the first change takes the profiles of the file as they are.
+  const changeProfiles = (next: (rows: readonly ProfileRow[]) => readonly ProfileRow[]) =>
+    setDraft((now) => ({ ...now, profiles: next(now.profiles ?? shown.profiles) }));
+  const editProfile = (key: string, patch: Partial<Record<ProfileField, string>>) =>
+    changeProfiles((rows) => withProfileEdited(rows, key, patch));
 
   const save = async () => {
     if (!canSave) return;
@@ -380,6 +479,167 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                   the theme decide. A space can have a picture of its own, in its menu.
                 </p>
               </section>
+              <section
+                className="settings-section"
+                aria-label="Terminal"
+                data-nr-part="settings-terminal"
+              >
+                <h3>Terminal</h3>
+                <NumberBox
+                  label="Font list"
+                  value={shown.terminal.fontFamily}
+                  problem={plan.terminalProblems.fontFamily}
+                  text
+                  wide
+                  onChange={(fontFamily) => changeTerminal({ fontFamily })}
+                />
+                {fonts.length > 0 && (
+                  <label className="settings-option">
+                    <span>Installed font</span>
+                    <select
+                      value=""
+                      onChange={(event) => {
+                        const name = event.target.value;
+                        if (name !== "") changeTerminal({ fontFamily: fontChoice(name) });
+                      }}
+                    >
+                      <option value="">Choose one...</option>
+                      {fonts.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <NumberBox
+                  label="Font size (px)"
+                  value={shown.terminal.fontSize}
+                  problem={plan.terminalProblems.fontSize}
+                  onChange={(fontSize) => changeTerminal({ fontSize })}
+                />
+                <NumberBox
+                  label="Line height (1 to 3)"
+                  value={shown.terminal.lineHeight}
+                  problem={plan.terminalProblems.lineHeight}
+                  onChange={(lineHeight) => changeTerminal({ lineHeight })}
+                />
+                <Toggle
+                  label="Font ligatures"
+                  checked={shown.terminal.ligatures}
+                  onChange={(ligatures) => changeTerminal({ ligatures })}
+                />
+                <p className="settings-hint">
+                  Ligatures are accepted, but the terminal does not draw them yet.
+                </p>
+                <Choice
+                  legend="Cursor shape"
+                  name="settings-cursor"
+                  value={shown.terminal.cursorStyle}
+                  options={CURSORS}
+                  onChange={(cursorStyle) => changeTerminal({ cursorStyle })}
+                />
+                <Toggle
+                  label="Cursor blinks"
+                  checked={shown.terminal.cursorBlink}
+                  onChange={(cursorBlink) => changeTerminal({ cursorBlink })}
+                />
+                <NumberBox
+                  label="Scrollback (lines)"
+                  value={shown.terminal.scrollback}
+                  problem={plan.terminalProblems.scrollback}
+                  onChange={(scrollback) => changeTerminal({ scrollback })}
+                />
+                <Choice
+                  legend="When a program rings the bell"
+                  name="settings-bell"
+                  value={shown.terminal.bell}
+                  options={BELLS}
+                  onChange={(bell) => changeTerminal({ bell })}
+                />
+              </section>
+              <section
+                className="settings-section"
+                aria-label="Profiles"
+                data-nr-part="settings-profiles"
+              >
+                <h3>Profiles</h3>
+                {shown.profiles.length === 0 ? (
+                  <p className="settings-hint">
+                    No shells of your own yet. The ones Noren finds on this computer are always in
+                    the palette.
+                  </p>
+                ) : (
+                  <ul className="settings-profiles">
+                    {shown.profiles.map((row, index) => {
+                      const problems = plan.profileProblems[row.key];
+                      const heading = row.saved
+                        ? (config.profiles?.find((profile) => profile.id === row.key)?.name ??
+                          row.key)
+                        : `New profile ${index + 1}`;
+                      return (
+                        <li key={row.key}>
+                          <fieldset
+                            className="settings-profile"
+                            aria-label={heading}
+                            data-nr-part="settings-profile"
+                          >
+                            <NumberBox
+                              label="Name"
+                              value={row.name}
+                              problem={problems?.name}
+                              text
+                              wide
+                              onChange={(name) => editProfile(row.key, { name })}
+                            />
+                            <NumberBox
+                              label="Program"
+                              value={row.program}
+                              problem={problems?.program}
+                              text
+                              wide
+                              onChange={(program) => editProfile(row.key, { program })}
+                            />
+                            <TextArea
+                              label="Arguments (one per line)"
+                              value={row.args}
+                              problem={problems?.args}
+                              onChange={(args) => editProfile(row.key, { args })}
+                            />
+                            <NumberBox
+                              label="Start folder"
+                              value={row.cwd}
+                              problem={problems?.cwd}
+                              text
+                              wide
+                              onChange={(cwd) => editProfile(row.key, { cwd })}
+                            />
+                            <button
+                              type="button"
+                              className="settings-link"
+                              onClick={() =>
+                                changeProfiles((rows) => withoutProfile(rows, row.key))
+                              }
+                            >
+                              Remove profile
+                            </button>
+                          </fieldset>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                <button
+                  type="button"
+                  className="settings-link"
+                  onClick={() => changeProfiles((rows) => withNewProfile(rows))}
+                >
+                  Add profile
+                </button>
+                <p className="settings-hint">
+                  The start folder is optional. Saving a profile starts nothing.
+                </p>
+              </section>
               <section className="settings-section" aria-label="Shortcuts">
                 <h3>Shortcuts</h3>
                 <Choice
@@ -414,6 +674,28 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                   problem={plan.problems.longCommandSeconds}
                   onChange={(longCommandSeconds) => change({ longCommandSeconds })}
                 />
+              </section>
+              <section
+                className="settings-section"
+                aria-label="Auto-archive"
+                data-nr-part="settings-archive"
+              >
+                <h3>Auto-archive</h3>
+                <Toggle
+                  label="Archive idle tabs"
+                  checked={shown.archive.enabled}
+                  onChange={(enabled) => changeArchive({ enabled })}
+                />
+                <NumberBox
+                  label="Archive after (hours)"
+                  value={shown.archive.afterHours}
+                  problem={plan.archiveProblems.afterHours}
+                  onChange={(afterHours) => changeArchive({ afterHours })}
+                />
+                <p className="settings-hint">
+                  A tab nobody uses goes to the library. Pinned tabs and favorites are never
+                  archived.
+                </p>
               </section>
               <section className="settings-section" aria-label="Mods" data-nr-part="settings-mods">
                 <h3>Mods</h3>

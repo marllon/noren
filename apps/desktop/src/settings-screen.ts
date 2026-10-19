@@ -8,10 +8,21 @@ import {
   backgroundImageProblem,
   sameModList,
 } from "@noren/model";
-import type { Config, ConfigChange, WindowEffect } from "@noren/model";
+import type { Config, ConfigEdit, WindowEffect } from "@noren/model";
 import type { Preset } from "./keybindings";
 import { DEFAULT_LAYOUT, layoutFromConfig } from "./layout";
 import type { Layout } from "./layout";
+import { planProfiles, shownProfiles } from "./settings-profiles";
+import type { ProfileField, ProfileRow } from "./settings-profiles";
+import { planArchive, planTerminal, shownArchive, shownTerminal } from "./settings-sections";
+import type {
+  ArchiveDraft,
+  ArchiveProblems,
+  ShownArchive,
+  ShownTerminal,
+  TerminalDraft,
+  TerminalProblems,
+} from "./settings-sections";
 
 // The pure part of the settings screen: which setting lives where in `config.jsonc`, the values in
 // force (the file over the defaults), and what Save has to write for what the person changed. The
@@ -94,6 +105,12 @@ export type SettingsDraft = Partial<Omit<SettingsValues, "width" | "longCommandS
   longCommandSeconds?: string;
   /** The mods that are on for every space, in the order they apply (the file names). */
   mods?: readonly string[];
+  /** The Terminal section. */
+  terminal?: TerminalDraft;
+  /** The Auto-archive section. */
+  archive?: ArchiveDraft;
+  /** The whole list of profiles as rows, once the person touched it. */
+  profiles?: readonly ProfileRow[];
 } & Partial<Record<OptionalKey, string>>;
 
 /**
@@ -139,6 +156,9 @@ export interface ShownSettings
   width: string;
   longCommandSeconds: string;
   mods: readonly string[];
+  terminal: ShownTerminal;
+  archive: ShownArchive;
+  profiles: readonly ProfileRow[];
 }
 
 export function shownSettings(config: Config, draft: SettingsDraft): ShownSettings {
@@ -149,6 +169,9 @@ export function shownSettings(config: Config, draft: SettingsDraft): ShownSettin
     width: draft.width ?? String(now.width),
     longCommandSeconds: draft.longCommandSeconds ?? String(now.longCommandSeconds),
     mods: draft.mods ?? config.mods ?? [],
+    terminal: shownTerminal(config, draft.terminal),
+    archive: shownArchive(config, draft.archive),
+    profiles: shownProfiles(config, draft.profiles),
     ...Object.fromEntries(
       OPTIONAL_KEYS.map((key) => [key, draft[key] ?? String(optionalValueOf(config, key) ?? "")]),
     ),
@@ -236,8 +259,30 @@ function optionalFromText(
 
 /** What Save would do: the settings to write, and the boxes whose text is not a usable value. */
 export interface SavePlan {
-  changes: ConfigChange[];
+  changes: ConfigEdit[];
   problems: Partial<Record<NumberKey | OptionalKey, string>>;
+  /** The problems of the Terminal section, by setting. */
+  terminalProblems: TerminalProblems;
+  /** The problems of the Auto-archive section, by setting. */
+  archiveProblems: ArchiveProblems;
+  /** The problems of the Profiles section, by the key of the row and the box. */
+  profileProblems: Record<string, Partial<Record<ProfileField, string>>>;
+}
+
+/** Whether any box of the draft holds a value that cannot be written. */
+export function hasProblems(plan: SavePlan): boolean {
+  return (
+    Object.keys(plan.problems).length > 0 ||
+    Object.keys(plan.terminalProblems).length > 0 ||
+    Object.keys(plan.archiveProblems).length > 0 ||
+    Object.keys(plan.profileProblems).length > 0
+  );
+}
+
+/** What `planSave` needs to know besides the file and the draft. */
+export interface PlanContext {
+  /** The ids of the shells of the machine, which a new profile cannot take. */
+  takenProfileIds?: Iterable<string>;
 }
 
 /**
@@ -245,7 +290,11 @@ export interface SavePlan {
  * order of the file, so a setting put back where it was is not written. A box with a value that
  * cannot be used is a problem and writes nothing.
  */
-export function planSave(config: Config, draft: SettingsDraft): SavePlan {
+export function planSave(
+  config: Config,
+  draft: SettingsDraft,
+  context: PlanContext = {},
+): SavePlan {
   const now = settingsOf(config);
   const problems: SavePlan["problems"] = {};
   const wanted: Partial<SettingsValues> = {};
@@ -264,7 +313,7 @@ export function planSave(config: Config, draft: SettingsDraft): SavePlan {
       (wanted as Record<string, unknown>)[key] = value;
     }
   }
-  const changes: ConfigChange[] = [];
+  const changes: ConfigEdit[] = [];
   for (const key of KEYS) {
     const value = wanted[key];
     if (value === undefined || value === now[key]) continue;
@@ -285,5 +334,16 @@ export function planSave(config: Config, draft: SettingsDraft): SavePlan {
   if (draft.mods !== undefined && !sameModList(draft.mods, config.mods ?? [])) {
     changes.push({ path: MODS_PATH, value: draft.mods });
   }
-  return { changes, problems };
+  // The sections with their own plans, in the order of the file: terminal, profiles, archive.
+  const terminal = planTerminal(config, draft.terminal);
+  const profiles = planProfiles(config, draft.profiles, context.takenProfileIds);
+  const archive = planArchive(config, draft.archive);
+  changes.push(...terminal.changes, ...profiles.changes, ...archive.changes);
+  return {
+    changes,
+    problems,
+    terminalProblems: terminal.problems,
+    archiveProblems: archive.problems,
+    profileProblems: profiles.problems,
+  };
 }

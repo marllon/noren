@@ -13,6 +13,9 @@ import { ConfigSchema } from "./config";
 // would move the comment at the end of the previous line onto the new setting and open up an
 // object the person wrote on one line.
 
+/** The place of a setting in the file: names, and the index of an item where the path goes through a list. */
+export type ConfigPath = readonly (string | number)[];
+
 /** A value a setting can hold (`null` is a setting that says "not set", such as no picture). */
 export type ConfigValue = string | number | boolean | null;
 
@@ -22,7 +25,7 @@ export type ConfigValue = string | number | boolean | null;
  * inside the old list go with it, the ones around it stay.
  */
 export interface ConfigChange {
-  readonly path: readonly string[];
+  readonly path: ConfigPath;
   readonly value: ConfigValue | readonly string[];
 }
 
@@ -35,12 +38,22 @@ export type ConfigJson =
  * already in the list stay as they are; a list the file does not have yet is created with them.
  */
 export interface ConfigAppend {
-  readonly path: readonly string[];
+  readonly path: ConfigPath;
   readonly append: readonly ConfigJson[];
 }
 
-/** One edit of the file: a setting set to a value, or items added to a list. */
-export type ConfigEdit = ConfigChange | ConfigAppend;
+/**
+ * A setting or a list item to take out of the file (`["profiles", 2]`, `["profiles", 0, "cwd"]`). What
+ * is not in the file is left alone. Only the entry goes: the comments around it stay. Edits run in
+ * order, so the indexes of the items after a removed one move down by one for the edits that follow.
+ */
+export interface ConfigRemove {
+  readonly path: ConfigPath;
+  readonly remove: true;
+}
+
+/** One edit of the file: a setting set to a value, items added to a list, or an entry taken out. */
+export type ConfigEdit = ConfigChange | ConfigAppend | ConfigRemove;
 
 type Shape = Record<string, z.ZodType>;
 
@@ -51,11 +64,18 @@ function shapeOf(schema: z.ZodType): Shape | undefined {
   return inner instanceof z.ZodObject ? (inner.shape as Shape) : undefined;
 }
 
+/** The schema of the items of a list, when `schema` is one (an optional one counts). */
+function itemOf(schema: z.ZodType): z.ZodType | undefined {
+  let inner = schema;
+  while (inner instanceof z.ZodOptional) inner = inner.unwrap() as z.ZodType;
+  return inner instanceof z.ZodArray ? (inner.element as z.ZodType) : undefined;
+}
+
 /** The names of the settings of the object at `path`, in the order the schema lists them. */
-function schemaOrder(path: readonly string[]): readonly string[] {
+function schemaOrder(path: ConfigPath): readonly string[] {
   let schema: z.ZodType = ConfigSchema;
   for (const key of path) {
-    const next = shapeOf(schema)?.[key];
+    const next = typeof key === "number" ? itemOf(schema) : shapeOf(schema)?.[key];
     if (next === undefined) return [];
     schema = next;
   }
@@ -67,7 +87,7 @@ function schemaOrder(path: readonly string[]): readonly string[] {
  * lists after it, so a file grows in the order of the documentation. A setting the schema does not
  * list goes last.
  */
-function insertionIndex(parentPath: readonly string[], key: string, names: string[]): number {
+function insertionIndex(parentPath: ConfigPath, key: string, names: string[]): number {
   const order = schemaOrder(parentPath);
   const rankOf = (name: string): number => {
     const rank = order.indexOf(name);
@@ -83,7 +103,7 @@ function insertionIndex(parentPath: readonly string[], key: string, names: strin
 type Tree = ConfigJson;
 
 /** `{ "appearance": { "sidebar": { "width": 300 } } }` for the path `appearance.sidebar.width`. */
-function nest(path: readonly string[], value: ConfigJson): Tree {
+function nest(path: ConfigPath, value: ConfigJson): Tree {
   const [first, ...rest] = path;
   if (first === undefined) return value;
   return { [first]: nest(rest, value) };
@@ -207,7 +227,7 @@ function startAboveComments(text: string, first: JsonNode, openAt: number): numb
 function insertInto(
   text: string,
   parent: JsonNode,
-  parentPath: readonly string[],
+  parentPath: ConfigPath,
   name: string,
   tree: Tree,
   unit: string,
@@ -354,10 +374,51 @@ function applyAppend(text: string, edit: ConfigAppend, unit: string, eol: string
   return appendInto(text, list, edit.append, unit, eol);
 }
 
+/** Whether a part of a path is the index of a list item. */
+const isIndex = (part: string | number): boolean => typeof part === "number";
+
+/**
+ * One removal applied to `text` (without a byte order mark): the setting or list item at `path`
+ * goes, with the comma that separated it. `modify` takes out the entry alone, so the comments on
+ * the lines around it stay. What the text does not have is not an error.
+ */
+function applyRemove(text: string, path: ConfigPath): string {
+  const root = parseTree(text, [], { allowTrailingComma: true, allowEmptyContent: true });
+  if (root === undefined) return text;
+  if (root.type !== "object") throw new Error("the settings file does not hold an object");
+  const value = findNodeAtLocation(root, [...path]);
+  if (value === undefined) return text;
+  // The entry is the whole `"name": value` of a setting, or the item of a list.
+  const entry = value.parent?.type === "property" ? value.parent : value;
+  const siblings = entry.parent?.children ?? [];
+  const start = lineStart(text, entry.offset);
+  const ends = lineEndAfter(text, entry.offset + entry.length);
+  if (text.slice(start, entry.offset).trim() === "" && ends !== undefined) {
+    // An entry that has its own lines goes whole, with the comment at the end of its last line.
+    let end = ends.at;
+    if (text.startsWith("\r\n", end)) end += 2;
+    else if (text.startsWith("\n", end)) end += 1;
+    let result = applyEdits(text, [{ offset: start, length: end - start, content: "" }]);
+    // The last entry took the end of the list with it: the one before it must not keep a comma
+    // the file did not have after its own last entry.
+    const index = siblings.indexOf(entry);
+    const previous = index > 0 ? siblings[index - 1] : undefined;
+    if (previous !== undefined && index === siblings.length - 1 && !ends.comma) {
+      const after = previous.offset + previous.length;
+      const comma = /^[ \t]*,/.exec(result.slice(after));
+      if (comma !== null) {
+        result = applyEdits(result, [{ offset: after, length: comma[0].length, content: "" }]);
+      }
+    }
+    return result;
+  }
+  return applyEdits(text, modify(text, [...path], undefined, {}));
+}
+
 /** One change applied to `text` (without a byte order mark): `value` is put at `path`. */
 function applyChange(
   text: string,
-  path: readonly string[],
+  path: ConfigPath,
   value: ConfigJson,
   unit: string,
   eol: string,
@@ -366,6 +427,9 @@ function applyChange(
 
   if (root === undefined) {
     // No file yet, or only comments: the object goes after them.
+    if (path.some((part) => typeof part === "number")) {
+      throw new Error(`${path.join(".")} is not in the settings file`);
+    }
     const object = renderBlock(nest(path, value), "", unit, eol);
     const lead = text === "" || text.endsWith("\n") ? "" : eol;
     return `${text}${lead}${object}${eol}`;
@@ -388,11 +452,15 @@ function applyChange(
   let depth = 0;
   let parent = root;
   for (; depth < path.length - 1; depth++) {
-    const next = findNodeAtLocation(root, path.slice(0, depth + 1) as string[]);
+    const next = findNodeAtLocation(root, path.slice(0, depth + 1) as (string | number)[]);
     if (next === undefined) break;
     parent = next;
   }
-  const name = path[depth] ?? "";
+  const name = path[depth];
+  // A setting is inserted into an object; an item of a list that is not there cannot be.
+  if (typeof name !== "string" || parent.type !== "object" || path.slice(depth).some(isIndex)) {
+    throw new Error(`${path.join(".")} is not in the settings file`);
+  }
   return insertInto(
     text,
     parent,
@@ -409,7 +477,8 @@ function applyChange(
  * there is no file yet, and the result is a new one) and must be a valid file (`parseConfigText`).
  * A setting the text holds has only its value replaced; a new one is inserted where the schema
  * lists it, creating the groups it sits in. Items to append are added after the last item of the
- * list (the list is created when the text lacks it). Whatever else the text holds is left as it is.
+ * list (the list is created when the text lacks it). An entry to remove (a setting, or an item of a
+ * list by its index) is taken out alone. Whatever else the text holds is left as it is.
  */
 export function editConfigText(text: string | null, changes: readonly ConfigEdit[]): string {
   const source = text ?? "";
@@ -420,9 +489,11 @@ export function editConfigText(text: string | null, changes: readonly ConfigEdit
   for (const change of changes) {
     if (change.path.length === 0) continue;
     edited =
-      "append" in change
-        ? applyAppend(edited, change, unit, eol)
-        : applyChange(edited, change.path, change.value, unit, eol);
+      "remove" in change
+        ? applyRemove(edited, change.path)
+        : "append" in change
+          ? applyAppend(edited, change, unit, eol)
+          : applyChange(edited, change.path, change.value, unit, eol);
   }
   return bom + edited;
 }

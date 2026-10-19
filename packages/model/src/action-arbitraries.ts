@@ -415,5 +415,20 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
         ),
       ),
     ),
+    weighted(
+      3,
+      target.chain(({ itemId, paneId }) =>
+        fc.record(
+          {
+            type: tag("pane/set-location"),
+            itemId: fc.constant(itemId),
+            paneId: fc.constant(paneId),
+            cwd: fc.constantFrom("/proj", "/proj/src", "/home/me", "C:/Users/me", " "),
+            gitBranch: fc.constantFrom("main", "feature/x", "a1b2c3d", " "),
+          },
+          { requiredKeys: ["type", "itemId", "paneId", "cwd"] },
+        ),
+      ),
+    ),
   );
 }

@@ -1,5 +1,5 @@
 import { FakeBackend } from "@noren/model";
-import type { ShellProfile } from "@noren/model";
+import type { GitInfo, ShellProfile } from "@noren/model";
 
 /** Key of `state.json` in the browser's storage (web mode only). */
 export const WEB_STATE_KEY = "noren.web.state";
@@ -17,7 +17,41 @@ export const WEB_ACTIONS_KEY = "noren.web.actions";
  */
 export const WEB_PROFILES_KEY = "noren.web.profiles";
 
+/**
+ * Key of the fake git repositories in web mode: a JSON object from the folder that holds a
+ * repository to its branch (`{ "/proj": "main" }`), or to `{ "branch": "abc1234", "detached": true }`.
+ * It is read at every lookup, so a test can change the branch while the page runs. Without it no
+ * folder is in a repository.
+ */
+export const WEB_GIT_KEY = "noren.web.git";
+
 export type StateStorage = Pick<Storage, "getItem" | "setItem">;
+
+/** The repositories seeded under `WEB_GIT_KEY`, or `undefined` when there is no usable seed. */
+export function seededGitRepos(
+  storage: Pick<Storage, "getItem">,
+): Record<string, GitInfo> | undefined {
+  try {
+    const raw = storage.getItem(WEB_GIT_KEY);
+    if (raw === null) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    const repos: Record<string, GitInfo> = {};
+    for (const [folder, entry] of Object.entries(value)) {
+      if (typeof entry === "string" && entry !== "") {
+        repos[folder] = { branch: entry, detached: false };
+      } else if (typeof entry === "object" && entry !== null) {
+        const { branch, detached } = entry as Record<string, unknown>;
+        if (typeof branch === "string" && branch !== "") {
+          repos[folder] = { branch, detached: detached === true };
+        }
+      }
+    }
+    return repos;
+  } catch {
+    return undefined;
+  }
+}
 
 /** The profiles seeded under `WEB_PROFILES_KEY`, or `undefined` for the fake backend's own. */
 export function seededProfiles(storage: Pick<Storage, "getItem">): ShellProfile[] | undefined {
@@ -87,6 +121,13 @@ export class WebBackend extends FakeBackend {
       // Storage is blocked or the seed is not JSON: fall back to the in-memory file.
     }
     return inMemory;
+  }
+
+  /** The repositories seeded under `WEB_GIT_KEY` (read now, so they can change), else none. */
+  override async gitInfo(cwd: string): Promise<GitInfo | null> {
+    const seeded = seededGitRepos(this.#storage);
+    if (seeded !== undefined) this.replaceGitRepos(seeded);
+    return super.gitInfo(cwd);
   }
 
   /** Keeps the broken text under a key of its own and leaves `state.json` for the next save. */

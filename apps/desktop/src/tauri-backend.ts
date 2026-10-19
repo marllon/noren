@@ -4,6 +4,7 @@ import { OutputStream } from "@noren/model";
 import type {
   Backend,
   CreateSessionOptions,
+  GitInfo,
   SessionExit,
   SessionId,
   ShellProfile,
@@ -132,6 +133,11 @@ export class TauriBackend implements Backend {
 
   runCommand(cwd: string, command: string): Promise<number> {
     return this.#bridge.invoke<number>("project_command_run", { cwd, command });
+  }
+
+  async gitInfo(cwd: string): Promise<GitInfo | null> {
+    const info = await this.#bridge.invoke<GitInfo | null>("git_info", { cwd });
+    return info === null ? null : { branch: info.branch, detached: info.detached };
   }
 
   /** Stops listening to `session-exit`. Sessions still running will keep their ids until killed. */

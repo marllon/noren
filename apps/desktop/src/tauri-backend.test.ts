@@ -266,6 +266,30 @@ describe("TauriBackend", () => {
     ]);
   });
 
+  it("reads the git branch of a folder through git_info, or null outside a repository", async () => {
+    const fake = fakeBridge({ git_info: { branch: "feature/x", detached: false } });
+    await expect(new TauriBackend(fake.bridge).gitInfo("D:\\proj\\src")).resolves.toEqual({
+      branch: "feature/x",
+      detached: false,
+    });
+    expect(fake.invocations).toEqual([{ command: "git_info", args: { cwd: "D:\\proj\\src" } }]);
+
+    const detached = fakeBridge({ git_info: { branch: "0123456", detached: true } });
+    await expect(new TauriBackend(detached.bridge).gitInfo("/p")).resolves.toEqual({
+      branch: "0123456",
+      detached: true,
+    });
+
+    const none = fakeBridge({ git_info: null });
+    await expect(new TauriBackend(none.bridge).gitInfo("/tmp")).resolves.toBeNull();
+  });
+
+  it("lets a git_info failure reach the caller", async () => {
+    const fake = fakeBridge();
+    fake.failing.add("git_info");
+    await expect(new TauriBackend(fake.bridge).gitInfo("/p")).rejects.toThrow("git_info failed");
+  });
+
   it("lets project command failures reach the caller", async () => {
     const fake = fakeBridge();
     const backend = new TauriBackend(fake.bridge);

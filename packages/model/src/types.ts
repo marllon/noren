@@ -105,8 +105,12 @@ export interface Pane {
   type: "terminal";
   sessionId?: Id;
   profileId: string;
+  /** Folder of the shell; a shell with the Noren integration reports it at every prompt. */
   cwd?: string;
-  /** Branch of the git repository `cwd` is in; only shown. Filled by the git integration (F7-02). */
+  /**
+   * Branch of the git repository `cwd` is in (or the short commit of a detached `HEAD`); only
+   * shown. Read again from `.git/HEAD` at every prompt and every folder change.
+   */
   gitBranch?: string;
   status: "running" | "idle" | "exited";
   /** Exit code of the shell; set only while `status` is `"exited"`. */

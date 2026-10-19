@@ -153,6 +153,31 @@ export function sidebarState(options: SidebarOptions = {}): string {
   });
 }
 
+// Key of the fake git repositories in the browser storage of web mode (web-backend.ts).
+const WEB_GIT_KEY = "noren.web.git";
+
+/**
+ * The fake repositories behind the branches of `sidebarState`: the shell of a tab reports its
+ * folder at the first prompt and the branch is read again for it, so a branch in the saved state
+ * only stays when a repository is there.
+ */
+export const SIDEBAR_REPOS: Record<string, string> = {
+  [`${FAKE_HOME}/projects/noren`]: "main",
+  "C:\\Users\\ada\\dev\\site": "feature/long-branch-name",
+};
+
+/** Seeds the fake git repositories before the page loads; it only writes when none are set yet. */
+export async function seedGitRepos(page: Page, repos: Record<string, string>): Promise<void> {
+  await page.addInitScript(
+    ({ key, value }) => {
+      if (window.localStorage.getItem(key) === null) {
+        window.localStorage.setItem(key, JSON.stringify(value));
+      }
+    },
+    { key: WEB_GIT_KEY, value: repos },
+  );
+}
+
 /** Seeds the saved workspace before the page loads; it only writes when nothing is saved yet. */
 export async function seedSidebarState(page: Page, options: SidebarOptions = {}): Promise<void> {
   await page.addInitScript(
@@ -161,6 +186,7 @@ export async function seedSidebarState(page: Page, options: SidebarOptions = {})
     },
     { key: WEB_STATE_KEY, state: sidebarState(options) },
   );
+  await seedGitRepos(page, SIDEBAR_REPOS);
 }
 
 // Key of the `.noren/actions.json` texts in the browser storage of web mode (web-backend.ts).

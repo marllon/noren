@@ -1,8 +1,8 @@
 /**
  * Terminal side of the backend contract. It never imports DOM or Tauri.
  *
- * Config, git and AI methods (`loadConfig`, `watchConfig`, `gitInfo`, `ai.*`) join this interface
- * in the tasks of their own phases.
+ * Config and AI methods (`loadConfig`, `watchConfig`, `ai.*`) join this interface in the tasks of
+ * their own phases.
  */
 
 /** Function returned by every subscription: calling it stops the delivery. */
@@ -38,6 +38,14 @@ export interface SessionExit {
   signal?: string;
 }
 
+/** What `HEAD` of the git repository a folder is in points at. */
+export interface GitInfo {
+  /** The branch, or the first 7 characters of the commit when `HEAD` is detached. */
+  branch: string;
+  /** `HEAD` holds a commit and no branch. */
+  detached: boolean;
+}
+
 export interface Backend {
   listProfiles(): Promise<ShellProfile[]>;
   /** Starts a shell. Output produced before `onOutput` is called is held for the first subscriber. */
@@ -69,4 +77,11 @@ export interface Backend {
    * start, when `cwd` is not a folder, and when it outlives the backend's time limit (it is killed).
    */
   runCommand(cwd: string, command: string): Promise<number>;
+  /**
+   * The branch of the git repository the folder `cwd` is in (the repository of the nearest folder
+   * above it that has one), or `null` when it is in none or is not an absolute path. It reads the
+   * files of the repository and never runs `git`; a linked worktree and a detached `HEAD` work.
+   * Rejects only when the lookup itself fails.
+   */
+  gitInfo(cwd: string): Promise<GitInfo | null>;
 }

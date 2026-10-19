@@ -1,11 +1,13 @@
 //! Noren core library. Kept free of Tauri so it can be tested on its own.
 
+pub mod git;
 pub mod integration;
 pub mod profiles;
 pub mod project;
 pub mod pty;
 pub mod store;
 
+pub use git::{GitHead, read_head};
 pub use integration::{
     BASH_LOGIN_VAR, BASH_SCRIPT, POWERSHELL_SCRIPT, ZSH_DIR, ZSH_RC, ZSH_USER_DIR_VAR,
     cmd_integration_prompt, is_bash, is_cmd, is_powershell, is_zsh, powershell_integration_args,

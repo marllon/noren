@@ -2,7 +2,7 @@
 
 A shell that Noren starts can tell the terminal where it is and what it is doing, using escape sequences (OSC) that are written into its output. Nothing is run on behalf of the user: the script only prints these sequences, and the interface reads them.
 
-This page describes what exists today (tasks NOR-F7-01a and NOR-F7-01b): the OSC parser and the scripts for PowerShell, bash, zsh and cmd. Showing the information (sidebar, command marks, notifications) comes with NOR-F7-02, NOR-F7-03 and NOR-F7-04, so no part of the interface reads these events yet.
+This page describes what exists today (tasks NOR-F7-01a, NOR-F7-01b and NOR-F7-02a): the OSC parser, the scripts for PowerShell, bash, zsh and cmd, and the folder and git branch of each pane in the sidebar. The last command, its exit code and duration and the automatic tab title (NOR-F7-02b), command marks (NOR-F7-03) and notifications (NOR-F7-04) come later, so nothing else in the interface reads these events yet.
 
 | Shell                               | Folder  | Prompt `A`/`B` | `C`, `D` with exit code | `E` command line |
 | ----------------------------------- | ------- | -------------- | ----------------------- | ---------------- |
@@ -49,7 +49,25 @@ for (const chunk of outputChunks) {
 - Any OSC that is not one of the above (window title, notifications, ...) is ignored. An ESC that is not followed by `\` inside a sequence, or a CAN or SUB byte, abandons the sequence.
 - `OSC 9` is also the notification sequence (and `9;4` a progress bar), which NOR-F7-04 will read. The parser takes only `9;9;path` as a folder, and only when the path is absolute (a drive letter, or a leading `/` or `\`), has no control character, is at most 4096 characters, and may be in double quotes. Backslashes become `/`, so `C:\Users\me` is `C:/Users/me`, like an `OSC 7` path. Any other `OSC 9` gives no event here.
 - Text in a sequence comes from a program in the terminal and is not trusted: an `OSC 7` that is not a plain `file:` URL with a path (or whose path has a control character or is longer than 4096 characters) gives no event, and `133;D` takes only a plain integer as code.
-- `pathFromFileUri` is the same reading of an `OSC 7` URL that `apps/desktop/src/osc7.ts` does for the recent folders of the palette. The two are kept apart for now; a later task makes the app use the shared one.
+- `pathFromFileUri` is the same reading of an `OSC 7` URL that `apps/desktop/src/osc7.ts` does for the recent folders of the palette. The two are kept apart for now: the recent folders still come from the OSC 7 handler of xterm.js, and the folder and branch of a pane (next section) come from the parser; a later task makes the app use the shared one.
+
+## Folder and git branch of a pane
+
+Each pane of the app has one `PaneLocationTracker` (`packages/model/src/pane-location.ts`), made once when the pane's view is created, and it owns the `ShellIntegrationParser` of that pane's session. `TerminalView` hands it every chunk of the session's output (the same bytes it writes to xterm.js), so the parser never lives in a React render. The tracker turns the events into the `pane/set-location` action of the reducer, which sets the pane's `cwd` and `gitBranch` together and changes nothing when the pane already has both.
+
+- **When the branch is read.** The folder comes from `OSC 7` (or `OSC 9;9` in cmd). The branch of that folder is read again at every `OSC 133;A` (the prompt starts), every `OSC 133;D` (a command ended) and every folder report, because a command such as `git switch` changes the branch without changing the folder. A chunk with several of these, which is what a prompt sends, gives one lookup, and only one lookup is in flight at a time (requests that come meanwhile are replaced by the newest).
+- **How it is read.** `Backend.gitInfo(cwd)` returns `{ branch, detached }` or `null`. The Tauri backend calls the `git_info` command, which runs `read_head` of `noren-core` (`crates/noren-core/src/git.rs`) on a blocking thread. It never runs `git`: it walks up from the folder to the first one with a `.git` that holds a usable `HEAD`.
+  - `.git` is a folder: its `HEAD` is read.
+  - `.git` is a file (a linked worktree, a submodule): its `gitdir:` line names the folder with the real `HEAD`, absolute or relative to the file.
+  - `HEAD` is `ref: refs/heads/<name>`: the branch is `<name>` (slashes kept). `HEAD` is a 40 or 64 digit commit id: it is detached and the branch is shown as its first 7 characters.
+  - A repository in the `reftable` format keeps the stub `ref: refs/heads/.invalid` in `HEAD` and its real branch in files this module does not read, so it shows no branch.
+  - A `.git` that cannot be used (no `HEAD`, a `HEAD` that is neither of the above, a `gitdir:` that points nowhere) is skipped, as `git` does, so a stray `.git` does not hide the repository above it. The result is `null` outside any repository, and for a path that is not absolute.
+  - The folder comes from terminal output, so nothing in it is trusted: only a `.git` entry and a `HEAD` are read, at most 4096 bytes of each, never a pipe or device, and a branch name with a control character or over 1024 characters is not used.
+- **A failed lookup** (the bridge fails) counts as no branch: the folder is still recorded, and a wrong branch in the sidebar would be worse than none.
+- **The folder a shell starts in.** A pane that has no folder (a new tab in a space without a start folder) starts in the default folder of its shell, which the app did not choose. The first folder the shell reports is not recorded as the pane's folder, because the pane would look the same restored without one; its branch is still read. From the moment the shell leaves that folder the folder is recorded, and it is recorded when the shell comes back to it too. A pane that has a folder (restored, or started in one) records every report.
+- **Saved.** `cwd` and `gitBranch` are part of the saved state, so a restored pane starts its new shell in the last folder it reported, and its branch is read again at the first prompt (and removed when the repository is gone).
+- **Shells without integration** (fish, `wsl.exe`, a profile with `inject_integration` off) report nothing, so their panes keep the folder they had.
+- **Web mode and tests.** `FakeBackend` takes `gitRepos` (a folder to `{ branch, detached }`) and `setGitRepo`; a folder is in the repository of the nearest folder above it that has one. The web build reads its repositories from the browser storage key `noren.web.git`, a JSON object from the folder that holds a repository to its branch (`{ "/proj": "main" }`) or to `{ "branch": "0123abc", "detached": true }`; the key is read at every lookup, so a test can change the branch while the page runs.
 
 ## PowerShell
 
@@ -127,4 +145,6 @@ The folder comes from the app: the scripts are bundle resources (`bundle.resourc
   When a shell is not installed its test prints a warning and returns.
 
 - zsh is only covered by the spec tests: the scripts were written against the zsh documentation but were not run, because the development machine has no zsh. Run them in a real zsh before relying on them.
-- `pnpm test` covers the parser (`packages/model/src/shell-integration.test.ts`), including `OSC 9;9`.
+- `pnpm test` covers the parser (`packages/model/src/shell-integration.test.ts`), including `OSC 9;9`, the tracker (`pane-location.test.ts`, also against a `FakeBackend` session), the `pane/set-location` action and the store wiring.
+- `cargo test -p noren-core` also covers `read_head` on temporary folders (a repository on a branch, nested subfolders, a worktree with a `.git` file and a `gitdir:` line, absolute and relative, a detached `HEAD`, folders outside any repository, unusable `.git` entries) and, in `tests/git_real.rs`, against repositories made by the real `git` (a worktree and a detached `HEAD` in the form git writes them; it skips with a warning when `git` is not installed).
+- `pnpm e2e` (`e2e/pane-location.spec.ts`): a `cd` into a repository shows the folder and branch in the sidebar item and a `cd` out removes the branch; a branch changed under the shell shows at the next prompt; the location is saved and back after a reload; each pane of a split follows its own shell.

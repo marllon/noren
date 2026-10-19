@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { WEB_ACTIONS_KEY, WEB_PROFILES_KEY, WEB_STATE_KEY, WebBackend } from "./web-backend";
+import {
+  WEB_ACTIONS_KEY,
+  WEB_GIT_KEY,
+  WEB_PROFILES_KEY,
+  WEB_STATE_KEY,
+  WebBackend,
+} from "./web-backend";
 import type { StateStorage } from "./web-backend";
 
 function memoryStorage(): StateStorage & { keys(): string[] } {
@@ -95,6 +101,44 @@ describe("WebBackend", () => {
       const storage = memoryStorage();
       storage.setItem(WEB_PROFILES_KEY, seed);
       expect((await new WebBackend(storage).listProfiles()).map((p) => p.id)).toEqual(["fake"]);
+    }
+  });
+
+  it("is in no git repository unless the git key says so", async () => {
+    const backend = new WebBackend(memoryStorage());
+    expect(await backend.gitInfo("/proj")).toBeNull();
+  });
+
+  it("reads the git repositories seeded under the git key, again at every lookup", async () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      WEB_GIT_KEY,
+      JSON.stringify({ "/proj": "main", "/old": { branch: "0123456", detached: true } }),
+    );
+    const backend = new WebBackend(storage);
+    expect(await backend.gitInfo("/proj/src")).toEqual({ branch: "main", detached: false });
+    expect(await backend.gitInfo("/old")).toEqual({ branch: "0123456", detached: true });
+    expect(await backend.gitInfo("/elsewhere")).toBeNull();
+    // A later change of the key shows on the next lookup, and a folder that left it is gone.
+    storage.setItem(WEB_GIT_KEY, JSON.stringify({ "/proj": "feature/x" }));
+    expect(await backend.gitInfo("/proj")).toEqual({ branch: "feature/x", detached: false });
+    expect(await backend.gitInfo("/old")).toBeNull();
+  });
+
+  it("skips the entries of a git seed that are not usable, and ignores a seed that is not an object", async () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      WEB_GIT_KEY,
+      JSON.stringify({ "/a": "", "/b": 7, "/c": null, "/d": { branch: 3 }, "/e": "ok" }),
+    );
+    const backend = new WebBackend(storage);
+    for (const folder of ["/a", "/b", "/c", "/d"]) {
+      expect(await backend.gitInfo(folder), folder).toBeNull();
+    }
+    expect(await backend.gitInfo("/e")).toEqual({ branch: "ok", detached: false });
+    for (const seed of ["not json", "[1]", "7", "null"]) {
+      storage.setItem(WEB_GIT_KEY, seed);
+      expect(await backend.gitInfo("/e"), seed).toEqual({ branch: "ok", detached: false });
     }
   });
 });

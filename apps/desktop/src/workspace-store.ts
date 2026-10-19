@@ -16,6 +16,7 @@ import type {
   Item,
   LayoutNode,
   Pane,
+  PaneLocation,
   Space,
   Workspace,
 } from "@noren/model";
@@ -108,6 +109,12 @@ export interface WorkspaceState {
   closeOthers(keepIds: readonly Id[]): void;
   /** Records the session the view started for a pane. Not saved: sessions die with the process. */
   attachSession(paneId: Id, sessionId: Id): void;
+  /**
+   * Records where the shell of a pane is (its folder and git branch, as the shell reported them; no
+   * folder keeps the pane's own). The pane may have moved to another tab since the report started;
+   * it is found by its id. A pane that is gone, or a location the pane already has, changes nothing.
+   */
+  setPaneLocation(paneId: Id, location: PaneLocation): void;
   /** Writes the pending state now (window closing). */
   flush(): Promise<void>;
 }
@@ -193,6 +200,16 @@ function findPaneBySession(ws: Workspace, sessionId: Id): { itemId: Id; paneId: 
     for (const item of Object.values(space.items)) {
       const pane = layoutPanes(item.layout).find((p) => p.sessionId === sessionId);
       if (pane) return { itemId: item.id, paneId: pane.id };
+    }
+  }
+  return undefined;
+}
+
+/** The item that holds a pane, among the open items; `undefined` when none does. */
+function findItemOfPane(ws: Workspace, paneId: Id): Id | undefined {
+  for (const space of ws.spaces) {
+    for (const item of Object.values(space.items)) {
+      if (layoutPanes(item.layout).some((p) => p.id === paneId)) return item.id;
     }
   }
   return undefined;
@@ -375,6 +392,19 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
           return;
         }
         set({ workspace: next });
+      },
+
+      setPaneLocation(paneId, location) {
+        const { workspace, dispatch } = get();
+        const itemId = findItemOfPane(workspace, paneId);
+        if (itemId === undefined) return;
+        dispatch({
+          type: "pane/set-location",
+          itemId,
+          paneId,
+          ...(location.cwd !== undefined ? { cwd: location.cwd } : {}),
+          ...(location.gitBranch !== undefined ? { gitBranch: location.gitBranch } : {}),
+        });
       },
 
       flush() {

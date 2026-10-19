@@ -207,6 +207,8 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       return focusDirection(ws, action.itemId, action.direction);
     case "pane/set-status":
       return setPaneStatus(ws, action);
+    case "pane/set-location":
+      return setPaneLocation(ws, action);
     default:
       return assertNever(action, ws);
   }
@@ -1062,6 +1064,27 @@ function setPaneStatus(
   const next: Pane = { ...pane, status };
   delete next.exitCode;
   if (code !== undefined) next.exitCode = code;
+  return replaceItem(ws, located.space, {
+    ...located.item,
+    layout: withPane(located.item.layout, next),
+  });
+}
+
+function setPaneLocation(
+  ws: Workspace,
+  action: Extract<Action, { type: "pane/set-location" }>,
+): Workspace {
+  const { cwd, gitBranch } = action;
+  if (cwd !== undefined && (typeof cwd !== "string" || cwd.trim() === "")) return ws;
+  if (gitBranch !== undefined && typeof gitBranch !== "string") return ws;
+  const branch = gitBranch === undefined ? undefined : present(gitBranch);
+  const located = locate(ws, action.itemId);
+  const pane = located && findPane(located.item.layout, action.paneId);
+  if (!located || !pane) return ws;
+  if ((cwd === undefined || pane.cwd === cwd) && pane.gitBranch === branch) return ws;
+  const next: Pane = { ...pane, ...(cwd !== undefined ? { cwd } : {}) };
+  delete next.gitBranch;
+  if (branch !== undefined) next.gitBranch = branch;
   return replaceItem(ws, located.space, {
     ...located.item,
     layout: withPane(located.item.layout, next),

@@ -189,6 +189,20 @@ export type Action =
       status: Pane["status"];
       exitCode?: number;
     }
+  /**
+   * Records where the pane's shell is: the folder it reports and the git branch of that folder
+   * (`gitBranch` absent: the folder is in no repository, so a branch the pane had is cleared). Both
+   * are set together, so the sidebar never shows a new folder with the old branch. `cwd` absent
+   * keeps the folder the pane has (see `PaneLocation`). A blank `cwd`, an unknown pane or values
+   * the pane already has leave the workspace as it is.
+   */
+  | {
+      type: "pane/set-location";
+      itemId: Id;
+      paneId: Id;
+      cwd?: string;
+      gitBranch?: string;
+    }
   /** Focus the neighbor by layout geometry (ends zoom); no neighbor, no change. */
   | { type: "pane/focus-direction"; itemId: Id; direction: "left" | "right" | "up" | "down" };
 

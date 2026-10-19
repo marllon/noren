@@ -1,6 +1,7 @@
 import type {
   Backend,
   CreateSessionOptions,
+  GitInfo,
   SessionExit,
   SessionId,
   ShellProfile,
@@ -8,6 +9,7 @@ import type {
 } from "./backend";
 import { ManualClock } from "./clock";
 import type { Clock } from "./clock";
+import { sameFolder } from "./deep-link";
 import { OutputStream } from "./output-stream";
 import { decodeUtf8, encodeUtf8 } from "./utf8";
 
@@ -39,6 +41,8 @@ export interface FakeBackendOptions {
   actionsFiles?: Record<string, string>;
   /** Exit code `runCommand` resolves with. Defaults to 0. */
   commandExitCode?: number;
+  /** Fake git repositories, by the folder that holds each one (`{ "/proj": { branch: "main", detached: false } }`). */
+  gitRepos?: Record<string, GitInfo>;
 }
 
 /** One command run through `runCommand`, for assertions. */
@@ -83,6 +87,20 @@ function tokenize(line: string): string[] {
   }
   if (inToken) tokens.push(current);
   return tokens;
+}
+
+/** A path that starts at a root: `/x`, `\x`, `C:\x` or `C:/x`. */
+function isAbsolutePath(path: string): boolean {
+  return /^([A-Za-z]:)?[\\/]/.test(path);
+}
+
+/** The folder one level up, or `undefined` at the root (or for a path that has no separator). */
+function parentFolder(path: string): string | undefined {
+  const trimmed = path.replace(/[\\/]+$/, "");
+  const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  if (cut < 0) return undefined;
+  const parent = trimmed.slice(0, cut);
+  return parent === "" ? "/" : parent;
 }
 
 /** Resolves `target` against `cwd` (`~`, `.` and `..` included) into a normalized absolute path. */
@@ -349,6 +367,8 @@ class FakeSession {
  * - Ctrl+C interrupts `sleep`; other input typed while a command runs is dropped
  * - `.noren/actions.json` texts live in memory (`setActionsFile`); `runCommand` only records the
  *   command and answers the configured exit code
+ * - `gitInfo` answers from fake repositories (`gitRepos`, `setGitRepo`): a folder is in the
+ *   repository of the nearest folder above it (or itself) that has one
  *
  * Everything is synchronous: effects of `write` have been delivered when its promise resolves.
  */
@@ -364,6 +384,7 @@ export class FakeBackend implements Backend {
   readonly #quarantined: string[] = [];
   readonly #actionsFiles = new Map<string, string>();
   readonly #commands: FakeCommandRun[] = [];
+  readonly #gitRepos = new Map<string, GitInfo>();
   #commandExitCode: number;
   #commandFailure: Error | undefined;
   #state: string | null;
@@ -375,6 +396,7 @@ export class FakeBackend implements Backend {
     for (const [cwd, text] of Object.entries(options.actionsFiles ?? {})) {
       this.#actionsFiles.set(cwd, text);
     }
+    this.replaceGitRepos(options.gitRepos ?? {});
     this.clock = options.clock ?? new ManualClock();
     this.#profiles = options.profiles ?? [{ id: "fake", name: "Fake shell", default: true }];
     this.#host = options.host ?? "fake-host";
@@ -410,6 +432,20 @@ export class FakeBackend implements Backend {
   setActionsFile(cwd: string, text: string | null): void {
     if (text === null) this.#actionsFiles.delete(cwd);
     else this.#actionsFiles.set(cwd, text);
+  }
+
+  /** Replaces every fake git repository with these (by the folder that holds each one). */
+  replaceGitRepos(repos: Record<string, GitInfo>): void {
+    this.#gitRepos.clear();
+    for (const [folder, info] of Object.entries(repos)) this.#gitRepos.set(folder, { ...info });
+  }
+
+  /** Makes `folder` the root of a fake git repository; `null` removes it. */
+  setGitRepo(folder: string, info: GitInfo | null): void {
+    for (const known of [...this.#gitRepos.keys()]) {
+      if (sameFolder(known, folder)) this.#gitRepos.delete(known);
+    }
+    if (info !== null) this.#gitRepos.set(folder, { ...info });
   }
 
   /** Exit code the next `runCommand` calls resolve with. */
@@ -545,6 +581,21 @@ export class FakeBackend implements Backend {
     this.#commands.push({ cwd, command });
     if (this.#commandFailure) throw this.#commandFailure;
     return this.#commandExitCode;
+  }
+
+  async gitInfo(cwd: string): Promise<GitInfo | null> {
+    this.#record("gitInfo", cwd);
+    if (!isAbsolutePath(cwd)) return null;
+    for (
+      let folder: string | undefined = cwd;
+      folder !== undefined;
+      folder = parentFolder(folder)
+    ) {
+      for (const [root, info] of this.#gitRepos) {
+        if (sameFolder(root, folder)) return { ...info };
+      }
+    }
+    return null;
   }
 
   #record(method: keyof Backend, ...args: unknown[]): void {

@@ -64,6 +64,11 @@ interface TerminalViewProps {
   onReady?(handle: TerminalHandle): void;
   /** Called with the folder the shell reports through OSC 7 (at each prompt of an integrated shell). */
   onCwd?(path: string): void;
+  /**
+   * Called with every chunk of the session's output, in order, once it went to the terminal. The
+   * first chunks are the ones the session printed before the view subscribed.
+   */
+  onOutput?(bytes: Uint8Array): void;
 }
 
 function isShortcut(event: KeyboardEvent, code: string): boolean {
@@ -90,12 +95,14 @@ export function TerminalView({
   rightClick,
   onReady,
   onCwd,
+  onOutput,
 }: TerminalViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const rightClickRef = useRef<RightClickAction>(rightClick ?? "copy-or-paste");
   const onReadyRef = useRef(onReady);
   const onCwdRef = useRef(onCwd);
+  const onOutputRef = useRef(onOutput);
   const onSessionStartRef = useRef(onSessionStart);
   const activeRef = useRef(active);
   const themeRef = useRef(theme);
@@ -107,6 +114,7 @@ export function TerminalView({
     rightClickRef.current = rightClick ?? "copy-or-paste";
     onReadyRef.current = onReady;
     onCwdRef.current = onCwd;
+    onOutputRef.current = onOutput;
     onSessionStartRef.current = onSessionStart;
     activeRef.current = active;
     themeRef.current = theme;
@@ -262,7 +270,12 @@ export function TerminalView({
         else ownsSession = true;
       }
       sessionId = id;
-      cleanups.push(backend.onOutput(id, (bytes) => term.write(bytes)));
+      cleanups.push(
+        backend.onOutput(id, (bytes) => {
+          term.write(bytes);
+          onOutputRef.current?.(bytes);
+        }),
+      );
       cleanups.push(
         backend.onExit((exit) => {
           if (exit.id === id) term.write(`\r\n[Process exited with code ${exit.code}]\r\n`);

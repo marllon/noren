@@ -1,5 +1,11 @@
 import { emit } from "@tauri-apps/api/event";
-import { DEFAULT_MAX_PANES, FakeBackend, layoutPanes, treeGroups } from "@noren/model";
+import {
+  DEFAULT_MAX_PANES,
+  FakeBackend,
+  PaneLocationTracker,
+  layoutPanes,
+  treeGroups,
+} from "@noren/model";
 import type { GroupNode, Id, Item, Pane, ShellProfile, Space } from "@noren/model";
 import type { ITheme } from "@xterm/xterm";
 import {
@@ -138,9 +144,21 @@ interface PaneTerminalProps {
   onReady(paneId: Id, handle: TerminalHandle): void;
 }
 
-/** One terminal bound to one pane. */
+/**
+ * One terminal bound to one pane. The tracker turns the output of the session into the folder and
+ * git branch of the pane (OSC 7 and 133 from the integrated shell); it is made once per pane, and
+ * the session it listens to is the one the terminal starts or attaches.
+ */
 function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTerminalProps) {
   const { profileId, cwd, env } = sessionStartOptions(space, pane);
+  const [tracker] = useState(
+    () =>
+      new PaneLocationTracker({
+        gitInfo: (folder) => backend.gitInfo(folder),
+        onLocation: (location) => store.getState().setPaneLocation(pane.id, location),
+        ...(pane.cwd !== undefined ? { cwd: pane.cwd } : {}),
+      }),
+  );
   return (
     <TerminalView
       backend={backend}
@@ -153,6 +171,7 @@ function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTermi
       onSessionStart={(id) => store.getState().attachSession(pane.id, String(id))}
       onReady={(handle) => onReady(pane.id, handle)}
       onCwd={recordFolder}
+      onOutput={(bytes) => tracker.feed(bytes)}
     />
   );
 }

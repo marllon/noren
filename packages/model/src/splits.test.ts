@@ -927,3 +927,120 @@ describe("pane/set-status", () => {
     } as unknown as Action);
   });
 });
+
+describe("pane/set-location", () => {
+  const paneOf = (ws: Workspace, itemId: Id, paneId: Id) =>
+    must(layoutPanes(itemOf(ws, itemId).layout).find((p) => p.id === paneId));
+  const move = (itemId: Id, paneId: Id, cwd: string | undefined, gitBranch?: string): Action => ({
+    type: "pane/set-location",
+    itemId,
+    paneId,
+    ...(cwd !== undefined ? { cwd } : {}),
+    ...(gitBranch !== undefined ? { gitBranch } : {}),
+  });
+
+  it("sets the folder and the branch of the pane, leaving the other panes and the sessions alone", () => {
+    const next = applyChecked(fixture(), move("b", "p3", "/proj", "main"));
+    expect(paneOf(next, "b", "p3")).toMatchObject({
+      cwd: "/proj",
+      gitBranch: "main",
+      sessionId: "x3",
+      status: "running",
+    });
+    expect(paneOf(next, "b", "p2")).toEqual(paneOf(fixture(), "b", "p2"));
+    expect(show(itemOf(next, "b").layout)).toBe("row(40:p2 60:p3)");
+    expect(sessionsLost(fixture(), next)).toEqual([]);
+  });
+
+  it("moving out of a repository clears the branch and keeps the new folder", () => {
+    const inRepo = applyChecked(fixture(), move("a", "p1", "/proj", "main"));
+    const out = applyChecked(inRepo, move("a", "p1", "/tmp"));
+    expect(paneOf(out, "a", "p1").cwd).toBe("/tmp");
+    expect(paneOf(out, "a", "p1")).not.toHaveProperty("gitBranch");
+  });
+
+  it("a new folder without a branch does not keep the branch of the old one", () => {
+    const inRepo = applyChecked(fixture(), move("a", "p1", "/proj", "main"));
+    const other = applyChecked(inRepo, move("a", "p1", "/elsewhere"));
+    expect(paneOf(other, "a", "p1")).not.toHaveProperty("gitBranch");
+  });
+
+  it("a branch change in the same folder is a change", () => {
+    const first = applyChecked(fixture(), move("a", "p1", "/proj", "main"));
+    const second = applyChecked(first, move("a", "p1", "/proj", "feature/x"));
+    expect(paneOf(second, "a", "p1")).toMatchObject({ cwd: "/proj", gitBranch: "feature/x" });
+  });
+
+  it("is a no-op when the pane already has the folder and the branch", () => {
+    const first = applyChecked(fixture(), move("a", "p1", "/proj", "main"));
+    expect(reduce(first, move("a", "p1", "/proj", "main"), testContext().ctx)).toBe(first);
+    const bare = applyChecked(fixture(), move("a", "p1", "/proj"));
+    expect(reduce(bare, move("a", "p1", "/proj"), testContext().ctx)).toBe(bare);
+  });
+
+  it("does not touch the item's other fields, the status or the activity time", () => {
+    const next = applyChecked(fixture(), move("a", "p1", "/proj", "main"));
+    const before = itemOf(fixture(), "a");
+    const after = itemOf(next, "a");
+    expect({ ...after, layout: undefined }).toEqual({ ...before, layout: undefined });
+    expect(paneOf(next, "a", "p1").status).toBe(paneOf(fixture(), "a", "p1").status);
+  });
+
+  it("changes nothing when the pane is unknown or the folder is blank", () => {
+    expectUnchanged(fixture(), move("ghost", "p1", "/proj", "main"));
+    expectUnchanged(fixture(), move("a", "ghost", "/proj", "main"));
+    // p1 belongs to another item.
+    expectUnchanged(fixture(), move("b", "p1", "/proj", "main"));
+    expectUnchanged(fixture(), move("a", "p1", ""));
+    expectUnchanged(fixture(), move("a", "p1", "   ", "main"));
+    expectUnchanged(fixture(), {
+      type: "pane/set-location",
+      itemId: "a",
+      paneId: "p1",
+      cwd: 7,
+    } as unknown as Action);
+    expectUnchanged(fixture(), {
+      type: "pane/set-location",
+      itemId: "a",
+      paneId: "p1",
+      cwd: "/proj",
+      gitBranch: 7,
+    } as unknown as Action);
+  });
+
+  it("without a folder it keeps the pane's own folder, and sets or clears only the branch", () => {
+    const start = applyChecked(fixture(), move("a", "p1", "/proj"));
+    const branched = applyChecked(start, move("a", "p1", undefined, "main"));
+    expect(paneOf(branched, "a", "p1")).toMatchObject({ cwd: "/proj", gitBranch: "main" });
+    const cleared = applyChecked(branched, move("a", "p1", undefined));
+    expect(paneOf(cleared, "a", "p1").cwd).toBe("/proj");
+    expect(paneOf(cleared, "a", "p1")).not.toHaveProperty("gitBranch");
+  });
+
+  it("without a folder, a pane that has none stays without one", () => {
+    const created = applyChecked(fixture(), { type: "item/create", spaceId: "s1" });
+    const space = must(created.spaces.find((s) => s.id === "s1"));
+    const fresh = must(space.items[must(space.activeItemId)]);
+    const freshPane = must(layoutPanes(fresh.layout)[0]);
+    expect(freshPane).not.toHaveProperty("cwd");
+
+    const next = applyChecked(created, move(fresh.id, freshPane.id, undefined, "dev"));
+    expect(paneOf(next, fresh.id, freshPane.id)).toMatchObject({ gitBranch: "dev" });
+    expect(paneOf(next, fresh.id, freshPane.id)).not.toHaveProperty("cwd");
+  });
+
+  it("without a folder and without a branch on a pane that has no branch changes nothing", () => {
+    expectUnchanged(fixture(), move("a", "p1", undefined));
+  });
+
+  it("a blank branch counts as none", () => {
+    const next = applyChecked(fixture(), move("a", "p1", "/proj", "   "));
+    expect(paneOf(next, "a", "p1").cwd).toBe("/proj");
+    expect(paneOf(next, "a", "p1")).not.toHaveProperty("gitBranch");
+  });
+
+  it("does not trim the folder, like the other paths of the model", () => {
+    const next = applyChecked(fixture(), move("a", "p1", "/with space/ ", "main"));
+    expect(paneOf(next, "a", "p1").cwd).toBe("/with space/ ");
+  });
+});

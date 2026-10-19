@@ -379,3 +379,56 @@ describe("call log", () => {
     expect(backend.calls).toEqual([{ method: "kill", args: [42] }]);
   });
 });
+
+describe("gitInfo", () => {
+  const main = { branch: "main", detached: false };
+
+  it("answers with the repository of the folder, or of the nearest one above it", async () => {
+    const backend = new FakeBackend({ gitRepos: { "/proj": main } });
+    expect(await backend.gitInfo("/proj")).toEqual(main);
+    expect(await backend.gitInfo("/proj/src/deep")).toEqual(main);
+    expect(await backend.gitInfo("/proj/")).toEqual(main);
+    expect(await backend.gitInfo("/projects")).toBeNull();
+    expect(await backend.gitInfo("/")).toBeNull();
+  });
+
+  it("the nearest repository wins, and a worktree can sit inside another folder", async () => {
+    const backend = new FakeBackend({
+      gitRepos: { "/proj": main, "/proj/wt": { branch: "fix", detached: false } },
+    });
+    expect(await backend.gitInfo("/proj/wt/src")).toEqual({ branch: "fix", detached: false });
+    expect(await backend.gitInfo("/proj/src")).toEqual(main);
+  });
+
+  it("reads a Windows folder without regard to case or slash direction", async () => {
+    const backend = new FakeBackend({ gitRepos: { "C:/Work/App": main } });
+    expect(await backend.gitInfo("c:\\work\\app\\src")).toEqual(main);
+    expect(await backend.gitInfo("D:/Work/App")).toBeNull();
+  });
+
+  it("gives nothing for a path that is not absolute", async () => {
+    const backend = new FakeBackend({ gitRepos: { "/proj": main } });
+    expect(await backend.gitInfo("proj")).toBeNull();
+    expect(await backend.gitInfo("")).toBeNull();
+    expect(await backend.gitInfo("~/proj")).toBeNull();
+  });
+
+  it("a detached head and a changed repository are reported as they are now", async () => {
+    const backend = new FakeBackend();
+    expect(await backend.gitInfo("/proj")).toBeNull();
+    backend.setGitRepo("/proj", { branch: "0123456", detached: true });
+    expect(await backend.gitInfo("/proj/src")).toEqual({ branch: "0123456", detached: true });
+    backend.setGitRepo("/proj/", { branch: "dev", detached: false });
+    expect(await backend.gitInfo("/proj")).toEqual({ branch: "dev", detached: false });
+    backend.setGitRepo("/proj", null);
+    expect(await backend.gitInfo("/proj")).toBeNull();
+  });
+
+  it("does not hand out its own object, and records the call", async () => {
+    const backend = new FakeBackend({ gitRepos: { "/proj": main } });
+    const first = await backend.gitInfo("/proj");
+    if (first) first.branch = "changed";
+    expect(await backend.gitInfo("/proj")).toEqual(main);
+    expect(backend.callsTo("gitInfo").map((call) => call.args)).toEqual([["/proj"], ["/proj"]]);
+  });
+});

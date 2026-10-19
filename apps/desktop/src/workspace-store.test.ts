@@ -1,5 +1,6 @@
 import {
   FakeBackend,
+  PaneLocationTracker,
   STATE_SAVE_DELAY_MS,
   createDefaultWorkspace,
   createSequentialIds,
@@ -723,6 +724,120 @@ describe("workspace store", () => {
       store.getState().closeOthers(["missing"]);
       store.getState().closeOthers([]);
       expect(store.getState().workspace).toBe(before);
+    });
+  });
+
+  describe("pane location", () => {
+    async function openOne(backend: FakeBackend) {
+      const { store } = await openStore(backend);
+      const space = activeSpaceOf(store.getState().workspace);
+      const item = space.items[spaceItemIds(space)[0] ?? ""];
+      const pane = item && layoutPanes(item.layout)[0];
+      if (!item || !pane) throw new Error("no pane");
+      const paneNow = () => {
+        const now = activeSpaceOf(store.getState().workspace).items[item.id];
+        const found = now && layoutPanes(now.layout).find((p) => p.id === pane.id);
+        if (!found) throw new Error("the pane is gone");
+        return found;
+      };
+      return { store, itemId: item.id, paneId: pane.id, paneNow };
+    }
+
+    it("setPaneLocation puts the folder and the branch on the pane and schedules a save", async () => {
+      const backend = new FakeBackend();
+      const { store, paneId, paneNow } = await openOne(backend);
+      store.getState().setPaneLocation(paneId, { cwd: "/proj", gitBranch: "main" });
+      expect(paneNow()).toMatchObject({ cwd: "/proj", gitBranch: "main" });
+
+      await vi.advanceTimersByTimeAsync(STATE_SAVE_DELAY_MS);
+      const saved = parseState(backend.stateContent ?? "");
+      expect(saved.ok).toBe(true);
+      if (saved.ok) {
+        const savedItem = Object.values(activeSpaceOf(saved.workspace).items)[0];
+        const pane = savedItem && layoutPanes(savedItem.layout)[0];
+        expect(pane).toMatchObject({ cwd: "/proj", gitBranch: "main" });
+      }
+    });
+
+    it("the same location again changes nothing and saves nothing", async () => {
+      const backend = new FakeBackend();
+      const { store, paneId } = await openOne(backend);
+      store.getState().setPaneLocation(paneId, { cwd: "/proj", gitBranch: "main" });
+      await vi.advanceTimersByTimeAsync(STATE_SAVE_DELAY_MS);
+      const saves = backend.callsTo("saveState").length;
+      const before = store.getState().workspace;
+
+      store.getState().setPaneLocation(paneId, { cwd: "/proj", gitBranch: "main" });
+      await vi.advanceTimersByTimeAsync(STATE_SAVE_DELAY_MS * 2);
+      expect(store.getState().workspace).toBe(before);
+      expect(backend.callsTo("saveState")).toHaveLength(saves);
+    });
+
+    it("a folder without a branch takes the branch away", async () => {
+      const { store, paneId, paneNow } = await openOne(new FakeBackend());
+      store.getState().setPaneLocation(paneId, { cwd: "/proj", gitBranch: "main" });
+      store.getState().setPaneLocation(paneId, { cwd: "/tmp" });
+      expect(paneNow().cwd).toBe("/tmp");
+      expect(paneNow()).not.toHaveProperty("gitBranch");
+    });
+
+    it("finds a pane that moved to another tab, and ignores one that is gone", async () => {
+      const { store, itemId, paneId } = await openOne(new FakeBackend());
+      store.getState().dispatch({ type: "pane/split", itemId, paneId, dir: "row", side: "after" });
+      const item = activeSpaceOf(store.getState().workspace).items[itemId];
+      const other = item && layoutPanes(item.layout).find((p) => p.id !== paneId);
+      if (!other) throw new Error("no second pane");
+      store.getState().dispatch({ type: "pane/detach", itemId, paneId: other.id });
+
+      store.getState().setPaneLocation(other.id, { cwd: "/moved", gitBranch: "dev" });
+      const space = activeSpaceOf(store.getState().workspace);
+      const holder = Object.values(space.items).find(
+        (it) => it.id !== itemId && layoutPanes(it.layout).some((p) => p.id === other.id),
+      );
+      const moved = holder && layoutPanes(holder.layout).find((p) => p.id === other.id);
+      expect(moved).toMatchObject({ cwd: "/moved", gitBranch: "dev" });
+
+      const before = store.getState().workspace;
+      store.getState().setPaneLocation("no-such-pane", { cwd: "/x" });
+      expect(store.getState().workspace).toBe(before);
+    });
+
+    it("the output of a session drives the folder and branch of its pane, as the app wires it", async () => {
+      const backend = new FakeBackend({
+        gitRepos: { "/proj": { branch: "main", detached: false } },
+        home: "/home/fake",
+      });
+      const { store, paneId, paneNow } = await openOne(backend);
+      const id = await backend.createSession({ cols: 80, rows: 24 });
+      store.getState().attachSession(paneId, String(id));
+      const tracker = new PaneLocationTracker({
+        gitInfo: (folder) => backend.gitInfo(folder),
+        onLocation: (location) => store.getState().setPaneLocation(paneId, location),
+      });
+      backend.onOutput(id, (bytes) => tracker.feed(bytes));
+      const type = async (line: string) => {
+        await backend.write(id, `${line}\r`);
+        await vi.advanceTimersByTimeAsync(0);
+      };
+      await vi.advanceTimersByTimeAsync(0);
+      // The folder the shell starts in is not one the pane chose: it is not recorded.
+      expect(paneNow()).not.toHaveProperty("cwd");
+      expect(paneNow()).not.toHaveProperty("gitBranch");
+
+      await type("cd /proj");
+      expect(paneNow()).toMatchObject({ cwd: "/proj", gitBranch: "main", sessionId: String(id) });
+
+      // The branch changes under the shell's feet; the next prompt notices.
+      backend.setGitRepo("/proj", { branch: "feature/x", detached: false });
+      expect(paneNow().gitBranch).toBe("main");
+      await type("true");
+      expect(paneNow().gitBranch).toBe("feature/x");
+
+      await type("cd src");
+      expect(paneNow()).toMatchObject({ cwd: "/proj/src", gitBranch: "feature/x" });
+      await type("cd /");
+      expect(paneNow().cwd).toBe("/");
+      expect(paneNow()).not.toHaveProperty("gitBranch");
     });
   });
 });

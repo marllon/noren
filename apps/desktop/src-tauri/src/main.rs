@@ -54,6 +54,7 @@ fn main() {
             bridge::state_quarantine,
             bridge::project_actions_read,
             bridge::project_command_run,
+            bridge::git_info,
             deeplink::deep_link_take_waiting,
             deeplink::deep_link_applied,
         ])

@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use noren_core::{
-    ACTIONS_FILE_PATH, ProfileSet, SessionEvent, SessionId, SessionManager, SpawnSpec, StateStore,
-    detect_system_profiles, read_project_file, run_short,
+    ACTIONS_FILE_PATH, GitHead, ProfileSet, SessionEvent, SessionId, SessionManager, SpawnSpec,
+    StateStore, detect_system_profiles, read_head, read_project_file, run_short,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -282,6 +282,32 @@ pub async fn project_actions_read(cwd: String) -> Result<Option<String>, String>
     .map_err(|e| e.to_string())?
 }
 
+/// What `HEAD` of a repository points at, as seen by the interface.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GitInfoDto {
+    /// The branch, or the short commit id of a detached `HEAD`.
+    pub branch: String,
+    pub detached: bool,
+}
+
+impl From<GitHead> for GitInfoDto {
+    fn from(head: GitHead) -> Self {
+        Self {
+            branch: head.branch,
+            detached: head.detached,
+        }
+    }
+}
+
+/// The branch of the git repository `cwd` is in, read from `.git/HEAD` without running `git`;
+/// `None` when `cwd` is in no repository.
+#[tauri::command]
+pub async fn git_info(cwd: String) -> Result<Option<GitInfoDto>, String> {
+    tauri::async_runtime::spawn_blocking(move || read_head(Path::new(&cwd)).map(GitInfoDto::from))
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Runs `command` through the system shell in `cwd`, with no terminal and no window, and returns
 /// its exit code. The command is killed after [`PROJECT_COMMAND_TIMEOUT`].
 #[tauri::command]
@@ -434,6 +460,25 @@ mod tests {
         }
         let env = HashMap::from([("OK".to_owned(), "a\0b".to_owned())]);
         assert!(apply_session_options(spec(), None, Some(env)).is_err());
+    }
+
+    #[test]
+    fn git_info_has_the_fields_the_interface_reads() {
+        let info = GitInfoDto::from(GitHead {
+            branch: "feature/x".to_owned(),
+            detached: false,
+        });
+        assert_eq!(
+            serde_json::to_value(&info).expect("serializes"),
+            serde_json::json!({ "branch": "feature/x", "detached": false })
+        );
+    }
+
+    #[test]
+    fn git_info_of_a_folder_outside_a_repository_is_none() {
+        // Relative paths are never looked up, whatever folder the app runs in.
+        let found = tauri::async_runtime::block_on(git_info("relative/folder".to_owned()));
+        assert_eq!(found, Ok(None));
     }
 
     #[test]

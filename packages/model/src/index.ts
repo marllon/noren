@@ -3,6 +3,7 @@ export const MODEL_PACKAGE_NAME = "@noren/model";
 export type {
   Backend,
   CreateSessionOptions,
+  GitInfo,
   SessionExit,
   SessionId,
   ShellProfile,
@@ -75,6 +76,8 @@ export type {
 export { FakeBackend } from "./fake-backend";
 export type { FakeBackendOptions, FakeCall, FakeCommandRun, FakeSessionInfo } from "./fake-backend";
 export { OutputStream } from "./output-stream";
+export { PaneLocationTracker } from "./pane-location";
+export type { PaneLocation, PaneLocationTrackerOptions } from "./pane-location";
 export { decodeUtf8, encodeUtf8 } from "./utf8";
 export {
   DEFAULT_MAX_OSC_BYTES,

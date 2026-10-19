@@ -135,6 +135,10 @@ export interface NorenTestHook {
    * an OSC 9 or OSC 777 sequence. Returns `false` when no pane has that id or it has no session.
    */
   sendOutput(paneId: string, text: string): boolean;
+  /** Every system notification the backend was asked to show, in order. None is ever shown. */
+  notifications(): { title: string; body: string }[];
+  /** Makes the fake window have the keyboard focus (it starts with it) or lose it. */
+  setWindowFocused(focused: boolean): void;
   /** Every command line the backend was asked to run in a short process (stop commands), in order. */
   commandRuns(): { cwd: string; command: string }[];
   /** Makes the next short commands end with this exit code (0 by default). */
@@ -773,6 +777,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
           }
           return false;
         },
+        notifications: () => fake.notifications.map(({ title, body }) => ({ title, body })),
+        setWindowFocused: (focused) => fake.setWindowFocused(focused),
         commandRuns: () => fake.commands.map(({ cwd, command }) => ({ cwd, command })),
         failCommands: (code) => fake.setCommandExitCode(code),
         actionsReads: () => fake.callsTo("readActionsFile").length,

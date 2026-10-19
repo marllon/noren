@@ -25,3 +25,8 @@ tauri-plugin-deep-link = "2"
 # A second launch (a link clicked while Noren is open) hands its arguments to the running
 # instance and exits, instead of opening a second window. 2.5.4, Apache-2.0 OR MIT.
 tauri-plugin-single-instance = "2"
+# Shows the notification of the system (a program rang the bell with the window out of focus, a
+# long command ended out of sight). Only the Rust side is used, from the `notify_show` command; the
+# JavaScript package is not added and the plugin's own commands get no capability, so the page
+# cannot call them. 2.7.0, MIT OR Apache-2.0.
+tauri-plugin-notification = "2"

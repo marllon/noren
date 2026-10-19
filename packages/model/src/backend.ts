@@ -84,4 +84,12 @@ export interface Backend {
    * Rejects only when the lookup itself fails.
    */
   gitInfo(cwd: string): Promise<GitInfo | null>;
+  /**
+   * Shows a notification of the system with plain text (no markup). Resolves when it was handed to
+   * the system; rejects when it could not be (for example the system refused). It never asks for
+   * the user's attention in any other way.
+   */
+  notify(title: string, body: string): Promise<void>;
+  /** Whether the window of the app has the keyboard focus of the system now. */
+  isWindowFocused(): Promise<boolean>;
 }

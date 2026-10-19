@@ -140,6 +140,14 @@ export class TauriBackend implements Backend {
     return info === null ? null : { branch: info.branch, detached: info.detached };
   }
 
+  async notify(title: string, body: string): Promise<void> {
+    await this.#bridge.invoke("notify_show", { title, body });
+  }
+
+  isWindowFocused(): Promise<boolean> {
+    return this.#bridge.invoke<boolean>("window_is_focused");
+  }
+
   /** Stops listening to `session-exit`. Sessions still running will keep their ids until killed. */
   async dispose(): Promise<void> {
     const subscription = this.#exitSubscription;

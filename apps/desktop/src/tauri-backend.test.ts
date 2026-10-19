@@ -290,6 +290,30 @@ describe("TauriBackend", () => {
     await expect(new TauriBackend(fake.bridge).gitInfo("/p")).rejects.toThrow("git_info failed");
   });
 
+  it("shows a notification through notify_show with plain text arguments", async () => {
+    const fake = fakeBridge();
+    await new TauriBackend(fake.bridge).notify("Build", "Bell");
+    expect(fake.invocations).toEqual([
+      { command: "notify_show", args: { title: "Build", body: "Bell" } },
+    ]);
+  });
+
+  it("reads the focus of the window through window_is_focused", async () => {
+    const focused = fakeBridge({ window_is_focused: true });
+    await expect(new TauriBackend(focused.bridge).isWindowFocused()).resolves.toBe(true);
+    expect(focused.invocations).toEqual([{ command: "window_is_focused", args: undefined }]);
+    const away = fakeBridge({ window_is_focused: false });
+    await expect(new TauriBackend(away.bridge).isWindowFocused()).resolves.toBe(false);
+  });
+
+  it("lets a notification or focus failure reach the caller", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    fake.failing.add("notify_show").add("window_is_focused");
+    await expect(backend.notify("a", "b")).rejects.toThrow("notify_show failed");
+    await expect(backend.isWindowFocused()).rejects.toThrow("window_is_focused failed");
+  });
+
   it("lets project command failures reach the caller", async () => {
     const fake = fakeBridge();
     const backend = new TauriBackend(fake.bridge);

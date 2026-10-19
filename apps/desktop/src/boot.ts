@@ -1,7 +1,8 @@
-import { restoreWorkspace } from "@noren/model";
+import { SystemNotifier, restoreWorkspace } from "@noren/model";
 import type { Backend } from "@noren/model";
 import { createBackend } from "./backend";
 import { loadHome } from "./home";
+import { notificationSettings } from "./notification-settings";
 import { createWorkspaceStore } from "./workspace-store";
 import type { WorkspaceStore } from "./workspace-store";
 
@@ -44,6 +45,8 @@ export async function bootWorkspace(
       failedPaneIds: restored.failedPaneIds,
       newId,
       clock,
+      // A failed notification (the system refused) is not worth an error on screen.
+      notifier: new SystemNotifier({ backend: target, settings: notificationSettings }),
     });
     const flush = () => {
       store

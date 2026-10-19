@@ -438,3 +438,25 @@ describe("gitInfo", () => {
     expect(backend.callsTo("gitInfo").map((call) => call.args)).toEqual([["/proj"], ["/proj"]]);
   });
 });
+
+describe("notify and isWindowFocused", () => {
+  it("the fake window starts in focus and a notification is only recorded", async () => {
+    const backend = new FakeBackend();
+    expect(await backend.isWindowFocused()).toBe(true);
+    backend.setWindowFocused(false);
+    expect(await backend.isWindowFocused()).toBe(false);
+    await backend.notify("Build", "Bell");
+    expect(backend.notifications).toEqual([{ title: "Build", body: "Bell" }]);
+    expect(backend.callsTo("notify").map((call) => call.args)).toEqual([["Build", "Bell"]]);
+  });
+
+  it("a refusal rejects and records nothing", async () => {
+    const backend = new FakeBackend();
+    backend.setNotifyFailure(new Error("refused"));
+    await expect(backend.notify("a", "b")).rejects.toThrow("refused");
+    expect(backend.notifications).toEqual([]);
+    backend.setNotifyFailure(undefined);
+    await backend.notify("a", "b");
+    expect(backend.notifications).toHaveLength(1);
+  });
+});

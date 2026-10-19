@@ -52,6 +52,12 @@ export interface FakeBackendOptions {
   gitRepos?: Record<string, GitInfo>;
 }
 
+/** One notification given to `notify`, for assertions. */
+export interface FakeNotification {
+  readonly title: string;
+  readonly body: string;
+}
+
 /** One command run through `runCommand`, for assertions. */
 export interface FakeCommandRun {
   readonly cwd: string;
@@ -386,6 +392,8 @@ class FakeSession {
  *   command and answers the configured exit code
  * - `gitInfo` answers from fake repositories (`gitRepos`, `setGitRepo`): a folder is in the
  *   repository of the nearest folder above it (or itself) that has one
+ * - `notify` only records the notification (`notifications`) and `isWindowFocused` answers what
+ *   `setWindowFocused` said (focused at first): no notification is ever shown
  *
  * Everything is synchronous: effects of `write` have been delivered when its promise resolves.
  */
@@ -402,6 +410,9 @@ export class FakeBackend implements Backend {
   readonly #actionsFiles = new Map<string, string>();
   readonly #commands: FakeCommandRun[] = [];
   readonly #gitRepos = new Map<string, GitInfo>();
+  readonly #notifications: FakeNotification[] = [];
+  #windowFocused = true;
+  #notifyFailure: Error | undefined;
   #commandExitCode: number;
   #commandFailure: Error | undefined;
   #state: string | null;
@@ -621,6 +632,32 @@ export class FakeBackend implements Backend {
       }
     }
     return null;
+  }
+
+  async notify(title: string, body: string): Promise<void> {
+    this.#record("notify", title, body);
+    if (this.#notifyFailure) throw this.#notifyFailure;
+    this.#notifications.push({ title, body });
+  }
+
+  async isWindowFocused(): Promise<boolean> {
+    this.#record("isWindowFocused");
+    return this.#windowFocused;
+  }
+
+  /** Whether `isWindowFocused` answers true. The fake window starts with the focus. */
+  setWindowFocused(focused: boolean): void {
+    this.#windowFocused = focused;
+  }
+
+  /** Makes `notify` reject with `error` (the system refused); `undefined` undoes it. */
+  setNotifyFailure(error: Error | undefined): void {
+    this.#notifyFailure = error;
+  }
+
+  /** Every notification `notify` was given, in order. Nothing is shown to anyone. */
+  get notifications(): readonly FakeNotification[] {
+    return this.#notifications;
   }
 
   #record(method: keyof Backend, ...args: unknown[]): void {

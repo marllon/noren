@@ -1,6 +1,7 @@
 import {
   DEFAULT_PROFILE_ID,
   StateWriter,
+  isPaneVisible,
   lastUnread,
   layoutPanes,
   liveSessionIds,
@@ -16,11 +17,13 @@ import type {
   Id,
   Item,
   LayoutNode,
+  SystemNotificationEvent,
   Pane,
   PaneAttentionEvent,
   PaneCommandEvent,
   PaneLocation,
   Space,
+  SystemNotifier,
   Workspace,
 } from "@noren/model";
 import { createStore } from "zustand/vanilla";
@@ -157,6 +160,11 @@ export interface WorkspaceStoreOptions {
   /** The home folder, so the automatic title of a tab in it is `~`. */
   home?: string;
   maxPanes?: number;
+  /**
+   * Asks the system to notify the user of what happens in panes the user is not looking at (a
+   * bell, a notification of a program, a long command that ended). Without it, nothing is sent.
+   */
+  notifier?: SystemNotifier;
   onError?(error: unknown): void;
 }
 
@@ -245,6 +253,16 @@ function findItemOfPane(ws: Workspace, paneId: Id): Id | undefined {
   return undefined;
 }
 
+/** The space and item that hold a pane, among the open items; `undefined` when none does. */
+function locatePane(ws: Workspace, paneId: Id): { spaceId: Id; item: Item } | undefined {
+  for (const space of ws.spaces) {
+    for (const item of Object.values(space.items)) {
+      if (layoutPanes(item.layout).some((p) => p.id === paneId)) return { spaceId: space.id, item };
+    }
+  }
+  return undefined;
+}
+
 /** Copy of the layout with the session set on the pane; the same object when the pane is absent. */
 function withSession(layout: LayoutNode, paneId: Id, sessionId: Id): LayoutNode {
   if (layout.kind === "pane") {
@@ -295,6 +313,26 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
       const item = findItem(get().workspace, itemId);
       const action = item && autoTitleAction(item, options.home);
       if (action) get().dispatch(action);
+    };
+
+    /**
+     * Tells the notifier what happened in a pane. Where the pane is and what its tab is called are
+     * read when the notifier decides (it first asks if the window has the focus), not now.
+     */
+    const reportToSystem = (paneId: Id, event: SystemNotificationEvent) => {
+      const { notifier } = options;
+      if (notifier === undefined) return;
+      void notifier.report(event, {
+        paneId,
+        paneVisible: () => {
+          const found = locatePane(get().workspace, paneId);
+          return (
+            found !== undefined &&
+            isPaneVisible(get().workspace, found.spaceId, found.item.id, paneId)
+          );
+        },
+        tabTitle: () => locatePane(get().workspace, paneId)?.item.title,
+      });
     };
 
     // The store lives as long as the window, so this subscription is never released.
@@ -471,6 +509,7 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
           });
         }
         retitle(itemId);
+        if (event.kind === "end") reportToSystem(paneId, { kind: "command-end", command: event });
       },
 
       notifyPane(paneId, event) {
@@ -483,6 +522,7 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
           paneId,
           ...(event.kind === "bell" ? { bell: true } : {}),
         });
+        reportToSystem(paneId, { kind: "attention", attention: event });
       },
 
       showLastUnread() {

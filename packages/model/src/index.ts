@@ -77,7 +77,28 @@ export type {
   Workspace,
 } from "./types";
 export { FakeBackend } from "./fake-backend";
-export type { FakeBackendOptions, FakeCall, FakeCommandRun, FakeSessionInfo } from "./fake-backend";
+export type {
+  FakeBackendOptions,
+  FakeCall,
+  FakeCommandRun,
+  FakeNotification,
+  FakeSessionInfo,
+} from "./fake-backend";
+export {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  SystemNotifier,
+  decideNotification,
+  formatElapsed,
+} from "./notifications";
+export type {
+  NotificationContext,
+  SystemNotificationEvent,
+  NotificationSettings,
+  NotificationSource,
+  NotifierBackend,
+  SystemNotification,
+  SystemNotifierOptions,
+} from "./notifications";
 export { OutputStream } from "./output-stream";
 export { PaneLocationTracker } from "./pane-location";
 export type {

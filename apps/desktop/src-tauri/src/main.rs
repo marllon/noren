@@ -3,6 +3,7 @@
 
 mod bridge;
 mod deeplink;
+mod notify;
 mod smoke;
 
 use tauri::{Manager, RunEvent};
@@ -39,6 +40,8 @@ fn main() {
     // The scheme itself is declared in tauri.conf.json (plugins > deep-link) and written by the
     // installer. Nothing here registers it at run time or touches the registry.
     builder = builder.plugin(tauri_plugin_deep_link::init());
+    // Only the Rust side of the plugin is used (see notify.rs); nothing is shown until asked.
+    builder = builder.plugin(tauri_plugin_notification::init());
 
     let app = builder
         .manage(AppState::detect())
@@ -55,6 +58,8 @@ fn main() {
             bridge::project_actions_read,
             bridge::project_command_run,
             bridge::git_info,
+            notify::notify_show,
+            notify::window_is_focused,
             deeplink::deep_link_take_waiting,
             deeplink::deep_link_applied,
         ])

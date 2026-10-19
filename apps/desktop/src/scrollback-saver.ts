@@ -127,11 +127,43 @@ export class ScrollbackSaver {
     );
   }
 
-  #queue(pane: ScrollbackPane): Promise<void> {
+  /**
+   * Saves a pane at once, with the lines its terminal had (`raw`, as the serialize addon wrote
+   * them; `undefined` when the terminal could not be asked), even though the pane is not in the
+   * list of open ones any more: this is how the scrollback of a tab that was just closed is kept.
+   * The same rules apply as for the saves of every minute (settings, space, nothing to keep when the
+   * terminal is empty), and it waits for a save of the same pane that is in flight. Never rejects.
+   */
+  saveNow(pane: ScrollbackPane, raw: string | undefined): Promise<void> {
+    this.#dirty.add(pane.paneId);
+    return this.#queue(pane, () => raw);
+  }
+
+  /** Removes the file of a pane that is gone for good (after any save of it that is in flight). Never rejects. */
+  discard(paneId: Id): Promise<void> {
+    this.#dirty.delete(paneId);
+    const pane: ScrollbackPane = { paneId, itemId: "", spaceSaves: false, hasFile: false };
+    return this.#queue(
+      pane,
+      () => undefined,
+      async () => {
+        try {
+          await this.#options.backend.deleteScrollback(paneId);
+        } catch (error) {
+          this.#options.onError?.(error);
+        }
+      },
+    );
+  }
+
+  #queue(
+    pane: ScrollbackPane,
+    snapshot: () => string | undefined = () => this.#options.snapshot(pane.paneId),
+    job: () => Promise<void> = () => this.#handle(pane, snapshot),
+  ): Promise<void> {
     const previous = this.#saving.get(pane.paneId);
     // Nothing in flight: the work starts now, not on the next turn of the event loop.
-    const run =
-      previous === undefined ? this.#handle(pane) : previous.then(() => this.#handle(pane));
+    const run = previous === undefined ? job() : previous.then(job);
     const tracked = run.finally(() => {
       if (this.#saving.get(pane.paneId) === tracked) this.#saving.delete(pane.paneId);
     });
@@ -139,7 +171,7 @@ export class ScrollbackSaver {
     return tracked;
   }
 
-  async #handle(pane: ScrollbackPane): Promise<void> {
+  async #handle(pane: ScrollbackPane, snapshot: () => string | undefined): Promise<void> {
     const { paneId } = pane;
     const options = this.#options;
     try {
@@ -150,7 +182,7 @@ export class ScrollbackSaver {
         return;
       }
       if (!this.#dirty.has(paneId) || !isScrollbackPaneId(paneId)) return;
-      const raw = options.snapshot(paneId);
+      const raw = snapshot();
       if (raw === undefined) return;
       const text = cleanSnapshot(raw);
       // A terminal with nothing in it is a terminal that has not got its text yet (it was just

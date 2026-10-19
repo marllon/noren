@@ -4,7 +4,7 @@ import {
   restoredTerminalText,
   savesScrollback,
 } from "@noren/model";
-import type { Backend, Id, Workspace } from "@noren/model";
+import type { Backend, Id, Item, Workspace } from "@noren/model";
 
 // Brings the saved scrollback of the panes back when the app opens: for each pane that has a
 // snapshot, the text that shows it again (dimmed, under the line "session restored <date>") is kept
@@ -50,34 +50,62 @@ export async function loadScrollbackForRestore(
   const jobs: Promise<void>[] = [];
   for (const space of workspace.spaces) {
     for (const item of Object.values(space.items)) {
-      for (const pane of layoutPanes(item.layout)) {
-        if (pane.scrollbackRef === undefined) continue;
-        const where = { paneId: pane.id, itemId: item.id };
-        if (!savesScrollback(options.enabled, space.saveScrollback)) {
-          // Never saved here, so nothing is shown and the file goes.
-          restore.stale.push({ ...where, remove: true });
-          continue;
-        }
-        if (!isScrollbackPaneId(pane.id)) continue;
-        jobs.push(
-          backend.loadScrollback(pane.id).then(
-            (raw) => {
-              if (raw === null) {
-                restore.stale.push({ ...where, remove: false });
-                return;
-              }
-              const text = restoredTerminalText(raw, options.now);
-              if (text === "") restore.stale.push({ ...where, remove: true });
-              else restore.texts.set(pane.id, text);
-            },
-            () => undefined,
-          ),
-        );
-      }
+      jobs.push(readItemScrollback(backend, item, space.saveScrollback, options, restore));
     }
   }
   await Promise.all(jobs);
   return restore;
+}
+
+/**
+ * Reads the snapshots of the panes of one item, as `loadScrollbackForRestore` does for the whole
+ * workspace: this is what a tab that is reopened shows. `spaceSaves` is `saveScrollback` of the space
+ * the item goes to.
+ */
+export async function loadScrollbackForItem(
+  backend: Pick<Backend, "loadScrollback">,
+  item: Item,
+  spaceSaves: boolean,
+  options: ScrollbackRestoreOptions,
+): Promise<ScrollbackRestore> {
+  const restore: ScrollbackRestore = { texts: new Map(), stale: [] };
+  await readItemScrollback(backend, item, spaceSaves, options, restore);
+  return restore;
+}
+
+async function readItemScrollback(
+  backend: Pick<Backend, "loadScrollback">,
+  item: Item,
+  spaceSaves: boolean,
+  options: ScrollbackRestoreOptions,
+  restore: ScrollbackRestore,
+): Promise<void> {
+  const jobs: Promise<void>[] = [];
+  for (const pane of layoutPanes(item.layout)) {
+    if (pane.scrollbackRef === undefined) continue;
+    const where = { paneId: pane.id, itemId: item.id };
+    if (!savesScrollback(options.enabled, spaceSaves)) {
+      // Never saved here, so nothing is shown and the file goes.
+      restore.stale.push({ ...where, remove: true });
+      continue;
+    }
+    if (!isScrollbackPaneId(pane.id)) continue;
+    jobs.push(
+      backend.loadScrollback(pane.id).then(
+        (raw) => {
+          if (raw === null) {
+            restore.stale.push({ ...where, remove: false });
+            return;
+          }
+          const text = restoredTerminalText(raw, options.now);
+          if (text === "") restore.stale.push({ ...where, remove: true });
+          else restore.texts.set(pane.id, text);
+        },
+        () => undefined,
+      ),
+    );
+  }
+  await Promise.all(jobs);
 }
 
 // The text waiting for each terminal. It stays for the life of the window: a terminal that mounts
@@ -93,4 +121,20 @@ export function setRestoredScrollback(texts: ReadonlyMap<Id, string>): void {
 /** The text the terminal of `paneId` writes before its session prints, or `undefined` for none. */
 export function restoredScrollbackOf(paneId: Id): string | undefined {
   return waiting.get(paneId);
+}
+
+/**
+ * Sets what the terminals of `paneIds` write when they mount: the text in `texts` for the panes
+ * that have one, and nothing for the others (a snapshot kept from an earlier mount of the pane does
+ * not come back). The panes of other items are left as they are.
+ */
+export function setRestoredScrollbackFor(
+  paneIds: readonly Id[],
+  texts: ReadonlyMap<Id, string>,
+): void {
+  for (const paneId of paneIds) {
+    const text = texts.get(paneId);
+    if (text === undefined) waiting.delete(paneId);
+    else waiting.set(paneId, text);
+  }
 }

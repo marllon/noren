@@ -227,7 +227,10 @@ function checkShape(data: Obj): Workspace {
   str(data["activeSpaceId"], "activeSpaceId");
   list(data["spaces"], "spaces", checkSpace);
   list(data["favorites"], "favorites", str);
-  list(data["closed"], "closed", (v, p) => checkEntry(v, p, "closedAt"));
+  list(data["closed"], "closed", (v, p) => {
+    checkEntry(v, p, "closedAt");
+    checkPlace(v as Obj, p);
+  });
   list(data["archive"], "archive", (v, p) => checkEntry(v, p, "archivedAt"));
   return data as unknown as Workspace;
 }
@@ -282,6 +285,21 @@ function checkEntry(value: unknown, path: string, timeKey: string): void {
   checkItem(entry["item"], `${path}.item`);
   str(entry["spaceId"], `${path}.spaceId`);
   num(entry[timeKey], `${path}.${timeKey}`);
+}
+
+/** The place a closed item left (`ClosedPlace`); an old file has none, and a bad one is refused. */
+function checkPlace(entry: Obj, path: string): void {
+  optional(entry, "place", path, (v, p) => {
+    const place = obj(v, p);
+    if (place["list"] !== "pinned" && place["list"] !== "tree") {
+      throw new ShapeError(`${p}.list`, '"pinned" or "tree"');
+    }
+    optional(place, "groupId", p, str);
+    const index = place["index"];
+    if (typeof index !== "number" || !Number.isInteger(index) || index < 0) {
+      throw new ShapeError(`${p}.index`, "a whole number, zero or more");
+    }
+  });
 }
 
 function checkItem(value: unknown, path: string): void {

@@ -161,6 +161,21 @@ export interface ClosedItem {
   spaceId: Id;
   /** Same timeline as `Item.lastActivityAt`. */
   closedAt: number;
+  /**
+   * Where the item sat in its space when it closed, so reopening can put it back there. Absent for
+   * an item that closed with its space, and in a state saved before this field.
+   */
+  place?: ClosedPlace;
+}
+
+/** A slot of a space: among the pinned items, or in the tree (a group, or the top level). */
+export interface ClosedPlace {
+  /** Which list the item was in. */
+  list: "pinned" | "tree";
+  /** The group that held it; absent at the top level and among the pinned items. */
+  groupId?: Id;
+  /** Its position in that list, from 0. */
+  index: number;
 }
 
 export interface ArchivedItem {

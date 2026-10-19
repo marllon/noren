@@ -33,6 +33,7 @@ export type ActionCategory = "General" | "Tabs" | "Panes" | "Spaces" | "Terminal
 export type ActionCommand =
   | { kind: "palette" }
   | { kind: "new-tab" }
+  | { kind: "reopen-closed" }
   | { kind: "close" }
   | { kind: "split"; dir: "row" | "column" }
   | { kind: "zoom" }
@@ -157,6 +158,14 @@ export const ACTIONS: readonly ActionDef[] = [
     command: { kind: "new-tab" },
     repeat: false,
     chords: { safe: "Ctrl+Shift+KeyT", browser: "Ctrl+KeyT" },
+  },
+  {
+    id: "tab.reopen-closed",
+    title: "Reopen closed tab",
+    category: "Tabs",
+    command: { kind: "reopen-closed" },
+    repeat: false,
+    chords: { safe: "Ctrl+Alt+Shift+KeyT", browser: "Ctrl+Shift+KeyT" },
   },
   {
     id: "tab.mru-next",

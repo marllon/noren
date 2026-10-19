@@ -98,7 +98,12 @@ export type Action =
       placement?: Placement;
     }
   | { type: "item/close"; itemId: Id }
-  /** Reopens the given closed item, or the most recently closed one. */
+  /**
+   * Reopens the given closed item, or the most recently closed one, where it sat when it closed:
+   * the same space, and in it the same list (pinned or tree), group and position (clamped to what
+   * the list holds now). A group that is gone, or an item with no recorded place, goes to the end
+   * of the tree of its space; with that space gone too, to the end of the tree of the active one.
+   */
   | { type: "item/reopen"; itemId?: Id }
   | {
       type: "item/rename";

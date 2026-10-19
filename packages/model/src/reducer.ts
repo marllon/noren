@@ -42,6 +42,7 @@ import {
   MAX_CLOSED,
   MAX_GROUP_DEPTH,
   type ClosedItem,
+  type ClosedPlace,
   type GroupNode,
   type Id,
   type Item,
@@ -500,6 +501,50 @@ function dropItem(space: Space, itemId: Id): Space {
   };
 }
 
+/** The pane as a new shell finds it: an exit code and a command line belong to the old process. */
+function withoutOldShell(pane: Pane): Pane {
+  if (
+    pane.status !== "exited" &&
+    pane.exitCode === undefined &&
+    pane.runningCommand === undefined
+  ) {
+    return pane;
+  }
+  const next: Pane = { ...pane, status: pane.status === "exited" ? "idle" : pane.status };
+  delete next.exitCode;
+  delete next.runningCommand;
+  return next;
+}
+
+const TREE_END: Placement = { to: "tree" };
+
+/** Where the item is in the space now: its list, its group and its position; none when it is not placed. */
+function placeOfItem(space: Space, itemId: Id): ClosedPlace | undefined {
+  const pinnedAt = space.pinned.indexOf(itemId);
+  if (pinnedAt >= 0) return { list: "pinned", index: pinnedAt };
+  const slot = findItemSlot(space.tree, itemId);
+  if (!slot) return undefined;
+  return {
+    list: "tree",
+    ...(slot.parentId !== undefined ? { groupId: slot.parentId } : {}),
+    index: slot.index,
+  };
+}
+
+/**
+ * The placement that brings an item back to `place` in `space`: the same list and position (clamped
+ * to what the list holds now) when it can, else the end of the tree. A group that is gone, or a
+ * position that is not a whole number, send it to the end of the tree.
+ */
+function placementOf(space: Space, place: ClosedPlace | undefined): Placement {
+  if (place === undefined || !Number.isInteger(place.index)) return TREE_END;
+  if (place.list === "pinned") return { to: "pinned", index: place.index };
+  if (place.groupId === undefined) return { to: "tree", index: place.index };
+  return findGroup(space.tree, place.groupId)
+    ? { to: "tree", groupId: place.groupId, index: place.index }
+    : TREE_END;
+}
+
 /** Puts `itemId` (already in `space.items`, not yet placed) where `placement` says. */
 function place(space: Space, itemId: Id, placement: Placement): Space | undefined {
   if (placement.to === "pinned") {
@@ -789,10 +834,12 @@ function createItem(
 function closeItem(ws: Workspace, itemId: Id, ctx: ReducerContext): Workspace {
   const located = locate(ws, itemId);
   if (!located) return ws;
+  const place = placeOfItem(located.space, itemId);
   const entry: ClosedItem = {
     item: withoutSessions(located.item),
     spaceId: located.space.id,
     closedAt: ctx.clock.now(),
+    ...(place !== undefined ? { place } : {}),
   };
   return replaceSpace(
     {
@@ -811,15 +858,29 @@ function reopenItem(ws: Workspace, itemId: Id | undefined, ctx: ReducerContext):
       : ws.closed.findIndex((entry) => entry.item.id === itemId);
   const entry = ws.closed[at];
   if (!entry) return ws;
-  // Back to the space it came from, or to the active one when that space is gone.
-  const space = findSpace(ws, entry.spaceId) ?? findSpace(ws, ws.activeSpaceId);
+  // Back to the space it came from, in the slot it left; with that space gone, to the end of the
+  // tree of the active one.
+  const home = findSpace(ws, entry.spaceId);
+  const space = home ?? findSpace(ws, ws.activeSpaceId);
   if (!space) return ws;
+  const placement = home ? placementOf(home, entry.place) : TREE_END;
   // A closed item holds no live session, whatever the state it was loaded from says.
-  const item: Item = { ...withoutSessions(entry.item), lastActivityAt: ctx.clock.now() };
-  // It comes back unpinned, so it has no origin to return to.
-  delete item.origin;
+  const stripped = withoutSessions(entry.item);
+  const item: Item = {
+    ...stripped,
+    // Nor does it carry what the old shell was doing: its new session starts clean.
+    layout: mapPanes(stripped.layout, withoutOldShell),
+    lastActivityAt: ctx.clock.now(),
+  };
+  // Only a pinned item has an origin to return to.
+  if (placement.to === "pinned") {
+    const origin = item.origin ?? originOf(item, space);
+    if (origin !== undefined) item.origin = origin;
+  } else {
+    delete item.origin;
+  }
   const arriving: Space = { ...space, items: { ...space.items, [item.id]: item } };
-  const placed = place(arriving, item.id, { to: "tree" });
+  const placed = place(arriving, item.id, placement);
   if (!placed) return ws;
   return replaceSpace({ ...ws, closed: ws.closed.filter((_, i) => i !== at) }, placed);
 }
@@ -1274,14 +1335,29 @@ function setPaneScrollback(
   const { ref } = action;
   if (ref !== undefined && (typeof ref !== "string" || ref.trim() === "")) return ws;
   const located = locate(ws, action.itemId);
-  const pane = located && findPane(located.item.layout, action.paneId);
-  if (!located || !pane || pane.scrollbackRef === ref) return ws;
-  const next: Pane = { ...pane };
-  delete next.scrollbackRef;
-  if (ref !== undefined) next.scrollbackRef = ref;
+  const note = (pane: Pane): Pane => {
+    const next: Pane = { ...pane };
+    delete next.scrollbackRef;
+    if (ref !== undefined) next.scrollbackRef = ref;
+    return next;
+  };
+  if (!located) {
+    // A closed item keeps the notes of its panes too: its snapshot is written as it closes.
+    const at = ws.closed.findIndex((entry) => entry.item.id === action.itemId);
+    const entry = ws.closed[at];
+    const closedPane = entry && findPane(entry.item.layout, action.paneId);
+    if (!entry || !closedPane || closedPane.scrollbackRef === ref) return ws;
+    const layout = withPane(entry.item.layout, note(closedPane));
+    return {
+      ...ws,
+      closed: ws.closed.map((e, i) => (i === at ? { ...e, item: { ...e.item, layout } } : e)),
+    };
+  }
+  const pane = findPane(located.item.layout, action.paneId);
+  if (!pane || pane.scrollbackRef === ref) return ws;
   return replaceItem(ws, located.space, {
     ...located.item,
-    layout: withPane(located.item.layout, next),
+    layout: withPane(located.item.layout, note(pane)),
   });
 }
 

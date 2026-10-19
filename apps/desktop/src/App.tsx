@@ -5,6 +5,7 @@ import {
   ManualClock,
   PaneLocationTracker,
   layoutPanes,
+  scrollbackAllowed,
   treeGroups,
   withMod,
 } from "@noren/model";
@@ -122,6 +123,7 @@ import { ModStyles } from "./ModStyles";
 import { useModFiles } from "./mods-store";
 import { importSchemeFile } from "./scheme-import";
 import { useProfiles, useProfilesProblem } from "./profiles-store";
+import { NOTHING_CLOSED_NOTICE, reopenClosed } from "./reopen-closed";
 import { restoredScrollbackOf } from "./scrollback-restore";
 import { noteTerminalActivity, registerTerminalSnapshot } from "./scrollback-service";
 import type { TerminalDrawing, TerminalHandle } from "./TerminalView";
@@ -594,6 +596,20 @@ function Shell({ store }: { store: WorkspaceStore }) {
     setNotice(text);
     noticeTimer.current = setTimeout(() => setNotice(""), NOTICE_MS);
   }, []);
+  /**
+   * Brings back the tab closed last, where it was, with its scrollback and a new shell; with none to
+   * bring back, a notice says so.
+   */
+  const reopenTab = useCallback(() => {
+    void reopenClosed({
+      store,
+      backend,
+      enabled: () => scrollbackAllowed(configManager.state.config.terminal),
+      now: () => Date.now(),
+    }).then((found) => {
+      if (!found) showNotice(NOTHING_CLOSED_NOTICE);
+    });
+  }, [store, showNotice]);
   /** A layout action writes its setting into the file; a refusal or a failed write is a notice. */
   const runLayout = useCallback(
     (command: LayoutCommand) => {
@@ -827,6 +843,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) openSearch();
         return;
       }
+      if (action.command.kind === "reopen-closed") {
+        if (!modalOpen.current) reopenTab();
+        return;
+      }
       if (action.command.kind === "import-scheme") {
         if (!modalOpen.current) openSchemePicker();
         return;
@@ -851,7 +871,16 @@ function Shell({ store }: { store: WorkspaceStore }) {
       window.removeEventListener("keydown", onKeyDown, true);
       clearTimeout(noticeTimer.current);
     };
-  }, [store, showNotice, openSearch, openSchemePicker, focusedHandle, terminalAction, runLayout]);
+  }, [
+    store,
+    showNotice,
+    openSearch,
+    openSchemePicker,
+    focusedHandle,
+    terminalAction,
+    runLayout,
+    reopenTab,
+  ]);
 
   // A horizontal wheel (or Shift+wheel) over the sidebar steps to the neighbor space and stops at
   // the ends. The listener is not passive so it can cancel the event, and it does that only when it
@@ -1067,6 +1096,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
       // first one the arrows reach.
       setPaletteMode("space-theme");
       return;
+    } else if (entry.action.command.kind === "reopen-closed") {
+      // The tab comes back and takes the keyboard like any tab that is shown.
+      reopenTab();
     } else if (entry.action.command.kind === "import-scheme") {
       // The file picker takes over; the terminal gets the keyboard back with the palette's close.
       closePalette();

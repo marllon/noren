@@ -131,6 +131,39 @@ describe("the search over all tabs", () => {
   });
 });
 
+describe("reopening a closed tab", () => {
+  it("is one action in the Tabs category, on Ctrl+Shift+Alt+T in the safe preset and Ctrl+Shift+T in the browser one", () => {
+    const action = ACTIONS.find((a) => a.id === "tab.reopen-closed");
+    expect(action?.title).toBe("Reopen closed tab");
+    expect(action?.category).toBe("Tabs");
+    expect(action?.command).toEqual({ kind: "reopen-closed" });
+    expect(action?.repeat).toBe(false);
+    expect(action?.chords).toEqual({ safe: "Ctrl+Alt+Shift+KeyT", browser: "Ctrl+Shift+KeyT" });
+  });
+
+  it("resolves each chord in its preset and leaves it free where another action owns it", () => {
+    expect(commandOf(safe, press("KeyT", ctrlAltShift))).toEqual({ kind: "reopen-closed" });
+    expect(commandOf(browser, press("KeyT", ctrlShift))).toEqual({ kind: "reopen-closed" });
+    // The chord of the other preset is the terminal's here, or another action's.
+    expect(commandOf(safe, press("KeyT", ctrlShift))).toEqual({ kind: "new-tab" });
+    expect(commandOf(browser, press("KeyT", ctrlAltShift))).toBeUndefined();
+    expect(commandOf(browser, press("KeyT", ctrl))).toEqual({ kind: "new-tab" });
+  });
+
+  it("leaves T with other modifiers to the terminal", () => {
+    expect(commandOf(safe, press("KeyT"))).toBeUndefined();
+    expect(commandOf(safe, press("KeyT", ctrl))).toBeUndefined();
+    expect(commandOf(safe, press("KeyT", ctrlAlt))).toBeUndefined();
+    expect(commandOf(safe, press("KeyT", { ...ctrlAltShift, metaKey: true }))).toBeUndefined();
+  });
+
+  it("can be moved to another chord by an override", () => {
+    const moved: Keybindings = { preset: "safe", overrides: { "tab.reopen-closed": "Alt+KeyR" } };
+    expect(commandOf(moved, press("KeyT", ctrlAltShift))).toBeUndefined();
+    expect(commandOf(moved, press("KeyR", alt))).toEqual({ kind: "reopen-closed" });
+  });
+});
+
 describe("the font size", () => {
   const find = (id: string) => ACTIONS.find((action) => action.id === id);
 
@@ -392,14 +425,16 @@ describe("the browser preset", () => {
   });
 
   it("frees the chords the safe preset used for those actions", () => {
-    expect(commandOf(browser, press("KeyT", ctrlShift))).toBeUndefined();
+    // Ctrl+Shift+T is no longer the new tab: it reopens the tab closed last, as in a browser.
+    expect(commandOf(browser, press("KeyT", ctrlShift))).toEqual({ kind: "reopen-closed" });
     expect(commandOf(browser, press("KeyW", ctrlShift))).toBeUndefined();
     expect(commandOf(browser, press("Digit1", alt))).toBeUndefined();
   });
 
   it("keeps the rest as the safe preset has it", () => {
     for (const action of ACTIONS) {
-      if (["tab.new", "pane.close"].includes(action.id) || /^tab\.\d$/.test(action.id)) continue;
+      const own = ["tab.new", "tab.reopen-closed", "pane.close"];
+      if (own.includes(action.id) || /^tab\.\d$/.test(action.id)) continue;
       expect(action.chords.browser).toBe(action.chords.safe);
     }
     expect(commandOf(browser, press("KeyD", ctrlShift))).toEqual({ kind: "split", dir: "row" });

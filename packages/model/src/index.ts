@@ -204,6 +204,7 @@ export { DEFAULT_MAX_PANES, MAX_CLOSED, MAX_GROUP_DEPTH } from "./types";
 export type {
   ArchivedItem,
   ClosedItem,
+  ClosedPlace,
   GroupNode,
   Id,
   Item,

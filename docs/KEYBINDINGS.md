@@ -24,6 +24,7 @@ The **safe** preset is the default. It does not fight the shell: Ctrl+T, Ctrl+W 
 | ----------------------------- | --------------------- | --------------------- |
 | Open palette                  | Ctrl+Shift+P          | Ctrl+Shift+P          |
 | New tab                       | Ctrl+Shift+T          | Ctrl+T                |
+| Reopen closed tab             | Ctrl+Shift+Alt+T      | Ctrl+Shift+T          |
 | Close pane                    | Ctrl+Shift+W          | Ctrl+W                |
 | Split right                   | Ctrl+Shift+D          | Ctrl+Shift+D          |
 | Split below                   | Ctrl+Shift+E          | Ctrl+Shift+E          |
@@ -54,9 +55,13 @@ The **safe** preset is the default. It does not fight the shell: Ctrl+T, Ctrl+W 
 
 The browser preset is opt-in. It takes Ctrl+T, Ctrl+W and Ctrl+1..9 away from the terminal, so a shell program that uses them (for example a readline "transpose characters" or a "delete word") no longer receives them.
 
-A preset gives each action at most one chord. Where the browser preset moves an action, the safe chord is free again (Ctrl+Shift+T does nothing there, until an action that needs it exists).
+A preset gives each action at most one chord. Where the browser preset moves an action, the safe chord is free again (Ctrl+Shift+T is "Reopen closed tab" there, as in a browser).
 
-Only the actions that exist today are registered. Later tasks add theirs (reopen closed) to the same registry. The command palette lists these same actions with the chord in force; see [PALETTE.md](PALETTE.md).
+Only the actions that exist today are registered. Later tasks add theirs to the same registry. The command palette lists these same actions with the chord in force; see [PALETTE.md](PALETTE.md).
+
+## Reopening a closed tab
+
+"Reopen closed tab" (`tab.reopen-closed`, category **Tabs**; Ctrl+Shift+Alt+T in the safe preset, Ctrl+Shift+T in the browser preset; also in the palette) brings back the tab closed last, and each press the one closed before it. The stack keeps the last 50. The tab returns to the space, the group and the position it had when it closed; where that is gone it goes to the end of the tree of its space (a group that was dissolved), or of the active space (a space that was deleted). A tab that was pinned returns pinned. The space it returns to becomes the active one and the tab is shown. With nothing to reopen the notice reads "No closed tab to reopen". How the scrollback comes back is in [ARCHITECTURE.md](ARCHITECTURE.md#files-configuration-and-themes).
 
 ## Overrides and conflicts
 

@@ -1,5 +1,6 @@
 import { FakeBackend, scrollbackAllowed, scrollbackFileName } from "@noren/model";
 import type { Backend, Clock, Id } from "@noren/model";
+import { closedChanges } from "./closed-scrollback";
 import { configManager } from "./config-store";
 import { realClock } from "./real-clock";
 import { ScrollbackSaver, scrollbackPanes } from "./scrollback-saver";
@@ -16,6 +17,15 @@ const sources = new Map<Id, () => string>();
 /** The terminal of `paneId` can be asked for its snapshot with `source` (a later one replaces it). */
 export function registerTerminalSnapshot(paneId: Id, source: () => string): void {
   sources.set(paneId, source);
+}
+
+/** What the terminal of `paneId` serializes now; `undefined` when it has none, or it is already gone. */
+function readTerminal(paneId: Id): string | undefined {
+  try {
+    return sources.get(paneId)?.();
+  } catch {
+    return undefined;
+  }
 }
 
 /** Whether the terminal of `paneId` is registered (a pane that was closed is forgotten at the next save). */
@@ -69,7 +79,7 @@ export function startScrollback(options: ScrollbackServiceOptions): ScrollbackSa
       for (const paneId of [...sources.keys()]) if (!ids.has(paneId)) sources.delete(paneId);
       return open;
     },
-    snapshot: (paneId) => sources.get(paneId)?.(),
+    snapshot: readTerminal,
     enabled: () => scrollbackAllowed(configManager.state.config.terminal),
     onFile: (pane, has) =>
       store.getState().dispatch({
@@ -89,6 +99,20 @@ export function startScrollback(options: ScrollbackServiceOptions): ScrollbackSa
   options.events.addEventListener("beforeunload", closing);
   options.events.addEventListener("pagehide", closing);
 
+  // A tab that closes keeps its scrollback for when it is reopened, and one that leaves the closed
+  // stack (or the workspace) takes its file with it. The terminals of a tab that closed leave with
+  // the render that follows, so they are asked now; the writes and the notes wait for the end of
+  // the action that closed it (a note is an action too, and must not run inside another).
+  const stopClosed = store.subscribe((state, previous) => {
+    const changes = closedChanges(previous.workspace, state.workspace);
+    if (changes.closed.length === 0 && changes.gone.length === 0) return;
+    const lines = changes.closed.map((pane) => ({ pane, raw: readTerminal(pane.paneId) }));
+    queueMicrotask(() => {
+      for (const { pane, raw } of lines) void started.saveNow(pane, raw);
+      for (const paneId of changes.gone) void started.discard(paneId);
+    });
+  });
+
   // Turning the setting off removes the files at once, not at the next minute.
   let allowed = scrollbackAllowed(configManager.state.config.terminal);
   const stopSettings = configManager.subscribe(() => {
@@ -99,6 +123,7 @@ export function startScrollback(options: ScrollbackServiceOptions): ScrollbackSa
   stopFollowing = () => {
     started.stop();
     stopSettings();
+    stopClosed();
   };
   return started;
 }

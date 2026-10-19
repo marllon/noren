@@ -13,7 +13,12 @@ import { startMods } from "./mods-store";
 import { notificationSettings } from "./notification-settings";
 import { getProfiles, startProfiles } from "./profiles-store";
 import { loadScrollbackForRestore, setRestoredScrollback } from "./scrollback-restore";
-import { clearStaleSnapshots, scrollbackClock, startScrollback } from "./scrollback-service";
+import {
+  clearStaleSnapshots,
+  scrollbackClock,
+  startScrollback,
+  sweepOrphanScrollback,
+} from "./scrollback-service";
 import { tauriBridge } from "./tauri-backend";
 import { followActiveSpaceMods } from "./use-mods";
 import { followActiveSpaceTheme } from "./use-theme";
@@ -101,6 +106,9 @@ export async function bootWorkspace(
       events,
     });
     if (snapshots !== undefined) void clearStaleSnapshots(store, target, snapshots.stale);
+    // The files no pane of the workspace claims (open, closed or archived) are removed, now that the
+    // state is loaded. Nothing waits for it, and a failure leaves the files for the next start.
+    void sweepOrphanScrollback(store, target).catch(() => undefined);
     // The auto-archive: every minute, a tab nobody uses goes to the archive. Started after the
     // scrollback service, so the output of a tab it puts away is written as it leaves.
     startAutoArchive({ store, clock: archiveClock(target) });

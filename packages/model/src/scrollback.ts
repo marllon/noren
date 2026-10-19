@@ -18,6 +18,8 @@
 // the file holds, what reaches xterm cannot change how the terminal behaves and cannot send a byte to
 // the shell.
 
+import { layoutPanes } from "./sessions";
+import type { Item, Workspace } from "./types";
 import { encodeUtf8 } from "./utf8";
 
 /** How many lines of a terminal a snapshot keeps (the last ones). */
@@ -297,4 +299,38 @@ export function restoredTerminalText(snapshot: string, at: number): string {
     .map((line) => line.replace(SGR_PATTERN, (sgr) => sgr + DIM))
     .join("\r\n");
   return `${RESET}${DIM}${dimmed}${RESET}\r\n${DIM}${restoredMarker(at)}${RESET}\r\n`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Searching and sweeping
+
+/**
+ * The text of a snapshot as a person reads it, for searching: `raw` cleaned like any snapshot from
+ * disk (`cleanSnapshot`) and then stripped of its colors, so what is left is printable text and line
+ * breaks and nothing in it can be taken for markup or for an escape. Never throws.
+ */
+export function snapshotSearchText(raw: string): string {
+  return plain(cleanSnapshot(raw));
+}
+
+/**
+ * The ids in `listed` (the files in the `scrollback/` folder) that no pane claims: not a pane of an
+ * open tab, of a closed tab or of an archived tab of `workspace`. Only a valid file name
+ * (`isScrollbackPaneId`) can be an orphan, since nothing else is a snapshot; the answer has each id
+ * once, in the order listed. A pane claims its file by its id, whether it says it has one
+ * (`scrollbackRef`) or not: a note not yet written to `state.json` must not cost the snapshot.
+ */
+export function orphanScrollbackIds(workspace: Workspace, listed: readonly string[]): string[] {
+  const claimed = new Set<string>();
+  const claim = (item: Item) => {
+    for (const pane of layoutPanes(item.layout)) claimed.add(pane.id);
+  };
+  for (const space of workspace.spaces) Object.values(space.items).forEach(claim);
+  for (const entry of workspace.closed) claim(entry.item);
+  for (const entry of workspace.archive) claim(entry.item);
+  const orphans = new Set<string>();
+  for (const id of listed) {
+    if (isScrollbackPaneId(id) && !claimed.has(id)) orphans.add(id);
+  }
+  return [...orphans];
 }

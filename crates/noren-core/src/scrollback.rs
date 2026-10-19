@@ -176,6 +176,45 @@ impl ScrollbackStore {
         Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
     }
 
+    /// The ids of the panes that have a snapshot: the files named `<id>.txt` with a valid pane id
+    /// (see [`is_valid_pane_id`]), sorted. Everything else in the folder (other names, a leftover
+    /// temporary file, a folder called `<id>.txt`) is ignored, never listed and never touched. A
+    /// folder that does not exist is an empty list, and it is not created.
+    pub fn list(&self) -> Result<Vec<String>, ScrollbackError> {
+        let _guard = self.lock();
+        let entries = match fs::read_dir(&self.dir) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => {
+                return Err(ScrollbackError::Io {
+                    action: "list the scrollback folder",
+                    source: error,
+                });
+            }
+        };
+        let mut ids = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|error| ScrollbackError::Io {
+                action: "list the scrollback folder",
+                source: error,
+            })?;
+            // Only plain files count; a name that is not UTF-8 cannot be a valid id.
+            if !entry.file_type().is_ok_and(|kind| kind.is_file()) {
+                continue;
+            }
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else { continue };
+            let Some(id) = name.strip_suffix(EXTENSION) else {
+                continue;
+            };
+            if is_valid_pane_id(id) {
+                ids.push(id.to_owned());
+            }
+        }
+        ids.sort();
+        Ok(ids)
+    }
+
     /// Removes the snapshot of `pane_id`. A pane with no snapshot is not an error, and the folder is
     /// never created. Only a file of that name is removed: something else under it (a folder) stays
     /// and is reported.
@@ -472,6 +511,47 @@ mod tests {
         assert_eq!(store.load("pane-1").ok().flatten(), None);
         assert!(store.delete("pane-1").is_err());
         assert!(dir.scrollback().join("pane-1.txt").is_dir());
+    }
+
+    #[test]
+    fn list_of_a_missing_folder_is_empty_and_creates_nothing() {
+        let dir = TempDir::new("list-missing");
+        let store = ScrollbackStore::new(dir.scrollback());
+        assert_eq!(store.list().expect("list"), Vec::<String>::new());
+        assert!(!dir.scrollback().exists());
+    }
+
+    #[test]
+    fn list_names_only_the_snapshots_with_a_valid_id_sorted() {
+        let dir = TempDir::new("list");
+        let store = ScrollbackStore::new(dir.scrollback());
+        store.save("pane-b", "b").expect("save");
+        store.save(UUID, "u").expect("save");
+        store.save("pane-a", "").expect("save");
+        let folder = dir.scrollback();
+        // Everything that is not `<valid id>.txt` is ignored and left where it is.
+        fs::write(folder.join("notes.md"), "not ours").expect("write");
+        fs::write(folder.join("pane-c.txt.tmp"), "half").expect("write");
+        fs::write(folder.join(".txt"), "no id").expect("write");
+        fs::write(folder.join("a b.txt"), "space").expect("write");
+        fs::write(folder.join("caf\u{e9}.txt"), "accent").expect("write");
+        fs::write(folder.join("con.txt"), "device").expect("write");
+        fs::write(folder.join(format!("{}.txt", "a".repeat(65))), "long").expect("write");
+        fs::create_dir_all(folder.join("pane-d.txt")).expect("folder named like a snapshot");
+        assert_eq!(
+            store.list().expect("list"),
+            [UUID, "pane-a", "pane-b"].map(String::from)
+        );
+        assert_eq!(dir.names(&folder).len(), 11);
+    }
+
+    #[test]
+    fn list_fails_with_a_message_when_the_folder_is_a_file() {
+        let dir = TempDir::new("list-in-the-way");
+        fs::write(dir.scrollback(), b"a file where the folder should be").expect("write");
+        let store = ScrollbackStore::new(dir.scrollback());
+        let error = store.list().expect_err("must fail");
+        assert!(error.to_string().starts_with("could not list"));
     }
 
     #[test]

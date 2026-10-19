@@ -538,6 +538,11 @@ impl ScrollbackState {
         self.store.save(pane_id, text).map_err(|e| e.to_string())
     }
 
+    /// The ids of the panes that have a snapshot, sorted (see [`ScrollbackStore::list`]). Only reads.
+    pub fn list(&self) -> Result<Vec<String>, String> {
+        self.store.list().map_err(|e| e.to_string())
+    }
+
     /// Removes the snapshot of the pane; a pane with none is not an error.
     pub fn delete(&self, pane_id: &str) -> Result<(), String> {
         if !self.writing_allowed {
@@ -576,6 +581,13 @@ pub async fn scrollback_save(
     content: String,
 ) -> Result<(), String> {
     state.save(&pane_id, &content)
+}
+
+/// The ids of the panes that have a snapshot file, sorted. The page uses it to find the files that no
+/// pane claims. Never creates the folder.
+#[tauri::command(rename_all = "camelCase")]
+pub async fn scrollback_list(state: State<'_, ScrollbackState>) -> Result<Vec<String>, String> {
+    state.list()
 }
 
 /// Removes the snapshot of a pane. A pane with none is not an error.
@@ -1586,6 +1598,7 @@ mod tests {
                 window_effect_set,
                 scrollback_save,
                 scrollback_load,
+                scrollback_list,
                 scrollback_delete
             ])
             .build(mock_context(noop_assets()))
@@ -1734,6 +1747,32 @@ mod tests {
             panic!("a raw answer for null");
         };
         assert_eq!(json, "null");
+    }
+
+    #[test]
+    fn the_page_lists_the_snapshots_through_the_command() {
+        let dir = TempDir::new("scrollback-list-command");
+        let list = || {
+            let answer =
+                call_command("scrollback_list", serde_json::json!({}), &dir.0).expect("list");
+            let InvokeResponseBody::Json(json) = answer else {
+                panic!("a raw answer for a list");
+            };
+            serde_json::from_str::<Vec<String>>(&json).expect("a list of ids")
+        };
+        // No folder yet: an empty list, and the folder is not created by asking.
+        assert_eq!(list(), Vec::<String>::new());
+        assert!(!dir.0.join(SCROLLBACK_DIR_NAME).exists());
+        for id in ["pane-b", "pane-a"] {
+            call_command(
+                "scrollback_save",
+                serde_json::json!({ "paneId": id, "content": "x" }),
+                &dir.0,
+            )
+            .expect("save");
+        }
+        std::fs::write(dir.0.join(SCROLLBACK_DIR_NAME).join("notes.md"), "x").expect("other");
+        assert_eq!(list(), ["pane-a", "pane-b"]);
     }
 
     #[test]

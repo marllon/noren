@@ -155,6 +155,10 @@ export class TauriBackend implements Backend {
     await this.#bridge.invoke("scrollback_save", { paneId, content: text });
   }
 
+  listScrollback(): Promise<string[]> {
+    return this.#bridge.invoke<string[]>("scrollback_list");
+  }
+
   async deleteScrollback(paneId: string): Promise<void> {
     await this.#bridge.invoke("scrollback_delete", { paneId });
   }

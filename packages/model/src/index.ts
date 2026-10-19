@@ -187,11 +187,13 @@ export {
   cleanSnapshot,
   formatRestoreTime,
   isScrollbackPaneId,
+  orphanScrollbackIds,
   restoredMarker,
   restoredTerminalText,
   savesScrollback,
   scrollbackAllowed,
   scrollbackFileName,
+  snapshotSearchText,
 } from "./scrollback";
 export type { CleanSnapshotOptions } from "./scrollback";
 export { layoutPanes, liveSessionIds } from "./sessions";

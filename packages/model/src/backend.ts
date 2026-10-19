@@ -102,6 +102,14 @@ export interface Backend {
    */
   saveScrollback(paneId: string, text: string): Promise<void>;
   /**
+   * The ids of the panes that have a snapshot file, sorted: the files named `<id>.txt` with a valid
+   * pane id (`isScrollbackPaneId`); anything else in the folder is ignored. No folder is an empty
+   * list. The ids are for matching against the panes of the workspace (the boot removes the files
+   * that no pane claims); they say nothing about what is in the files. Rejects when the folder
+   * cannot be read.
+   */
+  listScrollback(): Promise<string[]>;
+  /**
    * Removes the snapshot of the pane `paneId`. A pane that has none is not an error. Rejects when
    * `paneId` is not a pane id or the file cannot be removed.
    */

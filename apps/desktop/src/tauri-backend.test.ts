@@ -413,6 +413,19 @@ describe("TauriBackend", () => {
     ]);
   });
 
+  it("lists the snapshots through the scrollback_list command", async () => {
+    const fake = fakeBridge({ scrollback_list: ["pane-1", "pane-2"] });
+    await expect(new TauriBackend(fake.bridge).listScrollback()).resolves.toEqual([
+      "pane-1",
+      "pane-2",
+    ]);
+    expect(fake.invocations).toEqual([{ command: "scrollback_list", args: undefined }]);
+    fake.failing.add("scrollback_list");
+    await expect(new TauriBackend(fake.bridge).listScrollback()).rejects.toThrow(
+      "scrollback_list failed",
+    );
+  });
+
   it("answers null for a pane with no snapshot", async () => {
     const fake = fakeBridge({ scrollback_load: null });
     await expect(new TauriBackend(fake.bridge).loadScrollback("pane-1")).resolves.toBeNull();

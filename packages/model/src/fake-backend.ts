@@ -441,7 +441,7 @@ class FakeSession {
  * - the scrollback snapshots live in memory: `saveScrollback` writes one as the app does (a pane id
  *   that is not a file name or a text over the limit is refused, as the real one refuses them),
  *   `setScrollback` puts a file there as if it had been placed by hand, `loadScrollback` and
- *   `deleteScrollback` read and remove one; `scrollbackFiles` shows the files as they are
+ *   `deleteScrollback` read and remove one, `listScrollback` names them; `scrollbackFiles` shows the files as they are
  * - the profiles of the user (`setUserProfiles`) are checked as the real backend checks them and
  *   listed after the profiles it was built with; a session of one starts in its `cwd` unless the call
  *   names a folder, and `session(id)` tells the `program` and `args` it was asked to run
@@ -733,6 +733,11 @@ export class FakeBackend implements Backend {
     }
     if (this.#scrollbackFailure) throw this.#scrollbackFailure;
     this.putScrollback(paneId, text);
+  }
+
+  async listScrollback(): Promise<string[]> {
+    this.#record("listScrollback");
+    return [...this.#scrollback.keys()].filter(isScrollbackPaneId).sort();
   }
 
   async deleteScrollback(paneId: string): Promise<void> {

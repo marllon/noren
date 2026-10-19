@@ -2303,6 +2303,7 @@ body {
 .library-open {
   display: flex;
   flex: 1 1 auto;
+  flex-wrap: wrap;
   min-width: 0;
   align-items: baseline;
   gap: 10px;
@@ -2333,7 +2334,7 @@ body {
 }
 
 .library-cwd {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
   color: var(--nr-muted);
@@ -2347,6 +2348,18 @@ body {
   flex: none;
   color: var(--nr-muted);
   font-size: 11px;
+  white-space: nowrap;
+}
+
+.library-snippet {
+  flex: 1 0 100%;
+  min-width: 0;
+  padding-left: 18px;
+  overflow: hidden;
+  color: var(--nr-muted);
+  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

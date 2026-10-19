@@ -115,3 +115,17 @@ describe("FakeBackend scrollback snapshots", () => {
     expect(backend.userThemeFiles).toEqual({});
   });
 });
+
+describe("FakeBackend scrollback list", () => {
+  it("lists the ids of the files sorted, records the call and lists nothing when there are none", async () => {
+    const backend = new FakeBackend();
+    expect(await backend.listScrollback()).toEqual([]);
+    await backend.saveScrollback("pane-b", "b");
+    backend.setScrollback("pane-a", "a");
+    backend.setScrollback(UUID, "u");
+    expect(await backend.listScrollback()).toEqual([UUID, "pane-a", "pane-b"]);
+    await backend.deleteScrollback("pane-a");
+    expect(await backend.listScrollback()).toEqual([UUID, "pane-b"]);
+    expect(backend.callsTo("listScrollback")).toHaveLength(3);
+  });
+});

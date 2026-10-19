@@ -1,4 +1,9 @@
-import { FakeBackend, scrollbackAllowed, scrollbackFileName } from "@noren/model";
+import {
+  FakeBackend,
+  orphanScrollbackIds,
+  scrollbackAllowed,
+  scrollbackFileName,
+} from "@noren/model";
 import type { Backend, Clock, Id } from "@noren/model";
 import { closedChanges } from "./closed-scrollback";
 import { configManager } from "./config-store";
@@ -149,4 +154,38 @@ export async function clearStaleSnapshots(
       }
     }),
   );
+}
+
+/**
+ * Removes the files of `scrollback/` that no pane claims (see `orphanScrollbackIds`): the ones a
+ * crash, a pane that never reached the closed stack or an older build left behind. The workspace is
+ * read after the folder is listed, so a pane the person opens meanwhile is never taken for an orphan;
+ * a file that cannot be removed is reported and the others still go. A folder that cannot be listed
+ * is reported and nothing is removed. Returns the ids it removed.
+ */
+export async function sweepOrphanScrollback(
+  store: WorkspaceStore,
+  backend: Pick<Backend, "listScrollback" | "deleteScrollback">,
+  onError?: (error: unknown) => void,
+): Promise<Id[]> {
+  let listed: string[];
+  try {
+    listed = await backend.listScrollback();
+  } catch (error) {
+    onError?.(error);
+    return [];
+  }
+  const orphans = orphanScrollbackIds(store.getState().workspace, listed);
+  const removed: Id[] = [];
+  await Promise.all(
+    orphans.map(async (paneId) => {
+      try {
+        await backend.deleteScrollback(paneId);
+        removed.push(paneId);
+      } catch (error) {
+        onError?.(error);
+      }
+    }),
+  );
+  return removed;
 }

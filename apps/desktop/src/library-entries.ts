@@ -1,4 +1,10 @@
-import { formatRestoreTime, layoutPanes } from "@noren/model";
+import {
+  formatRestoreTime,
+  isScrollbackPaneId,
+  layoutPanes,
+  snapshotSearchText,
+} from "@noren/model";
+import type { Backend } from "@noren/model";
 import type { ArchivedItem, ClosedItem, Id, Item, Space, Workspace } from "@noren/model";
 import { shortCwd } from "./pane-info";
 
@@ -36,6 +42,10 @@ export interface LibraryEntry {
   /** That moment as a person reads it (`2026-10-19 14:05`). */
   when: string;
   panes: number;
+  /** The panes that say they have a saved output (the files the search of its text reads). */
+  outputPaneIds: Id[];
+  /** Only in the result of `filterLibrary`: the short piece of output that made the tab match. */
+  snippet?: string;
 }
 
 /** The folder of the pane that had the keyboard in the item (else the first pane that has one). */
@@ -66,6 +76,9 @@ function entryOf(
     at,
     when: formatRestoreTime(at),
     panes: layoutPanes(raw.item.layout).length,
+    outputPaneIds: layoutPanes(raw.item.layout)
+      .filter((pane) => pane.scrollbackRef !== undefined && isScrollbackPaneId(pane.id))
+      .map((pane) => pane.id),
   };
 }
 
@@ -88,19 +101,111 @@ export function libraryEntries(
     .map(({ entry }) => entry);
 }
 
+/** The saved output of a tab, as the search reads it: the text, and the same in lower case. */
+export interface LibraryText {
+  /** Printable text and line breaks, no colors and no escapes (`snapshotSearchText`). */
+  text: string;
+  /** `text` in lower case, made once so each key typed does not make it again. */
+  lower: string;
+}
+
+/** The searchable form of text that is already plain. */
+export function libraryText(text: string): LibraryText {
+  return { text, lower: text.toLowerCase() };
+}
+
+/** The longest snippet shown, in characters. */
+export const SNIPPET_LENGTH = 100;
+
+/** How much of the line before the match a snippet keeps when the line is cut. */
+const SNIPPET_LEAD = 30;
+
+/** The line that made `words` match, shortened around the first word, with blanks collapsed. */
+function snippetOf(text: LibraryText, words: readonly string[]): string | undefined {
+  const lines = text.text.split("\n");
+  const lowerLines = text.lower.split("\n");
+  // A line with every word is the best answer; else the first line that has the first word.
+  let at = lowerLines.findIndex((line) => words.every((word) => line.includes(word)));
+  if (at < 0) at = lowerLines.findIndex((line) => line.includes(words[0] ?? ""));
+  const line = lines[at];
+  const lower = lowerLines[at];
+  if (line === undefined || lower === undefined) return undefined;
+  const found = Math.max(0, lower.indexOf(words[0] ?? ""));
+  const from = Math.max(0, found - SNIPPET_LEAD);
+  const piece = line.slice(from, from + SNIPPET_LENGTH).replace(/\s+/g, " ");
+  const snippet = `${from > 0 ? "…" : ""}${piece.trim()}${from + SNIPPET_LENGTH < line.length ? "…" : ""}`;
+  return snippet === "" ? undefined : snippet;
+}
+
 /**
  * The entries that match the query: every word of it (split at blanks, case ignored) must be found
- * in the title or in the folder of the tab. An empty query matches everything. The text of the
- * output is searched by a later task.
+ * in the title, in the folder or in the saved output of the tab (`texts`, by item id; a tab with no
+ * text there is searched by title and folder alone). An empty query matches everything. An entry
+ * that matched only because of its output comes back as a copy with `snippet`: the line that has
+ * the words, shortened. The snippet is plain text, to be drawn as text and never as markup.
  */
-export function filterLibrary(entries: readonly LibraryEntry[], query: string): LibraryEntry[] {
+export function filterLibrary(
+  entries: readonly LibraryEntry[],
+  query: string,
+  texts?: ReadonlyMap<Id, LibraryText>,
+): LibraryEntry[] {
   const words = query
     .toLowerCase()
     .split(/\s+/)
     .filter((word) => word !== "");
   if (words.length === 0) return [...entries];
-  return entries.filter((entry) => {
-    const text = `${entry.title}\n${entry.cwd ?? ""}`.toLowerCase();
-    return words.every((word) => text.includes(word));
-  });
+  const found: LibraryEntry[] = [];
+  for (const entry of entries) {
+    const head = `${entry.title}\n${entry.cwd ?? ""}`.toLowerCase();
+    const outputOnly = words.filter((word) => !head.includes(word));
+    if (outputOnly.length === 0) {
+      found.push(entry);
+      continue;
+    }
+    const text = texts?.get(entry.itemId);
+    if (text === undefined || !outputOnly.every((word) => text.lower.includes(word))) continue;
+    const snippet = snippetOf(text, outputOnly);
+    found.push(snippet !== undefined ? { ...entry, snippet } : entry);
+  }
+  return found;
+}
+
+/** How many saved outputs are read at once. */
+const READ_AT_ONCE = 4;
+
+/**
+ * Reads the saved output of the tabs of `entries`, one text per tab (its panes' outputs, in order,
+ * one under the other), cleaned like any snapshot that comes from disk. `onText` hears each one as
+ * soon as it is read, so the search can use what is there while the rest loads; a tab with no
+ * output, an unreadable file or an output that cleans to nothing is skipped. Stops starting new
+ * reads when `signal` aborts. Never rejects.
+ */
+export async function loadLibraryTexts(
+  backend: Pick<Backend, "loadScrollback">,
+  entries: readonly LibraryEntry[],
+  onText: (itemId: Id, text: LibraryText) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const queue = entries.filter((entry) => entry.outputPaneIds.length > 0);
+  const readEntry = async (entry: LibraryEntry) => {
+    const parts: string[] = [];
+    for (const paneId of entry.outputPaneIds) {
+      try {
+        const raw = await backend.loadScrollback(paneId);
+        const text = raw === null ? "" : snapshotSearchText(raw);
+        if (text !== "") parts.push(text);
+      } catch {
+        // A file that cannot be read is not searched; the tab still matches by title and folder.
+      }
+    }
+    if (parts.length > 0 && signal?.aborted !== true)
+      onText(entry.itemId, libraryText(parts.join("\n")));
+  };
+  const worker = async () => {
+    for (let entry = queue.shift(); entry !== undefined; entry = queue.shift()) {
+      if (signal?.aborted === true) return;
+      await readEntry(entry);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(READ_AT_ONCE, queue.length) }, worker));
 }

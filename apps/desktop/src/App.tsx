@@ -221,6 +221,8 @@ export interface NorenTestHook {
     method: "loadScrollback" | "saveScrollback" | "deleteScrollback";
     paneId: string;
   }[];
+  /** How many times the backend was asked to list the snapshot files (the sweep at the start does). */
+  scrollbackListCalls(): number;
   /**
    * Places the snapshot file of a pane as if somebody had put it there (`null` removes it). The web
    * build keeps the files in the browser storage, so a reload finds them.
@@ -1044,6 +1046,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
               method: call.method as "loadScrollback" | "saveScrollback" | "deleteScrollback",
               paneId: String(call.args[0]),
             })),
+        scrollbackListCalls: () => fake.callsTo("listScrollback").length,
         setScrollbackFile: (paneId, text) => fake.setScrollback(paneId, text),
         paneSnapshot: (paneId) => handles.current.get(paneId)?.snapshot() ?? "",
         paneDimLines: (paneId) => handles.current.get(paneId)?.dimLines() ?? [],
@@ -1530,6 +1533,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
       {libraryOpen && (
         <Library
           workspace={workspace}
+          backend={backend}
           home={home}
           onRestore={restoreFromLibrary}
           onDelete={deleteFromLibrary}

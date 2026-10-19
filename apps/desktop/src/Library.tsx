@@ -1,18 +1,21 @@
 import { Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import type { Workspace } from "@noren/model";
+import type { Backend, Id, Workspace } from "@noren/model";
 import { ConfirmDialog } from "./ConfirmDialog";
 import {
   LIBRARY_SECTIONS,
   LIBRARY_SECTION_LABELS,
   filterLibrary,
   libraryEntries,
+  loadLibraryTexts,
 } from "./library-entries";
-import type { LibraryEntry, LibrarySection } from "./library-entries";
+import type { LibraryEntry, LibrarySection, LibraryText } from "./library-entries";
 
 interface LibraryProps {
   workspace: Workspace;
+  /** Where the saved output of the tabs is read from, for the search to look in it. */
+  backend: Pick<Backend, "loadScrollback">;
   /** The home folder, for the short form of a folder. */
   home?: string | undefined;
   /** The section shown first. Default the archive. */
@@ -27,11 +30,13 @@ interface LibraryProps {
 
 /**
  * The library: the archive and the recently closed tabs, one section at a time, with a box that
- * narrows the list by title and folder. Up and Down move the selection, Enter restores the selected
+ * narrows the list by title, folder and saved output (read in the background, so the list shows at
+ * once and the search reaches further as the files come in). Up and Down move the selection, Enter restores the selected
  * tab, Escape closes. Deleting asks first, since the saved output goes with the tab.
  */
 export function Library({
   workspace,
+  backend,
   home,
   initialSection = "archive",
   onRestore,
@@ -50,9 +55,36 @@ export function Library({
     [workspace.archive.length, workspace.closed.length],
   );
   const all = useMemo(() => libraryEntries(workspace, section, home), [workspace, section, home]);
-  const rows = useMemo(() => filterLibrary(all, query), [all, query]);
+  const [texts, setTexts] = useState<ReadonlyMap<Id, LibraryText>>(() => new Map());
+  const rows = useMemo(() => filterLibrary(all, query, texts), [all, query, texts]);
   const current = Math.min(selected, rows.length - 1);
   const currentRow = rows[current];
+
+  // The saved output of the tabs of the section on screen is read after the first frame, a few files
+  // at a time, and each one that arrives is searchable at once. A tab is read once while the library
+  // is open; closing it stops what has not started.
+  const abort = useRef<AbortController | null>(null);
+  const requested = useRef(new Set<Id>());
+  useEffect(() => {
+    abort.current = new AbortController();
+    const asked = requested.current;
+    return () => {
+      abort.current?.abort();
+      asked.clear();
+    };
+  }, []);
+  useEffect(() => {
+    const signal = abort.current?.signal;
+    const fresh = all.filter((entry) => !requested.current.has(entry.itemId));
+    if (signal === undefined || fresh.length === 0) return;
+    for (const entry of fresh) requested.current.add(entry.itemId);
+    void loadLibraryTexts(
+      backend,
+      fresh,
+      (itemId, text) => setTexts((previous) => new Map(previous).set(itemId, text)),
+      signal,
+    );
+  }, [all, backend]);
 
   useEffect(() => {
     listRef.current
@@ -137,7 +169,7 @@ export function Library({
               type="text"
               className="library-input"
               aria-label="Search the library"
-              placeholder="Search by title or folder"
+              placeholder="Search by title, folder or output"
               autoComplete="off"
               spellCheck={false}
               value={query}
@@ -175,6 +207,11 @@ export function Library({
                   <span className="library-meta">
                     {entry.spaceName} · {entry.when}
                   </span>
+                  {entry.snippet !== undefined && (
+                    <span className="library-snippet" data-nr-part="library-snippet">
+                      {entry.snippet}
+                    </span>
+                  )}
                 </button>
                 <button
                   type="button"

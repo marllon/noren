@@ -69,6 +69,7 @@ fn main() {
             bridge::theme_list,
             bridge::theme_save,
             bridge::scrollback_load,
+            bridge::scrollback_list,
             bridge::scrollback_save,
             bridge::scrollback_delete,
             lifecycle::app_close_listening,

@@ -79,6 +79,19 @@ export type { FakeBackendOptions, FakeCall, FakeCommandRun, FakeSessionInfo } fr
 export { OutputStream } from "./output-stream";
 export { PaneLocationTracker } from "./pane-location";
 export type { PaneCommandEvent, PaneLocation, PaneLocationTrackerOptions } from "./pane-location";
+export { CommandMarks, joinRows, markFailed } from "./command-marks";
+export type {
+  BufferRow,
+  CommandMark,
+  CommandMarksOptions,
+  LineAnchor,
+  MarkChange,
+  MarkCursor,
+  MarkState,
+  MarkStep,
+  MarkView,
+  OutputRows,
+} from "./command-marks";
 export { decodeUtf8, encodeUtf8 } from "./utf8";
 export {
   DEFAULT_MAX_OSC_BYTES,

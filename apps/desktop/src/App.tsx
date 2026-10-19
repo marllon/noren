@@ -77,9 +77,22 @@ import { typesText } from "./split-keys";
 import { DropZones, TreeDnd } from "./TreeDnd";
 import { createWheelGesture, wheelTravel } from "./spaces";
 import { TerminalView } from "./TerminalView";
+import {
+  COPY_FAILED_NOTICE,
+  NO_OUTPUT_TO_SELECT_NOTICE,
+  NO_PROMPT_NOTICE,
+  planCopy,
+} from "./command-output";
+import type { CommandMarkInfo } from "./command-marks-view";
 import { THEMES, applySpaceColor, applyTheme, terminalTheme } from "./theme";
 import { TitleBar } from "./TitleBar";
-import { FavoriteContextMenu, GroupContextMenu, ItemContextMenu } from "./TreeMenus";
+import {
+  FavoriteContextMenu,
+  GroupContextMenu,
+  ItemContextMenu,
+  PaneContextMenu,
+} from "./TreeMenus";
+import type { OutputActions } from "./TreeMenus";
 import { setThemeChoice, useTheme, useThemeChoice } from "./use-theme";
 import type { TerminalHandle } from "./TerminalView";
 import {
@@ -97,6 +110,8 @@ export interface NorenTestHook {
   selection(): string;
   /** Buffer row at the top of the active terminal's view and the number of rows in view. */
   viewport(): { top: number; rows: number };
+  /** The commands the shell of the active terminal reported, oldest first, with the prompt stepped to flagged. */
+  marks(): CommandMarkInfo[];
   renderer(): "webgl" | "dom";
   /** Number of `write` calls the backend received. */
   writeCalls(): number;
@@ -197,10 +212,12 @@ interface ItemViewProps {
   /** The home folder, for the short form of the folder in a pane header (once known). */
   home: string | undefined;
   onReady(paneId: Id, handle: TerminalHandle): void;
+  /** The menu button of a pane header was pressed. */
+  onPaneMenu(paneId: Id, point: MenuPoint): void;
 }
 
 /** The layout of one tab: its panes as nested resizable panels, a terminal in each. */
-function ItemView({ store, space, item, shown, colors, home, onReady }: ItemViewProps) {
+function ItemView({ store, space, item, shown, colors, home, onReady, onPaneMenu }: ItemViewProps) {
   const dispatch = useStore(store, (state) => state.dispatch);
   const { paneHeaders } = useLayout();
   const context: SplitLayoutContext = {
@@ -229,6 +246,7 @@ function ItemView({ store, space, item, shown, colors, home, onReady }: ItemView
     onZoomPane: (paneId) => dispatch({ type: "pane/zoom", itemId: item.id, paneId }),
     onClosePane: (paneId) => dispatch({ type: "pane/close", itemId: item.id, paneId }),
     onDetachPane: (paneId) => dispatch({ type: "pane/detach", itemId: item.id, paneId }),
+    onPaneMenu,
     onResize: (path, sizes) => dispatch({ type: "pane/resize", itemId: item.id, path, sizes }),
   };
   return (
@@ -314,6 +332,7 @@ type Overlay =
   | { kind: "item-menu"; targets: Id[]; point: MenuPoint }
   | { kind: "group-menu"; groupId: Id; point: MenuPoint }
   | { kind: "favorite-menu"; itemId: Id; point: MenuPoint }
+  | { kind: "pane-menu"; paneId: Id; point: MenuPoint }
   | { kind: "menu"; spaceId: Id; point: MenuPoint }
   | { kind: "new" }
   | { kind: "edit"; spaceId: Id }
@@ -529,6 +548,44 @@ function Shell({ store }: { store: WorkspaceStore }) {
     });
   }, [store]);
 
+  /** The terminal of the focused pane of the tab on screen. */
+  const focusedHandle = useCallback((): TerminalHandle | undefined => {
+    const state = store.getState();
+    const itemId = activeItemIdOf(state);
+    const item = itemId === undefined ? undefined : activeSpaceOf(state.workspace).items[itemId];
+    const pane = item && focusedPane(item);
+    return pane ? handles.current.get(pane.id) : undefined;
+  }, [store]);
+
+  /**
+   * Carries out a command mark action on a pane (the focused one of the tab on screen by default):
+   * a step to a prompt, selecting the output of a command, copying the output of the last one. Each
+   * says in a notice why it did nothing.
+   */
+  const terminalAction = useCallback(
+    (command: ActionCommand, paneId?: Id): void => {
+      const handle = paneId === undefined ? focusedHandle() : handles.current.get(paneId);
+      if (handle === undefined) return;
+      if (command.kind === "prompt") {
+        if (!handle.jumpToPrompt(command.direction)) showNotice(NO_PROMPT_NOTICE);
+      } else if (command.kind === "select-output") {
+        if (handle.selectOutput()) handle.focus();
+        else showNotice(NO_OUTPUT_TO_SELECT_NOTICE);
+      } else if (command.kind === "copy-output") {
+        const plan = planCopy(handle.lastOutput());
+        if (plan.text === undefined) {
+          showNotice(plan.notice);
+          return;
+        }
+        navigator.clipboard.writeText(plan.text).then(
+          () => showNotice(plan.notice),
+          () => showNotice(COPY_FAILED_NOTICE),
+        );
+      }
+    },
+    [focusedHandle, showNotice],
+  );
+
   /** Opens the search over all tabs on the text the terminals hold now. */
   const openSearch = useCallback(() => {
     setPaletteOpen(false);
@@ -589,10 +646,24 @@ function Shell({ store }: { store: WorkspaceStore }) {
         switcher.cancel();
       }
       if (action === undefined || typesText(target)) return;
+      if (action.command.kind === "prompt") {
+        // Ours only when a terminal has the keyboard and has a prompt to go to: with no mark (no
+        // integrated shell, a program on the alternate screen) the key is still the shell's.
+        if (modalOpen.current || target?.closest(".terminal-host") == null) return;
+        if (focusedHandle()?.jumpToPrompt(action.command.direction) === true) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       // Holding the key must not split, close or zoom over and over.
       if (event.repeat && !action.repeat) return;
+      if (action.command.kind === "select-output" || action.command.kind === "copy-output") {
+        if (!modalOpen.current) terminalAction(action.command);
+        return;
+      }
       if (action.command.kind === "palette") {
         // Not over a menu or dialog: they hold the keyboard.
         if (!modalOpen.current) {
@@ -617,7 +688,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
       window.removeEventListener("keydown", onKeyDown, true);
       clearTimeout(noticeTimer.current);
     };
-  }, [store, showNotice, openSearch]);
+  }, [store, showNotice, openSearch, focusedHandle, terminalAction]);
 
   // A horizontal wheel (or Shift+wheel) over the sidebar steps to the neighbor space and stops at
   // the ends. The listener is not passive so it can cancel the event, and it does that only when it
@@ -662,6 +733,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
         lines: () => current()?.readLines() ?? [],
         selection: () => current()?.selection() ?? "",
         viewport: () => current()?.viewport() ?? { top: 0, rows: 0 },
+        marks: () => current()?.marks() ?? [],
         paneIds: () => {
           const item = activeItem();
           return item ? layoutPanes(item.layout).map((pane) => pane.id) : [];
@@ -751,6 +823,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
       setPaletteOpen(false);
       mru.jump(entry.action.command.delta);
       return;
+    } else if (
+      entry.action.command.kind === "prompt" ||
+      entry.action.command.kind === "select-output" ||
+      entry.action.command.kind === "copy-output"
+    ) {
+      terminalAction(entry.action.command);
     } else {
       const refusal = runCommand(store, entry.action.command);
       if (refusal !== undefined) showNotice(refusal);
@@ -789,6 +867,21 @@ function Shell({ store }: { store: WorkspaceStore }) {
       ? treeGroups(space.tree).find((group) => group.id === overlay.groupId)
       : undefined;
   let overlayNode: React.ReactNode = null;
+  // The output actions of a single tab act on its focused pane (the tab is shown to select).
+  const menuItem =
+    overlay?.kind === "item-menu" && overlay.targets.length === 1
+      ? space.items[overlay.targets[0] ?? ""]
+      : undefined;
+  const itemOutputActions: OutputActions | undefined =
+    menuItem === undefined
+      ? undefined
+      : {
+          onSelect: () => {
+            activateItem(menuItem.id);
+            terminalAction({ kind: "select-output" }, menuItem.focusedPaneId);
+          },
+          onCopy: () => terminalAction({ kind: "copy-output" }, menuItem.focusedPaneId),
+        };
   if (overlay?.kind === "item-menu") {
     const tabAction =
       overlay.targets.length === 1
@@ -807,6 +900,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
         }}
         onRename={(itemId) => startEdit({ kind: "item", id: itemId })}
         onGrouped={(groupId) => setEditing({ kind: "group", id: groupId })}
+        {...(itemOutputActions !== undefined ? { outputActions: itemOutputActions } : {})}
         {...(tabAction !== undefined
           ? {
               projectAction: {
@@ -817,6 +911,16 @@ function Shell({ store }: { store: WorkspaceStore }) {
               },
             }
           : {})}
+      />
+    );
+  } else if (overlay?.kind === "pane-menu") {
+    const { paneId } = overlay;
+    overlayNode = (
+      <PaneContextMenu
+        point={overlay.point}
+        onClose={close}
+        onSelect={() => terminalAction({ kind: "select-output" }, paneId)}
+        onCopy={() => terminalAction({ kind: "copy-output" }, paneId)}
       />
     );
   } else if (
@@ -912,7 +1016,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
   // A menu or dialog opened from the sidebar keeps it shown, even though the pointer left it. The
   // tab and group menus of the top bar do not: they do not come from the sidebar.
   const fromTabBar = tabsOnTop && (overlay?.kind === "item-menu" || overlay?.kind === "group-menu");
-  const shown = reveal.revealed || pending !== null || (overlay !== null && !fromTabBar);
+  // A pane menu does not come from the sidebar either.
+  const shown =
+    reveal.revealed ||
+    pending !== null ||
+    (overlay !== null && !fromTabBar && overlay.kind !== "pane-menu");
   return (
     <div
       className="app-body"
@@ -995,6 +1103,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
                     colors={colors}
                     home={home}
                     onReady={recordHandle}
+                    onPaneMenu={(paneId, point) => setOverlay({ kind: "pane-menu", paneId, point })}
                   />
                 ))}
               </div>

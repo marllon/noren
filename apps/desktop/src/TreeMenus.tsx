@@ -23,6 +23,14 @@ interface ItemContextMenuProps {
   onGrouped(groupId: Id): void;
   /** Set when the (single) tab is the one a project action runs in: the menu offers Run or Stop. */
   projectAction?: ItemProjectAction;
+  /** What the menu of a single tab does with the output of the commands of its focused pane. */
+  outputActions?: OutputActions;
+}
+
+/** Select the output of a command, or copy the output of the last one, in one pane. */
+export interface OutputActions {
+  onSelect(): void;
+  onCopy(): void;
 }
 
 /** The project action whose tab a menu is open on. */
@@ -44,6 +52,7 @@ export function ItemContextMenu({
   onRename,
   onGrouped,
   projectAction,
+  outputActions,
 }: ItemContextMenuProps) {
   const space = activeSpaceOf(workspace);
   const model = itemMenuModel(space, workspace.favorites, targets);
@@ -104,6 +113,16 @@ export function ItemContextMenu({
         separated: index === 0,
         onSelect: run(each((itemId) => dispatch({ type: "item/move", itemId, spaceId: other.id }))),
       })),
+    ...(outputActions !== undefined && model.single
+      ? [
+          {
+            label: "Select command output",
+            separated: true,
+            onSelect: run(outputActions.onSelect),
+          },
+          { label: "Copy last command output", onSelect: run(outputActions.onCopy) },
+        ]
+      : []),
     {
       label: model.single ? "Close" : `Close ${targets.length} tabs`,
       separated: true,
@@ -124,6 +143,32 @@ export function ItemContextMenu({
       onClose={onClose}
     />
   );
+}
+
+interface PaneContextMenuProps extends OutputActions {
+  point: MenuPoint;
+  onClose(): void;
+}
+
+/** What the menu button of a pane header offers. */
+export function PaneContextMenu({ point, onClose, onSelect, onCopy }: PaneContextMenuProps) {
+  const entries: MenuEntry[] = [
+    {
+      label: "Select command output",
+      onSelect: () => {
+        onClose();
+        onSelect();
+      },
+    },
+    {
+      label: "Copy last command output",
+      onSelect: () => {
+        onClose();
+        onCopy();
+      },
+    },
+  ];
+  return <ContextMenu label="Pane options" point={point} entries={entries} onClose={onClose} />;
 }
 
 interface FavoriteContextMenuProps {

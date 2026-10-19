@@ -218,6 +218,8 @@ export function terminalTheme(theme: Theme): ITheme {
     background: terminal.background,
     cursor: terminal.cursor,
     selectionBackground: terminal.selection,
+    // The ruler of command marks beside the scrollbar has no line of its own: it shows marks only.
+    overviewRulerBorder: "#00000000",
     black,
     red,
     green,

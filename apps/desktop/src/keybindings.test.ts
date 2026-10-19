@@ -131,6 +131,83 @@ describe("the search over all tabs", () => {
   });
 });
 
+describe("the command marks", () => {
+  const find = (id: string) => ACTIONS.find((action) => action.id === id);
+
+  it("moves between prompts on Ctrl+Up and Ctrl+Down in both presets, and repeats", () => {
+    const previous = find("terminal.prompt-previous");
+    const next = find("terminal.prompt-next");
+    expect(previous?.title).toBe("Previous prompt");
+    expect(next?.title).toBe("Next prompt");
+    expect(previous?.category).toBe("Terminal");
+    expect(next?.category).toBe("Terminal");
+    expect(previous?.command).toEqual({ kind: "prompt", direction: "previous" });
+    expect(next?.command).toEqual({ kind: "prompt", direction: "next" });
+    expect(previous?.repeat).toBe(true);
+    expect(next?.repeat).toBe(true);
+    for (const preset of PRESETS) {
+      expect(previous?.chords[preset]).toBe("Ctrl+ArrowUp");
+      expect(next?.chords[preset]).toBe("Ctrl+ArrowDown");
+    }
+  });
+
+  it("resolves the arrows with Ctrl alone to the prompts, in the safe and the browser preset", () => {
+    for (const keybindings of [safe, browser]) {
+      expect(commandOf(keybindings, press("ArrowUp", ctrl))).toEqual({
+        kind: "prompt",
+        direction: "previous",
+      });
+      expect(commandOf(keybindings, press("ArrowDown", ctrl))).toEqual({
+        kind: "prompt",
+        direction: "next",
+      });
+    }
+  });
+
+  it("leaves the up and down arrows with any other modifiers to the terminal or to the panes", () => {
+    expect(commandOf(safe, press("ArrowUp"))).toBeUndefined();
+    expect(commandOf(safe, press("ArrowDown"))).toBeUndefined();
+    expect(commandOf(safe, press("ArrowUp", ctrlShift))).toBeUndefined();
+    expect(commandOf(safe, press("ArrowUp", ctrlAlt))).toBeUndefined();
+    expect(commandOf(safe, press("ArrowUp", { ...ctrl, metaKey: true }))).toBeUndefined();
+    // Alt+arrows focus a pane and Ctrl+Alt+Shift+arrows resize one, as before.
+    expect(commandOf(safe, press("ArrowUp", alt))).toEqual({ kind: "focus", direction: "up" });
+    expect(commandOf(safe, press("ArrowUp", ctrlAltShift))).toEqual({
+      kind: "resize",
+      direction: "up",
+    });
+  });
+
+  it("has actions to select and copy the output with no chord, which the user can record", () => {
+    const select = find("terminal.select-output");
+    const copy = find("terminal.copy-output");
+    expect(select?.title).toBe("Select command output");
+    expect(copy?.title).toBe("Copy last command output");
+    expect(select?.command).toEqual({ kind: "select-output" });
+    expect(copy?.command).toEqual({ kind: "copy-output" });
+    for (const preset of PRESETS) {
+      expect(select?.chords[preset]).toBeUndefined();
+      expect(copy?.chords[preset]).toBeUndefined();
+    }
+    const recorded: Keybindings = {
+      preset: "safe",
+      overrides: { "terminal.copy-output": "Ctrl+Alt+Shift+KeyC" },
+    };
+    expect(commandOf(recorded, press("KeyC", ctrlAltShift))).toEqual({ kind: "copy-output" });
+    expect(commandOf(safe, press("KeyC", ctrlAltShift))).toBeUndefined();
+  });
+
+  it("can have the prompt chords moved or taken away", () => {
+    const moved: Keybindings = {
+      preset: "safe",
+      overrides: { "terminal.prompt-previous": "Alt+KeyK", "terminal.prompt-next": null },
+    };
+    expect(commandOf(moved, press("ArrowUp", ctrl))).toBeUndefined();
+    expect(commandOf(moved, press("ArrowDown", ctrl))).toBeUndefined();
+    expect(commandOf(moved, press("KeyK", alt))).toEqual({ kind: "prompt", direction: "previous" });
+  });
+});
+
 describe("chordOf", () => {
   it("writes the modifiers in a fixed order before the physical key", () => {
     expect(chordOf(press("KeyT", ctrlShift))).toBe("Ctrl+Shift+KeyT");
@@ -232,12 +309,13 @@ describe("the safe preset (the default)", () => {
     expect(commandOf(safe, press("ArrowLeft", { altKey: true, metaKey: true }))).toBeUndefined();
   });
 
-  it("repeats only the actions that move (focus, resize, walking the recent tabs)", () => {
+  it("repeats only the actions that move (focus, resize, recent tabs, prompts)", () => {
     for (const action of ACTIONS) {
       const moves =
         action.command.kind === "focus" ||
         action.command.kind === "resize" ||
-        action.command.kind === "mru";
+        action.command.kind === "mru" ||
+        action.command.kind === "prompt";
       expect(action.repeat).toBe(moves);
     }
   });

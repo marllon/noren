@@ -145,6 +145,48 @@ body {
   inset: 0 0 0 8px;
 }
 
+/*
+ * The mark of a command: xterm.js lays this element over the first cell of the row of the prompt
+ * (and sets its size), the stylesheet gives it the whole row and draws the mark in the margin to the
+ * left of the text. The color comes from the terminal theme (--nr-mark-color, set by the view). A
+ * failed command is a bar, a finished one a dot and a running one a ring, so the state does not
+ * depend on the color alone.
+ */
+.xterm-decoration.command-mark {
+  width: 100% !important;
+  pointer-events: none;
+}
+
+.command-mark::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -7px;
+  box-sizing: border-box;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
+  border-radius: 50%;
+  background: var(--nr-mark-color);
+}
+
+.command-mark[data-nr-state="running"]::before {
+  border: 1px solid var(--nr-mark-color);
+  background: transparent;
+}
+
+.command-mark[data-nr-state="failed"]::before {
+  width: 4px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 2px;
+}
+
+/* The prompt that Ctrl+Up or Ctrl+Down stepped to. */
+.command-mark[data-nr-current="true"] {
+  background: color-mix(in srgb, var(--nr-accent) 16%, transparent);
+}
+
 .paste-backdrop {
   z-index: 10;
   position: absolute;

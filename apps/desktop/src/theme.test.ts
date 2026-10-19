@@ -118,6 +118,8 @@ describe("terminalTheme", () => {
     expect(xterm.foreground).toBe(NOREN_DUSK.terminal.foreground);
     expect(xterm.cursor).toBe(NOREN_DUSK.terminal.cursor);
     expect(xterm.selectionBackground).toBe(NOREN_DUSK.terminal.selection);
+    // Fully transparent: the ruler of command marks draws marks, not a line.
+    expect(xterm.overviewRulerBorder).toBe("#00000000");
   });
 });
 

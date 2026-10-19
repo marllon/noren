@@ -10,6 +10,8 @@ import "@xterm/xterm/css/xterm.css";
 import type { Backend, SessionId } from "@noren/model";
 import { useEffect, useRef, useState } from "react";
 import { PasteDialog } from "./PasteDialog";
+import { attachCommandMarks, markColors } from "./command-marks-view";
+import type { CommandMarkInfo, CommandOutput, TerminalCommandMarks } from "./command-marks-view";
 import { parseOsc7 } from "./osc7";
 import { decidePaste } from "./paste";
 
@@ -34,6 +36,21 @@ export interface TerminalHandle {
   selection(): string;
   /** The rows on screen: the buffer row at the top of the view and how many rows the view holds. */
   viewport(): { top: number; rows: number };
+  /** The commands the shell reported that are still in the buffer, oldest first (see `docs/SHELL_INTEGRATION.md`). */
+  marks(): CommandMarkInfo[];
+  /**
+   * Scrolls to the prompt of the previous or next command. False when the terminal has no command
+   * mark to go to (no integrated shell, or a program on the alternate screen), so the key is the
+   * shell's.
+   */
+  jumpToPrompt(direction: "previous" | "next"): boolean;
+  /**
+   * Selects the output of the command the user stepped to, or of the last command that ended. False
+   * when there is none or it printed nothing.
+   */
+  selectOutput(): boolean;
+  /** The output of the last command that ended; undefined when none did. */
+  lastOutput(): CommandOutput | undefined;
 }
 
 interface TerminalViewProps {
@@ -99,6 +116,7 @@ export function TerminalView({
 }: TerminalViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
+  const marksRef = useRef<TerminalCommandMarks | null>(null);
   const rightClickRef = useRef<RightClickAction>(rightClick ?? "copy-or-paste");
   const onReadyRef = useRef(onReady);
   const onCwdRef = useRef(onCwd);
@@ -123,6 +141,7 @@ export function TerminalView({
   // A new theme repaints the terminal that is already running.
   useEffect(() => {
     if (termRef.current) termRef.current.options.theme = theme;
+    marksRef.current?.setColors(markColors(theme));
   }, [theme]);
 
   // Showing a tab again gives it the keyboard.
@@ -140,6 +159,9 @@ export function TerminalView({
       fontFamily: '"Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace',
       fontSize: 14,
       scrollback: 10_000,
+      // The ruler beside the scrollbar shows the commands that failed. 14 is the scrollbar width
+      // xterm.js uses without a ruler, so the terminal keeps the columns it had.
+      overviewRuler: { width: 14 },
       theme: themeRef.current,
     });
     termRef.current = term;
@@ -151,6 +173,8 @@ export function TerminalView({
     term.loadAddon(new SerializeAddon());
     term.unicode.activeVersion = "11";
     term.open(host);
+    const commandMarks = attachCommandMarks(term, markColors(themeRef.current));
+    marksRef.current = commandMarks;
 
     // WebGL is the fast path; any failure (no WebGL2, lost context) drops back to the DOM renderer.
     let webgl: WebglAddon | null = null;
@@ -317,6 +341,10 @@ export function TerminalView({
       },
       selection: () => term.getSelection(),
       viewport: () => ({ top: term.buffer.active.viewportY, rows: term.rows }),
+      marks: () => commandMarks.marks(),
+      jumpToPrompt: (direction) => commandMarks.jump(direction),
+      selectOutput: () => commandMarks.selectOutput(),
+      lastOutput: () => commandMarks.lastOutput(),
     });
     if (activeRef.current) term.focus();
 
@@ -331,6 +359,8 @@ export function TerminalView({
       for (const cleanup of cleanups) cleanup();
       if (sessionId !== undefined && ownsSession)
         void backend.kill(sessionId).catch(() => undefined);
+      commandMarks.dispose();
+      marksRef.current = null;
       termRef.current = null;
       term.dispose();
     };

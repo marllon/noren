@@ -23,7 +23,7 @@ export type Preset = "safe" | "browser";
 
 export const PRESETS: readonly Preset[] = ["safe", "browser"];
 
-export type ActionCategory = "General" | "Tabs" | "Panes" | "Spaces";
+export type ActionCategory = "General" | "Tabs" | "Panes" | "Spaces" | "Terminal";
 
 /** What an action does; the shell turns it into store calls. */
 export type ActionCommand =
@@ -37,7 +37,10 @@ export type ActionCommand =
   | { kind: "space"; index: number }
   | { kind: "tab"; index: number }
   | { kind: "mru"; delta: 1 | -1 }
-  | { kind: "search-all" };
+  | { kind: "search-all" }
+  | { kind: "prompt"; direction: "previous" | "next" }
+  | { kind: "select-output" }
+  | { kind: "copy-output" };
 
 export interface ActionDef {
   id: string;
@@ -103,6 +106,38 @@ export const ACTIONS: readonly ActionDef[] = [
     command: { kind: "search-all" },
     repeat: false,
     chords: { safe: "Ctrl+Alt+Shift+KeyF", browser: "Ctrl+Alt+Shift+KeyF" },
+  },
+  {
+    id: "terminal.prompt-previous",
+    title: "Previous prompt",
+    category: "Terminal",
+    command: { kind: "prompt", direction: "previous" },
+    repeat: true,
+    chords: { safe: "Ctrl+ArrowUp", browser: "Ctrl+ArrowUp" },
+  },
+  {
+    id: "terminal.prompt-next",
+    title: "Next prompt",
+    category: "Terminal",
+    command: { kind: "prompt", direction: "next" },
+    repeat: true,
+    chords: { safe: "Ctrl+ArrowDown", browser: "Ctrl+ArrowDown" },
+  },
+  {
+    id: "terminal.select-output",
+    title: "Select command output",
+    category: "Terminal",
+    command: { kind: "select-output" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
+  },
+  {
+    id: "terminal.copy-output",
+    title: "Copy last command output",
+    category: "Terminal",
+    command: { kind: "copy-output" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
   },
   {
     id: "pane.close",

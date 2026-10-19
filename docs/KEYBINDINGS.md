@@ -35,6 +35,9 @@ The **safe** preset is the default. It does not fight the shell: Ctrl+T, Ctrl+W 
 | Next recent tab               | Ctrl+Tab              | Ctrl+Tab              |
 | Previous recent tab           | Ctrl+Shift+Tab        | Ctrl+Shift+Tab        |
 | Search all tabs               | Ctrl+Shift+Alt+F      | Ctrl+Shift+Alt+F      |
+| Previous / next prompt        | Ctrl+Up / Ctrl+Down   | Ctrl+Up / Ctrl+Down   |
+| Select command output         | none                  | none                  |
+| Copy last command output      | none                  | none                  |
 
 The browser preset is opt-in. It takes Ctrl+T, Ctrl+W and Ctrl+1..9 away from the terminal, so a shell program that uses them (for example a readline "transpose characters" or a "delete word") no longer receives them.
 
@@ -76,6 +79,14 @@ Ctrl+Tab and Ctrl+Shift+Tab (the same in both presets; "Next recent tab" and "Pr
 - With a single tab nothing happens. The overlay never takes the keyboard: the terminal keeps it until the switch.
 
 The list lives in memory only (it starts again when the app opens): a tab that shows goes to the front, a closed tab drops out, and tabs never shown follow in sidebar order. The pure part (order, wrapping, preview lines) is in `apps/desktop/src/mru.ts`; the walk and the overlay are `use-mru-switcher.ts` and `MruSwitcher.tsx`. From the command palette the two actions go straight to the previous tab (Next) or the least recently used one (Previous), since no key is held there.
+
+## The command marks
+
+Ctrl+Up and Ctrl+Down (the same in both presets; "Previous prompt" and "Next prompt" in the registry, category _Terminal_, so the shortcuts screen shows and records them and the palette lists them) scroll the focused terminal to the prompt of the previous or next command the shell reported. Holding the key repeats. See [SHELL_INTEGRATION.md](SHELL_INTEGRATION.md) for what a mark is and how the step is chosen.
+
+These are the only registry actions whose key is not always taken. The listener asks the focused terminal first: if it has no command mark to go to (a shell without integration, a tab with no command yet, a program such as an editor on the alternate screen), or the keyboard is not in a terminal, the listener returns before `preventDefault`, and Ctrl+Up reaches the shell as it did before. With a mark the press is taken even when there is no further prompt in that direction (the first prompt, or the live end), so the shell does not get a Ctrl+Up that was only half ours. Up and Down with other modifiers are not ours: Alt+arrows focus a pane and Ctrl+Alt+Shift+arrows resize one, as before.
+
+"Select command output" and "Copy last command output" are registry actions with no chord in either preset (an action may have none). They show as _None_ in the shortcuts screen, where a chord can be recorded for them, and they are always in the palette. A press of a chord recorded for them says in a notice why it did nothing.
 
 ## The search over all tabs
 

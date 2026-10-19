@@ -1,9 +1,11 @@
 import type { Id, LayoutNode, Pane, SplitNode } from "@noren/model";
-import { Maximize2, Minimize2, SquareArrowOutUpRight, X } from "lucide-react";
+import { Ellipsis, Maximize2, Minimize2, SquareArrowOutUpRight, X } from "lucide-react";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { Group, Panel, Separator, useGroupRef } from "react-resizable-panels";
 import type { Layout } from "react-resizable-panels";
+import { menuPoint } from "./ContextMenu";
+import type { MenuPoint } from "./SpaceMenu";
 import { usePaneDrag, usePaneDrop } from "./TreeDnd";
 import {
   MIN_PANEL_PERCENT,
@@ -23,7 +25,7 @@ export interface SplitLayoutContext {
   zoomedPaneId: Id | undefined;
   /** The panes take the drop of a tab dragged from the sidebar or of another pane's header (this is the tab on screen). */
   dropEnabled: boolean;
-  /** Every pane shows a header with its title and the zoom and close buttons. */
+  /** Every pane shows a header with its title, a menu button and the zoom and close buttons. */
   headers: boolean;
   /** The text of a pane's header. */
   paneTitle(pane: Pane): string;
@@ -33,6 +35,8 @@ export interface SplitLayoutContext {
   onClosePane(paneId: Id): void;
   /** Move the pane to a tab of its own. */
   onDetachPane(paneId: Id): void;
+  /** Open the menu of the pane (select or copy the output of a command) at a point. */
+  onPaneMenu(paneId: Id, point: MenuPoint): void;
   /** The user dragged a separator: the split at `path` now has these sizes. */
   onResize(path: number[], sizes: number[]): void;
 }
@@ -102,8 +106,8 @@ interface PaneHeaderProps {
 }
 
 /**
- * Title of a pane with the buttons that zoom it, detach it and close it. The title is the handle
- * that drags the pane onto the middle of another pane to swap them.
+ * Title of a pane with the buttons that open its menu, zoom it, detach it and close it. The title is
+ * the handle that drags the pane onto the middle of another pane to swap them.
  */
 function PaneHeader({ pane, zoomed, actions, context }: PaneHeaderProps) {
   const title = context.paneTitle(pane);
@@ -121,6 +125,15 @@ function PaneHeader({ pane, zoomed, actions, context }: PaneHeaderProps) {
       >
         {title}
       </span>
+      <button
+        type="button"
+        className="pane-header-button"
+        aria-label="Pane menu"
+        aria-haspopup="menu"
+        onClick={(event) => context.onPaneMenu(pane.id, menuPoint(event))}
+      >
+        <Ellipsis size={12} aria-hidden="true" />
+      </button>
       {actions && (
         <>
           <button

@@ -12,14 +12,16 @@ import type { Theme } from "./theme";
 // Every theme goes through `ThemeSchema` when this module loads, so a typo in a color is an error
 // at start, not a blank terminal; the tests check the contrast of all of them.
 
-const FONT = {
+/** The font every theme starts with; an imported color scheme has no font and takes this one. */
+export const FONT = {
   family: "Cascadia Code, JetBrains Mono, monospace",
   size: 13,
   lineHeight: 1.2,
   ligatures: true,
 } as const;
 
-const BACKGROUND = { image: null, opacity: 0.15 } as const;
+/** The background every theme starts with (no image). */
+export const BACKGROUND = { image: null, opacity: 0.15 } as const;
 
 const NOREN_DUSK_DATA = {
   id: "noren-dusk",

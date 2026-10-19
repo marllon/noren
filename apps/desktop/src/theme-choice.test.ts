@@ -1,4 +1,5 @@
-import { ConfigManager, FakeBackend } from "@noren/model";
+import { ConfigManager, FakeBackend, THEMES, importColorSchemes } from "@noren/model";
+import { PLIST_LAGOON } from "@noren/model/testing";
 import { describe, expect, it } from "vitest";
 import {
   effectiveThemeChoice,
@@ -165,5 +166,43 @@ describe("effectiveThemeChoice", () => {
         config: global,
       }),
     ).toBeNull();
+  });
+});
+
+// The themes of the user are on the list the window asks with; the built-in list alone does not
+// know them.
+describe("themes of the user", () => {
+  const imported = importColorSchemes(PLIST_LAGOON, { name: "Lagoon" });
+  if (!imported.ok) throw new Error("the fixture must import");
+  const everything = [...THEMES, ...imported.themes];
+
+  it("are a choice of the settings when the list has them, and the system's otherwise", () => {
+    const config = { appearance: { theme: "lagoon" } };
+    expect(themeChoiceOf(config, everything)).toBe("lagoon");
+    expect(themeChoiceOf(config)).toBeNull();
+    expect(themeChoiceOf(config, THEMES)).toBeNull();
+  });
+
+  it("are the theme of a space when the list has them, and the global one otherwise", () => {
+    const config = { appearance: { theme: "noren-fjord" } };
+    expect(effectiveThemeChoice({ spaceThemeId: "lagoon", config, themes: everything })).toBe(
+      "lagoon",
+    );
+    expect(effectiveThemeChoice({ spaceThemeId: "lagoon", config, themes: THEMES })).toBe(
+      "noren-fjord",
+    );
+    expect(effectiveThemeChoice({ spaceThemeId: "lagoon", config })).toBe("noren-fjord");
+  });
+
+  it("can be picked for the whole window, and are refused when the list does not have them", async () => {
+    expect(planThemeChoice({}, "lagoon", everything)).toEqual({
+      changes: [{ path: ["appearance", "theme"], value: "lagoon" }],
+    });
+    expect(planThemeChoice({}, "lagoon")).toEqual({ refusal: 'There is no theme "lagoon".' });
+    const { backend, manager } = await started('{ "appearance": { "tabs": "top" } }');
+    expect(await runThemeChoice(manager, "lagoon", everything)).toBeUndefined();
+    expect(manager.state.config.appearance?.theme).toBe("lagoon");
+    expect(backend.configContent).toContain('"theme": "lagoon"');
+    expect(await runThemeChoice(manager, "lagoon", THEMES)).toBe('There is no theme "lagoon".');
   });
 });

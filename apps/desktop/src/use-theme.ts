@@ -1,9 +1,10 @@
 import { useSyncExternalStore } from "react";
 import { configManager, useConfigState } from "./config-store";
-import { THEMES, themeForScheme } from "./theme";
+import { themeForScheme } from "./theme";
 import type { Theme } from "./theme";
 import { effectiveThemeChoice, runThemeChoice, themeChoiceOf } from "./theme-choice";
 import type { ThemeChoice } from "./theme-choice";
+import { allThemes, useAllThemes } from "./user-themes-store";
 import { activeSpaceOf } from "./workspace-store";
 import type { WorkspaceStore } from "./workspace-store";
 
@@ -92,7 +93,7 @@ export async function chooseTheme(choice: ThemeChoice): Promise<string | undefin
   preview = { choice };
   notify();
   try {
-    return await runThemeChoice(configManager, choice);
+    return await runThemeChoice(configManager, choice, allThemes());
   } finally {
     writing -= 1;
     if (writing === 0) {
@@ -110,18 +111,20 @@ export function resetThemePreview(): void {
 
 /** The id of the global theme saved in the settings, or `null` while it follows the system. */
 export function useThemeChoice(): ThemeChoice {
-  return themeChoiceOf(useConfigState().config);
+  return themeChoiceOf(useConfigState().config, useAllThemes());
 }
 
 /**
  * The active theme: the one being previewed, else the one of the active space, else the one the
- * settings file names, else the one the operating system's color scheme gives (live).
+ * settings file names, else the one the operating system's color scheme gives (live). Any of them
+ * may be a built-in theme or one of the user's.
  */
 export function useTheme(): Theme {
   const dark = useSyncExternalStore(subscribeScheme, prefersDark);
   const config = useConfigState().config;
   const previewed = useSyncExternalStore(subscribePreview, () => preview);
   const ownId = useSyncExternalStore(subscribePreview, () => spaceThemeId);
-  const id = effectiveThemeChoice({ preview: previewed, spaceThemeId: ownId, config });
-  return THEMES.find((theme) => theme.id === id) ?? themeForScheme(dark);
+  const themes = useAllThemes();
+  const id = effectiveThemeChoice({ preview: previewed, spaceThemeId: ownId, config, themes });
+  return themes.find((theme) => theme.id === id) ?? themeForScheme(dark);
 }

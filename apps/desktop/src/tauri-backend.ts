@@ -140,6 +140,14 @@ export class TauriBackend implements Backend {
     await this.#bridge.invoke("config_save", { content: text });
   }
 
+  listUserThemes(): Promise<string[]> {
+    return this.#bridge.invoke<string[]>("theme_list");
+  }
+
+  async saveUserTheme(id: string, text: string): Promise<void> {
+    await this.#bridge.invoke("theme_save", { id, content: text });
+  }
+
   watchConfig(callback: (text: string | null) => void): Unsubscribe {
     this.#configListeners.add(callback);
     this.#startWatchingConfig();

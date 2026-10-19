@@ -31,8 +31,34 @@ export const WEB_GIT_KEY = "noren.web.git";
  */
 export const WEB_CONFIG_KEY = "noren.web.config";
 
+/**
+ * Key of the theme files of the user in web mode (`themes/<id>.json` of the real app): a JSON
+ * object from the theme id to the text of its file. The e2e tests can seed it before the page
+ * loads; saving a theme writes it, so a reload finds the theme again.
+ */
+export const WEB_THEMES_KEY = "noren.web.themes";
+
 /** What web mode needs of the browser storage. */
 export type StateStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+/** The theme files seeded under `WEB_THEMES_KEY` (id to text), or `undefined` when there is no usable seed. */
+export function seededUserThemes(
+  storage: Pick<Storage, "getItem">,
+): Record<string, string> | undefined {
+  try {
+    const raw = storage.getItem(WEB_THEMES_KEY);
+    if (raw === null) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    const files: Record<string, string> = {};
+    for (const [id, text] of Object.entries(value)) {
+      if (typeof text === "string") files[id] = text;
+    }
+    return files;
+  } catch {
+    return undefined;
+  }
+}
 
 /** The text seeded under `WEB_CONFIG_KEY`, or `null` when there is none or the storage is blocked. */
 export function seededConfig(storage: Pick<Storage, "getItem">): string | null {
@@ -98,8 +124,27 @@ export class WebBackend extends FakeBackend {
 
   constructor(storage: StateStorage) {
     const profiles = seededProfiles(storage);
-    super({ ...(profiles !== undefined ? { profiles } : {}), config: seededConfig(storage) });
+    const userThemes = seededUserThemes(storage);
+    super({
+      ...(profiles !== undefined ? { profiles } : {}),
+      ...(userThemes !== undefined ? { userThemes } : {}),
+      config: seededConfig(storage),
+    });
     this.#storage = storage;
+  }
+
+  /** Like the fake one, and kept under `WEB_THEMES_KEY` so a reload finds the same files. */
+  protected override putUserTheme(id: string, text: string | null): void {
+    try {
+      const others = Object.entries(seededUserThemes(this.#storage) ?? {}).filter(
+        ([known]) => known !== id,
+      );
+      const files = Object.fromEntries(text === null ? others : [...others, [id, text]]);
+      this.#storage.setItem(WEB_THEMES_KEY, JSON.stringify(files));
+    } catch {
+      // Storage is blocked or full: the memory copy still serves this page load.
+    }
+    super.putUserTheme(id, text);
   }
 
   /** Like the fake one, and kept under `WEB_CONFIG_KEY` so a reload finds the same file. */

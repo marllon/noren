@@ -358,6 +358,32 @@ describe("TauriBackend", () => {
     await expect(new TauriBackend(fake.bridge).loadConfig()).rejects.toThrow("config_load failed");
   });
 
+  it("lists the theme files of the user through theme_list, as text", async () => {
+    const files = ['{ "id": "a" }', '{ "id": "b" }'];
+    const fake = fakeBridge({ theme_list: files });
+    await expect(new TauriBackend(fake.bridge).listUserThemes()).resolves.toEqual(files);
+    expect(fake.invocations).toEqual([{ command: "theme_list", args: undefined }]);
+  });
+
+  it("saves a theme file through theme_save with the id and the text untouched", async () => {
+    const text = '{\r\n  "id": "lagoon", "name": "Lagoon ação"\r\n}\r\n';
+    const fake = fakeBridge();
+    await expect(
+      new TauriBackend(fake.bridge).saveUserTheme("lagoon", text),
+    ).resolves.toBeUndefined();
+    expect(fake.invocations).toEqual([
+      { command: "theme_save", args: { id: "lagoon", content: text } },
+    ]);
+  });
+
+  it("lets a theme_list and a theme_save failure reach the caller", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    fake.failing.add("theme_list").add("theme_save");
+    await expect(backend.listUserThemes()).rejects.toThrow("theme_list failed");
+    await expect(backend.saveUserTheme("a", "{}")).rejects.toThrow("theme_save failed");
+  });
+
   it("hears config-changed before it asks for the watching, once however many callbacks", async () => {
     const fake = fakeBridge();
     const backend = new TauriBackend(fake.bridge);

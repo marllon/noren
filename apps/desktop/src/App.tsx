@@ -9,6 +9,7 @@ import {
 } from "@noren/model";
 import type { GroupNode, Id, Item, Pane, ShellProfile, Space } from "@noren/model";
 import type { ITheme } from "@xterm/xterm";
+import type { ChangeEvent } from "react";
 import {
   Suspense,
   use,
@@ -91,7 +92,7 @@ import {
   planCopy,
 } from "./command-output";
 import type { CommandMarkInfo } from "./command-marks-view";
-import { THEMES, applySpaceColor, applyTheme, terminalTheme } from "./theme";
+import { applySpaceColor, applyTheme, terminalTheme } from "./theme";
 import { TitleBar } from "./TitleBar";
 import {
   FavoriteContextMenu,
@@ -107,6 +108,8 @@ import {
   useTheme,
   useThemeChoice,
 } from "./use-theme";
+import { addUserThemes, getUserThemes, useAllThemes } from "./user-themes-store";
+import { importSchemeFile } from "./scheme-import";
 import type { TerminalHandle } from "./TerminalView";
 import {
   activeItemIdOf,
@@ -410,6 +413,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const handles = useRef(new Map<Id, TerminalHandle>());
   const theme = useTheme();
   const themeChoice = useThemeChoice();
+  // The built-in themes and the ones the user imported or placed in the themes folder.
+  const themes = useAllThemes();
   const colors = useMemo(() => terminalTheme(theme), [theme]);
   // The global theme, for the callbacks below that must not change with it.
   const themeChoiceRef = useRef(themeChoice);
@@ -536,6 +541,23 @@ function Shell({ store }: { store: WorkspaceStore }) {
     },
     [showNotice],
   );
+  // "Import color scheme...": the palette (or a recorded key) clicks this hidden file input, the
+  // person picks a file, and the importers read it by what is in it (an extension is not needed,
+  // so the input has no `accept`). The answer is a notice; a file that is not a scheme writes nothing.
+  const schemeInput = useRef<HTMLInputElement>(null);
+  const openSchemePicker = useCallback(() => schemeInput.current?.click(), []);
+  const onSchemeFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (file === undefined) return;
+    void importSchemeFile(file, {
+      backend,
+      existing: getUserThemes(),
+      added: addUserThemes,
+    }).then(showNotice);
+    // So picking the same file again (after fixing it) is a change the input reports.
+    input.value = "";
+  };
   const projectActions = useProjectActions(store, backend, space, showNotice);
   // A `noren://` link: the entry point stays the same while the run function (and so the hook's
   // state) changes on every render, so the handler reads it through a ref.
@@ -738,6 +760,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) openSearch();
         return;
       }
+      if (action.command.kind === "import-scheme") {
+        if (!modalOpen.current) openSchemePicker();
+        return;
+      }
       if (action.command.kind === "settings") {
         if (!modalOpen.current) openSettings();
         return;
@@ -758,7 +784,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
       window.removeEventListener("keydown", onKeyDown, true);
       clearTimeout(noticeTimer.current);
     };
-  }, [store, showNotice, openSearch, focusedHandle, terminalAction, runLayout]);
+  }, [store, showNotice, openSearch, openSchemePicker, focusedHandle, terminalAction, runLayout]);
 
   // A horizontal wheel (or Shift+wheel) over the sidebar steps to the neighbor space and stops at
   // the ends. The listener is not passive so it can cancel the event, and it does that only when it
@@ -897,16 +923,16 @@ function Shell({ store }: { store: WorkspaceStore }) {
       !paletteOpen
         ? []
         : paletteMode === "space-theme"
-          ? buildSpaceThemeEntries(space.name, spaceThemeOptions(space.themeId, THEMES))
+          ? buildSpaceThemeEntries(space.name, spaceThemeOptions(space.themeId, themes))
           : buildEntries({
               workspace,
               chords: resolveBindings(keybindings).chords,
               home,
               profiles,
               folders: recentFolders(),
-              themes: { list: THEMES, choice: themeChoice },
+              themes: { list: themes, choice: themeChoice },
             }),
-    [paletteOpen, paletteMode, space, workspace, keybindings, home, profiles, themeChoice],
+    [paletteOpen, paletteMode, space, workspace, keybindings, home, profiles, themeChoice, themes],
   );
 
   /** An entry of the palette: the same calls a click or a shortcut makes. */
@@ -931,6 +957,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
       // The same palette goes on, now listing the themes of the space; the preview starts at the
       // first one the arrows reach.
       setPaletteMode("space-theme");
+      return;
+    } else if (entry.action.command.kind === "import-scheme") {
+      // The file picker takes over; the terminal gets the keyboard back with the palette's close.
+      closePalette();
+      openSchemePicker();
       return;
     } else if (entry.action.command.kind === "settings") {
       // The settings screen takes the keyboard itself, and hands it back to the terminal on close.
@@ -1085,7 +1116,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
         space={overlaySpace}
         index={workspace.spaces.indexOf(overlaySpace)}
         count={workspace.spaces.length}
-        themes={spaceThemeOptions(overlaySpace.themeId, THEMES)}
+        themes={spaceThemeOptions(overlaySpace.themeId, themes)}
         point={overlay.point}
         onTheme={(themeId) => {
           dispatch({ type: "space/set-theme", spaceId: overlaySpace.id, themeId });
@@ -1252,6 +1283,16 @@ function Shell({ store }: { store: WorkspaceStore }) {
       </TreeDnd>
       {overlayNode}
       {confirmNode}
+      <input
+        ref={schemeInput}
+        type="file"
+        hidden
+        tabIndex={-1}
+        aria-label="Color scheme file"
+        data-nr-part="scheme-file"
+        onChange={onSchemeFile}
+      />
+
       {mru.rows !== undefined && <MruSwitcherView rows={mru.rows} />}
       {searchText !== null && (
         <TabSearch tabs={searchText} onPick={pickSearchHit} onClose={closeSearch} />

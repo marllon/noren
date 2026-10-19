@@ -3,3 +3,4 @@
 export { arbAction } from "./action-arbitraries";
 export { arbWorkspace } from "./arbitraries";
 export type { WorkspaceArbitraryOptions } from "./arbitraries";
+export * from "./import-fixtures";

@@ -43,6 +43,7 @@ export type ActionCommand =
   | { kind: "search-all" }
   | { kind: "settings" }
   | { kind: "space-theme" }
+  | { kind: "import-scheme" }
   | LayoutCommand
   | { kind: "last-unread" }
   | { kind: "prompt"; direction: "previous" | "next" }
@@ -192,6 +193,14 @@ export const ACTIONS: readonly ActionDef[] = [
     title: "Open settings",
     category: "General",
     command: { kind: "settings" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
+  },
+  {
+    id: "themes.import-scheme",
+    title: "Import color scheme...",
+    category: "General",
+    command: { kind: "import-scheme" },
     repeat: false,
     chords: { safe: undefined, browser: undefined },
   },

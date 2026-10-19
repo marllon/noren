@@ -9,7 +9,7 @@ mod smoke;
 use tauri::{Manager, RunEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 
-use bridge::{AppState, ConfigState};
+use bridge::{AppState, ConfigState, ThemeState};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -61,6 +61,8 @@ fn main() {
             bridge::config_load,
             bridge::config_save,
             bridge::config_watch,
+            bridge::theme_list,
+            bridge::theme_save,
             notify::notify_show,
             notify::window_is_focused,
             deeplink::deep_link_take_waiting,
@@ -72,6 +74,7 @@ fn main() {
                 Some(target) => {
                     app.manage(smoke::deeplink_state_store(target));
                     app.manage(ConfigState::new(smoke::deeplink_config_store(target)));
+                    app.manage(ThemeState::new(smoke::deeplink_theme_store(target)));
                     app.manage(target.clone());
                 }
                 None => {
@@ -83,6 +86,13 @@ fn main() {
                         config.without_watching()
                     } else {
                         config
+                    });
+                    // The smoke run lists the themes of the user (a read) but never writes one.
+                    let themes = ThemeState::new(bridge::theme_store(app.handle())?);
+                    app.manage(if smoke {
+                        themes.without_writing()
+                    } else {
+                        themes
                     });
                 }
             }

@@ -7,6 +7,7 @@ import { migrateLegacySettings } from "./legacy-settings";
 import type { LegacyStorageArea } from "./legacy-settings";
 import { notificationSettings } from "./notification-settings";
 import { followActiveSpaceTheme } from "./use-theme";
+import { loadUserThemes } from "./user-themes-store";
 import { createWorkspaceStore } from "./workspace-store";
 import type { WorkspaceStore } from "./workspace-store";
 
@@ -45,6 +46,9 @@ export async function bootWorkspace(
     // moves into the file once, before the first frame. It never stops the app: a file it cannot
     // edit leaves the old keys for the next start.
     await migrateLegacySettings(storage, configManager).catch(() => undefined);
+    // The themes of the user, before the first frame: a space or the settings may name one of them.
+    // A folder that cannot be read leaves the built-in themes, and never stops the app.
+    await loadUserThemes(target).catch(() => undefined);
     const profiles = await target.listProfiles();
     if (profiles.length === 0) return { ok: false, error: "No shell was found on this machine." };
     const restored = await restoreWorkspace(target, { defaults: { newId, clock } });

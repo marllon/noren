@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use noren_core::{
     ACTIONS_FILE_PATH, CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, GitHead, ProfileSet,
-    SessionEvent, SessionId, SessionManager, SpawnSpec, StateStore, detect_system_profiles,
-    read_head, read_project_file, run_short,
+    SessionEvent, SessionId, SessionManager, SpawnSpec, StateStore, THEMES_DIR_NAME, ThemeStore,
+    detect_system_profiles, read_head, read_project_file, run_short,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -356,6 +356,68 @@ pub async fn config_watch(app: AppHandle, state: State<'_, ConfigState>) -> Resu
         // A failed emit means the interface is gone; the next change tries again.
         let _ = app.emit(CONFIG_CHANGED_EVENT, text);
     })
+}
+
+/// The folder of the themes of the user, next to `config.jsonc`.
+pub struct ThemeState {
+    pub store: ThemeStore,
+    writing_allowed: bool,
+}
+
+impl ThemeState {
+    pub fn new(store: ThemeStore) -> Self {
+        Self {
+            store,
+            writing_allowed: true,
+        }
+    }
+
+    /// The same, but `save` refuses: the smoke run must leave the files of the user as they are.
+    /// Listing still works (it only reads, and never creates the folder).
+    pub fn without_writing(mut self) -> Self {
+        self.writing_allowed = false;
+        self
+    }
+
+    /// The text of every theme file that can be a theme (see [`ThemeStore::list`]).
+    pub fn list(&self) -> Result<Vec<String>, String> {
+        self.store.list().map_err(|e| e.to_string())
+    }
+
+    /// Writes the theme file of `id` atomically. Refuses an id that is not a theme id.
+    pub fn save(&self, id: &str, text: &str) -> Result<(), String> {
+        if !self.writing_allowed {
+            return Err("this run does not write theme files".to_owned());
+        }
+        self.store.save(id, text).map_err(|e| e.to_string())
+    }
+}
+
+/// Builds the store for the themes of the user: the `themes` folder inside the app config folder.
+/// Only resolves the path: the folder is created when a theme is first saved.
+pub fn theme_store(app: &AppHandle) -> Result<ThemeStore, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("could not find the app config folder: {e}"))?;
+    Ok(ThemeStore::new(dir.join(THEMES_DIR_NAME)))
+}
+
+/// The text of the theme files of the user, in the order of the file names. Validating them
+/// against the schema of a theme belongs to the interface.
+#[tauri::command]
+pub async fn theme_list(state: State<'_, ThemeState>) -> Result<Vec<String>, String> {
+    state.list()
+}
+
+/// Writes `themes/<id>.json` atomically with `content`, creating the folder when there is none.
+#[tauri::command]
+pub async fn theme_save(
+    state: State<'_, ThemeState>,
+    id: String,
+    content: String,
+) -> Result<(), String> {
+    state.save(&id, &content)
 }
 
 /// Longest a project command (the `stop` of an action) may run before it is killed.
@@ -714,6 +776,57 @@ mod tests {
         let message = state.save("{}").expect_err("the save is refused");
         assert!(message.contains("does not write"));
         assert!(!folder.exists(), "the config folder was created");
+    }
+
+    #[test]
+    fn theme_state_saves_and_lists_through_its_store() {
+        let dir = TempDir::new("themes-round-trip");
+        let folder = dir.0.join("not-yet").join(THEMES_DIR_NAME);
+        let state = ThemeState::new(ThemeStore::new(&folder));
+        assert_eq!(state.list(), Ok(Vec::new()));
+        assert!(!folder.exists(), "listing created the themes folder");
+        state
+            .save("lagoon", "{ \"id\": \"lagoon\" }\n")
+            .expect("save");
+        assert_eq!(
+            std::fs::read_to_string(folder.join("lagoon.json")).expect("read"),
+            "{ \"id\": \"lagoon\" }\n"
+        );
+        assert_eq!(
+            state.list(),
+            Ok(vec!["{ \"id\": \"lagoon\" }\n".to_owned()])
+        );
+    }
+
+    #[test]
+    fn theme_save_refuses_an_id_that_is_a_path_and_failures_are_messages() {
+        let dir = TempDir::new("themes-bad-id");
+        let folder = dir.0.join(THEMES_DIR_NAME);
+        let state = ThemeState::new(ThemeStore::new(&folder));
+        let message = state.save("../config", "{}").expect_err("refused");
+        assert_eq!(message, "'../config' is not a valid theme id");
+        assert!(!folder.exists());
+        assert!(!dir.0.join("config.json").exists());
+
+        // A file where the folder should be: the text cannot go there, and the message says so.
+        let blocked = dir.0.join("blocked");
+        std::fs::write(&blocked, b"in the way").expect("write");
+        let message = ThemeState::new(ThemeStore::new(&blocked))
+            .save("lagoon", "{}")
+            .expect_err("fails");
+        assert!(message.starts_with("could not write the theme file"));
+    }
+
+    #[test]
+    fn theme_state_without_writing_lists_but_does_not_write() {
+        // The smoke run: saving would make the folder and the file of the user.
+        let dir = TempDir::new("themes-no-write");
+        let folder = dir.0.join("not-yet");
+        let state = ThemeState::new(ThemeStore::new(&folder)).without_writing();
+        let message = state.save("lagoon", "{}").expect_err("the save is refused");
+        assert!(message.contains("does not write"));
+        assert!(!folder.exists(), "the themes folder was created");
+        assert_eq!(state.list(), Ok(Vec::new()));
     }
 
     #[test]

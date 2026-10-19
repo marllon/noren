@@ -10,7 +10,10 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use noren_core::{CONFIG_FILE_NAME, ConfigStore, SessionId, StateStore, is_powershell};
+use noren_core::{
+    CONFIG_FILE_NAME, ConfigStore, SessionId, StateStore, THEMES_DIR_NAME, ThemeStore,
+    is_powershell,
+};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Listener, Manager};
 
@@ -334,6 +337,12 @@ pub fn deeplink_config_store(target: &DeepLinkTarget) -> ConfigStore {
     ConfigStore::new(target.state_dir.join(CONFIG_FILE_NAME))
 }
 
+/// The themes folder of the deep-link run: in the same folder, so the themes of the user are
+/// neither read nor written.
+pub fn deeplink_theme_store(target: &DeepLinkTarget) -> ThemeStore {
+    ThemeStore::new(target.state_dir.join(THEMES_DIR_NAME))
+}
+
 /// Compares the folder the interface reports for the active space with the one in the link, by
 /// the same rules the interface uses to pick a space for a link.
 fn check_reported_folder(expected: &str, reported: Option<&str>) -> Result<(), String> {
@@ -454,6 +463,11 @@ mod tests {
         // The settings file is kept apart too, so the user's real one is neither read nor watched.
         let config = deeplink_config_store(&first);
         assert_eq!(config.path(), first.state_dir.join("config.jsonc"));
+        // And the themes folder.
+        assert_eq!(
+            deeplink_theme_store(&first).dir(),
+            first.state_dir.join("themes")
+        );
     }
 
     #[test]

@@ -94,6 +94,18 @@ describe("buildEntries", () => {
     expect(action(entries, "Zoom pane")).not.toHaveProperty("chord");
     expect(action(entries, "Open palette")).toBeUndefined();
   });
+
+  it("lists Import color scheme... as an action without a key, which the search finds", async () => {
+    const { entries } = await sources();
+    const importer = action(entries, "Import color scheme...");
+    expect(importer).toMatchObject({
+      detail: "General",
+      action: { id: "themes.import-scheme", command: { kind: "import-scheme" } },
+    });
+    expect(importer).not.toHaveProperty("chord");
+    const found = searchEntries(entries, ">import color");
+    expect(found.map((entry) => entry.title)).toEqual(["Import color scheme..."]);
+  });
 });
 
 const order = (kind: PaletteEntry["kind"]) => ["tab", "space", "action"].indexOf(kind);

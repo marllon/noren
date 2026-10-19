@@ -197,10 +197,12 @@ test("the arrows move the preview from one theme to the next, and the saved one 
   await openPalette(page);
   await box(page).fill(">theme");
   await expect(themeOptions(page)).toHaveCount(9);
-  // The list starts with the action "Set theme for this space", highlighted: not a theme, so the
-  // saved one shows. The first theme (the one in use) comes right after it.
+  // The list starts with two actions: "Set theme for this space", highlighted, and "Import color
+  // scheme..." (which has the letters of "theme" spread out in its title). They are not themes, so
+  // the saved one shows. The first theme (the one in use) comes right after them.
   await expect(options(page).first()).toHaveAttribute("data-nr-kind", "action");
   await expect(options(page).first()).toHaveAttribute("aria-selected", "true");
+  await expect(options(page).nth(1)).toHaveAttribute("data-nr-kind", "action");
   await expect.poll(() => rootVar(page, "--nr-bg")).toBe(DUSK.bg);
 
   await page.keyboard.press("ArrowDown");
@@ -209,11 +211,15 @@ test("the arrows move the preview from one theme to the next, and the saved one 
 
   await page.keyboard.press("ArrowDown");
   await expect(options(page).nth(2)).toHaveAttribute("aria-selected", "true");
+  await expectTheme(page, DUSK);
+
+  await page.keyboard.press("ArrowDown");
+  await expect(options(page).nth(3)).toHaveAttribute("aria-selected", "true");
   await expectTheme(page, PAPER);
 
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
-  await expect(options(page).nth(4)).toHaveAttribute("aria-selected", "true");
+  await expect(options(page).nth(5)).toHaveAttribute("aria-selected", "true");
   await expectTheme(page, FJORD);
 
   await page.keyboard.press("ArrowUp");

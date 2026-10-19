@@ -37,6 +37,19 @@ export {
 } from "./theme";
 export type { AnsiPalette, ParseThemeResult, Theme } from "./theme";
 export { NOREN_DUSK, NOREN_PAPER, THEMES, findTheme } from "./builtin-themes";
+export { deriveTheme, normalizeColor, slugify } from "./theme-derive";
+export type { SchemeColors } from "./theme-derive";
+export {
+  MAX_IMPORT_CHARS,
+  UNKNOWN_FORMAT_MESSAGE,
+  detectFormat,
+  importColorSchemes,
+  importProfiles,
+} from "./importers";
+export type { ImportFormat, ImportOptions, ImportResult } from "./importers";
+export type { ImportedProfile, ProfilesResult } from "./import-json";
+export { parseUserThemes, serializeTheme } from "./user-themes";
+export type { UserThemesResult } from "./user-themes";
 export {
   ConfigSchema,
   SIDEBAR_MAX_WIDTH,

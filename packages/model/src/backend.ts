@@ -84,6 +84,20 @@ export interface Backend {
    */
   saveConfig(text: string): Promise<void>;
   /**
+   * The text of every theme file of the user (`themes/*.json` next to `config.jsonc`), in the
+   * order of the file names. The folder missing is no files; a file that is not text, is empty,
+   * is not shaped like a JSON object or is too large is left out. Whether what is left is a
+   * valid theme is the caller's job (`parseUserThemes`). Rejects when the folder cannot be read.
+   */
+  listUserThemes(): Promise<string[]>;
+  /**
+   * Writes the theme file `themes/<id>.json` atomically, replacing the file of that id, and
+   * creates the folder when it is missing. `id` must be a theme id (`THEME_ID_PATTERN`): it
+   * becomes a file name, so anything else rejects and writes nothing. `text` is written as given
+   * (`serializeTheme`). Rejects when the file cannot be written.
+   */
+  saveUserTheme(id: string, text: string): Promise<void>;
+  /**
    * Text of `.noren/actions.json` inside the folder `cwd`, or `null` when the folder has no such
    * file. Rejects for any other failure (a folder where the file should be, no permission).
    * Parsing is the caller's job (`parseActionsFile`).

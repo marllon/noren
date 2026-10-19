@@ -5,6 +5,7 @@ import {
   WEB_GIT_KEY,
   WEB_PROFILES_KEY,
   WEB_STATE_KEY,
+  WEB_THEMES_KEY,
   WebBackend,
 } from "./web-backend";
 import type { StateStorage } from "./web-backend";
@@ -200,6 +201,47 @@ describe("WebBackend", () => {
       backend.setConfig("{}");
       expect(heard).toEqual(["{}"]);
       expect(await backend.loadConfig()).toBe("{}");
+    });
+  });
+
+  describe("theme files of the user", () => {
+    it("has none at first, and a saved theme is found by a new backend over the same storage", async () => {
+      const storage = memoryStorage();
+      const backend = new WebBackend(storage);
+      expect(await backend.listUserThemes()).toEqual([]);
+      const lagoon = '{ "id": "lagoon" }\n';
+      const bay = '{ "id": "bay" }\n';
+      await backend.saveUserTheme("lagoon", lagoon);
+      await backend.saveUserTheme("bay", bay);
+      expect(JSON.parse(storage.getItem(WEB_THEMES_KEY) ?? "null")).toEqual({ lagoon, bay });
+      expect(await new WebBackend(storage).listUserThemes()).toEqual([bay, lagoon]);
+    });
+
+    it("lists the files seeded under the key, skipping entries that are not text", async () => {
+      const storage = memoryStorage();
+      storage.setItem(WEB_THEMES_KEY, JSON.stringify({ a: "{}", b: 7, c: null, d: "not json" }));
+      expect(await new WebBackend(storage).listUserThemes()).toEqual(["{}", "not json"]);
+    });
+
+    it("ignores a seed that is not an object", async () => {
+      for (const seed of ["not json", "[1]", "7", "null"]) {
+        const storage = memoryStorage();
+        storage.setItem(WEB_THEMES_KEY, seed);
+        expect(await new WebBackend(storage).listUserThemes(), seed).toEqual([]);
+      }
+    });
+
+    it("refuses an id that is not a theme id and keeps the storage as it was", async () => {
+      const storage = memoryStorage();
+      const backend = new WebBackend(storage);
+      await expect(backend.saveUserTheme("../x", "{}")).rejects.toThrow(/not a valid theme id/);
+      expect(storage.getItem(WEB_THEMES_KEY)).toBeNull();
+    });
+
+    it("still works in memory when the storage is blocked", async () => {
+      const backend = new WebBackend(blockedStorage());
+      await backend.saveUserTheme("lagoon", "{}");
+      expect(await backend.listUserThemes()).toEqual(["{}"]);
     });
   });
 });

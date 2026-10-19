@@ -11,6 +11,7 @@ import { ManualClock } from "./clock";
 import type { Clock } from "./clock";
 import { sameFolder } from "./deep-link";
 import { OutputStream } from "./output-stream";
+import { THEME_ID_PATTERN } from "./theme";
 import { decodeUtf8, encodeUtf8 } from "./utf8";
 
 const ESC = "\x1b";
@@ -52,6 +53,8 @@ export interface FakeBackendOptions {
   gitRepos?: Record<string, GitInfo>;
   /** Initial text of `config.jsonc`. Defaults to `null` (no such file). */
   config?: string | null;
+  /** Initial theme files of the user, by theme id (the text of `themes/<id>.json`). */
+  userThemes?: Record<string, string>;
 }
 
 /** One notification given to `notify`, for assertions. */
@@ -399,6 +402,9 @@ class FakeSession {
  * - `config.jsonc` lives in memory: `loadConfig` answers its text, `saveConfig` replaces it as the
  *   app does and `setConfig` as an edit made by another program would; both tell whoever called
  *   `watchConfig`
+ * - the theme files of the user live in memory too: `saveUserTheme` writes one as the app does
+ *   (an id that is not a theme id is refused, as the real one refuses it), `setUserTheme` puts a
+ *   file there as if it had been placed by hand, `listUserThemes` answers them in the order of the ids
  *
  * Everything is synchronous: effects of `write` have been delivered when its promise resolves.
  */
@@ -417,6 +423,8 @@ export class FakeBackend implements Backend {
   readonly #gitRepos = new Map<string, GitInfo>();
   readonly #notifications: FakeNotification[] = [];
   readonly #configListeners = new Set<(text: string | null) => void>();
+  readonly #userThemes = new Map<string, string>();
+  #userThemeSaveFailure: Error | undefined;
   #config: string | null;
   #configSaveFailure: Error | undefined;
   #windowFocused = true;
@@ -429,6 +437,9 @@ export class FakeBackend implements Backend {
   constructor(options: FakeBackendOptions = {}) {
     this.#state = options.state ?? null;
     this.#config = options.config ?? null;
+    for (const [id, text] of Object.entries(options.userThemes ?? {})) {
+      this.#userThemes.set(id, text);
+    }
     this.#commandExitCode = options.commandExitCode ?? 0;
     for (const [cwd, text] of Object.entries(options.actionsFiles ?? {})) {
       this.#actionsFiles.set(cwd, text);
@@ -659,6 +670,46 @@ export class FakeBackend implements Backend {
   /** Current text of the in-memory `config.jsonc`, `null` when there is none. */
   get configContent(): string | null {
     return this.#config;
+  }
+
+  async listUserThemes(): Promise<string[]> {
+    this.#record("listUserThemes");
+    // In the order of the file names, as the real one lists them (`mid-2.json` comes before `mid.json`).
+    return [...this.#userThemes.entries()]
+      .sort(([a], [b]) => (`${a}.json` < `${b}.json` ? -1 : 1))
+      .map(([, text]) => text);
+  }
+
+  async saveUserTheme(id: string, text: string): Promise<void> {
+    this.#record("saveUserTheme", id, text);
+    if (!THEME_ID_PATTERN.test(id)) throw new Error(`'${id}' is not a valid theme id`);
+    if (this.#userThemeSaveFailure) throw this.#userThemeSaveFailure;
+    this.putUserTheme(id, text);
+  }
+
+  /**
+   * Puts the theme file `themes/<id>.json` in place with `text` (`null` removes it), as if
+   * somebody had placed it by hand. Not a `Backend` call, so it is not recorded. A backend that
+   * keeps the files somewhere else (the web one) overrides this to keep them there.
+   */
+  setUserTheme(id: string, text: string | null): void {
+    this.putUserTheme(id, text);
+  }
+
+  /** Where the theme files are kept in this backend; the web one keeps them in the storage too. */
+  protected putUserTheme(id: string, text: string | null): void {
+    if (text === null) this.#userThemes.delete(id);
+    else this.#userThemes.set(id, text);
+  }
+
+  /** The theme files of the user as they are now, by theme id. */
+  get userThemeFiles(): Readonly<Record<string, string>> {
+    return Object.fromEntries(this.#userThemes);
+  }
+
+  /** Makes `saveUserTheme` reject with `error` (the disk refused); `undefined` undoes it. */
+  setUserThemeSaveFailure(error: Error | undefined): void {
+    this.#userThemeSaveFailure = error;
   }
 
   async readActionsFile(cwd: string): Promise<string | null> {

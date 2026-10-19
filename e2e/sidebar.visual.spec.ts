@@ -30,6 +30,19 @@ async function openSidebar(page: Page): Promise<void> {
   await page.mouse.move(900, 500);
 }
 
+/** Loads the workspace with the split tab "servers" (list expanded). Ends on "api", nothing hovered. */
+async function openSplitSidebar(page: Page): Promise<void> {
+  await seedSidebarState(page, { split: true });
+  await page.goto("/");
+  await expect(tab(page, "servers")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Panes of servers", exact: true })).toBeVisible();
+  await tab(page, "api").click();
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  });
+  await page.mouse.move(900, 500);
+}
+
 for (const scheme of ["dark", "light"] as const) {
   test.describe(`${scheme} scheme`, () => {
     test.use({ colorScheme: scheme });
@@ -41,6 +54,14 @@ for (const scheme of ["dark", "light"] as const) {
       // Only the sidebar: the terminal is never part of a screenshot.
       await expect(page.locator('[data-nr-part="sidebar"]')).toHaveScreenshot(
         `sidebar-${scheme}.png`,
+        { animations: "disabled", caret: "hide" },
+      );
+    });
+
+    test(`@visual the sidebar with a split tab expanded (${scheme})`, async ({ page }) => {
+      await openSplitSidebar(page);
+      await expect(page.locator('[data-nr-part="sidebar"]')).toHaveScreenshot(
+        `sidebar-split-${scheme}.png`,
         { animations: "disabled", caret: "hide" },
       );
     });

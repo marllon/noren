@@ -173,7 +173,7 @@ function ItemView({ store, space, item, shown, colors, home, onReady }: ItemView
   return (
     <div
       className="pane-slot"
-      data-nr-part="item-layout"
+      data-nr-part="item-view"
       data-nr-zoomed={item.zoomedPaneId !== undefined ? "true" : undefined}
       hidden={!shown}
     >
@@ -297,6 +297,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
     const next = clickSelection(current, order, itemId, modifiers, activeId);
     setSelection({ spaceId: space.id, ...next });
     if (!modifiers.toggle && !modifiers.shift) activateItem(itemId);
+  };
+
+  /** A pane in the list of a split tab: the same path as a click on the tab, then the pane's focus. */
+  const onPaneClick = (itemId: Id, paneId: Id) => {
+    onItemClick(itemId, { toggle: false, shift: false });
+    dispatch({ type: "pane/focus", itemId, paneId });
   };
 
   /** Puts the keyboard focus back on a row once the field that replaced it is gone. */
@@ -674,7 +680,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
               }
             />
           )}
-          {!tabsOnTop && <SidebarTree {...treeProps} rows={rows} home={home} />}
+          {!tabsOnTop && (
+            <SidebarTree {...treeProps} rows={rows} home={home} onPaneClick={onPaneClick} />
+          )}
           <div className="sidebar-foot">
             <button type="button" className="new-tab" onClick={() => newTab()}>
               New tab

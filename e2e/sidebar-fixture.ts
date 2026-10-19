@@ -11,28 +11,47 @@ interface PaneSeed {
   bell?: boolean;
 }
 
+function leaf(pane: PaneSeed) {
+  return {
+    kind: "pane",
+    pane: {
+      id: pane.id,
+      type: "terminal",
+      profileId: "default",
+      ...(pane.cwd !== undefined ? { cwd: pane.cwd } : {}),
+      ...(pane.gitBranch !== undefined ? { gitBranch: pane.gitBranch } : {}),
+      status: "idle",
+      unread: pane.unread ?? false,
+      bell: pane.bell ?? false,
+    },
+  };
+}
+
 function tab(id: string, title: string, pane: PaneSeed) {
   return {
     id,
     title,
     titleLocked: true,
-    layout: {
-      kind: "pane",
-      pane: {
-        id: pane.id,
-        type: "terminal",
-        profileId: "default",
-        ...(pane.cwd !== undefined ? { cwd: pane.cwd } : {}),
-        ...(pane.gitBranch !== undefined ? { gitBranch: pane.gitBranch } : {}),
-        status: "idle",
-        unread: pane.unread ?? false,
-        bell: pane.bell ?? false,
-      },
-    },
+    layout: leaf(pane),
     focusedPaneId: pane.id,
     lastActivityAt: 1,
   };
 }
+
+/** A split tab: two panes side by side, the first one focused. */
+function splitTab(id: string, title: string, first: PaneSeed, second: PaneSeed) {
+  return {
+    id,
+    title,
+    titleLocked: true,
+    layout: { kind: "split", dir: "row", sizes: [50, 50], children: [leaf(first), leaf(second)] },
+    focusedPaneId: first.id,
+    lastActivityAt: 1,
+  };
+}
+
+/** Ids of the split tab the fixture adds with `split: true`, and of its two panes. */
+export const SPLIT_FIXTURE = { itemId: "i7", title: "servers", first: "p7", second: "p8" } as const;
 
 /** Home folder of the in-memory backend, so folders under it show as `~`. */
 export const FAKE_HOME = "/home/fake";
@@ -41,9 +60,10 @@ export const FAKE_HOME = "/home/fake";
  * A saved workspace for the sidebar: one pinned tab, a group of three tabs and two loose ones, with
  * folders, a git branch, an unread tab and a tab with a bell. The tab "build" has no flags: the
  * tests make it fail by running `exit 2` in it. `secondSpace` adds the space "Other" with one tab
- * ("elsewhere"), for the tests that drop a tab on another space.
+ * ("elsewhere"), for the tests that drop a tab on another space. `split` adds the tab "servers"
+ * (`SPLIT_FIXTURE`) with two panes, one in `/srv/api` and one in `/srv/web`, after "deploy".
  */
-export function sidebarState(options: { secondSpace?: boolean } = {}): string {
+export function sidebarState(options: { secondSpace?: boolean; split?: boolean } = {}): string {
   const second = {
     id: "s2",
     name: "Other",
@@ -89,6 +109,7 @@ export function sidebarState(options: { secondSpace?: boolean } = {}): string {
             ],
           },
           { kind: "item", id: "i5" },
+          ...(options.split ? [{ kind: "item", id: SPLIT_FIXTURE.itemId }] : []),
           { kind: "item", id: "i6" },
         ],
         items: {
@@ -107,6 +128,16 @@ export function sidebarState(options: { secondSpace?: boolean } = {}): string {
             bell: true,
           }),
           i6: tab("i6", "scratch", { id: "p6" }),
+          ...(options.split
+            ? {
+                [SPLIT_FIXTURE.itemId]: splitTab(
+                  SPLIT_FIXTURE.itemId,
+                  SPLIT_FIXTURE.title,
+                  { id: SPLIT_FIXTURE.first, cwd: "/srv/api" },
+                  { id: SPLIT_FIXTURE.second, cwd: "/srv/web" },
+                ),
+              }
+            : {}),
         },
         activeItemId: "i2",
       },
@@ -118,7 +149,7 @@ export function sidebarState(options: { secondSpace?: boolean } = {}): string {
 /** Seeds the saved workspace before the page loads; it only writes when nothing is saved yet. */
 export async function seedSidebarState(
   page: Page,
-  options: { secondSpace?: boolean } = {},
+  options: { secondSpace?: boolean; split?: boolean } = {},
 ): Promise<void> {
   await page.addInitScript(
     ({ key, state }) => {

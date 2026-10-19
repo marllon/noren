@@ -7,10 +7,12 @@ import {
   LoaderCircle,
   Pin,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
-import type { GroupNode, Id, Space } from "@noren/model";
+import type { GroupNode, Id, Item, Space } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
+import { layoutThumbnail, paneEntries } from "./item-panes";
+import type { PaneEntry } from "./item-panes";
 import {
   BELL_LABEL,
   RUNNING_LABEL,
@@ -43,6 +45,8 @@ interface SidebarTreeProps {
   /** Home folder of the user: a folder under it shows as `~`. */
   home?: string | undefined;
   onItemClick(itemId: Id, modifiers: ClickModifiers): void;
+  /** A pane was clicked in the list of a split tab: show that tab and focus the pane. */
+  onPaneClick(itemId: Id, paneId: Id): void;
   onItemMenu(itemId: Id, point: MenuPoint): void;
   onGroupMenu(groupId: Id, point: MenuPoint): void;
   onToggleGroup(group: GroupNode): void;
@@ -84,6 +88,61 @@ export function TabBadges({ summary }: { summary: ItemSummary }) {
         </span>
       )}
     </span>
+  );
+}
+
+/** A small drawing of how a split tab is laid out; the focused pane is filled. */
+function LayoutThumb({ item }: { item: Item }) {
+  return (
+    <span className="item-thumb" data-nr-part="item-layout" aria-hidden="true">
+      {layoutThumbnail(item.layout).map((cell) => (
+        <span
+          key={cell.paneId}
+          className="item-thumb-cell"
+          data-nr-state={cell.paneId === item.focusedPaneId ? "focused" : undefined}
+          style={{
+            left: `${cell.x}%`,
+            top: `${cell.y}%`,
+            width: `${cell.w}%`,
+            height: `${cell.h}%`,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
+interface PaneListProps {
+  itemId: Id;
+  /** Name of the tab, for the name of the list. */
+  label: string;
+  entries: readonly PaneEntry[];
+  onPaneClick(itemId: Id, paneId: Id): void;
+}
+
+/** The panes of a split tab, one button each; the pane that has the keyboard is marked. */
+function PaneList({ itemId, label, entries, onPaneClick }: PaneListProps) {
+  return (
+    <ul className="item-panes" data-nr-part="item-panes" aria-label={`Panes of ${label}`}>
+      {entries.map((entry) => (
+        <li key={entry.paneId}>
+          <button
+            type="button"
+            className="item-pane"
+            data-nr-part="item-pane"
+            data-nr-pane={entry.paneId}
+            aria-current={entry.focused ? "true" : undefined}
+            aria-label={`${entry.title}, ${entry.status}`}
+            onClick={() => onPaneClick(itemId, entry.paneId)}
+          >
+            <span className="item-pane-title">{entry.title}</span>
+            <span className="item-pane-status" data-nr-part="item-pane-status" aria-hidden="true">
+              {entry.status}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -164,6 +223,7 @@ export function SidebarTree({
   editing,
   home,
   onItemClick,
+  onPaneClick,
   onItemMenu,
   onGroupMenu,
   onToggleGroup,
@@ -172,6 +232,15 @@ export function SidebarTree({
   onCancelEdit,
 }: SidebarTreeProps) {
   const order = spaceItemIds(space);
+  // The pane lists the user folded; a split tab is expanded unless it is here. Only in memory: it
+  // is not part of the saved workspace.
+  const [folded, setFolded] = useState<ReadonlySet<Id>>(new Set());
+  const toggleFolded = (itemId: Id) =>
+    setFolded((current) => {
+      const next = new Set(current);
+      if (!next.delete(itemId)) next.add(itemId);
+      return next;
+    });
   const modifiersOf = (event: MouseEvent): ClickModifiers => ({
     toggle: event.ctrlKey || event.metaKey,
     shift: event.shiftKey,
@@ -271,6 +340,9 @@ export function SidebarTree({
       ...(summary.gitBranch !== undefined ? [`Branch ${summary.gitBranch}`] : []),
     ];
     const descriptionId = `tab-info-${row.id}`;
+    const entries = paneEntries(item, space.defaults.cwd, home);
+    const isSplit = entries.length > 0;
+    const expanded = isSplit && !folded.has(row.id);
     // Pinned tabs sit still: they are not dragged, but a tab can be dropped on the Pinned zone.
     const content = (drag?: DragHandle) => (
       <>
@@ -281,6 +353,7 @@ export function SidebarTree({
           data-nr-state={isActive ? "active" : undefined}
           data-nr-selected={selected.includes(row.id) ? "true" : undefined}
           data-nr-pinned={row.pinned ? "true" : undefined}
+          data-nr-split={isSplit ? "true" : undefined}
           data-row-id={row.id}
           data-nr-depth={row.depth}
           aria-current={isActive ? "true" : undefined}
@@ -303,6 +376,7 @@ export function SidebarTree({
             <span className="tab-title" data-nr-part="item-title">
               {label}
             </span>
+            {isSplit && <LayoutThumb item={item} />}
             <TabBadges summary={summary} />
           </span>
           {hasMeta && (
@@ -321,10 +395,29 @@ export function SidebarTree({
             </span>
           )}
         </button>
+        {isSplit && (
+          <button
+            type="button"
+            className="pane-toggle"
+            data-nr-part="item-panes-toggle"
+            aria-expanded={expanded}
+            aria-label={expanded ? "Hide panes" : "Show panes"}
+            onClick={() => toggleFolded(row.id)}
+          >
+            {expanded ? (
+              <ChevronDown size={14} aria-hidden="true" />
+            ) : (
+              <ChevronRight size={14} aria-hidden="true" />
+            )}
+          </button>
+        )}
         {words.length > 0 && (
           <span id={descriptionId} className="sr-only">
             {words.join(". ")}
           </span>
+        )}
+        {expanded && (
+          <PaneList itemId={row.id} label={label} entries={entries} onPaneClick={onPaneClick} />
         )}
       </>
     );

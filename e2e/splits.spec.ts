@@ -12,7 +12,7 @@ type Hook = {
 
 const panes = (page: Page) => page.locator('[data-nr-part="pane"]:visible');
 const separators = (page: Page) =>
-  page.locator('[data-nr-part="item-layout"]:visible [role="separator"]');
+  page.locator('[data-nr-part="item-view"]:visible [role="separator"]');
 
 const paneLines = (page: Page, paneId: string): Promise<string[]> =>
   page.evaluate(
@@ -205,7 +205,7 @@ test("the panes and their proportions stay when another tab shows", async ({ pag
 });
 
 const headers = (page: Page) => page.locator('[data-nr-part="pane-header"]');
-const itemLayout = (page: Page) => page.locator('[data-nr-part="item-layout"]:visible');
+const itemLayout = (page: Page) => page.locator('[data-nr-part="item-view"]:visible');
 
 /** Turns the "Pane headers" preference on or off in the Layout control and closes the control. */
 async function setPaneHeaders(page: Page, on: boolean): Promise<void> {

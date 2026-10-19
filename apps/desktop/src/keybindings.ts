@@ -35,6 +35,7 @@ export type ActionCommand =
   | { kind: "new-tab" }
   | { kind: "reopen-closed" }
   | { kind: "library" }
+  | { kind: "quick-toggle" }
   | { kind: "close" }
   | { kind: "split"; dir: "row" | "column" }
   | { kind: "zoom" }
@@ -175,6 +176,17 @@ export const ACTIONS: readonly ActionDef[] = [
     command: { kind: "library" },
     repeat: false,
     chords: { safe: "Ctrl+Alt+Shift+KeyL", browser: "Ctrl+Alt+Shift+KeyL" },
+  },
+  {
+    // The only global one: the Rust side registers it with the system (`quick_shortcut_set`), so it
+    // works with any program in front. Here it also answers inside the window, where the system
+    // may have refused the key to Noren (another program holds it).
+    id: "quick.toggle",
+    title: "Show or hide quick terminal",
+    category: "General",
+    command: { kind: "quick-toggle" },
+    repeat: false,
+    chords: { safe: "Ctrl+Backquote", browser: "Ctrl+Backquote" },
   },
   {
     id: "tab.mru-next",

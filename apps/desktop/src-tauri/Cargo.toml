@@ -35,6 +35,11 @@ tauri-plugin-notification = "2"
 # screen have to say whether the system painted the effect or the window fell back to opaque, so
 # the calls are made here. Already in the lockfile through Tauri; 0.8.1, Apache-2.0 OR MIT.
 window-vibrancy = "0.8"
+# The global shortcut (Ctrl+` by default) that shows and hides the quick terminal window. Only the
+# Rust side is used (`shortcut.rs`); the JavaScript package is not added and the plugin's own
+# commands get no capability, so the page cannot register anything itself. 2.4.1 (global-hotkey
+# 0.8.0 underneath), Apache-2.0 OR MIT.
+tauri-plugin-global-shortcut = "2"
 
 [dev-dependencies]
 # The mock runtime of `tauri::test`, so the tests can call a command through the same path the

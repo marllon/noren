@@ -1,6 +1,7 @@
 //! The quick terminal window: a second, frameless window at the top of the screen that carries one
-//! terminal with the default profile. It is created hidden and stays hidden until something shows it
-//! (the global shortcut, a later task); this module only makes it and places it.
+//! terminal with the default profile. It is created hidden and stays hidden until the global
+//! shortcut (`shortcut.rs`) or the palette toggles it; this module makes it, places it and holds the
+//! steps of showing and hiding it.
 //!
 //! The window loads the same page as the main one, in a minimal form (`QuickApp.tsx`): the page picks
 //! the form from the label of its window. The shell of the quick window is an ordinary session of the
@@ -8,7 +9,7 @@
 //! keeps the process.
 
 use tauri::{
-    AppHandle, PhysicalPosition, PhysicalSize, Runtime, WebviewUrl, WebviewWindow,
+    AppHandle, Emitter, PhysicalPosition, PhysicalSize, Runtime, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
 };
 
@@ -114,9 +115,183 @@ pub fn create_hidden<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<WebviewWin
     Ok(window)
 }
 
+/// What the toggle does to the quick window, one step at a time, so the order is a plain function
+/// that a test can run against a recording stand-in (no test or smoke run may show the real window).
+pub trait QuickWindow {
+    fn is_visible(&self) -> Result<bool, String>;
+    fn hide(&self) -> Result<(), String>;
+    /// Puts the window at the top of the screen (see [`place_on_top`]).
+    fn place(&self) -> Result<(), String>;
+    /// Tells the page to open a shell if it has none (`quick-open`).
+    fn open_shell(&self) -> Result<(), String>;
+    fn show(&self) -> Result<(), String>;
+    /// Gives the window the keyboard.
+    fn focus(&self) -> Result<(), String>;
+}
+
+/// Shows the window if it is hidden (place it, ask for the shell, show it, focus it) and hides it
+/// if it is showing. Returns whether it is visible now. A step that fails stops the rest; the
+/// window is never left hidden when showing it failed halfway only because of the focus (the error
+/// is returned all the same).
+pub fn toggle<W: QuickWindow>(window: &W) -> Result<bool, String> {
+    if window.is_visible()? {
+        window.hide()?;
+        return Ok(false);
+    }
+    window.place()?;
+    window.open_shell()?;
+    window.show()?;
+    window.focus()?;
+    Ok(true)
+}
+
+/// The real window and the app it belongs to, as a [`QuickWindow`].
+struct Live<'a, R: Runtime> {
+    app: &'a AppHandle<R>,
+    window: &'a WebviewWindow<R>,
+}
+
+impl<R: Runtime> QuickWindow for Live<'_, R> {
+    fn is_visible(&self) -> Result<bool, String> {
+        self.window.is_visible().map_err(|e| e.to_string())
+    }
+    fn hide(&self) -> Result<(), String> {
+        self.window.hide().map_err(|e| e.to_string())
+    }
+    fn place(&self) -> Result<(), String> {
+        place_on_top(self.window).map_err(|e| e.to_string())
+    }
+    fn open_shell(&self) -> Result<(), String> {
+        self.app.emit(OPEN_EVENT, ()).map_err(|e| e.to_string())
+    }
+    fn show(&self) -> Result<(), String> {
+        self.window.show().map_err(|e| e.to_string())
+    }
+    fn focus(&self) -> Result<(), String> {
+        self.window.set_focus().map_err(|e| e.to_string())
+    }
+}
+
+/// [`toggle`] on the quick window of the app, which is made first if a failure at start left it
+/// out. Returns whether the window is visible afterwards.
+pub fn toggle_window<R: Runtime>(app: &AppHandle<R>) -> Result<bool, String> {
+    let window = create_hidden(app).map_err(|e| e.to_string())?;
+    toggle(&Live {
+        app,
+        window: &window,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::{Cell, RefCell};
+
+    /// A window that is only a list of what was done to it.
+    #[derive(Default)]
+    struct Recording {
+        visible: Cell<bool>,
+        calls: RefCell<Vec<&'static str>>,
+        /// The step that fails, if any.
+        failing: Option<&'static str>,
+    }
+
+    impl Recording {
+        fn step(&self, name: &'static str) -> Result<(), String> {
+            self.calls.borrow_mut().push(name);
+            if self.failing == Some(name) {
+                Err(format!("{name} failed"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    impl QuickWindow for Recording {
+        fn is_visible(&self) -> Result<bool, String> {
+            Ok(self.visible.get())
+        }
+        fn hide(&self) -> Result<(), String> {
+            self.step("hide")?;
+            self.visible.set(false);
+            Ok(())
+        }
+        fn place(&self) -> Result<(), String> {
+            self.step("place")
+        }
+        fn open_shell(&self) -> Result<(), String> {
+            self.step("open")
+        }
+        fn show(&self) -> Result<(), String> {
+            self.step("show")?;
+            self.visible.set(true);
+            Ok(())
+        }
+        fn focus(&self) -> Result<(), String> {
+            self.step("focus")
+        }
+    }
+
+    #[test]
+    fn a_hidden_window_is_placed_opened_shown_and_focused_in_that_order() {
+        let window = Recording::default();
+        assert_eq!(toggle(&window), Ok(true));
+        assert_eq!(
+            window.calls.borrow().as_slice(),
+            ["place", "open", "show", "focus"]
+        );
+        assert!(window.visible.get());
+    }
+
+    #[test]
+    fn a_visible_window_is_hidden_and_nothing_else_is_done() {
+        let window = Recording::default();
+        window.visible.set(true);
+        assert_eq!(toggle(&window), Ok(false));
+        assert_eq!(window.calls.borrow().as_slice(), ["hide"]);
+        assert!(!window.visible.get());
+    }
+
+    #[test]
+    fn the_shortcut_pressed_twice_comes_back_to_where_it_started() {
+        let window = Recording::default();
+        assert_eq!(toggle(&window), Ok(true));
+        assert_eq!(toggle(&window), Ok(false));
+        assert_eq!(toggle(&window), Ok(true));
+        assert_eq!(
+            window.calls.borrow().as_slice(),
+            [
+                "place", "open", "show", "focus", "hide", "place", "open", "show", "focus"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_step_that_fails_stops_the_ones_after_it() {
+        let window = Recording {
+            failing: Some("place"),
+            ..Recording::default()
+        };
+        assert_eq!(toggle(&window), Err("place failed".to_owned()));
+        // Never shown at a wrong place.
+        assert_eq!(window.calls.borrow().as_slice(), ["place"]);
+        assert!(!window.visible.get());
+
+        let window = Recording {
+            failing: Some("focus"),
+            ..Recording::default()
+        };
+        assert_eq!(toggle(&window), Err("focus failed".to_owned()));
+        assert!(window.visible.get(), "shown, only the focus was refused");
+
+        let window = Recording {
+            failing: Some("hide"),
+            ..Recording::default()
+        };
+        window.visible.set(true);
+        assert_eq!(toggle(&window), Err("hide failed".to_owned()));
+        assert!(window.visible.get());
+    }
 
     const fn area(x: i32, y: i32, width: u32, height: u32) -> Bounds {
         Bounds {

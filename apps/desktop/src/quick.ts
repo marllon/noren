@@ -1,4 +1,5 @@
 import { emit, listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 // The quick terminal is a second window of the app (src-tauri/src/quick.rs makes it, hidden). It
 // loads this same page in a minimal form: just a terminal, with none of the workspace. The windows
@@ -49,3 +50,44 @@ export function sessionOfPayload(payload: unknown): number | undefined {
   const id = (payload as { id?: unknown }).id;
   return typeof id === "number" && Number.isSafeInteger(id) && id > 0 ? id : undefined;
 }
+
+/**
+ * Events that stay inside one page: the same pair of calls as the real ones, for a browser (web mode,
+ * the e2e tests, tests of the logic) where both windows are drawn in one page. A handler hears an
+ * event even when it is the one that emitted it, like the real thing.
+ */
+export function memoryQuickEvents(): QuickEvents {
+  const handlers = new Map<string, Set<(payload: unknown) => void>>();
+  return {
+    listen: async (event, handler) => {
+      const set = handlers.get(event) ?? new Set();
+      handlers.set(event, set);
+      set.add(handler);
+      return () => {
+        set.delete(handler);
+      };
+    },
+    emit: async (event, payload) => {
+      for (const handler of [...(handlers.get(event) ?? [])]) handler(payload);
+    },
+  };
+}
+
+/** Hides the window this page is in (the capability of the quick window allows exactly that). */
+export function tauriHideWindow(): Promise<void> {
+  return getCurrentWindow().hide();
+}
+
+/**
+ * True in a plain browser opened with `?quick-preview`: the page draws the quick window as a panel
+ * next to the app, both on one in-memory backend and one in-memory bus (`QuickPreview.tsx`). It is
+ * how the e2e tests see the two windows together, which one page of one window cannot; inside the
+ * app the flag is always false.
+ */
+export const quickPreviewEnabled =
+  typeof window !== "undefined" &&
+  !("__TAURI_INTERNALS__" in window) &&
+  new URLSearchParams(window.location.search).has("quick-preview");
+
+/** The bus of the preview: the app and the panel hear each other through it. */
+export const quickPreviewEvents: QuickEvents = memoryQuickEvents();

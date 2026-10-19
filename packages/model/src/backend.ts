@@ -80,6 +80,19 @@ export interface Backend {
    * session has the id (never started, or already ended).
    */
   attachSession(id: SessionId): Promise<void>;
+  /**
+   * Shows the quick terminal window if it is hidden (at the top of the screen, with the keyboard)
+   * and hides it if it is showing, as its global shortcut does. Resolves with whether the window is
+   * visible afterwards.
+   */
+  quickToggle(): Promise<boolean>;
+  /**
+   * Gives the quick terminal its global shortcut: `chord` as the shortcuts screen spells it
+   * (`Ctrl+Backquote`), or `null` for none, replacing the one it had. Rejects with the reason, and
+   * keeps the one it had, when the chord is not a shortcut the system can hold (no Ctrl or Alt, or
+   * another program has it). Resolves without registering anything when the run is a smoke run.
+   */
+  setQuickShortcut(chord: string | null): Promise<void>;
   /** Sends keyboard input (text) or raw bytes (for example a paste) to the shell. */
   write(id: SessionId, data: string | Uint8Array): Promise<void>;
   resize(id: SessionId, cols: number, rows: number): Promise<void>;

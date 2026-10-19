@@ -599,7 +599,9 @@ describe("conflicts", () => {
         }
       }
     }
-  });
+    // The walk grows with the square of the registry: it took 3-5 s of the default 5 s limit and
+    // timed out on a busy machine, so it has a limit of its own (the cases are all still walked).
+  }, 60_000);
 });
 
 describe("parseKeybindings", () => {

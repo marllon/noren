@@ -25,6 +25,7 @@ use crate::bridge::{
 };
 use crate::deeplink::{self, Links};
 use crate::quick;
+use crate::shortcut;
 use crate::window_effect;
 
 pub const SMOKE_FLAG: &str = "--smoke";
@@ -47,6 +48,23 @@ fn check_window_hidden(app: &AppHandle) -> Result<(), String> {
         .ok_or_else(|| "the main window does not exist".to_string())?;
     let visible = window.is_visible().map_err(|e| e.to_string())?;
     window_hidden_result(visible)
+}
+
+/// Fails when the app holds a global shortcut: no smoke run registers one (it would take a key
+/// from the programs of whoever runs it). The plugin is asked, not only our own books. The page
+/// of the main window does ask for the shortcut of the quick terminal at boot; this run refuses.
+fn check_no_global_shortcut(app: &AppHandle) -> Result<(), String> {
+    let held = shortcut::registered(app);
+    if held != 0 {
+        return Err(format!(
+            "this run holds {held} global shortcut(s), expected none"
+        ));
+    }
+    let refused = app.state::<shortcut::QuickShortcut>().refused();
+    print_line(&format!(
+        "SMOKE global shortcut none registered ({refused} requests refused)"
+    ));
+    Ok(())
 }
 
 /// The effect the smoke run asks the hidden window for: Mica on Windows, vibrancy on macOS, and
@@ -370,6 +388,7 @@ pub fn arm(app: &tauri::App) {
                 .and_then(|()| check_window_effect(&handle))
                 .inspect(|()| check_fonts())
                 .and_then(|()| check_scrollback())
+                .and_then(|()| check_no_global_shortcut(&handle))
                 .and_then(|()| check_window_hidden(&handle));
             match result {
                 Ok(()) => {
@@ -546,6 +565,7 @@ pub fn arm_deeplink(app: &tauri::App, target: DeepLinkTarget) {
                 ))
             })
             .and_then(|()| check_session(&handle, started + SMOKE_TIMEOUT))
+            .and_then(|()| check_no_global_shortcut(&handle))
             .and_then(|()| check_window_hidden(&handle));
         match result {
             Ok(()) => {
@@ -821,6 +841,7 @@ fn run_quick(app: &AppHandle, inbox: &mut Inbox, deadline: Instant) -> Result<u6
     ));
 
     check_quick_window(app)?;
+    check_no_global_shortcut(app)?;
     check_window_hidden(app)?;
     Ok(id)
 }

@@ -7,6 +7,7 @@ mod lifecycle;
 mod notify;
 mod quick;
 mod route;
+mod shortcut;
 mod smoke;
 mod window_effect;
 
@@ -50,17 +51,28 @@ fn main() {
     builder = builder.plugin(tauri_plugin_deep_link::init());
     // Only the Rust side of the plugin is used (see notify.rs); nothing is shown until asked.
     builder = builder.plugin(tauri_plugin_notification::init());
+    // The global shortcut of the quick terminal. The plugin registers nothing by itself and its own
+    // commands get no capability; `shortcut.rs` is the only caller. Present in the smoke runs too,
+    // so they can ask it what is registered (nothing, they register no shortcut).
+    builder = builder.plugin(
+        tauri_plugin_global_shortcut::Builder::new()
+            .with_handler(shortcut::on_event)
+            .build(),
+    );
 
     let app = builder
         .manage(AppState::detect())
         .manage(deeplink::Links::default())
         .manage(lifecycle::CloseGate::default())
+        .manage(shortcut::QuickShortcut::new(!any_smoke))
         .on_window_event(lifecycle::on_window_event)
         .invoke_handler(tauri::generate_handler![
             bridge::profiles_list,
             bridge::profiles_set_user,
             bridge::session_create,
             bridge::session_attach,
+            shortcut::quick_shortcut_set,
+            shortcut::quick_toggle,
             bridge::session_write,
             bridge::session_resize,
             bridge::session_kill,
@@ -156,6 +168,11 @@ fn main() {
                     return Err(error.into());
                 }
                 eprintln!("could not create the quick window: {error}");
+            }
+            // The global shortcut of the quick terminal: only a normal start registers one. A chord
+            // another program holds is a line in the log, not a reason to stop.
+            if !any_smoke {
+                shortcut::register_default(app.handle());
             }
             // A link the system passed on the command line of this first start.
             for url in deeplink::links_from_args(std::env::args()) {

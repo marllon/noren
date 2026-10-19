@@ -10,7 +10,9 @@ import {
 } from "@noren/model";
 import type { Backend, WindowEffect } from "@noren/model";
 import { useConfigState, configManager } from "./config-store";
+import { resolveBindings } from "./keybindings";
 import type { Preset } from "./keybindings";
+import { useKeybindings } from "./keybindings-store";
 import type { Density, SidebarSide, TabsPlacement } from "./layout";
 import { settingsModRows } from "./mod-options";
 import { useModFiles } from "./mods-store";
@@ -18,6 +20,8 @@ import { commitProfileImport, readProfileFile, takenProfileIds } from "./profile
 import type { ProfileImportPlan } from "./profile-import";
 import { ProfileImportDialog } from "./ProfileImportDialog";
 import { useProfiles } from "./profiles-store";
+import { QUICK_TOGGLE_ACTION, quickShortcutLine } from "./quick-shortcut";
+import { useQuickShortcutStatus } from "./quick-shortcut-store";
 import { importSchemeFile } from "./scheme-import";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { addUserThemes, getUserThemes } from "./user-themes-store";
@@ -154,6 +158,9 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const keybindings = useKeybindings();
+  const quickChord = resolveBindings(keybindings).chords[QUICK_TOGGLE_ACTION];
+  const quickStatus = useQuickShortcutStatus();
   // Importing is not part of the draft: it acts at once (a color scheme) or after its own
   // confirmation (the profiles), and tells what happened in the line under its buttons.
   const schemeInputRef = useRef<HTMLInputElement>(null);
@@ -390,6 +397,9 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 >
                   Keyboard shortcuts
                 </button>
+                <p className="settings-hint" data-nr-part="quick-shortcut">
+                  {quickShortcutLine(quickChord, quickStatus)}
+                </p>
               </section>
               <section className="settings-section" aria-label="Notifications">
                 <h3>Notifications</h3>

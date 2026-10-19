@@ -33,9 +33,12 @@ import { ActionsHeader } from "./ActionsHeader";
 import { handleDeepLink, setDeepLinkHandler } from "./deep-link";
 import { createDeepLinkHandler } from "./deep-link-handler";
 import { startDeepLinkReceiver } from "./deep-link-receiver";
+import { QUICK_TOGGLE_ACTION } from "./quick-shortcut";
+import { quickShortcut } from "./quick-shortcut-store";
+import { formatChord } from "./shortcuts-screen";
 import { followQuickPromotions, promoteQuickSession } from "./quick-promote";
 import type { PromoteResult } from "./quick-promote";
-import { tauriQuickEvents } from "./quick";
+import { quickPreviewEnabled, quickPreviewEvents, tauriQuickEvents } from "./quick";
 import { tauriBridge } from "./tauri-backend";
 import { CommandPalette } from "./CommandPalette";
 import { ConfigErrorNotice } from "./ConfigErrorNotice";
@@ -247,6 +250,18 @@ export interface NorenTestHook {
   paneSnapshot(paneId: string): string;
   /** The text of the rows of a pane's terminal that are dimmed, whichever tab it is in. */
   paneDimLines(paneId: string): string[];
+  /** The session of the focused pane of the active tab, `undefined` before it has one. */
+  focusedSessionId(): number | undefined;
+  /** Whether the (fake) quick window shows after the toggles the backend got. */
+  quickVisible(): boolean;
+  /** How many times the backend was asked to show or hide the quick window. */
+  quickToggles(): number;
+  /** The chord the (fake) system holds for the quick terminal now, `null` for none. */
+  quickShortcut(): string | null;
+  /** Every chord the backend was asked to register for the quick terminal, in order (`null`: none). */
+  quickShortcutAsks(): (string | null)[];
+  /** Makes the next registration of the quick terminal's shortcut fail with this reason; `null` undoes it. */
+  failQuickShortcut(reason: string | null): void;
 }
 
 declare global {
@@ -633,6 +648,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
       if (!found) showNotice(NOTHING_CLOSED_NOTICE);
     });
   }, [store, showNotice]);
+  /** Shows the quick terminal window, or hides it: what its global shortcut does anywhere else. */
+  const toggleQuick = useCallback(() => {
+    backend.quickToggle().catch((error: unknown) => {
+      showNotice(`Quick terminal: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }, [showNotice]);
   /** A layout action writes its setting into the file; a refusal or a failed write is a notice. */
   const runLayout = useCallback(
     (command: LayoutCommand) => {
@@ -693,8 +714,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
   // A shell opened in the quick window comes in as a tab of the active space when asked to
   // (`quick-promote`); its process and its id stay as they are.
   useEffect(() => {
-    if (!insideTauri) return undefined;
-    const stopped = followQuickPromotions(tauriQuickEvents(), store, backend);
+    if (!insideTauri && !quickPreviewEnabled) return undefined;
+    const events = insideTauri ? tauriQuickEvents() : quickPreviewEvents;
+    const stopped = followQuickPromotions(events, store, backend);
     return () => {
       stopped.then((stop) => stop()).catch(() => undefined);
     };
@@ -925,6 +947,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) openLibrary();
         return;
       }
+      if (action.command.kind === "quick-toggle") {
+        // The window of the quick terminal is not this one: a dialog here does not stand in its way.
+        toggleQuick();
+        return;
+      }
       if (action.command.kind === "import-scheme") {
         if (!modalOpen.current) openSchemePicker();
         return;
@@ -959,6 +986,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     runLayout,
     reopenTab,
     openLibrary,
+    toggleQuick,
   ]);
 
   // A horizontal wheel (or Shift+wheel) over the sidebar steps to the neighbor space and stops at
@@ -1074,6 +1102,18 @@ function Shell({ store }: { store: WorkspaceStore }) {
         setScrollbackFile: (paneId, text) => fake.setScrollback(paneId, text),
         paneSnapshot: (paneId) => handles.current.get(paneId)?.snapshot() ?? "",
         paneDimLines: (paneId) => handles.current.get(paneId)?.dimLines() ?? [],
+        focusedSessionId: () => {
+          const item = activeItem();
+          const pane = item && focusedPane(item);
+          return pane?.sessionId === undefined ? undefined : Number(pane.sessionId);
+        },
+        quickVisible: () => fake.quickVisible,
+        quickToggles: () => fake.callsTo("quickToggle").length,
+        quickShortcut: () => fake.quickShortcut,
+        quickShortcutAsks: () =>
+          fake.callsTo("setQuickShortcut").map((call) => call.args[0] as string | null),
+        failQuickShortcut: (reason) =>
+          fake.setQuickShortcutFailure(reason === null ? undefined : new Error(reason)),
         killedSessions: () => fake.callsTo("kill").map((call) => Number(call.args[0])),
         startDetachedSession: () => fake.createSession({ cols: 80, rows: 24 }),
         promoteSession: (id) => promoteQuickSession(store, fake, id),
@@ -1147,6 +1187,19 @@ function Shell({ store }: { store: WorkspaceStore }) {
   }, []);
 
   const keybindings = useKeybindings();
+  // The quick terminal's global shortcut follows the chord in force: registered at start and again
+  // whenever the shortcuts screen or the preset changes it. A refusal (another program has the key)
+  // is a notice.
+  const quickChord = resolveBindings(keybindings).chords[QUICK_TOGGLE_ACTION];
+  useEffect(() => {
+    void quickShortcut.sync(quickChord).then((status) => {
+      if (status.kind === "refused") {
+        showNotice(
+          `The quick terminal shortcut ${formatChord(status.chord)} is not available: ${status.reason}`,
+        );
+      }
+    });
+  }, [quickChord, showNotice]);
   const paletteEntries = useMemo(
     () =>
       !paletteOpen
@@ -1193,6 +1246,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
     } else if (entry.action.command.kind === "library") {
       // The library takes the keyboard itself; the palette must not hand it to the terminal.
       openLibrary();
+      return;
+    } else if (entry.action.command.kind === "quick-toggle") {
+      // The quick window takes the keyboard itself; the palette closes first so it does not hand
+      // the focus back to the terminal of this window.
+      setPaletteOpen(false);
+      toggleQuick();
       return;
     } else if (entry.action.command.kind === "import-scheme") {
       // The file picker takes over; the terminal gets the keyboard back with the palette's close.

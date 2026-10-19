@@ -10,6 +10,8 @@
 // frameless and at the top of the screen; a shell opened in it was promoted to the main window as a
 // tab with the same session id and the same process, still answering, its output now reaching the
 // main window), "SMOKE quick window hidden" and "SMOKE window hidden" (neither window ever shown).
+// Every run must also print "SMOKE global shortcut none registered": no smoke mode registers the
+// global shortcut of the quick terminal (the run fails if the app holds one).
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -70,7 +72,13 @@ function runSmoke(args, required) {
 const effect = isWindows ? "mica" : process.platform === "darwin" ? "vibrancy" : "none";
 runSmoke(
   ["--smoke"],
-  ["SMOKE window hidden", "SMOKE OK", "noren-smoke-ok", `SMOKE window effect ${effect}`],
+  [
+    "SMOKE window hidden",
+    "SMOKE global shortcut none registered",
+    "SMOKE OK",
+    "noren-smoke-ok",
+    `SMOKE window effect ${effect}`,
+  ],
 );
 
 // The deep-link run: a folder made here (its name has a space) goes in a noren://open link, and the
@@ -78,7 +86,10 @@ runSmoke(
 const folder = mkdtempSync(join(tmpdir(), "noren smoke "));
 try {
   const link = `noren://open?path=${encodeURIComponent(folder)}`;
-  runSmoke(["--smoke-deeplink", link], ["SMOKE window hidden", "SMOKE DEEPLINK OK"]);
+  runSmoke(
+    ["--smoke-deeplink", link],
+    ["SMOKE window hidden", "SMOKE global shortcut none registered", "SMOKE DEEPLINK OK"],
+  );
 } finally {
   rmSync(folder, { recursive: true, force: true });
 }
@@ -87,6 +98,7 @@ runSmoke(
   ["--smoke-quick"],
   [
     "SMOKE quick window hidden",
+    "SMOKE global shortcut none registered",
     "opened in the quick window",
     "promoted to the main window",
     "still alive after the promotion",

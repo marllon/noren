@@ -429,6 +429,8 @@ class FakeSession {
  *   repository of the nearest folder above it (or itself) that has one
  * - `notify` only records the notification (`notifications`) and `isWindowFocused` answers what
  *   `setWindowFocused` said (focused at first): no notification is ever shown
+ * - the quick terminal window is a flag: `quickToggle` flips `quickVisible` (hidden at first) and
+ *   `setQuickShortcut` keeps the chord in `quickShortcut`; nothing is ever shown or registered
  * - `config.jsonc` lives in memory: `loadConfig` answers its text, `saveConfig` replaces it as the
  *   app does and `setConfig` as an edit made by another program would; both tell whoever called
  *   `watchConfig`
@@ -480,6 +482,9 @@ export class FakeBackend implements Backend {
   #config: string | null;
   #configSaveFailure: Error | undefined;
   #windowFocused = true;
+  #quickVisible = false;
+  #quickShortcut: string | null = null;
+  #quickShortcutFailure: Error | undefined;
   #notifyFailure: Error | undefined;
   #commandExitCode: number;
   #commandFailure: Error | undefined;
@@ -667,6 +672,37 @@ export class FakeBackend implements Backend {
   async attachSession(id: SessionId): Promise<void> {
     this.#record("attachSession", id);
     this.#alive(id);
+  }
+
+  /**
+   * Flips the fake quick window (hidden at first) and says whether it shows now; recorded in
+   * `calls`. Nothing is ever shown.
+   */
+  async quickToggle(): Promise<boolean> {
+    this.#record("quickToggle");
+    this.#quickVisible = !this.#quickVisible;
+    return this.#quickVisible;
+  }
+
+  async setQuickShortcut(chord: string | null): Promise<void> {
+    this.#record("setQuickShortcut", chord);
+    if (this.#quickShortcutFailure !== undefined) throw this.#quickShortcutFailure;
+    this.#quickShortcut = chord;
+  }
+
+  /** Whether the fake quick window shows (it starts hidden). */
+  get quickVisible(): boolean {
+    return this.#quickVisible;
+  }
+
+  /** The chord the fake quick terminal has registered now, `null` for none (nothing at first). */
+  get quickShortcut(): string | null {
+    return this.#quickShortcut;
+  }
+
+  /** Makes `setQuickShortcut` reject with `error` (another program has the key); `undefined` undoes it. */
+  setQuickShortcutFailure(error: Error | undefined): void {
+    this.#quickShortcutFailure = error;
   }
 
   /**

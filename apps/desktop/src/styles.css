@@ -2427,3 +2427,82 @@ body {
   color: var(--nr-muted);
   font-size: 12px;
 }
+
+/* The quick terminal window: a title line with the promote button over one terminal. */
+.quick-app {
+  position: relative;
+}
+
+.quick-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--nr-border);
+  background: var(--nr-surface);
+  color: var(--nr-muted);
+  font-size: 12px;
+  user-select: none;
+}
+
+.quick-promote {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--nr-border);
+  border-radius: var(--nr-radius);
+  background: transparent;
+  color: var(--nr-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.quick-promote:hover:not(:disabled) {
+  border-color: var(--nr-accent);
+}
+
+.quick-promote:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.quick-notice {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 5;
+  max-width: calc(100% - 24px);
+  padding: 6px 12px;
+  border: 1px solid var(--nr-accent);
+  border-radius: var(--nr-radius);
+  background: var(--nr-surface);
+  color: var(--nr-text);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.quick-notice[data-nr-state="empty"] {
+  opacity: 0;
+}
+
+/* Only in a browser opened with ?quick-preview (e2e): the quick window as a panel beside the app. */
+.quick-preview {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 40;
+  width: 520px;
+  height: 280px;
+  border: 2px solid var(--nr-accent);
+  border-radius: var(--nr-radius);
+  background: var(--nr-bg);
+  overflow: hidden;
+}
+
+.quick-preview[data-nr-shown="false"] {
+  visibility: hidden;
+}

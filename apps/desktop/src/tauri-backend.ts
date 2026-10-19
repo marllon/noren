@@ -124,6 +124,14 @@ export class TauriBackend implements Backend {
     }
   }
 
+  async quickToggle(): Promise<boolean> {
+    return this.#bridge.invoke<boolean>("quick_toggle");
+  }
+
+  async setQuickShortcut(chord: string | null): Promise<void> {
+    await this.#bridge.invoke("quick_shortcut_set", { chord });
+  }
+
   async write(id: SessionId, data: string | Uint8Array): Promise<void> {
     await this.#bridge.invoke("session_write", {
       id,

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "quick",
-  "description": "Capabilities of the quick terminal window: read-only window and app information and the events it exchanges with the other windows. Showing, hiding and moving it come with the task that adds the shortcut.",
+  "description": "Capabilities of the quick terminal window: read-only window and app information, the events it exchanges with the other windows, and hiding itself (Esc, and after the shell is promoted to a tab). Showing and moving it are done from the Rust side.",
   "windows": ["quick"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:window:allow-hide"]
 }

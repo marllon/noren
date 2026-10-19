@@ -107,7 +107,6 @@ Where data lives (identifier `io.github.marllon.noren`):
 | Workspace state (`state.json`: spaces, groups, tabs, layout), created on the first save   | `%APPDATA%\io.github.marllon.noren\`                |
 | Interface preferences (theme, layout, pane headers), kept in the WebView's `localStorage` | `%LOCALAPPDATA%\io.github.marllon.noren\EBWebView\` |
 
-The state folder is the Tauri `app_data_dir` (the Windows roaming data folder plus the identifier); the
-folder does not exist until the first save, and its path was not observed on disk when this guide
-was written. The WebView folder was checked on disk after an install. Deleting both folders resets
-the app to a fresh install.
+Both paths were checked on disk: the WebView folder after an install, and `state.json` after a
+release build saved a state (the folder does not exist until the first save). Deleting both folders
+resets the app to a fresh install.

@@ -520,6 +520,20 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
       target.chain(({ itemId, paneId }) =>
         fc.record(
           {
+            type: tag("pane/set-scrollback"),
+            itemId: fc.constant(itemId),
+            paneId: fc.constant(paneId),
+            ref: fc.constantFrom("sb-1.txt", "sb-2.txt", " "),
+          },
+          { requiredKeys: ["type", "itemId", "paneId"] },
+        ),
+      ),
+    ),
+    weighted(
+      2,
+      target.chain(({ itemId, paneId }) =>
+        fc.record(
+          {
             type: tag("pane/clear-unread"),
             itemId: fc.constant(itemId),
             paneId: fc.constant(paneId),

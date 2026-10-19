@@ -6,7 +6,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import type { ITheme } from "@xterm/xterm";
-import { DEFAULT_TERMINAL_OPTIONS } from "@noren/model";
+import { DEFAULT_TERMINAL_OPTIONS, SCROLLBACK_SAVE_LINES } from "@noren/model";
 import type { Backend, SessionId, TerminalOptions } from "@noren/model";
 import { useEffect, useRef, useState } from "react";
 import { PasteDialog } from "./PasteDialog";
@@ -65,6 +65,18 @@ export interface TerminalHandle {
   selectOutput(): boolean;
   /** The output of the last command that ended; undefined when none did. */
   lastOutput(): CommandOutput | undefined;
+  /**
+   * The text of the rows of the buffer whose characters are all dimmed (a row with no text is not
+   * one). The scrollback shown again is dimmed, and what the new shell prints is not: this tells
+   * them apart whatever renderer draws them.
+   */
+  dimLines(): string[];
+  /**
+   * The last lines of the terminal as the serialize addon writes them (text and colors, and the
+   * cursor moves it needs for empty cells), for the scrollback snapshot. It is raw: `cleanSnapshot`
+   * is what makes it fit to keep.
+   */
+  snapshot(): string;
 }
 
 interface TerminalViewProps {
@@ -80,6 +92,12 @@ interface TerminalViewProps {
   cwd?: string;
   /** Extra environment of the new shell. Read once. */
   env?: Record<string, string>;
+  /**
+   * Text to write to the terminal before anything the session prints: the scrollback saved before,
+   * dimmed, and the line "session restored" (`restoredTerminalText`). It must already be clean.
+   * Read once, on mount.
+   */
+  restored?: string;
   /**
    * Called with the session the view started. The caller owns it from then on: the view no longer
    * ends it on unmount. Without this callback the view ends its own session when it goes away.
@@ -125,6 +143,7 @@ export function TerminalView({
   profileId,
   cwd,
   env,
+  restored,
   onSessionStart,
   theme,
   options = DEFAULT_TERMINAL_OPTIONS,
@@ -149,7 +168,7 @@ export function TerminalView({
   const refitRef = useRef<(() => void) | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   // What the shell starts with is fixed when the view mounts; a later change must not restart it.
-  const [start0] = useState(() => ({ attach, profileId, cwd, env }));
+  const [start0] = useState(() => ({ attach, profileId, cwd, env, restored }));
 
   useEffect(() => {
     rightClickRef.current = rightClick ?? "copy-or-paste";
@@ -216,7 +235,8 @@ export function TerminalView({
     term.loadAddon(new Unicode11Addon());
     term.loadAddon(new WebLinksAddon());
     term.loadAddon(new SearchAddon());
-    term.loadAddon(new SerializeAddon());
+    const serialize = new SerializeAddon();
+    term.loadAddon(serialize);
     term.unicode.activeVersion = "11";
     term.open(host);
     const commandMarks = attachCommandMarks(term, markColors(themeRef.current));
@@ -329,6 +349,10 @@ export function TerminalView({
       if (sessionId !== undefined) backend.resize(sessionId, cols, rows).catch(() => undefined);
     });
 
+    // The scrollback saved before is written first: xterm keeps what is written in order, so it
+    // sits above everything the new session prints, including what it printed before this mounted.
+    if (start0.restored !== undefined && start0.restored !== "") term.write(start0.restored);
+
     let ownsSession = false;
     const start = async () => {
       const startCols = term.cols;
@@ -412,6 +436,33 @@ export function TerminalView({
       jumpToPrompt: (direction) => commandMarks.jump(direction),
       selectOutput: () => commandMarks.selectOutput(),
       lastOutput: () => commandMarks.lastOutput(),
+      dimLines: () => {
+        const buffer = term.buffer.active;
+        const cell = buffer.getNullCell();
+        const dimmed: string[] = [];
+        for (let y = 0; y < buffer.length; y++) {
+          const line = buffer.getLine(y);
+          if (!line) continue;
+          let hasText = false;
+          let allDim = true;
+          for (let x = 0; x < line.length && allDim; x++) {
+            const filled = line.getCell(x, cell);
+            if (!filled || filled.getChars() === "") continue;
+            hasText = true;
+            allDim = filled.isDim() !== 0;
+          }
+          if (hasText && allDim) dimmed.push(line.translateToString(true));
+        }
+        return dimmed;
+      },
+      // The normal screen only: a program on the alternate screen (an editor) leaves the lines of the
+      // shell under it, which are what is worth keeping. No modes either: they are not text.
+      snapshot: () =>
+        serialize.serialize({
+          scrollback: SCROLLBACK_SAVE_LINES,
+          excludeModes: true,
+          excludeAltBuffer: true,
+        }),
     });
     if (activeRef.current) term.focus();
 

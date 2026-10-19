@@ -11,8 +11,9 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use noren_core::{
-    BackgroundStore, CONFIG_FILE_NAME, ConfigStore, MODS_DIR_NAME, ModStore, SessionId, StateStore,
-    THEMES_DIR_NAME, ThemeStore, WindowEffect, is_powershell,
+    BackgroundStore, CONFIG_FILE_NAME, ConfigStore, MODS_DIR_NAME, ModStore, SCROLLBACK_DIR_NAME,
+    ScrollbackStore, SessionId, StateStore, THEMES_DIR_NAME, ThemeStore, WindowEffect,
+    is_powershell,
 };
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Listener, Manager};
@@ -77,6 +78,48 @@ fn check_fonts() {
         "SMOKE fonts {} monospaced families",
         families.len()
     ));
+}
+
+/// Saves, reads and removes a scrollback snapshot in a folder of its own in the temp folder, with the
+/// same store the app uses. The folder of the user is never written: the run only reads it (the
+/// `scrollback_load` command), and this proves the write path works without touching it.
+fn check_scrollback() -> Result<(), String> {
+    check_scrollback_in(&std::env::temp_dir())?;
+    print_line("SMOKE scrollback round trip ok");
+    Ok(())
+}
+
+/// The round trip of [`check_scrollback`] in a new folder inside `base`, which is removed after it.
+fn check_scrollback_in(base: &std::path::Path) -> Result<(), String> {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let dir = base.join(format!("noren-smoke-scrollback-{}-{nanos}", process::id()));
+    let result = scrollback_round_trip(&ScrollbackStore::new(dir.join(SCROLLBACK_DIR_NAME)));
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+fn scrollback_round_trip(store: &ScrollbackStore) -> Result<(), String> {
+    let text = "\x1b[2msmoke\x1b[0m\nscrollback";
+    store
+        .save("smoke-pane", text)
+        .map_err(|e| format!("scrollback save: {e}"))?;
+    let back = store
+        .load("smoke-pane")
+        .map_err(|e| format!("scrollback load: {e}"))?;
+    if back.as_deref() != Some(text) {
+        return Err(format!("scrollback came back as {back:?}"));
+    }
+    store
+        .delete("smoke-pane")
+        .map_err(|e| format!("scrollback delete: {e}"))?;
+    match store.load("smoke-pane") {
+        Ok(None) => Ok(()),
+        other => Err(format!(
+            "scrollback was still there after delete: {other:?}"
+        )),
+    }
 }
 
 fn window_hidden_result(visible: bool) -> Result<(), String> {
@@ -294,6 +337,7 @@ pub fn arm(app: &tauri::App) {
             let result = check_session(&handle, started + SMOKE_TIMEOUT)
                 .and_then(|()| check_window_effect(&handle))
                 .inspect(|()| check_fonts())
+                .and_then(|()| check_scrollback())
                 .and_then(|()| check_window_hidden(&handle));
             match result {
                 Ok(()) => {
@@ -380,6 +424,12 @@ pub fn deeplink_config_store(target: &DeepLinkTarget) -> ConfigStore {
 /// neither read nor written.
 pub fn deeplink_theme_store(target: &DeepLinkTarget) -> ThemeStore {
     ThemeStore::new(target.state_dir.join(THEMES_DIR_NAME))
+}
+
+/// The scrollback folder of the deep-link run: in the same folder, so the snapshots of the user are
+/// neither read nor written.
+pub fn deeplink_scrollback_store(target: &DeepLinkTarget) -> ScrollbackStore {
+    ScrollbackStore::new(target.state_dir.join(SCROLLBACK_DIR_NAME))
 }
 
 /// The mods folder of the deep-link run: in the same folder, so the mods of the user are neither
@@ -524,6 +574,27 @@ mod tests {
             deeplink_mod_store(&first).dir(),
             first.state_dir.join("mods")
         );
+        // And the scrollback snapshots.
+        assert_eq!(
+            deeplink_scrollback_store(&first).dir(),
+            first.state_dir.join("scrollback")
+        );
+    }
+
+    #[test]
+    fn the_scrollback_check_writes_only_inside_the_folder_it_is_given_and_cleans_up() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        let base = std::env::temp_dir().join(format!("noren-smoke-test-{}-{nanos}", process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        check_scrollback_in(&base).expect("the round trip works");
+        assert_eq!(
+            std::fs::read_dir(&base).unwrap().count(),
+            0,
+            "the check left something behind"
+        );
+        std::fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]

@@ -88,6 +88,25 @@ export interface Backend {
   /** Keeps a copy of the current `state.json` as `state.broken-<date>.json` and returns its path. */
   quarantineState(): Promise<string>;
   /**
+   * The scrollback snapshot saved for the pane `paneId` (`scrollback/<paneId>.txt` next to
+   * `state.json`), or `null` when the pane has none. The text is data from disk: cleaning it
+   * (`cleanSnapshot`) before it reaches a terminal is the caller's job. Rejects when `paneId` is not
+   * a pane id (`isScrollbackPaneId`: it becomes a file name), when the file is larger than
+   * `MAX_SCROLLBACK_BYTES` or cannot be read.
+   */
+  loadScrollback(paneId: string): Promise<string | null>;
+  /**
+   * Replaces the snapshot of the pane `paneId` with `text` atomically, exactly as given, and creates
+   * the folder when it is missing. Rejects, writing nothing, when `paneId` is not a pane id, when
+   * `text` is longer than `MAX_SCROLLBACK_BYTES` bytes of UTF-8 or the file cannot be written.
+   */
+  saveScrollback(paneId: string, text: string): Promise<void>;
+  /**
+   * Removes the snapshot of the pane `paneId`. A pane that has none is not an error. Rejects when
+   * `paneId` is not a pane id or the file cannot be removed.
+   */
+  deleteScrollback(paneId: string): Promise<void>;
+  /**
    * Text of the settings file `config.jsonc`, or `null` when there is none yet. Parsing and
    * validation are the caller's job (`parseConfigText`). Rejects when the file cannot be read.
    */

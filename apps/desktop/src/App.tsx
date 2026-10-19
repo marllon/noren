@@ -122,6 +122,8 @@ import { ModStyles } from "./ModStyles";
 import { useModFiles } from "./mods-store";
 import { importSchemeFile } from "./scheme-import";
 import { useProfiles, useProfilesProblem } from "./profiles-store";
+import { restoredScrollbackOf } from "./scrollback-restore";
+import { noteTerminalActivity, registerTerminalSnapshot } from "./scrollback-service";
 import type { TerminalDrawing, TerminalHandle } from "./TerminalView";
 import { useTerminalOptions, zoomTerminalFont } from "./terminal-options-store";
 import {
@@ -207,6 +209,22 @@ export interface NorenTestHook {
   configSaves(): number;
   /** The effects the app asked the window for, in order, with the scheme each was painted for. */
   windowEffectCalls(): { effect: string; scheme: string }[];
+  /** The scrollback snapshot files the backend holds now, by pane id. */
+  scrollbackFiles(): Record<string, string>;
+  /** Every call the backend got about a snapshot (read, write or remove), in order, with the pane. */
+  scrollbackCalls(): {
+    method: "loadScrollback" | "saveScrollback" | "deleteScrollback";
+    paneId: string;
+  }[];
+  /**
+   * Places the snapshot file of a pane as if somebody had put it there (`null` removes it). The web
+   * build keeps the files in the browser storage, so a reload finds them.
+   */
+  setScrollbackFile(paneId: string, text: string | null): void;
+  /** What the terminal of a pane would save now, before it is cleaned (empty for an unknown pane). */
+  paneSnapshot(paneId: string): string;
+  /** The text of the rows of a pane's terminal that are dimmed, whichever tab it is in. */
+  paneDimLines(paneId: string): string[];
 }
 
 declare global {
@@ -239,6 +257,9 @@ function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTermi
   const { profileId, cwd, env } = sessionStartOptions(space, pane);
   // Font, cursor, scrollback and bell: the settings of the file and the zoom of this window.
   const options = useTerminalOptions();
+  // The scrollback saved before this window opened, written by the terminal before the new shell
+  // prints (only a pane restored from a saved state has any).
+  const [restored] = useState(() => restoredScrollbackOf(pane.id));
   const [tracker] = useState(
     () =>
       new PaneLocationTracker({
@@ -262,10 +283,14 @@ function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTermi
       {...(profileId !== undefined ? { profileId } : {})}
       {...(cwd !== undefined ? { cwd } : {})}
       {...(env !== undefined ? { env } : {})}
+      {...(restored !== undefined ? { restored } : {})}
       onSessionStart={(id) => store.getState().attachSession(pane.id, String(id))}
       onReady={(handle) => onReady(pane.id, handle)}
       onCwd={recordFolder}
-      onOutput={(bytes) => tracker.feed(bytes)}
+      onOutput={(bytes) => {
+        tracker.feed(bytes);
+        noteTerminalActivity(pane.id);
+      }}
     />
   );
 }
@@ -924,6 +949,22 @@ function Shell({ store }: { store: WorkspaceStore }) {
             effect: String(call.args[0]),
             scheme: String(call.args[1]),
           })),
+        scrollbackFiles: () => ({ ...fake.scrollbackFiles }),
+        scrollbackCalls: () =>
+          fake.calls
+            .filter(
+              (call) =>
+                call.method === "loadScrollback" ||
+                call.method === "saveScrollback" ||
+                call.method === "deleteScrollback",
+            )
+            .map((call) => ({
+              method: call.method as "loadScrollback" | "saveScrollback" | "deleteScrollback",
+              paneId: String(call.args[0]),
+            })),
+        setScrollbackFile: (paneId, text) => fake.setScrollback(paneId, text),
+        paneSnapshot: (paneId) => handles.current.get(paneId)?.snapshot() ?? "",
+        paneDimLines: (paneId) => handles.current.get(paneId)?.dimLines() ?? [],
         killedSessions: () => fake.callsTo("kill").map((call) => Number(call.args[0])),
         userProfileSessions: () => {
           const started = fake.callsTo("createSession").length;
@@ -960,6 +1001,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
 
   const recordHandle = (paneId: Id, handle: TerminalHandle) => {
     handles.current.set(paneId, handle);
+    // The scrollback snapshot asks this terminal for its lines every minute and when the window closes.
+    registerTerminalSnapshot(paneId, () => handle.snapshot());
   };
 
   const onOpenFavorite = (favorite: ResolvedFavorite) => showTab(favorite.spaceId, favorite.id);

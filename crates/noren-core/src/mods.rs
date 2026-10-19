@@ -102,7 +102,7 @@ pub fn is_valid_mod_file_name(name: &str) -> bool {
 }
 
 /// Whether the part of `stem` before its first dot is a device name, in any case.
-fn is_reserved_name(stem: &str) -> bool {
+pub(crate) fn is_reserved_name(stem: &str) -> bool {
     let first = stem.split('.').next().unwrap_or(stem).to_ascii_lowercase();
     RESERVED_NAMES.contains(&first.as_str())
 }

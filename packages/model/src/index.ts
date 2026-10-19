@@ -169,6 +169,22 @@ export type { Direction, Rect } from "./geometry";
 export { reduce, validEnv } from "./reducer";
 export { restoreWorkspace } from "./restore";
 export type { RestoreOptions, RestoreResult } from "./restore";
+export {
+  DEFAULT_SAVE_SCROLLBACK,
+  MAX_SCROLLBACK_BYTES,
+  MAX_SNAPSHOT_LINE,
+  SCROLLBACK_SAVE_INTERVAL_MS,
+  SCROLLBACK_SAVE_LINES,
+  cleanSnapshot,
+  formatRestoreTime,
+  isScrollbackPaneId,
+  restoredMarker,
+  restoredTerminalText,
+  savesScrollback,
+  scrollbackAllowed,
+  scrollbackFileName,
+} from "./scrollback";
+export type { CleanSnapshotOptions } from "./scrollback";
 export { layoutPanes, liveSessionIds } from "./sessions";
 export { isPaneVisible, lastUnread, shownItem, visiblePanes } from "./unread";
 export type { PaneTarget } from "./unread";

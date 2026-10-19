@@ -258,6 +258,8 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       return endPaneCommand(ws, action);
     case "pane/notify":
       return notifyPane(ws, action, ctx);
+    case "pane/set-scrollback":
+      return setPaneScrollback(ws, action);
     case "pane/clear-unread":
       return clearUnread(ws, action);
     default:
@@ -1259,6 +1261,24 @@ function notifyPane(
     bell: pane.bell || bell,
     unreadAt: pane.unread ? (pane.unreadAt ?? ctx.clock.now()) : ctx.clock.now(),
   };
+  return replaceItem(ws, located.space, {
+    ...located.item,
+    layout: withPane(located.item.layout, next),
+  });
+}
+
+function setPaneScrollback(
+  ws: Workspace,
+  action: Extract<Action, { type: "pane/set-scrollback" }>,
+): Workspace {
+  const { ref } = action;
+  if (ref !== undefined && (typeof ref !== "string" || ref.trim() === "")) return ws;
+  const located = locate(ws, action.itemId);
+  const pane = located && findPane(located.item.layout, action.paneId);
+  if (!located || !pane || pane.scrollbackRef === ref) return ws;
+  const next: Pane = { ...pane };
+  delete next.scrollbackRef;
+  if (ref !== undefined) next.scrollbackRef = ref;
   return replaceItem(ws, located.space, {
     ...located.item,
     layout: withPane(located.item.layout, next),

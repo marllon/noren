@@ -400,6 +400,33 @@ describe("TauriBackend", () => {
     ]);
   });
 
+  it("loads, saves and deletes a scrollback snapshot through the scrollback commands, by pane id", async () => {
+    const fake = fakeBridge({ scrollback_load: "old text\nlines" });
+    const backend = new TauriBackend(fake.bridge);
+    await expect(backend.loadScrollback("pane-1")).resolves.toBe("old text\nlines");
+    await expect(backend.saveScrollback("pane-1", "new text")).resolves.toBeUndefined();
+    await expect(backend.deleteScrollback("pane-1")).resolves.toBeUndefined();
+    expect(fake.invocations).toEqual([
+      { command: "scrollback_load", args: { paneId: "pane-1" } },
+      { command: "scrollback_save", args: { paneId: "pane-1", content: "new text" } },
+      { command: "scrollback_delete", args: { paneId: "pane-1" } },
+    ]);
+  });
+
+  it("answers null for a pane with no snapshot", async () => {
+    const fake = fakeBridge({ scrollback_load: null });
+    await expect(new TauriBackend(fake.bridge).loadScrollback("pane-1")).resolves.toBeNull();
+  });
+
+  it("lets a refusal of the scrollback commands reach the caller", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    fake.failing.add("scrollback_load").add("scrollback_save").add("scrollback_delete");
+    await expect(backend.loadScrollback("../x")).rejects.toThrow("scrollback_load failed");
+    await expect(backend.saveScrollback("../x", "t")).rejects.toThrow("scrollback_save failed");
+    await expect(backend.deleteScrollback("../x")).rejects.toThrow("scrollback_delete failed");
+  });
+
   it("lets a theme_list and a theme_save failure reach the caller", async () => {
     const fake = fakeBridge();
     const backend = new TauriBackend(fake.bridge);

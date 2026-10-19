@@ -3,6 +3,7 @@
 
 mod bridge;
 mod deeplink;
+mod lifecycle;
 mod notify;
 mod smoke;
 mod window_effect;
@@ -10,7 +11,7 @@ mod window_effect;
 use tauri::{Manager, RunEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 
-use bridge::{AppState, BackgroundState, ConfigState, ModState, ThemeState};
+use bridge::{AppState, BackgroundState, ConfigState, ModState, ScrollbackState, ThemeState};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -47,6 +48,8 @@ fn main() {
     let app = builder
         .manage(AppState::detect())
         .manage(deeplink::Links::default())
+        .manage(lifecycle::CloseGate::default())
+        .on_window_event(lifecycle::on_window_event)
         .invoke_handler(tauri::generate_handler![
             bridge::profiles_list,
             bridge::profiles_set_user,
@@ -65,6 +68,11 @@ fn main() {
             bridge::config_watch,
             bridge::theme_list,
             bridge::theme_save,
+            bridge::scrollback_load,
+            bridge::scrollback_save,
+            bridge::scrollback_delete,
+            lifecycle::app_close_listening,
+            lifecycle::app_close_ready,
             bridge::mod_list,
             bridge::mod_watch,
             bridge::window_effect_set,
@@ -82,6 +90,9 @@ fn main() {
                     app.manage(smoke::deeplink_state_store(target));
                     app.manage(ConfigState::new(smoke::deeplink_config_store(target)));
                     app.manage(ThemeState::new(smoke::deeplink_theme_store(target)));
+                    app.manage(ScrollbackState::new(smoke::deeplink_scrollback_store(
+                        target,
+                    )));
                     app.manage(ModState::new(smoke::deeplink_mod_store(target)).without_watching());
                     app.manage(BackgroundState::new(smoke::deeplink_background_store(
                         target,
@@ -104,6 +115,14 @@ fn main() {
                         themes.without_writing()
                     } else {
                         themes
+                    });
+                    // The smoke run reads the scrollback snapshots of the user but never writes or
+                    // removes one.
+                    let scrollback = ScrollbackState::new(bridge::scrollback_store(app.handle())?);
+                    app.manage(if smoke {
+                        scrollback.without_writing()
+                    } else {
+                        scrollback
                     });
                     // The smoke run lists the mods of the user (a read) but does not watch the
                     // folder: watching would create it.

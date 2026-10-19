@@ -248,6 +248,8 @@ export interface TerminalSettings {
     | undefined;
   scrollback?: number | undefined;
   bell?: BellStyle | undefined;
+  /** Whether a snapshot of the scrollback of every pane is kept (see `scrollback.ts`). Default true. */
+  saveScrollback?: boolean | undefined;
 }
 
 /** What the terminal is given: every option has a value. */

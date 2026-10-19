@@ -147,6 +147,18 @@ export class TauriBackend implements Backend {
     return this.#bridge.invoke<string>("state_quarantine");
   }
 
+  loadScrollback(paneId: string): Promise<string | null> {
+    return this.#bridge.invoke<string | null>("scrollback_load", { paneId });
+  }
+
+  async saveScrollback(paneId: string, text: string): Promise<void> {
+    await this.#bridge.invoke("scrollback_save", { paneId, content: text });
+  }
+
+  async deleteScrollback(paneId: string): Promise<void> {
+    await this.#bridge.invoke("scrollback_delete", { paneId });
+  }
+
   loadConfig(): Promise<string | null> {
     return this.#bridge.invoke<string | null>("config_load");
   }

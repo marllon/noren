@@ -47,6 +47,13 @@ export const WEB_THEMES_KEY = "noren.web.themes";
 export const WEB_MODS_KEY = "noren.web.mods";
 
 /**
+ * Key of the scrollback snapshots in web mode (`scrollback/<paneId>.txt` of the real app): a JSON
+ * object from the pane id to the text of its file. Saving a snapshot writes it, so a reload finds it
+ * again; the e2e tests can seed it before the page loads.
+ */
+export const WEB_SCROLLBACK_KEY = "noren.web.scrollback";
+
+/**
  * Key of the window effects this page pretends the system can paint, in web mode: a JSON list of
  * effect names (`["mica"]`). A browser paints none, so without it every effect falls back to an
  * opaque window with a reason, as the desktop app does on a system without the effect. The e2e
@@ -93,6 +100,25 @@ export function seededUserThemes(
     const files: Record<string, string> = {};
     for (const [id, text] of Object.entries(value)) {
       if (typeof text === "string") files[id] = text;
+    }
+    return files;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The snapshots seeded under `WEB_SCROLLBACK_KEY` (pane id to text), or `undefined` when there is no usable seed. */
+export function seededScrollback(
+  storage: Pick<Storage, "getItem">,
+): Record<string, string> | undefined {
+  try {
+    const raw = storage.getItem(WEB_SCROLLBACK_KEY);
+    if (raw === null) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    const files: Record<string, string> = {};
+    for (const [paneId, text] of Object.entries(value)) {
+      if (typeof text === "string") files[paneId] = text;
     }
     return files;
   } catch {
@@ -222,11 +248,13 @@ export class WebBackend extends FakeBackend {
     const userThemes = seededUserThemes(storage);
     const mods = seededMods(storage);
     const images = seededImages(storage);
+    const scrollback = seededScrollback(storage);
     super({
       ...(profiles !== undefined ? { profiles } : {}),
       ...(userThemes !== undefined ? { userThemes } : {}),
       ...(mods !== undefined ? { mods } : {}),
       ...(images !== undefined ? { images } : {}),
+      ...(scrollback !== undefined ? { scrollback } : {}),
       windowEffects: seededWindowEffects(storage),
       config: seededConfig(storage),
     });
@@ -269,6 +297,21 @@ export class WebBackend extends FakeBackend {
       // Storage is blocked or full: the memory copy still serves this page load.
     }
     super.putUserTheme(id, text);
+  }
+
+  /** Like the fake one, and kept under `WEB_SCROLLBACK_KEY` so a reload finds the same files. */
+  protected override putScrollback(paneId: string, text: string | null): void {
+    try {
+      const others = Object.entries(seededScrollback(this.#storage) ?? {}).filter(
+        ([known]) => known !== paneId,
+      );
+      const files = Object.fromEntries(text === null ? others : [...others, [paneId, text]]);
+      if (Object.keys(files).length === 0) this.#storage.removeItem(WEB_SCROLLBACK_KEY);
+      else this.#storage.setItem(WEB_SCROLLBACK_KEY, JSON.stringify(files));
+    } catch {
+      // Storage is blocked or full: the memory copy still serves this page load.
+    }
+    super.putScrollback(paneId, text);
   }
 
   /** Like the fake one, and kept under `WEB_MODS_KEY` so a reload finds the same files. */

@@ -3,6 +3,7 @@ import type { Node as JsonNode, ParseError } from "jsonc-parser";
 import { z } from "zod";
 import { MAX_BACKGROUND_BLUR, MAX_BACKGROUND_PATH, backgroundImageProblem } from "./background";
 import { MAX_MODS, MOD_FILE_NAME_PATTERN, isReservedModName } from "./mods";
+import { DEFAULT_SAVE_SCROLLBACK, SCROLLBACK_SAVE_LINES } from "./scrollback";
 import {
   BELL_STYLES,
   CURSOR_STYLES,
@@ -192,6 +193,11 @@ const terminalSchema = z
       z.enum(BELL_STYLES),
       'What the terminal does when a program rings the bell: "none", "visual" (the pane flashes), "sound" (a short beep) or "both". The tab is marked as unread whichever it is.',
       DEFAULT_BELL_STYLE,
+    ),
+    saveScrollback: setting(
+      z.boolean(),
+      `Keeps the last ${SCROLLBACK_SAVE_LINES.toLocaleString("en-US")} lines of every pane when Noren closes and every minute while the pane is in use, and shows them again, dimmed, when the pane opens. false never saves any scrollback, in any space, and removes the files already saved. A space can turn it off for itself too.`,
+      DEFAULT_SAVE_SCROLLBACK,
     ),
   })
   .meta({ description: "The terminal: its font, cursor, scrollback and bell." });

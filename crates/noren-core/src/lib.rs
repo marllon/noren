@@ -9,6 +9,7 @@ pub mod mods;
 pub mod profiles;
 pub mod project;
 pub mod pty;
+pub mod scrollback;
 pub mod store;
 pub mod themes;
 pub mod window;
@@ -31,6 +32,9 @@ pub use profiles::{
 };
 pub use project::{ACTIONS_FILE_PATH, ShortRunError, read_project_file, run_short};
 pub use pty::{ExitInfo, PtyError, SessionEvent, SessionId, SessionManager, SpawnSpec};
+pub use scrollback::{
+    MAX_SCROLLBACK_BYTES, SCROLLBACK_DIR_NAME, ScrollbackError, ScrollbackStore, is_valid_pane_id,
+};
 pub use store::{StateStore, StoreError};
 pub use themes::{THEMES_DIR_NAME, ThemeError, ThemeStore, is_valid_theme_id};
 pub use window::{EffectOutcome, WindowEffect, WindowPainter, apply_effect};

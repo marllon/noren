@@ -1,14 +1,19 @@
-import { SystemNotifier, restoreWorkspace } from "@noren/model";
+import { SystemNotifier, restoreWorkspace, scrollbackAllowed } from "@noren/model";
 import type { Backend } from "@noren/model";
-import { createBackend } from "./backend";
+import { createBackend, insideTauri } from "./backend";
 import { startBackgroundImages } from "./background-image-store";
+import { followWindowClose } from "./close-handler";
 import { configManager } from "./config-store";
 import { loadHome } from "./home";
+import { realClock } from "./real-clock";
 import { migrateLegacySettings } from "./legacy-settings";
 import type { LegacyStorageArea } from "./legacy-settings";
 import { startMods } from "./mods-store";
 import { notificationSettings } from "./notification-settings";
 import { getProfiles, startProfiles } from "./profiles-store";
+import { loadScrollbackForRestore, setRestoredScrollback } from "./scrollback-restore";
+import { clearStaleSnapshots, scrollbackClock, startScrollback } from "./scrollback-service";
+import { tauriBridge } from "./tauri-backend";
 import { followActiveSpaceMods } from "./use-mods";
 import { followActiveSpaceTheme } from "./use-theme";
 import { followActiveSpaceBackground } from "./use-window";
@@ -67,6 +72,13 @@ export async function bootWorkspace(
       return { ok: false, error: "No shell was found on this machine." };
     }
     const restored = await restoreWorkspace(target, { defaults: { newId, clock } });
+    // The scrollback saved before: read now, so the terminal of each pane can write it, dimmed and
+    // above the new shell, when it mounts. A snapshot that cannot be read leaves the pane without it.
+    const snapshots = await loadScrollbackForRestore(target, restored.workspace, {
+      enabled: scrollbackAllowed(configManager.state.config.terminal),
+      now: clock.now(),
+    }).catch(() => undefined);
+    setRestoredScrollback(snapshots?.texts ?? new Map());
     const home = await loadHome();
     const store = createWorkspaceStore({
       backend: target,
@@ -78,6 +90,29 @@ export async function bootWorkspace(
       // A failed notification (the system refused) is not worth an error on screen.
       notifier: new SystemNotifier({ backend: target, settings: notificationSettings }),
     });
+    // The snapshots of the scrollback: every minute for the panes with activity, and when the window
+    // closes. This listens to the closing before the state is flushed below, so the notes it makes on
+    // the panes are in the state that is written then.
+    const saver = startScrollback({
+      store,
+      backend: target,
+      clock: scrollbackClock(target),
+      events,
+    });
+    if (snapshots !== undefined) void clearStaleSnapshots(store, target, snapshots.stale);
+    // In the app, closing the window waits for the page to save (the unload events below are not
+    // enough: a call made while the window is torn down may never leave). The snapshots are started
+    // first, which notes the files on the panes, so the state flushed with them has the notes.
+    if (insideTauri) {
+      followWindowClose(
+        tauriBridge(),
+        async () => {
+          const snapshotsSaved = saver.flush();
+          await Promise.all([snapshotsSaved, store.getState().flush()]);
+        },
+        realClock,
+      ).catch(() => undefined);
+    }
     // The window shows the theme of the active space, if it has one, from the first frame.
     followActiveSpaceTheme(store);
     // And the mods of the active space.

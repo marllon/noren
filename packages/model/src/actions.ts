@@ -253,6 +253,13 @@ export type Action =
    */
   | { type: "pane/notify"; itemId: Id; paneId: Id; bell?: boolean }
   /**
+   * Records that the pane has a scrollback snapshot on disk (`ref` is the name of its file, see
+   * `scrollbackFileName`), or that it no longer has one (`ref` absent). It is only a note of where
+   * the file is: the file itself is never found through it. A blank `ref`, an unknown pane or a
+   * note the pane already has leave the workspace as it is.
+   */
+  | { type: "pane/set-scrollback"; itemId: Id; paneId: Id; ref?: string }
+  /**
    * Clears the unread and bell marks of `paneId`, or of every pane of the item without it. Nothing
    * to clear leaves the workspace as it is. Showing a pane clears it without this action (see
    * `reduce`).

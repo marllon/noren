@@ -11,9 +11,10 @@ use std::time::Duration;
 
 use noren_core::{
     ACTIONS_FILE_PATH, BackgroundStore, CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, GitHead,
-    MODS_DIR_NAME, ModFile, ModStore, ModWatcher, Profile, ProfileSet, SessionEvent, SessionId,
-    SessionManager, SpawnSpec, StateStore, THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect,
-    detect_system_profiles, read_head, read_project_file, run_short,
+    MODS_DIR_NAME, ModFile, ModStore, ModWatcher, Profile, ProfileSet, SCROLLBACK_DIR_NAME,
+    ScrollbackStore, SessionEvent, SessionId, SessionManager, SpawnSpec, StateStore,
+    THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect, detect_system_profiles, read_head,
+    read_project_file, run_short,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -500,6 +501,90 @@ pub async fn theme_save(
     content: String,
 ) -> Result<(), String> {
     state.save(&id, &content)
+}
+
+/// The folder of the scrollback snapshots of the panes, next to `state.json`.
+pub struct ScrollbackState {
+    pub store: ScrollbackStore,
+    writing_allowed: bool,
+}
+
+impl ScrollbackState {
+    pub fn new(store: ScrollbackStore) -> Self {
+        Self {
+            store,
+            writing_allowed: true,
+        }
+    }
+
+    /// The same, but `save` and `delete` refuse: the smoke run must leave the files of the user as
+    /// they are. Loading still works (it only reads, and never creates the folder).
+    pub fn without_writing(mut self) -> Self {
+        self.writing_allowed = false;
+        self
+    }
+
+    /// The snapshot of the pane, or `None` when it has none (see [`ScrollbackStore::load`]).
+    pub fn load(&self, pane_id: &str) -> Result<Option<String>, String> {
+        self.store.load(pane_id).map_err(|e| e.to_string())
+    }
+
+    /// Writes the snapshot of the pane atomically. Refuses an id that is not a pane id and a text
+    /// over the size limit.
+    pub fn save(&self, pane_id: &str, text: &str) -> Result<(), String> {
+        if !self.writing_allowed {
+            return Err("this run does not write scrollback files".to_owned());
+        }
+        self.store.save(pane_id, text).map_err(|e| e.to_string())
+    }
+
+    /// Removes the snapshot of the pane; a pane with none is not an error.
+    pub fn delete(&self, pane_id: &str) -> Result<(), String> {
+        if !self.writing_allowed {
+            return Err("this run does not remove scrollback files".to_owned());
+        }
+        self.store.delete(pane_id).map_err(|e| e.to_string())
+    }
+}
+
+/// Builds the store for the snapshots: the `scrollback` folder inside the app data folder, next to
+/// `state.json`. Only resolves the path: the folder is created when a snapshot is first saved.
+pub fn scrollback_store(app: &AppHandle) -> Result<ScrollbackStore, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("could not find the app data folder: {e}"))?;
+    Ok(ScrollbackStore::new(dir.join(SCROLLBACK_DIR_NAME)))
+}
+
+/// The scrollback snapshot of a pane as text, or `null` when it has none. The interface cleans it
+/// before it reaches a terminal: what is on disk is not trusted.
+#[tauri::command(rename_all = "camelCase")]
+pub async fn scrollback_load(
+    state: State<'_, ScrollbackState>,
+    pane_id: String,
+) -> Result<Option<String>, String> {
+    state.load(&pane_id)
+}
+
+/// Writes `scrollback/<paneId>.txt` atomically with `content`, creating the folder when there is
+/// none. The pane id becomes a file name, so one that is not a pane id is refused.
+#[tauri::command(rename_all = "camelCase")]
+pub async fn scrollback_save(
+    state: State<'_, ScrollbackState>,
+    pane_id: String,
+    content: String,
+) -> Result<(), String> {
+    state.save(&pane_id, &content)
+}
+
+/// Removes the snapshot of a pane. A pane with none is not an error.
+#[tauri::command(rename_all = "camelCase")]
+pub async fn scrollback_delete(
+    state: State<'_, ScrollbackState>,
+    pane_id: String,
+) -> Result<(), String> {
+    state.delete(&pane_id)
 }
 
 /// The pictures a background can be, read from an absolute path or from inside the config folder.
@@ -1310,6 +1395,70 @@ mod tests {
     }
 
     #[test]
+    fn scrollback_state_saves_loads_and_deletes_through_its_store() {
+        let dir = TempDir::new("scrollback-round-trip");
+        let folder = dir.0.join("not-yet").join(SCROLLBACK_DIR_NAME);
+        let state = ScrollbackState::new(ScrollbackStore::new(&folder));
+        assert_eq!(state.load("pane-1"), Ok(None));
+        assert!(!folder.exists(), "loading created the scrollback folder");
+        state.delete("pane-1").expect("deleting nothing is fine");
+        assert!(!folder.exists(), "deleting created the scrollback folder");
+
+        state
+            .save("pane-1", "\u{1b}[2mold output\u{1b}[0m\n")
+            .expect("save");
+        assert_eq!(
+            std::fs::read_to_string(folder.join("pane-1.txt")).expect("read"),
+            "\u{1b}[2mold output\u{1b}[0m\n"
+        );
+        assert_eq!(
+            state.load("pane-1"),
+            Ok(Some("\u{1b}[2mold output\u{1b}[0m\n".to_owned()))
+        );
+        state.delete("pane-1").expect("delete");
+        assert_eq!(state.load("pane-1"), Ok(None));
+    }
+
+    #[test]
+    fn scrollback_save_refuses_an_id_that_is_a_path_and_a_text_that_is_too_large() {
+        let dir = TempDir::new("scrollback-bad-id");
+        let folder = dir.0.join(SCROLLBACK_DIR_NAME);
+        let state = ScrollbackState::new(ScrollbackStore::new(&folder));
+        let message = state.save("../config", "x").expect_err("refused");
+        assert_eq!(message, "'../config' is not a valid pane id");
+        assert!(state.load("../config").is_err());
+        assert!(state.delete("../config").is_err());
+        let too_large = "x".repeat(5 * 1024 * 1024);
+        let message = state.save("pane-1", &too_large).expect_err("refused");
+        assert!(message.contains("a snapshot is at most"), "{message}");
+        assert!(!folder.exists());
+        assert!(!dir.0.join("config.txt").exists());
+    }
+
+    #[test]
+    fn scrollback_state_without_writing_loads_but_does_not_write_or_delete() {
+        // The smoke run: saving would make the folder and the file of the user, and deleting would
+        // remove one.
+        let dir = TempDir::new("scrollback-no-write");
+        let folder = dir.0.join("not-yet");
+        let state = ScrollbackState::new(ScrollbackStore::new(&folder)).without_writing();
+        let message = state.save("pane-1", "x").expect_err("the save is refused");
+        assert!(message.contains("does not write"));
+        let message = state.delete("pane-1").expect_err("the delete is refused");
+        assert!(message.contains("does not remove"));
+        assert!(!folder.exists(), "the scrollback folder was created");
+        assert_eq!(state.load("pane-1"), Ok(None));
+
+        // What is already there still reads, and stays.
+        std::fs::create_dir_all(&folder).expect("folder");
+        std::fs::write(folder.join("pane-2.txt"), "kept").expect("write");
+        let state = ScrollbackState::new(ScrollbackStore::new(&folder)).without_writing();
+        assert_eq!(state.load("pane-2"), Ok(Some("kept".to_owned())));
+        assert!(state.delete("pane-2").is_err());
+        assert!(folder.join("pane-2.txt").is_file());
+    }
+
+    #[test]
     fn mod_state_lists_the_files_without_making_the_folder() {
         let dir = TempDir::new("mods-list");
         let folder = dir.0.join("not-yet").join(MODS_DIR_NAME);
@@ -1428,10 +1577,16 @@ mod tests {
 
         let app = mock_builder()
             .manage(BackgroundState::new(BackgroundStore::new(pictures)))
+            .manage(ScrollbackState::new(ScrollbackStore::new(
+                pictures.join(SCROLLBACK_DIR_NAME),
+            )))
             .invoke_handler(tauri::generate_handler![
                 background_image_read,
                 fonts_list_monospace,
-                window_effect_set
+                window_effect_set,
+                scrollback_save,
+                scrollback_load,
+                scrollback_delete
             ])
             .build(mock_context(noop_assets()))
             .expect("build the mock app");
@@ -1532,6 +1687,73 @@ mod tests {
             let text = refusal.as_str().unwrap_or_default();
             assert!(text.contains(words), "{path}: {refusal}");
         }
+    }
+
+    #[test]
+    fn the_page_saves_loads_and_deletes_a_snapshot_through_the_commands() {
+        let dir = TempDir::new("scrollback-command");
+        let text = "\u{1b}[2mold\u{1b}[0m\nlines \u{e9}";
+        call_command(
+            "scrollback_save",
+            serde_json::json!({ "paneId": "pane-1", "content": text }),
+            &dir.0,
+        )
+        .expect("save");
+        assert_eq!(
+            std::fs::read_to_string(dir.0.join(SCROLLBACK_DIR_NAME).join("pane-1.txt"))
+                .expect("the file"),
+            text
+        );
+        let answer = call_command(
+            "scrollback_load",
+            serde_json::json!({ "paneId": "pane-1" }),
+            &dir.0,
+        )
+        .expect("load");
+        let InvokeResponseBody::Json(json) = answer else {
+            panic!("a raw answer for text");
+        };
+        assert_eq!(
+            serde_json::from_str::<Option<String>>(&json).expect("text or null"),
+            Some(text.to_owned())
+        );
+
+        call_command(
+            "scrollback_delete",
+            serde_json::json!({ "paneId": "pane-1" }),
+            &dir.0,
+        )
+        .expect("delete");
+        let answer = call_command(
+            "scrollback_load",
+            serde_json::json!({ "paneId": "pane-1" }),
+            &dir.0,
+        )
+        .expect("load again");
+        let InvokeResponseBody::Json(json) = answer else {
+            panic!("a raw answer for null");
+        };
+        assert_eq!(json, "null");
+    }
+
+    #[test]
+    fn the_snapshot_commands_refuse_an_id_that_is_a_path_with_a_sentence() {
+        let dir = TempDir::new("scrollback-command-refused");
+        for command in ["scrollback_save", "scrollback_load", "scrollback_delete"] {
+            let refusal = call_command(
+                command,
+                serde_json::json!({ "paneId": "../escape", "content": "x" }),
+                &dir.0,
+            )
+            .expect_err(command);
+            assert_eq!(
+                refusal.as_str(),
+                Some("'../escape' is not a valid pane id"),
+                "{command}"
+            );
+        }
+        assert!(!dir.0.join("escape.txt").exists());
+        assert!(!dir.0.join(SCROLLBACK_DIR_NAME).exists());
     }
 
     #[test]

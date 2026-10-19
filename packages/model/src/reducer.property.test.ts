@@ -56,6 +56,7 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "pane/command-start": true,
   "pane/command-end": true,
   "pane/notify": true,
+  "pane/set-scrollback": true,
   "pane/clear-unread": true,
 };
 const TYPES = Object.keys(ACTION_TYPES) as ActionType[];
@@ -82,6 +83,7 @@ const PANE_ACTIONS = new Set<ActionType>([
   "pane/command-start",
   "pane/command-end",
   "pane/notify",
+  "pane/set-scrollback",
   "pane/clear-unread",
 ]);
 
@@ -177,6 +179,7 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "pane/command-start":
     case "pane/command-end":
     case "pane/notify":
+    case "pane/set-scrollback":
       return !hasPane(ws, action.itemId, action.paneId);
     case "pane/clear-unread":
       return (
@@ -308,6 +311,7 @@ function checkPaneDelta(ws: Workspace, next: Workspace, action: Action, where: (
     case "pane/command-start":
     case "pane/command-end":
     case "pane/notify":
+    case "pane/set-scrollback":
     case "pane/clear-unread": {
       // The same panes, only arranged differently, and every session still there.
       const sessions = liveSessionIds(next);

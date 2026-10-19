@@ -15,6 +15,7 @@ import type { Clock } from "./clock";
 import { sameFolder } from "./deep-link";
 import { MAX_MOD_BYTES, MAX_MODS, isValidModFileName } from "./mods";
 import { OutputStream } from "./output-stream";
+import { MAX_SCROLLBACK_BYTES, isScrollbackPaneId } from "./scrollback";
 import { fontNameList } from "./terminal-options";
 import { THEME_ID_PATTERN } from "./theme";
 import { profilesProblem } from "./user-profile-schema";
@@ -73,6 +74,8 @@ export interface FakeBackendOptions {
   userThemes?: Record<string, string>;
   /** Initial mod files of the user, by file name (the text of `mods/<name>.css`). */
   mods?: Record<string, string>;
+  /** Initial scrollback snapshots, by pane id (the text of `scrollback/<paneId>.txt`). */
+  scrollback?: Record<string, string>;
   /** The window effects this fake system can paint. Defaults to none: every effect falls back to opaque. */
   windowEffects?: readonly WindowEffect[];
   /** Picture files by path (as `readBackgroundImage` is asked for them). */
@@ -435,6 +438,10 @@ class FakeSession {
  * - the mod files of the user live in memory: `setMod` puts a file there, edits it or removes it as
  *   a person with an editor would, and tells whoever called `watchMods`; `listMods` answers the
  *   ones the real folder would list (a valid name, not too large, at most `MAX_MODS`) by name
+ * - the scrollback snapshots live in memory: `saveScrollback` writes one as the app does (a pane id
+ *   that is not a file name or a text over the limit is refused, as the real one refuses them),
+ *   `setScrollback` puts a file there as if it had been placed by hand, `loadScrollback` and
+ *   `deleteScrollback` read and remove one; `scrollbackFiles` shows the files as they are
  * - the profiles of the user (`setUserProfiles`) are checked as the real backend checks them and
  *   listed after the profiles it was built with; a session of one starts in its `cwd` unless the call
  *   names a folder, and `session(id)` tells the `program` and `args` it was asked to run
@@ -461,12 +468,14 @@ export class FakeBackend implements Backend {
   readonly #configListeners = new Set<(text: string | null) => void>();
   readonly #userThemes = new Map<string, string>();
   readonly #mods = new Map<string, string>();
+  readonly #scrollback = new Map<string, string>();
   readonly #modListeners = new Set<(files: ModFile[]) => void>();
   readonly #windowEffects: Set<WindowEffect>;
   #appliedEffect: WindowEffect = "none";
   readonly #images = new Map<string, Uint8Array>();
   #monospaceFonts: readonly string[];
   #modListFailure: Error | undefined;
+  #scrollbackFailure: Error | undefined;
   #userThemeSaveFailure: Error | undefined;
   #config: string | null;
   #configSaveFailure: Error | undefined;
@@ -485,6 +494,9 @@ export class FakeBackend implements Backend {
     }
     for (const [name, text] of Object.entries(options.mods ?? {})) {
       this.#mods.set(name, text);
+    }
+    for (const [paneId, text] of Object.entries(options.scrollback ?? {})) {
+      this.#scrollback.set(paneId, text);
     }
     this.#windowEffects = new Set(options.windowEffects ?? []);
     for (const [path, bytes] of Object.entries(options.images ?? {})) {
@@ -705,6 +717,58 @@ export class FakeBackend implements Backend {
     if (this.#state === null) throw new Error("there is no state file to quarantine");
     this.#quarantined.push(this.#state);
     return `state.broken-${this.#quarantined.length}.json`;
+  }
+
+  async loadScrollback(paneId: string): Promise<string | null> {
+    this.#record("loadScrollback", paneId);
+    this.#checkPaneId(paneId);
+    return this.#scrollback.get(paneId) ?? null;
+  }
+
+  async saveScrollback(paneId: string, text: string): Promise<void> {
+    this.#record("saveScrollback", paneId, text);
+    this.#checkPaneId(paneId);
+    if (encodeUtf8(text).length > MAX_SCROLLBACK_BYTES) {
+      throw new Error(`the scrollback is too large; a snapshot is at most ${MAX_SCROLLBACK_BYTES}`);
+    }
+    if (this.#scrollbackFailure) throw this.#scrollbackFailure;
+    this.putScrollback(paneId, text);
+  }
+
+  async deleteScrollback(paneId: string): Promise<void> {
+    this.#record("deleteScrollback", paneId);
+    this.#checkPaneId(paneId);
+    if (this.#scrollbackFailure) throw this.#scrollbackFailure;
+    this.putScrollback(paneId, null);
+  }
+
+  /**
+   * Puts the snapshot file of `paneId` in place with `text` (`null` removes it), as if somebody had
+   * placed it by hand. Not a `Backend` call, so it is not recorded. A backend that keeps the files
+   * somewhere else (the web one) overrides `putScrollback` to keep them there.
+   */
+  setScrollback(paneId: string, text: string | null): void {
+    this.putScrollback(paneId, text);
+  }
+
+  /** Where the snapshot files are kept in this backend; the web one keeps them in the storage too. */
+  protected putScrollback(paneId: string, text: string | null): void {
+    if (text === null) this.#scrollback.delete(paneId);
+    else this.#scrollback.set(paneId, text);
+  }
+
+  /** The snapshot files as they are now, by pane id. */
+  get scrollbackFiles(): Readonly<Record<string, string>> {
+    return Object.fromEntries(this.#scrollback);
+  }
+
+  /** Makes `saveScrollback` and `deleteScrollback` reject with `error` (the disk refused); `undefined` undoes it. */
+  setScrollbackFailure(error: Error | undefined): void {
+    this.#scrollbackFailure = error;
+  }
+
+  #checkPaneId(paneId: string): void {
+    if (!isScrollbackPaneId(paneId)) throw new Error(`'${paneId}' is not a valid pane id`);
   }
 
   async loadConfig(): Promise<string | null> {

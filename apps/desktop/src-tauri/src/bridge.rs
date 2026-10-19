@@ -6,13 +6,13 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use noren_core::{
-    ACTIONS_FILE_PATH, CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, GitHead, ProfileSet,
+    ACTIONS_FILE_PATH, CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, GitHead, Profile, ProfileSet,
     SessionEvent, SessionId, SessionManager, SpawnSpec, StateStore, THEMES_DIR_NAME, ThemeStore,
-    detect_system_profiles, read_head, read_project_file, run_short,
+    UserProfile, detect_system_profiles, read_head, read_project_file, run_short,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -29,19 +29,66 @@ pub const INTEGRATION_RESOURCE_DIR: &str = "resources/shell-integration";
 /// Name of the event emitted when a session's child ended and all its output was delivered.
 pub const SESSION_EXIT_EVENT: &str = "session-exit";
 
-/// State managed by Tauri: every PTY session and the shell profiles found on this machine.
+/// State managed by Tauri: every PTY session and the shell profiles: the ones found on this machine,
+/// and the ones the user defined (`profiles` of `config.jsonc`), which the interface hands over.
 pub struct AppState {
     pub sessions: SessionManager,
-    pub profiles: ProfileSet,
+    /// The shells found on this machine, detected once.
+    detected: ProfileSet,
+    /// The detected shells followed by the profiles of the user: what is listed and what starts.
+    profiles: RwLock<ProfileSet>,
+}
+
+/// What a `%NAME%` in a profile of the user is replaced with: the environment of the process.
+fn process_env(name: &str) -> Option<String> {
+    std::env::var(name).ok()
 }
 
 impl AppState {
-    /// Detects the system profiles (once) and starts with no session.
+    /// Detects the system profiles (once) and starts with no session and no profile of the user.
     pub fn detect() -> Self {
+        Self::with_detected(detect_system_profiles())
+    }
+
+    /// The same around profiles already known (a test builds its own).
+    pub fn with_detected(detected: ProfileSet) -> Self {
         Self {
             sessions: SessionManager::new(),
-            profiles: detect_system_profiles(),
+            profiles: RwLock::new(detected.clone()),
+            detected,
         }
+    }
+
+    /// The profile `id`, or the default one for `None`.
+    pub fn find_profile(&self, id: Option<&str>) -> Result<Profile, String> {
+        let profiles = self.profiles.read().unwrap_or_else(|e| e.into_inner());
+        match id {
+            Some(id) => profiles
+                .get(id)
+                .cloned()
+                .ok_or_else(|| format!("unknown shell profile '{id}'")),
+            None => profiles
+                .default_profile()
+                .cloned()
+                .ok_or_else(|| "no shell profile was found on this machine".to_owned()),
+        }
+    }
+
+    /// Every profile, the detected ones first, as the interface lists them.
+    pub fn list_profiles(&self) -> Vec<ProfileDto> {
+        profile_dtos(&self.profiles.read().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    /// Replaces the profiles of the user. The whole list is refused, and the profiles stay as they
+    /// were, when one is not valid (an empty program, for one), an id repeats or an id is one of the
+    /// shells found on this machine.
+    pub fn set_user_profiles(&self, user: &[UserProfile]) -> Result<(), String> {
+        let joined = self
+            .detected
+            .with_user_profiles(user, &process_env)
+            .map_err(|e| e.to_string())?;
+        *self.profiles.write().unwrap_or_else(|e| e.into_inner()) = joined;
+        Ok(())
     }
 }
 
@@ -52,6 +99,30 @@ pub struct ProfileDto {
     pub name: String,
     #[serde(rename = "default")]
     pub is_default: bool,
+}
+
+/// A profile of the user as the interface sends it (an entry of `profiles` in `config.jsonc`).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct UserProfileDto {
+    pub id: String,
+    pub name: String,
+    pub program: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub cwd: Option<String>,
+}
+
+impl From<UserProfileDto> for UserProfile {
+    fn from(dto: UserProfileDto) -> Self {
+        Self {
+            id: dto.id,
+            name: dto.name,
+            program: dto.program,
+            args: dto.args,
+            cwd: dto.cwd,
+        }
+    }
 }
 
 /// Payload of the `session-exit` event.
@@ -83,7 +154,8 @@ impl WriteData {
 ///
 /// An empty `cwd` means "not set". A `cwd` that is not an existing folder is an error here,
 /// before any process is started, so the interface gets a clear message instead of a shell that
-/// silently opens somewhere else (or fails to start).
+/// silently opens somewhere else (or fails to start). The same goes for the folder the profile
+/// itself carries (`spec.cwd`) when no `cwd` is given; a given `cwd` replaces it.
 pub fn apply_session_options(
     mut spec: SpawnSpec,
     cwd: Option<&str>,
@@ -97,6 +169,13 @@ pub fn apply_session_options(
             ));
         }
         spec.cwd = Some(path.to_owned());
+    } else if let Some(path) = &spec.cwd
+        && !path.is_dir()
+    {
+        return Err(format!(
+            "working directory '{}' does not exist or is not a folder",
+            path.display()
+        ));
     }
     if let Some(env) = env {
         let mut pairs: Vec<(String, String)> = env.into_iter().collect();
@@ -150,16 +229,7 @@ pub fn create_session(
     rows: u16,
     output: Channel<InvokeResponseBody>,
 ) -> Result<(u64, String), String> {
-    let profile = match profile_id {
-        Some(id) => state
-            .profiles
-            .get(id)
-            .ok_or_else(|| format!("unknown shell profile '{id}'"))?,
-        None => state
-            .profiles
-            .default_profile()
-            .ok_or_else(|| "no shell profile was found on this machine".to_owned())?,
-    };
+    let profile = state.find_profile(profile_id)?;
 
     let spec = apply_session_options(
         profile.spawn_spec_with_integration(cols, rows, integration_dir(app).as_deref()),
@@ -202,7 +272,18 @@ pub fn create_session(
 
 #[tauri::command]
 pub fn profiles_list(state: State<'_, AppState>) -> Vec<ProfileDto> {
-    profile_dtos(&state.profiles)
+    state.list_profiles()
+}
+
+/// Takes the profiles of the user from the interface, replacing the ones it had. Refused as a whole
+/// (with the reason) when one of them is not valid; see [`AppState::set_user_profiles`].
+#[tauri::command]
+pub fn profiles_set_user(
+    state: State<'_, AppState>,
+    profiles: Vec<UserProfileDto>,
+) -> Result<(), String> {
+    let user: Vec<UserProfile> = profiles.into_iter().map(UserProfile::from).collect();
+    state.set_user_profiles(&user)
 }
 
 // The arguments are the named fields of the IPC call, so they stay flat.
@@ -516,8 +597,238 @@ mod tests {
             name: name.to_owned(),
             program: format!("/bin/{id}"),
             args: Vec::new(),
+            cwd: None,
             inject_integration: true,
         }
+    }
+
+    fn detected_state() -> AppState {
+        AppState::with_detected(ProfileSet {
+            profiles: vec![
+                profile("pwsh", "PowerShell"),
+                profile("cmd", "Command Prompt"),
+            ],
+            default_id: Some("pwsh".to_owned()),
+        })
+    }
+
+    fn user(id: &str, program: &str) -> UserProfile {
+        UserProfile {
+            id: id.to_owned(),
+            name: format!("Name of {id}"),
+            program: program.to_owned(),
+            args: Vec::new(),
+            cwd: None,
+        }
+    }
+
+    fn listed(state: &AppState) -> Vec<(String, bool)> {
+        state
+            .list_profiles()
+            .into_iter()
+            .map(|p| (p.id, p.is_default))
+            .collect()
+    }
+
+    #[test]
+    fn the_list_has_the_detected_profiles_then_the_ones_of_the_user() {
+        let state = detected_state();
+        assert_eq!(
+            listed(&state),
+            [("pwsh".to_owned(), true), ("cmd".to_owned(), false)]
+        );
+        state
+            .set_user_profiles(&[user("dev-shell", "sh"), user("other", "sh")])
+            .expect("valid");
+        assert_eq!(
+            listed(&state),
+            [
+                ("pwsh".to_owned(), true),
+                ("cmd".to_owned(), false),
+                ("dev-shell".to_owned(), false),
+                ("other".to_owned(), false),
+            ]
+        );
+        assert_eq!(
+            state.list_profiles()[2],
+            ProfileDto {
+                id: "dev-shell".into(),
+                name: "Name of dev-shell".into(),
+                is_default: false
+            }
+        );
+        // The next list replaces the whole one.
+        state
+            .set_user_profiles(&[user("other", "sh")])
+            .expect("valid");
+        assert_eq!(state.list_profiles().len(), 3);
+        state.set_user_profiles(&[]).expect("valid");
+        assert_eq!(state.list_profiles().len(), 2);
+    }
+
+    #[test]
+    fn a_profile_with_no_program_is_refused_and_the_profiles_stay_as_they_were() {
+        let state = detected_state();
+        state
+            .set_user_profiles(&[user("keep", "sh")])
+            .expect("valid");
+        for program in ["", "  "] {
+            let message = state
+                .set_user_profiles(&[user("fresh", "sh"), user("empty", program)])
+                .expect_err("refused");
+            assert!(message.contains("empty"), "{message}");
+            assert!(message.contains("program"), "{message}");
+        }
+        assert_eq!(
+            listed(&state).last(),
+            Some(&("keep".to_owned(), false)),
+            "the refused list replaced the one in force"
+        );
+        assert_eq!(state.list_profiles().len(), 3);
+    }
+
+    #[test]
+    fn an_id_of_a_detected_shell_or_a_repeated_one_is_refused() {
+        let state = detected_state();
+        let message = state
+            .set_user_profiles(&[user("cmd", "sh")])
+            .expect_err("refused");
+        assert!(message.contains("already a shell found"), "{message}");
+        let message = state
+            .set_user_profiles(&[user("x", "sh"), user("x", "sh")])
+            .expect_err("refused");
+        assert!(message.contains("used by two profiles"), "{message}");
+        assert_eq!(state.list_profiles().len(), 2);
+    }
+
+    #[test]
+    fn find_profile_knows_the_user_profiles_and_the_default() {
+        let state = detected_state();
+        let mut dev = user("dev-shell", "/opt/dev/sh");
+        dev.args = vec!["-l".to_owned(), "--flag".to_owned()];
+        dev.cwd = Some("/opt/dev".to_owned());
+        state.set_user_profiles(&[dev]).expect("valid");
+
+        let found = state.find_profile(Some("dev-shell")).expect("listed");
+        assert_eq!(found.program, "/opt/dev/sh");
+        assert_eq!(found.args, ["-l", "--flag"]);
+        assert_eq!(found.cwd.as_deref(), Some("/opt/dev"));
+        assert_eq!(state.find_profile(None).expect("default").id, "pwsh");
+        let missing = state.find_profile(Some("nope")).expect_err("unknown");
+        assert!(
+            missing.contains("unknown shell profile 'nope'"),
+            "{missing}"
+        );
+    }
+
+    #[test]
+    fn the_dto_of_a_user_profile_reads_the_fields_the_interface_sends() {
+        let dto: UserProfileDto = serde_json::from_value(serde_json::json!({
+            "id": "dev-shell", "name": "Dev", "program": "pwsh.exe",
+            "args": ["-NoLogo"], "cwd": "C:\\work"
+        }))
+        .expect("full");
+        assert_eq!(
+            UserProfile::from(dto),
+            UserProfile {
+                id: "dev-shell".into(),
+                name: "Dev".into(),
+                program: "pwsh.exe".into(),
+                args: vec!["-NoLogo".into()],
+                cwd: Some("C:\\work".into()),
+            }
+        );
+        // The arguments and the folder may be left out.
+        let bare: UserProfileDto = serde_json::from_value(serde_json::json!({
+            "id": "a", "name": "A", "program": "sh"
+        }))
+        .expect("bare");
+        assert!(bare.args.is_empty());
+        assert_eq!(bare.cwd, None);
+        assert!(
+            serde_json::from_value::<UserProfileDto>(serde_json::json!({ "id": "a" })).is_err()
+        );
+    }
+
+    #[test]
+    fn the_folder_of_a_profile_is_checked_and_a_given_folder_replaces_it() {
+        let dir = TempDir::new("profile-cwd");
+        let missing = dir.0.join("not-there");
+
+        // The folder of the profile is used when the session names none.
+        let mut with_folder = profile("dev", "Dev");
+        with_folder.cwd = Some(dir.0.to_string_lossy().into_owned());
+        let applied =
+            apply_session_options(with_folder.spawn_spec(80, 24), None, None).expect("exists");
+        assert_eq!(applied.cwd.as_deref(), Some(dir.0.as_path()));
+
+        // One that does not exist is a clear error before any process starts.
+        let mut gone = profile("gone", "Gone");
+        gone.cwd = Some(missing.to_string_lossy().into_owned());
+        let error = apply_session_options(gone.spawn_spec(80, 24), None, None).expect_err("gone");
+        assert!(
+            error.contains("does not exist or is not a folder"),
+            "{error}"
+        );
+        assert!(error.contains("not-there"), "{error}");
+
+        // The folder a session names (a tab opened in a folder) wins, even over a missing one.
+        let given = std::env::temp_dir();
+        let applied = apply_session_options(gone.spawn_spec(80, 24), given.to_str(), None)
+            .expect("the given folder replaces the profile's");
+        assert_eq!(applied.cwd.as_deref(), Some(given.as_path()));
+    }
+
+    /// The output of a profile of the user, run for real in a pseudo terminal: what it was told to run.
+    #[test]
+    fn a_session_of_a_user_profile_runs_its_program_arguments_and_folder() {
+        let dir = TempDir::new("profile-run");
+        let (program, args) = if cfg!(windows) {
+            ("cmd.exe", ["/c", "echo profile-ran & cd"])
+        } else {
+            ("sh", ["-c", "echo profile-ran; pwd"])
+        };
+        let mut dev = user("dev-shell", program);
+        dev.args = args.iter().map(|a| (*a).to_owned()).collect();
+        dev.cwd = Some(dir.0.to_string_lossy().into_owned());
+        let state = detected_state();
+        state.set_user_profiles(&[dev]).expect("valid");
+
+        let profile = state.find_profile(Some("dev-shell")).expect("listed");
+        let spec = apply_session_options(profile.spawn_spec(80, 24), None, None).expect("spec");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let id = state
+            .sessions
+            .spawn(spec, move |event| {
+                // The bytes are borrowed for the call; `None` is the end of the session.
+                let _ = tx.send(match event {
+                    SessionEvent::Output(bytes) => Some(bytes.to_vec()),
+                    SessionEvent::Exit(_) => None,
+                });
+            })
+            .expect("spawn");
+
+        let mut output = Vec::new();
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        while let Some(bytes) = rx
+            .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+            .expect("the session ends in time")
+        {
+            output.extend_from_slice(&bytes);
+        }
+        let _ = state.sessions.kill(id);
+        let text = String::from_utf8_lossy(&output);
+        let folder = dir
+            .0
+            .file_name()
+            .expect("name")
+            .to_string_lossy()
+            .into_owned();
+        assert!(text.contains("profile-ran"), "{text}");
+        assert!(
+            text.contains(&folder),
+            "the session did not start in {folder}: {text}"
+        );
     }
 
     #[test]

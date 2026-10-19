@@ -7,7 +7,7 @@ import {
   layoutPanes,
   treeGroups,
 } from "@noren/model";
-import type { GroupNode, Id, Item, Pane, ShellProfile, Space } from "@noren/model";
+import type { GroupNode, Id, Item, Pane, Space } from "@noren/model";
 import type { ITheme } from "@xterm/xterm";
 import type { ChangeEvent } from "react";
 import {
@@ -110,6 +110,7 @@ import {
 } from "./use-theme";
 import { addUserThemes, getUserThemes, useAllThemes } from "./user-themes-store";
 import { importSchemeFile } from "./scheme-import";
+import { useProfiles, useProfilesProblem } from "./profiles-store";
 import type { TerminalHandle } from "./TerminalView";
 import {
   activeItemIdOf,
@@ -135,6 +136,11 @@ export interface NorenTestHook {
   killedSessions(): number[];
   /** Options of every `createSession` call the backend received, in order. */
   sessionStarts(): { profileId?: string; cwd?: string; env?: Record<string, string> }[];
+  /**
+   * What every session of a profile of the user was asked to run, in order of start: the profile,
+   * the program and arguments of the profile, and the folder the session started in.
+   */
+  userProfileSessions(): { profileId: string; program: string; args: string[]; cwd: string }[];
   /** Ids of the panes of the active tab, in layout order. */
   paneIds(): string[];
   /** Id of the focused pane of the active tab. */
@@ -509,20 +515,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
     };
   }, []);
 
-  // The shell profiles of the machine, for the palette; listed once.
-  const [profiles, setProfiles] = useState<ShellProfile[]>([]);
-  useEffect(() => {
-    let live = true;
-    backend.listProfiles().then(
-      (list) => {
-        if (live) setProfiles(list);
-      },
-      () => undefined,
-    );
-    return () => {
-      live = false;
-    };
-  }, []);
+  // The shell profiles for the palette: the machine's, then the ones in `profiles` of config.jsonc.
+  const profiles = useProfiles();
+  // The backend refused the profiles of the file (an empty program, an id the machine has): the
+  // ones it had stay, and this says why.
+  const profilesProblem = useProfilesProblem();
 
   // The notice about a refused shortcut (a split past the pane limit), shown for a few seconds.
   const [notice, setNotice] = useState("");
@@ -558,6 +555,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
     // So picking the same file again (after fixing it) is a change the input reports.
     input.value = "";
   };
+  useEffect(() => {
+    if (profilesProblem !== undefined) {
+      showNotice(`The profiles in config.jsonc were not applied. ${profilesProblem}`);
+    }
+  }, [profilesProblem, showNotice]);
   const projectActions = useProjectActions(store, backend, space, showNotice);
   // A `noren://` link: the entry point stays the same while the run function (and so the hook's
   // state) changes on every render, so the handler reads it through a ref.
@@ -875,6 +877,22 @@ function Shell({ store }: { store: WorkspaceStore }) {
           fake.setConfigSaveFailure(message === null ? undefined : new Error(message)),
         configSaves: () => fake.callsTo("saveConfig").length,
         killedSessions: () => fake.callsTo("kill").map((call) => Number(call.args[0])),
+        userProfileSessions: () => {
+          const started = fake.callsTo("createSession").length;
+          const sessions = [];
+          // The fake backend numbers its sessions from 1, in order of start.
+          for (let id = 1; id <= started; id++) {
+            const info = fake.session(id);
+            if (info?.program === undefined) continue;
+            sessions.push({
+              profileId: info.profileId,
+              program: info.program,
+              args: info.args ?? [],
+              cwd: info.cwd,
+            });
+          }
+          return sessions;
+        },
         sessionStarts: () =>
           fake.callsTo("createSession").map((call) => {
             const { profileId, cwd, env } = call.args[0] as SessionStartOptions;
@@ -1311,6 +1329,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
       )}
       {settingsOpen && (
         <SettingsDialog
+          backend={backend}
           onClose={() => {
             closeSettings();
             focusTerminal();

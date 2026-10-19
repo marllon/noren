@@ -4,6 +4,8 @@
  * The AI methods (`ai.*`) join this interface in the tasks of their own phase.
  */
 
+import type { UserProfile } from "./user-profile-schema";
+
 /** Function returned by every subscription: calling it stops the delivery. */
 export type Unsubscribe = () => void;
 
@@ -46,7 +48,20 @@ export interface GitInfo {
 }
 
 export interface Backend {
+  /**
+   * The shells a session can start: the ones found on the machine (the default one marked), then
+   * the profiles of the user the backend was given (`setUserProfiles`), in their order.
+   */
   listProfiles(): Promise<ShellProfile[]>;
+  /**
+   * Gives the backend the shell profiles of the user (`profiles` of `config.jsonc`), replacing the
+   * ones it had; `listProfiles` then lists them after the ones found on the machine, and
+   * `createSession` can start them (their program and arguments, and their `cwd` when the session
+   * names none). Rejects, and keeps the profiles it had, when the list is not valid: a profile that
+   * does not match `UserProfileSchema` (an empty program, for one), an id used twice, `default`, or
+   * the id of a shell found on the machine (`profilesProblem` tells which).
+   */
+  setUserProfiles(profiles: readonly UserProfile[]): Promise<void>;
   /** Starts a shell. Output produced before `onOutput` is called is held for the first subscriber. */
   createSession(options: CreateSessionOptions): Promise<SessionId>;
   /** Sends keyboard input (text) or raw bytes (for example a paste) to the shell. */

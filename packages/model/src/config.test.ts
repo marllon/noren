@@ -79,6 +79,83 @@ describe("parseConfigText accepts", () => {
   });
 });
 
+describe("parseConfigText reads the profiles of the user", () => {
+  it("a list of profiles, with the arguments and the folder when they are there", () => {
+    const result = parseConfigText(`{
+  // my shells
+  "profiles": [
+    { "id": "dev-shell", "name": "Dev Shell", "program": "pwsh.exe", "args": ["-NoLogo"], "cwd": "C:\\\\work", },
+    { "id": "plain", "name": "Plain", "program": "sh" },
+  ],
+}`);
+    expect(result).toEqual({
+      ok: true,
+      config: {
+        profiles: [
+          {
+            id: "dev-shell",
+            name: "Dev Shell",
+            program: "pwsh.exe",
+            args: ["-NoLogo"],
+            cwd: "C:\\work",
+          },
+          { id: "plain", name: "Plain", program: "sh" },
+        ],
+      },
+    });
+    expect(parseConfigText('{ "profiles": [] }')).toEqual({ ok: true, config: { profiles: [] } });
+  });
+
+  it("refuses an empty program at the line of the program", () => {
+    const errors = errorsOf(`{
+  "profiles": [
+    { "id": "ok", "name": "Ok", "program": "sh" },
+    { "id": "bad", "name": "Bad", "program": "" }
+  ]
+}`);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ path: "profiles[1].program", line: 4 });
+    expect(errors[0]?.message).toBe("The program is empty");
+  });
+
+  it("refuses an id used twice, `default`, and an id that is not lower case words", () => {
+    const twice = errorsOf(`{
+  "profiles": [
+    { "id": "a", "name": "A", "program": "sh" },
+    { "id": "a", "name": "A again", "program": "sh" }
+  ]
+}`);
+    expect(twice).toHaveLength(1);
+    expect(twice[0]).toMatchObject({ path: "profiles[1].id", line: 4 });
+    expect(twice[0]?.message).toMatch(/used by another profile/);
+
+    const reserved = errorsOf(
+      '{ "profiles": [ { "id": "default", "name": "D", "program": "sh" } ] }',
+    );
+    expect(reserved[0]).toMatchObject({ path: "profiles[0].id" });
+    expect(reserved[0]?.message).toMatch(/reserved/);
+
+    const shape = errorsOf(
+      '{ "profiles": [ { "id": "Dev Shell", "name": "D", "program": "sh" } ] }',
+    );
+    expect(shape[0]).toMatchObject({ path: "profiles[0].id" });
+  });
+
+  it("refuses a profile with a missing field, an unknown one, or of the wrong kind", () => {
+    expect(errorsOf('{ "profiles": [ { "id": "a", "name": "A" } ] }')[0]).toMatchObject({
+      path: "profiles[0].program",
+    });
+    expect(
+      errorsOf('{ "profiles": [ { "id": "a", "name": "A", "program": "sh", "shell": 1 } ] }')[0]
+        ?.message,
+    ).toBe('Unknown setting "shell"');
+    expect(
+      errorsOf('{ "profiles": [ { "id": "a", "name": "A", "program": "sh", "args": "-l" } ] }')[0],
+    ).toMatchObject({ path: "profiles[0].args" });
+    expect(errorsOf('{ "profiles": { "list": [] } }')[0]).toMatchObject({ path: "profiles" });
+  });
+});
+
 describe("parseConfigText refuses, with the line", () => {
   it("a setting of the wrong value, at the line of the value", () => {
     const errors = errorsOf(`{

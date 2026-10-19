@@ -1,10 +1,17 @@
 import { useEffect, useId, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent } from "react";
+import type { ChangeEvent, FormEvent, KeyboardEvent } from "react";
 import { describeConfigError } from "@noren/model";
+import type { Backend } from "@noren/model";
 import { useConfigState, configManager } from "./config-store";
 import type { Preset } from "./keybindings";
 import type { Density, SidebarSide, TabsPlacement } from "./layout";
+import { commitProfileImport, readProfileFile, takenProfileIds } from "./profile-import";
+import type { ProfileImportPlan } from "./profile-import";
+import { ProfileImportDialog } from "./ProfileImportDialog";
+import { useProfiles } from "./profiles-store";
+import { importSchemeFile } from "./scheme-import";
 import { ShortcutsDialog } from "./ShortcutsDialog";
+import { addUserThemes, getUserThemes } from "./user-themes-store";
 import { compactAvailable, keepOpenAvailable, planSave, shownSettings } from "./settings-screen";
 import type { SettingsDraft } from "./settings-screen";
 
@@ -108,17 +115,19 @@ const KEY_PRESETS: readonly { value: Preset; label: string }[] = [
 ];
 
 interface SettingsDialogProps {
+  /** Where an imported color scheme is written (the themes folder). */
+  backend: Pick<Backend, "saveUserTheme">;
   onClose(): void;
 }
 
 /**
- * The settings screen: appearance and layout, shortcuts and notifications. What is changed here is
- * a draft until Save, which writes only the settings that differ from the ones in force into
- * `config.jsonc` (its comments stay) and closes the screen; the interface follows the file, so the
- * change shows without a reload. A file with a problem of its own is not edited: Save waits until
- * it is fixed.
+ * The settings screen: appearance and layout, shortcuts, notifications and importing. What is
+ * changed in the first three is a draft until Save, which writes only the settings that differ from
+ * the ones in force into `config.jsonc` (its comments stay) and closes the screen; the interface
+ * follows the file, so the change shows without a reload. A file with a problem of its own is not
+ * edited: Save waits until it is fixed. Importing is not part of the draft (see the Import section).
  */
-export function SettingsDialog({ onClose }: SettingsDialogProps) {
+export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const shortcutsButtonRef = useRef<HTMLButtonElement>(null);
@@ -127,6 +136,14 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  // Importing is not part of the draft: it acts at once (a color scheme) or after its own
+  // confirmation (the profiles), and tells what happened in the line under its buttons.
+  const schemeInputRef = useRef<HTMLInputElement>(null);
+  const profilesInputRef = useRef<HTMLInputElement>(null);
+  const profilesButtonRef = useRef<HTMLButtonElement>(null);
+  const profiles = useProfiles();
+  const [importStatus, setImportStatus] = useState("");
+  const [importPlan, setImportPlan] = useState<ProfileImportPlan>();
 
   useEffect(() => {
     dialogRef.current?.querySelector<HTMLElement>("input, button")?.focus();
@@ -150,6 +167,46 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     setSaving(false);
     if (result.ok) onClose();
     else setFailure(result.message);
+  };
+
+  // The same flow as "Import color scheme..." in the command palette: the importers read the file
+  // by what is in it, so the input takes any file.
+  const onSchemeFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (file === undefined) return;
+    setImportStatus("");
+    void importSchemeFile(file, {
+      backend,
+      existing: getUserThemes(),
+      added: addUserThemes,
+    }).then(setImportStatus);
+    // So picking the same file again (after fixing it) is a change the input reports.
+    input.value = "";
+  };
+
+  // Reading a settings file only shows what it would add; the profiles are written when the person
+  // confirms, and nothing is started either way.
+  const onProfilesFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (file === undefined) return;
+    setImportStatus("");
+    void readProfileFile(file, takenProfileIds(config, profiles)).then((read) => {
+      if (read.ok) setImportPlan(read.plan);
+      else setImportStatus(read.message);
+    });
+    input.value = "";
+  };
+
+  const confirmProfileImport = async (): Promise<string | undefined> => {
+    if (importPlan === undefined) return undefined;
+    const result = await commitProfileImport(importPlan, configManager);
+    if (!result.ok) return result.message;
+    setImportPlan(undefined);
+    setImportStatus(result.message);
+    profilesButtonRef.current?.focus();
+    return undefined;
   };
 
   const onSubmit = (event: FormEvent) => {
@@ -259,6 +316,45 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   onChange={(longCommandSeconds) => change({ longCommandSeconds })}
                 />
               </section>
+              <section className="settings-section" aria-label="Import">
+                <h3>Import</h3>
+                <button
+                  type="button"
+                  className="settings-link"
+                  onClick={() => schemeInputRef.current?.click()}
+                >
+                  Import color scheme...
+                </button>
+                <button
+                  ref={profilesButtonRef}
+                  type="button"
+                  className="settings-link"
+                  onClick={() => profilesInputRef.current?.click()}
+                >
+                  Import profiles...
+                </button>
+                <p role="status" className="settings-hint" data-nr-part="settings-import-status">
+                  {importStatus}
+                </p>
+                <input
+                  ref={schemeInputRef}
+                  type="file"
+                  hidden
+                  tabIndex={-1}
+                  aria-label="Color scheme file"
+                  data-nr-part="settings-scheme-file"
+                  onChange={onSchemeFile}
+                />
+                <input
+                  ref={profilesInputRef}
+                  type="file"
+                  hidden
+                  tabIndex={-1}
+                  aria-label="Settings file with profiles"
+                  data-nr-part="settings-profiles-file"
+                  onChange={onProfilesFile}
+                />
+              </section>
             </div>
             <div className="settings-feedback">
               {firstError !== undefined && (
@@ -284,6 +380,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           </form>
         </div>
       </div>
+      {importPlan !== undefined && (
+        <ProfileImportDialog
+          plan={importPlan}
+          onImport={confirmProfileImport}
+          onCancel={() => {
+            setImportPlan(undefined);
+            profilesButtonRef.current?.focus();
+          }}
+        />
+      )}
       {shortcutsOpen && (
         <ShortcutsDialog
           onClose={() => {

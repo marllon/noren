@@ -9,6 +9,7 @@ import type {
   SessionId,
   ShellProfile,
   Unsubscribe,
+  UserProfile,
 } from "@noren/model";
 
 /** The part of a Tauri `Channel` this backend uses. */
@@ -63,6 +64,10 @@ export class TauriBackend implements Backend {
 
   listProfiles(): Promise<ShellProfile[]> {
     return this.#bridge.invoke<ShellProfile[]>("profiles_list");
+  }
+
+  async setUserProfiles(profiles: readonly UserProfile[]): Promise<void> {
+    await this.#bridge.invoke("profiles_set_user", { profiles });
   }
 
   async createSession(options: CreateSessionOptions): Promise<SessionId> {

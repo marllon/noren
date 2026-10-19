@@ -7,6 +7,7 @@
 
 use std::collections::HashSet;
 use std::io::Read;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -26,6 +27,9 @@ pub struct Profile {
     /// Executable to launch (an absolute path when it was found on disk).
     pub program: String,
     pub args: Vec<String>,
+    /// Folder a session of this profile starts in when the call that opens it names none. `None`
+    /// for a detected profile (the shell starts where the process does).
+    pub cwd: Option<String>,
     /// Whether Noren loads its shell integration script into this shell (see
     /// [`Profile::spawn_spec_with_integration`]). `true` for every detected profile.
     pub inject_integration: bool,
@@ -37,7 +41,7 @@ impl Profile {
         SpawnSpec {
             program: self.program.clone(),
             args: self.args.clone(),
-            cwd: None,
+            cwd: self.cwd.as_ref().map(PathBuf::from),
             env: Vec::new(),
             cols,
             rows,
@@ -242,6 +246,7 @@ fn detect_windows(env: &dyn ProbeEnv) -> ProfileSet {
             name: "PowerShell 7".into(),
             program,
             args: Vec::new(),
+            cwd: None,
             inject_integration: true,
         });
     }
@@ -258,6 +263,7 @@ fn detect_windows(env: &dyn ProbeEnv) -> ProfileSet {
             name: "Windows PowerShell".into(),
             program,
             args: Vec::new(),
+            cwd: None,
             inject_integration: true,
         });
     }
@@ -272,6 +278,7 @@ fn detect_windows(env: &dyn ProbeEnv) -> ProfileSet {
             name: "Command Prompt".into(),
             program,
             args: Vec::new(),
+            cwd: None,
             inject_integration: true,
         });
     }
@@ -286,6 +293,7 @@ fn detect_windows(env: &dyn ProbeEnv) -> ProfileSet {
             name: "Git Bash".into(),
             program,
             args: vec!["--login".into(), "-i".into()],
+            cwd: None,
             inject_integration: true,
         });
     }
@@ -299,6 +307,7 @@ fn detect_windows(env: &dyn ProbeEnv) -> ProfileSet {
                     name: format!("WSL: {distro}"),
                     program: "wsl.exe".into(),
                     args: vec!["-d".into(), distro],
+                    cwd: None,
                     inject_integration: true,
                 });
             }
@@ -367,6 +376,7 @@ fn detect_unix(env: &dyn ProbeEnv) -> ProfileSet {
             name,
             program: path,
             args: Vec::new(),
+            cwd: None,
             inject_integration: true,
         });
     }
@@ -391,6 +401,241 @@ pub fn parse_etc_shells(text: &str) -> Vec<String> {
         .filter(|line| seen.insert(line.to_string()))
         .map(str::to_string)
         .collect()
+}
+
+/// The id a pane uses to say "the profile the machine defaults to": no profile of the user may take it.
+pub const RESERVED_PROFILE_ID: &str = "default";
+
+/// The most profiles of the user the interface may hand over.
+pub const MAX_USER_PROFILES: usize = 200;
+
+const MAX_ID_LEN: usize = 64;
+const MAX_NAME_CHARS: usize = 100;
+const MAX_TEXT_CHARS: usize = 1024;
+const MAX_ARGS: usize = 200;
+const MAX_ARG_CHARS: usize = 4096;
+
+/// A shell profile the user defined (the `profiles` list of `config.jsonc`), as the interface sends
+/// it. It joins the detected ones through [`ProfileSet::with_user_profiles`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserProfile {
+    /// Lower case words joined by hyphens, unique among all the profiles.
+    pub id: String,
+    /// Name shown in the interface.
+    pub name: String,
+    /// Executable to launch. `%NAME%` is replaced by the environment variable `NAME`.
+    pub program: String,
+    pub args: Vec<String>,
+    /// Folder a session starts in unless the call that opens it names one.
+    pub cwd: Option<String>,
+}
+
+/// Why a list of profiles of the user was refused. The text names the profile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserProfileError {
+    /// More than [`MAX_USER_PROFILES`].
+    TooMany(usize),
+    /// The id is not lower case words joined by hyphens (or is longer than 64 characters).
+    InvalidId(String),
+    /// The id is [`RESERVED_PROFILE_ID`].
+    ReservedId(String),
+    /// Two profiles of the user have this id.
+    DuplicateId(String),
+    /// A shell found on the machine has this id.
+    DetectedId(String),
+    /// The name is empty or only blanks, or too long.
+    InvalidName(String),
+    /// The program is empty or only blanks, or too long.
+    EmptyProgram(String),
+    /// An argument or the folder is too long, empty, or has a NUL character; the text says which.
+    InvalidField(String, &'static str),
+}
+
+impl std::fmt::Display for UserProfileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TooMany(count) => {
+                write!(
+                    f,
+                    "{count} profiles; at most {MAX_USER_PROFILES} are allowed"
+                )
+            }
+            Self::InvalidId(id) => write!(
+                f,
+                "profile id '{id}' is not lower case words joined by hyphens (at most {MAX_ID_LEN} characters)"
+            ),
+            Self::ReservedId(id) => write!(f, "profile id '{id}' is reserved"),
+            Self::DuplicateId(id) => write!(f, "profile id '{id}' is used by two profiles"),
+            Self::DetectedId(id) => {
+                write!(
+                    f,
+                    "profile id '{id}' is already a shell found on this machine"
+                )
+            }
+            Self::InvalidName(id) => write!(
+                f,
+                "profile '{id}': the name is empty or longer than {MAX_NAME_CHARS} characters"
+            ),
+            Self::EmptyProgram(id) => write!(
+                f,
+                "profile '{id}': the program is empty or longer than {MAX_TEXT_CHARS} characters"
+            ),
+            Self::InvalidField(id, field) => write!(f, "profile '{id}': {field}"),
+        }
+    }
+}
+
+impl std::error::Error for UserProfileError {}
+
+fn is_valid_profile_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= MAX_ID_LEN
+        && id.split('-').all(|word| {
+            !word.is_empty()
+                && word
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        })
+}
+
+fn is_blank(text: &str) -> bool {
+    text.trim().is_empty()
+}
+
+impl UserProfile {
+    /// Checks the profile by itself (not against the other profiles).
+    pub fn validate(&self) -> Result<(), UserProfileError> {
+        let id = &self.id;
+        if !is_valid_profile_id(id) {
+            return Err(UserProfileError::InvalidId(id.clone()));
+        }
+        if id == RESERVED_PROFILE_ID {
+            return Err(UserProfileError::ReservedId(id.clone()));
+        }
+        if is_blank(&self.name)
+            || self.name.chars().count() > MAX_NAME_CHARS
+            || self.name.contains('\0')
+        {
+            return Err(UserProfileError::InvalidName(id.clone()));
+        }
+        if is_blank(&self.program)
+            || self.program.chars().count() > MAX_TEXT_CHARS
+            || self.program.contains('\0')
+        {
+            return Err(UserProfileError::EmptyProgram(id.clone()));
+        }
+        if self.args.len() > MAX_ARGS {
+            return Err(UserProfileError::InvalidField(
+                id.clone(),
+                "too many arguments",
+            ));
+        }
+        if self
+            .args
+            .iter()
+            .any(|arg| arg.chars().count() > MAX_ARG_CHARS || arg.contains('\0'))
+        {
+            return Err(UserProfileError::InvalidField(
+                id.clone(),
+                "an argument is too long or has a NUL character",
+            ));
+        }
+        if let Some(cwd) = &self.cwd
+            && (is_blank(cwd) || cwd.chars().count() > MAX_TEXT_CHARS || cwd.contains('\0'))
+        {
+            return Err(UserProfileError::InvalidField(
+                id.clone(),
+                "the folder is empty, too long or has a NUL character",
+            ));
+        }
+        Ok(())
+    }
+
+    /// The profile as a session starts it: `%NAME%` in the program, the arguments and the folder
+    /// is replaced through `env` (see [`expand_env_vars`]). The shell integration stays on, as for
+    /// a detected profile; it only does anything for the shells it knows.
+    pub fn to_profile(&self, env: &dyn Fn(&str) -> Option<String>) -> Profile {
+        Profile {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            program: expand_env_vars(&self.program, env),
+            args: self
+                .args
+                .iter()
+                .map(|arg| expand_env_vars(arg, env))
+                .collect(),
+            cwd: self.cwd.as_ref().map(|cwd| expand_env_vars(cwd, env)),
+            inject_integration: true,
+        }
+    }
+}
+
+/// Replaces each `%NAME%` in `text` with the value of the environment variable `NAME` (as `env`
+/// answers). A name `env` does not know, and a `%` with no partner, stay as written.
+pub fn expand_env_vars(text: &str, env: &dyn Fn(&str) -> Option<String>) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find('%') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        match after.find('%') {
+            Some(end)
+                if end > 0
+                    && !after[..end]
+                        .contains(|c: char| c.is_whitespace() || c == '=' || c == '"') =>
+            {
+                let name = &after[..end];
+                match env(name) {
+                    Some(value) => out.push_str(&value),
+                    None => out.push_str(&rest[start..start + end + 2]),
+                }
+                rest = &after[end + 1..];
+            }
+            _ => {
+                out.push('%');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+impl ProfileSet {
+    /// This set (the detected shells) followed by `user`, in the order given. The default stays the
+    /// detected one; with none detected, the first profile of the user is the default.
+    ///
+    /// The whole list is refused, and nothing is joined, when any profile is not valid
+    /// ([`UserProfile::validate`], an empty program for one), when an id repeats, or when an id is
+    /// one of the detected shells. `env` answers `%NAME%` in the programs, arguments and folders.
+    pub fn with_user_profiles(
+        &self,
+        user: &[UserProfile],
+        env: &dyn Fn(&str) -> Option<String>,
+    ) -> Result<ProfileSet, UserProfileError> {
+        if user.len() > MAX_USER_PROFILES {
+            return Err(UserProfileError::TooMany(user.len()));
+        }
+        let mut seen = HashSet::new();
+        for profile in user {
+            profile.validate()?;
+            if self.get(&profile.id).is_some() {
+                return Err(UserProfileError::DetectedId(profile.id.clone()));
+            }
+            if !seen.insert(profile.id.as_str()) {
+                return Err(UserProfileError::DuplicateId(profile.id.clone()));
+            }
+        }
+        let mut profiles = self.profiles.clone();
+        profiles.extend(user.iter().map(|profile| profile.to_profile(env)));
+        Ok(ProfileSet {
+            default_id: self
+                .default_id
+                .clone()
+                .or_else(|| user.first().map(|profile| profile.id.clone())),
+            profiles,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -598,11 +843,241 @@ mod tests {
             name: "Git Bash".into(),
             program: "bash.exe".into(),
             args: vec!["--login".into(), "-i".into()],
+            cwd: None,
             inject_integration: true,
         };
         let spec = profile.spawn_spec(100, 30);
         assert_eq!(spec.program, "bash.exe");
         assert_eq!(spec.args, ["--login", "-i"]);
+        assert_eq!(spec.cwd, None);
         assert_eq!((spec.cols, spec.rows), (100, 30));
+    }
+
+    #[test]
+    fn profile_with_a_folder_starts_there() {
+        let profile = Profile {
+            id: "dev".into(),
+            name: "Dev".into(),
+            program: "sh".into(),
+            args: Vec::new(),
+            cwd: Some("/work".into()),
+            inject_integration: true,
+        };
+        assert_eq!(
+            profile.spawn_spec(80, 24).cwd,
+            Some(std::path::PathBuf::from("/work"))
+        );
+    }
+
+    fn user(id: &str, program: &str) -> UserProfile {
+        UserProfile {
+            id: id.into(),
+            name: format!("Name of {id}"),
+            program: program.into(),
+            args: Vec::new(),
+            cwd: None,
+        }
+    }
+
+    fn no_env(_: &str) -> Option<String> {
+        None
+    }
+
+    fn detected() -> ProfileSet {
+        detect_profiles(&windows_base(), Platform::Windows)
+    }
+
+    #[test]
+    fn user_profiles_follow_the_detected_ones_in_one_list() {
+        let detected = detected();
+        assert_eq!(ids(&detected), ["powershell", "cmd"]);
+        let mut dev = user("dev-shell", "pwsh.exe");
+        dev.args = vec!["-NoLogo".into()];
+        dev.cwd = Some("C:\\work".into());
+        let set = detected
+            .with_user_profiles(&[dev, user("other", "sh")], &no_env)
+            .expect("valid");
+        assert_eq!(ids(&set), ["powershell", "cmd", "dev-shell", "other"]);
+        // The default is still the detected one.
+        assert_eq!(set.default_id.as_deref(), Some("powershell"));
+        let dev = set.get("dev-shell").expect("listed");
+        assert_eq!(dev.name, "Name of dev-shell");
+        assert_eq!(dev.program, "pwsh.exe");
+        assert_eq!(dev.args, ["-NoLogo"]);
+        assert_eq!(dev.cwd.as_deref(), Some("C:\\work"));
+        // A session of it starts what the profile says.
+        let spec = dev.spawn_spec(90, 20);
+        assert_eq!(spec.program, "pwsh.exe");
+        assert_eq!(spec.args, ["-NoLogo"]);
+        assert_eq!(spec.cwd, Some(std::path::PathBuf::from("C:\\work")));
+        // The detected set itself is untouched.
+        assert_eq!(ids(&detected), ["powershell", "cmd"]);
+    }
+
+    #[test]
+    fn no_user_profiles_leave_the_detected_list_as_it_was() {
+        let detected = detected();
+        assert_eq!(
+            detected.with_user_profiles(&[], &no_env).expect("valid"),
+            detected
+        );
+    }
+
+    #[test]
+    fn the_first_profile_of_the_user_is_the_default_when_nothing_was_detected() {
+        let set = ProfileSet::default()
+            .with_user_profiles(&[user("a", "sh"), user("b", "sh")], &no_env)
+            .expect("valid");
+        assert_eq!(set.default_id.as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn an_empty_program_is_refused_and_so_is_a_blank_one() {
+        for program in ["", "   ", "\t"] {
+            let error = detected()
+                .with_user_profiles(&[user("ok", "sh"), user("bad", program)], &no_env)
+                .expect_err("refused");
+            assert_eq!(error, UserProfileError::EmptyProgram("bad".into()));
+            assert!(error.to_string().contains("bad"), "{error}");
+        }
+    }
+
+    #[test]
+    fn one_bad_profile_refuses_the_whole_list() {
+        let mut no_name = user("no-name", "sh");
+        no_name.name = "  ".into();
+        let mut nul_arg = user("nul-arg", "sh");
+        nul_arg.args = vec!["a\0b".into()];
+        let nul_program = user("nul-program", "sh\0");
+        let mut blank_cwd = user("blank-cwd", "sh");
+        blank_cwd.cwd = Some(" ".into());
+        let mut many_args = user("many-args", "sh");
+        many_args.args = vec!["x".into(); MAX_ARGS + 1];
+        for (profile, wanted) in [
+            (no_name, UserProfileError::InvalidName("no-name".into())),
+            (
+                nul_arg,
+                UserProfileError::InvalidField(
+                    "nul-arg".into(),
+                    "an argument is too long or has a NUL character",
+                ),
+            ),
+            (
+                nul_program,
+                UserProfileError::EmptyProgram("nul-program".into()),
+            ),
+            (
+                blank_cwd,
+                UserProfileError::InvalidField(
+                    "blank-cwd".into(),
+                    "the folder is empty, too long or has a NUL character",
+                ),
+            ),
+            (
+                many_args,
+                UserProfileError::InvalidField("many-args".into(), "too many arguments"),
+            ),
+        ] {
+            assert_eq!(
+                detected().with_user_profiles(&[profile], &no_env),
+                Err(wanted)
+            );
+        }
+    }
+
+    #[test]
+    fn ids_must_be_ids_and_unique_and_not_a_detected_shell() {
+        for bad in [
+            "",
+            "Dev",
+            "dev shell",
+            "dev_shell",
+            "-dev",
+            "dev-",
+            "a--b",
+            "../x",
+            "é",
+        ] {
+            assert_eq!(
+                detected().with_user_profiles(&[user(bad, "sh")], &no_env),
+                Err(UserProfileError::InvalidId(bad.into())),
+                "{bad:?}"
+            );
+        }
+        assert_eq!(
+            detected().with_user_profiles(&[user(&"a".repeat(65), "sh")], &no_env),
+            Err(UserProfileError::InvalidId("a".repeat(65)))
+        );
+        assert_eq!(
+            detected().with_user_profiles(&[user("default", "sh")], &no_env),
+            Err(UserProfileError::ReservedId("default".into()))
+        );
+        assert_eq!(
+            detected().with_user_profiles(&[user("x", "sh"), user("x", "bash")], &no_env),
+            Err(UserProfileError::DuplicateId("x".into()))
+        );
+        // "cmd" and "powershell" are shells of this machine.
+        assert_eq!(
+            detected().with_user_profiles(&[user("cmd", "sh")], &no_env),
+            Err(UserProfileError::DetectedId("cmd".into()))
+        );
+    }
+
+    #[test]
+    fn too_many_profiles_are_refused() {
+        let many: Vec<UserProfile> = (0..=MAX_USER_PROFILES)
+            .map(|n| user(&format!("p{n}"), "sh"))
+            .collect();
+        assert_eq!(
+            detected().with_user_profiles(&many, &no_env),
+            Err(UserProfileError::TooMany(MAX_USER_PROFILES + 1))
+        );
+        assert!(
+            detected()
+                .with_user_profiles(&many[..MAX_USER_PROFILES], &no_env)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn variables_in_the_program_arguments_and_folder_are_replaced_when_joined() {
+        let env = |name: &str| match name {
+            "SystemRoot" => Some("C:\\Windows".to_owned()),
+            "USERPROFILE" => Some("C:\\Users\\me".to_owned()),
+            _ => None,
+        };
+        let mut profile = user("ps", "%SystemRoot%\\System32\\cmd.exe");
+        profile.args = vec!["/k".into(), "cd %USERPROFILE%".into(), "%NOPE%".into()];
+        profile.cwd = Some("%USERPROFILE%".into());
+        let set = detected()
+            .with_user_profiles(&[profile], &env)
+            .expect("valid");
+        let joined = set.get("ps").expect("listed");
+        assert_eq!(joined.program, "C:\\Windows\\System32\\cmd.exe");
+        assert_eq!(joined.args, ["/k", "cd C:\\Users\\me", "%NOPE%"]);
+        assert_eq!(joined.cwd.as_deref(), Some("C:\\Users\\me"));
+    }
+
+    #[test]
+    fn expanding_variables_leaves_what_it_does_not_know_as_written() {
+        let env = |name: &str| (name == "HOME").then(|| "/home/me".to_owned());
+        let cases = [
+            ("%HOME%", "/home/me"),
+            ("%HOME%/%HOME%", "/home/me//home/me"),
+            ("%UNKNOWN%", "%UNKNOWN%"),
+            ("%UNKNOWN%x%HOME%", "%UNKNOWN%x/home/me"),
+            ("100%", "100%"),
+            ("%", "%"),
+            ("%%", "%%"),
+            ("a % b %HOME%", "a % b /home/me"),
+            ("%a b%", "%a b%"),
+            ("no variables", "no variables"),
+            ("", ""),
+            ("%HOME", "%HOME"),
+            ("é%HOME%é", "é/home/meé"),
+        ];
+        for (text, wanted) in cases {
+            assert_eq!(expand_env_vars(text, &env), wanted, "{text:?}");
+        }
     }
 }

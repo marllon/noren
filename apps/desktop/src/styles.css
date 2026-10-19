@@ -1366,8 +1366,45 @@ body {
 }
 
 .settings-hint {
+  margin: 0;
   color: var(--nr-muted);
   font-size: 12px;
+}
+
+/* The preview of the profiles an import would add: one row each, the name over the command line. */
+.space-dialog.profile-import-dialog {
+  width: min(560px, 92%);
+}
+
+.profile-import-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 40vh;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  list-style: none;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-bg);
+  font-size: 13px;
+}
+
+.profile-import-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.profile-import-name {
+  font-weight: 600;
+}
+
+.profile-import-command {
+  color: var(--nr-muted);
+  font-size: 12px;
+  word-break: break-all;
 }
 
 .settings-link {

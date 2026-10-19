@@ -78,9 +78,24 @@ So the interface stays legible even for a scheme with a low-contrast terminal; t
 
 A file over 1,000,000 bytes is not read.
 
+## Importing from the settings screen
+
+The **Import** section of the settings screen has both imports, **Import color scheme...** and **Import profiles...**. A scheme goes through the same steps as the palette action (a file picker, the format told from the content, one file per theme in the `themes` folder), and the sentence that says what happened shows under the buttons instead of in the corner of the window. Importing profiles is described next.
+
 ## Profiles in a settings file
 
-The JSON reader also reads the shell profiles of a settings file (`profiles` as a list, or an object with a `list`): the name, the `commandline`, the `startingDirectory` and the `colorScheme` of each. A profile with `"hidden": true` is left out, and one with no name is left out with a warning. Only the reading exists so far (`importProfiles` in `@noren/model`); putting the profiles in Noren's own list, and importing from the settings screen, is a later task.
+The JSON reader also reads the shell profiles of a settings file (`profiles` as a list, or an object with a `list`): the name, the `commandline`, the `startingDirectory` and the `colorScheme` of each. A profile with `"hidden": true` is left out and counted, and one with no name is left out with a warning.
+
+**Import profiles...** picks a file, reads it and **shows what it would add before anything is written**: every profile with its name and the command line that would start it, how many hidden profiles the file had (they are ignored), and the profiles that were read but cannot be imported, with the reason (a profile with no command line has nothing to start). Nothing is written until you press **Import N profiles**; **Cancel** and Esc write nothing. Importing only adds to the list: it never starts a shell and never runs a command, and the command lines run only when you open a tab of that profile from the command palette (_New ... tab_).
+
+What each profile becomes (an entry of `profiles` in `config.jsonc`, see [CONFIG.md](CONFIG.md#profiles)):
+
+- the **command line** is split into the program and its arguments by the rules of Windows (`CommandLineToArgvW`): the first word is the program (in double quotes it runs to the closing quote, spaces included, and its backslashes are plain), the rest are the arguments, separated by spaces and tabs, with double quotes grouping words and a backslash escaping a quote. `"C:\Program Files\Git\bin\bash.exe" --login -i` is the program `C:\Program Files\Git\bin\bash.exe` and the arguments `--login` and `-i`. `%NAME%` is kept as written and replaced by the environment variable when a session starts;
+- the `startingDirectory` becomes `cwd`;
+- the `colorScheme` is **not carried over**: a profile of yours has no color scheme of its own (the theme is chosen for the window or for a space), so a profile that used one of the schemes of the file starts with the theme in force. Import the scheme itself with **Import color scheme...** if you want it as a theme;
+- the `id` is the name as a slug, and the name is the one in the file. An id that the machine's shells already have (for example `pwsh`), an id of a profile you already have, `default`, or another profile of the same file gets a number in the id and `(2)` in the name, so importing the same file twice makes more profiles and never replaces one.
+
+The profiles go to the end of `profiles` in the file, keeping the comments and the layout of the file as every write from the settings screen does. If the file has a problem of its own, or the disk refuses the write, the preview stays open with the reason and nothing is written. A file over 1,000,000 bytes is not read.
 
 ## For contributors
 
@@ -90,4 +105,5 @@ The JSON reader also reads the shell profiles of a settings file (`profiles` as 
 - `Backend.listUserThemes()` returns the text of each file; `Backend.saveUserTheme(id, text)` writes `themes/<id>.json`. The id becomes a file name, so one that is not a theme id is refused before anything is written. In `noren-core` it is `themes.rs` (`ThemeStore`, over the same atomic write as `state.json`); the Tauri commands are `theme_list` and `theme_save`. The core does not know the schema of a theme: it only keeps files that can be one, and the interface validates them. The smoke run lists themes but never writes one.
 - In the web build the theme files live in the browser storage under `noren.web.themes` (a JSON object from id to text); `FakeBackend.setUserTheme(id, text)` places a file as if by hand and `setUserThemeSaveFailure(error)` makes saves fail.
 - In the interface, `user-themes-store.ts` holds the list (built-in first, then yours), loaded before the first frame; `scheme-import.ts` is what the action runs for a picked file; `theme-choice.ts` and `use-theme.ts` look themes up in that whole list, while `findTheme` of `@noren/model` stays the built-in themes alone.
-- The fixtures of the tests (a scheme in each format, a settings file with a hidden profile, files that are not valid) are in `packages/model/src/import-fixtures.ts`, also used by the end-to-end tests.
+- Profiles: `user-profiles.ts` has `splitCommandLine` (the rules above), `userProfilesFromImported` (the ids and the schema check, never throws) and `commandLineOf` (the line shown in the preview); `user-profile-schema.ts` is the schema of one entry of `profiles`, shared with the schema of `config.jsonc`. In the interface, `profile-import.ts` reads the file into a plan (`readProfileFile`) and writes it (`commitProfileImport`, through `ConfigManager.update` with an append to `profiles`), `ProfileImportDialog.tsx` is the preview and `profiles-store.ts` hands the profiles of the file to the backend and keeps the joined list.
+- The fixtures of the tests (a scheme in each format, settings files with hidden profiles and profiles to import, files that are not valid) are in `packages/model/src/import-fixtures.ts`, also used by the end-to-end tests.

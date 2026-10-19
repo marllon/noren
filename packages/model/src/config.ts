@@ -2,6 +2,7 @@ import { findNodeAtLocation, getNodeValue, parseTree, printParseErrorCode } from
 import type { Node as JsonNode, ParseError } from "jsonc-parser";
 import { z } from "zod";
 import { THEME_ID_PATTERN } from "./theme";
+import { MAX_USER_PROFILES, RESERVED_PROFILE_IDS, UserProfileSchema } from "./user-profile-schema";
 
 // The settings file `config.jsonc`: its schema, and reading its text. The file is JSON with
 // comments and trailing commas (the person edits it by hand); everything is optional, so a file
@@ -94,6 +95,34 @@ const keybindingsSchema = z
   })
   .meta({ description: "Keyboard shortcuts." });
 
+/** The shells of your own, which join the ones Noren finds on the machine. */
+const profilesSchema = z
+  .array(UserProfileSchema)
+  .max(MAX_USER_PROFILES)
+  .superRefine((profiles, context) => {
+    const seen = new Set<string>();
+    profiles.forEach((profile, index) => {
+      if (RESERVED_PROFILE_IDS.includes(profile.id)) {
+        context.addIssue({
+          code: "custom",
+          message: `The id "${profile.id}" is reserved`,
+          path: [index, "id"],
+        });
+      } else if (seen.has(profile.id)) {
+        context.addIssue({
+          code: "custom",
+          message: `The id "${profile.id}" is used by another profile`,
+          path: [index, "id"],
+        });
+      }
+      seen.add(profile.id);
+    });
+  })
+  .meta({
+    description:
+      "Shell profiles of your own, listed in the command palette after the ones Noren finds on the machine. An id the machine already has is refused when the profiles are loaded.",
+  });
+
 export const ConfigSchema = z
   .strictObject({
     $schema: z
@@ -101,6 +130,7 @@ export const ConfigSchema = z
       .optional()
       .meta({ description: "Where the JSON Schema of this file is, for the editor." }),
     appearance: appearanceSchema.optional(),
+    profiles: profilesSchema.optional(),
     keybindings: keybindingsSchema.optional(),
     notifications: notificationsSchema.optional(),
   })

@@ -210,6 +210,42 @@ export const JSON_SETTINGS = `// Settings of some terminal, with comments, as pe
 }
 `;
 
+/** A string as JSON text, so a command line with quotes and backslashes can be written readably. */
+const q = (text: string): string => JSON.stringify(text);
+
+/**
+ * A settings file for the tests of importing profiles: comments and trailing commas, a command line
+ * with a quoted program and one with a quoted argument that holds spaces and quotes of its own, a
+ * profile that is hidden, one with no command line, one named like a shell the tests seed as
+ * detected (`Git Bash`, `Fake`), and two with the same name.
+ */
+export const JSON_PROFILES_FILE = `// Profiles of some terminal, with comments, as people keep them.
+{
+  "profiles": {
+    "defaults": { "fontSize": 11 },
+    /* The shells */
+    "list": [
+      {
+        "name": "Git Bash",
+        "commandline": ${q('"C:\\Program Files\\Git\\bin\\bash.exe" --login -i')},
+        "startingDirectory": "%USERPROFILE%",
+        "colorScheme": "Lagoon",
+      },
+      {
+        "name": "Dev Shell",
+        "commandline": ${q("pwsh.exe -NoLogo -Command \"Set-Location 'C:\\My Files'\"")},
+        "startingDirectory": ${q("C:\\work")},
+      },
+      { "name": "Old Shell", "commandline": "old.exe", "hidden": true },
+      { "name": "Fake", "commandline": "fake.exe" },
+      { "name": "Twice", "commandline": "first.exe" },
+      { "name": "Twice", "commandline": "second.exe /k title" },
+      { "name": "No Command" },
+    ],
+  },
+}
+`;
+
 /** Only the schemes of a settings file, as a bare list. */
 export const JSON_SCHEME_LIST = `[ ${jsonScheme("Lagoon")} ]`;
 

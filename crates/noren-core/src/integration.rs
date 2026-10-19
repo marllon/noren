@@ -335,6 +335,7 @@ mod tests {
             name: id.into(),
             program: program.into(),
             args: args.iter().map(|a| (*a).to_owned()).collect(),
+            cwd: None,
             inject_integration: true,
         }
     }

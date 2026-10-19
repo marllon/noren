@@ -2,7 +2,7 @@ import type { Backend, Unsubscribe } from "./backend";
 import { describeConfigError, parseConfigText } from "./config";
 import type { Config, ConfigError } from "./config";
 import { editConfigText } from "./config-edit";
-import type { ConfigChange } from "./config-edit";
+import type { ConfigEdit } from "./config-edit";
 
 // Keeps the settings in force. The text of `config.jsonc` arrives from the backend (once at start,
 // then every time the file changes); a valid text replaces the settings at once, an invalid one
@@ -109,13 +109,13 @@ export class ConfigManager {
    * says what the changes ask for is not written again. Calls queue up, so two quick updates both
    * land. Never rejects.
    */
-  update(changes: readonly ConfigChange[]): Promise<ConfigUpdateResult> {
+  update(changes: readonly ConfigEdit[]): Promise<ConfigUpdateResult> {
     const run = this.#updates.then(() => this.#update(changes));
     this.#updates = run.catch(() => undefined);
     return run;
   }
 
-  async #update(changes: readonly ConfigChange[]): Promise<ConfigUpdateResult> {
+  async #update(changes: readonly ConfigEdit[]): Promise<ConfigUpdateResult> {
     const source = this.#source;
     if (source === undefined) {
       return { ok: false, message: "The settings are not available.", errors: [] };

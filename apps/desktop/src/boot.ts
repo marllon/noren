@@ -6,6 +6,7 @@ import { loadHome } from "./home";
 import { migrateLegacySettings } from "./legacy-settings";
 import type { LegacyStorageArea } from "./legacy-settings";
 import { notificationSettings } from "./notification-settings";
+import { getProfiles, startProfiles } from "./profiles-store";
 import { followActiveSpaceTheme } from "./use-theme";
 import { loadUserThemes } from "./user-themes-store";
 import { createWorkspaceStore } from "./workspace-store";
@@ -49,8 +50,12 @@ export async function bootWorkspace(
     // The themes of the user, before the first frame: a space or the settings may name one of them.
     // A folder that cannot be read leaves the built-in themes, and never stops the app.
     await loadUserThemes(target).catch(() => undefined);
-    const profiles = await target.listProfiles();
-    if (profiles.length === 0) return { ok: false, error: "No shell was found on this machine." };
+    // The profiles of the user (from the file) are handed to the backend before anything restores a
+    // shell, since a saved pane may name one of them; the list is then the machine's and the user's.
+    await startProfiles(target, configManager);
+    if (getProfiles().length === 0) {
+      return { ok: false, error: "No shell was found on this machine." };
+    }
     const restored = await restoreWorkspace(target, { defaults: { newId, clock } });
     const home = await loadHome();
     const store = createWorkspaceStore({

@@ -36,7 +36,7 @@ The panel carries `data-nr-part="palette"` (one of the stable attributes of the 
 
 ## Profiles
 
-The list comes from `listProfiles` of the backend, read once when the window starts. A profile entry runs `newTab({ profileId })` of the workspace store, the same call as the New tab command with the profile named, so the folder and environment still come from the space. In web mode (tests, demo) the profiles can be seeded in `localStorage` under `noren.web.profiles`, a JSON list of `{ id, name, default }`.
+The list comes from `listProfiles` of the backend: the shells found on the machine, then the profiles of your own from `profiles` in `config.jsonc` (see [CONFIG.md](CONFIG.md#profiles)), and it follows the file, so a profile you add by hand or import from the settings screen is in the list with no reload. A profile entry runs `newTab({ profileId })` of the workspace store, the same call as the New tab command with the profile named, so the folder and environment still come from the space. In web mode (tests, demo) the profiles can be seeded in `localStorage` under `noren.web.profiles`, a JSON list of `{ id, name, default }`.
 
 ## Recent folders
 

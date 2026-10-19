@@ -48,6 +48,7 @@ fn main() {
         .manage(deeplink::Links::default())
         .invoke_handler(tauri::generate_handler![
             bridge::profiles_list,
+            bridge::profiles_set_user,
             bridge::session_create,
             bridge::session_write,
             bridge::session_resize,

@@ -12,6 +12,8 @@ import type { Clock } from "./clock";
 import { sameFolder } from "./deep-link";
 import { OutputStream } from "./output-stream";
 import { THEME_ID_PATTERN } from "./theme";
+import { profilesProblem } from "./user-profile-schema";
+import type { UserProfile } from "./user-profile-schema";
 import { decodeUtf8, encodeUtf8 } from "./utf8";
 
 const ESC = "\x1b";
@@ -79,6 +81,9 @@ export interface FakeSessionInfo {
   env: Record<string, string>;
   alive: boolean;
   exitCode?: number;
+  /** The program and arguments of a profile of the user; absent for the profiles the backend was built with. */
+  program?: string;
+  args?: string[];
 }
 
 /** Splits a command line on spaces, honoring single and double quotes. */
@@ -405,16 +410,22 @@ class FakeSession {
  * - the theme files of the user live in memory too: `saveUserTheme` writes one as the app does
  *   (an id that is not a theme id is refused, as the real one refuses it), `setUserTheme` puts a
  *   file there as if it had been placed by hand, `listUserThemes` answers them in the order of the ids
+ * - the profiles of the user (`setUserProfiles`) are checked as the real backend checks them and
+ *   listed after the profiles it was built with; a session of one starts in its `cwd` unless the call
+ *   names a folder, and `session(id)` tells the `program` and `args` it was asked to run
  *
  * Everything is synchronous: effects of `write` have been delivered when its promise resolves.
  */
 export class FakeBackend implements Backend {
   readonly clock: Clock;
   readonly #profiles: ShellProfile[];
+  #userProfiles: UserProfile[] = [];
   readonly #host: string;
   readonly #home: string;
   readonly #sessions = new Map<SessionId, FakeSession>();
   readonly #streams = new Map<SessionId, OutputStream>();
+  /** What the sessions of the profiles of the user were asked to run. */
+  readonly #launched = new Map<SessionId, { program: string; args: string[] }>();
   readonly #exitListeners = new Set<(exit: SessionExit) => void>();
   readonly #calls: FakeCall[] = [];
   readonly #quarantined: string[] = [];
@@ -515,6 +526,7 @@ export class FakeBackend implements Backend {
   session(id: SessionId): FakeSessionInfo | undefined {
     const session = this.#sessions.get(id);
     if (!session) return undefined;
+    const launched = this.#launched.get(id);
     return {
       id,
       profileId: session.profileId,
@@ -524,20 +536,41 @@ export class FakeBackend implements Backend {
       env: { ...session.env },
       alive: session.alive,
       ...(session.exitCode !== undefined ? { exitCode: session.exitCode } : {}),
+      ...(launched !== undefined ? { program: launched.program, args: [...launched.args] } : {}),
     };
   }
 
   async listProfiles(): Promise<ShellProfile[]> {
     this.#record("listProfiles");
-    return this.#profiles.map((profile) => ({ ...profile }));
+    return [
+      ...this.#profiles.map((profile) => ({ ...profile })),
+      ...this.#userProfiles.map((profile) => ({
+        id: profile.id,
+        name: profile.name,
+        default: false,
+      })),
+    ];
+  }
+
+  async setUserProfiles(profiles: readonly UserProfile[]): Promise<void> {
+    this.#record("setUserProfiles", structuredClone(profiles));
+    const problem = profilesProblem(
+      profiles,
+      this.#profiles.map((profile) => profile.id),
+    );
+    if (problem !== undefined) throw new Error(problem);
+    this.#userProfiles = structuredClone([...profiles]);
   }
 
   async createSession(options: CreateSessionOptions): Promise<SessionId> {
     this.#record("createSession", { ...options });
+    const user = this.#userProfiles.find((p) => p.id === options.profileId);
     const profile =
-      options.profileId === undefined
-        ? (this.#profiles.find((p) => p.default) ?? this.#profiles[0])
-        : this.#profiles.find((p) => p.id === options.profileId);
+      user !== undefined
+        ? { id: user.id }
+        : options.profileId === undefined
+          ? (this.#profiles.find((p) => p.default) ?? this.#profiles[0])
+          : this.#profiles.find((p) => p.id === options.profileId);
     if (!profile) {
       throw new Error(
         options.profileId === undefined
@@ -556,7 +589,12 @@ export class FakeBackend implements Backend {
     const id = this.#nextId++;
     const stream = new OutputStream();
     this.#streams.set(id, stream);
-    const session = new FakeSession(id, profile.id, options, {
+    // A profile of the user starts in its own folder unless the session names one.
+    const started: CreateSessionOptions =
+      user?.cwd !== undefined && options.cwd === undefined
+        ? { ...options, cwd: user.cwd }
+        : options;
+    const session = new FakeSession(id, profile.id, started, {
       host: this.#host,
       home: this.#home,
       clock: this.clock,
@@ -564,6 +602,8 @@ export class FakeBackend implements Backend {
       exited: (code) => this.#notifyExit({ id, code }),
     });
     this.#sessions.set(id, session);
+    if (user !== undefined)
+      this.#launched.set(id, { program: user.program, args: user.args ?? [] });
     return id;
   }
 

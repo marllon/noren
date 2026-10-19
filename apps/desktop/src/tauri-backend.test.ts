@@ -61,6 +61,30 @@ describe("TauriBackend", () => {
     expect(fake.invocations).toEqual([{ command: "profiles_list", args: undefined }]);
   });
 
+  it("hands the profiles of the user over through profiles_set_user, as the list given", async () => {
+    const profiles = [
+      {
+        id: "dev-shell",
+        name: "Dev Shell",
+        program: "pwsh.exe",
+        args: ["-NoLogo"],
+        cwd: "C:\\work",
+      },
+      { id: "plain", name: "Plain", program: "sh" },
+    ];
+    const fake = fakeBridge();
+    await expect(new TauriBackend(fake.bridge).setUserProfiles(profiles)).resolves.toBeUndefined();
+    expect(fake.invocations).toEqual([{ command: "profiles_set_user", args: { profiles } }]);
+  });
+
+  it("lets the reason profiles_set_user refused with reach the caller", async () => {
+    const fake = fakeBridge();
+    fake.failing.add("profiles_set_user");
+    await expect(new TauriBackend(fake.bridge).setUserProfiles([])).rejects.toThrow(
+      "profiles_set_user failed",
+    );
+  });
+
   it("creates a session with camelCase arguments and a binary channel", async () => {
     const fake = fakeBridge({ session_create: 7 });
     const backend = new TauriBackend(fake.bridge);

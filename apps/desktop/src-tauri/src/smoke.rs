@@ -152,9 +152,8 @@ fn check_session(app: &AppHandle, deadline: Instant) -> Result<(), String> {
     let _ = state.sessions.kill(SessionId(id));
     let seen = result?;
     let integrated = state
-        .profiles
-        .get(&profile)
-        .is_some_and(|p| p.inject_integration && is_powershell(&p.program));
+        .find_profile(Some(&profile))
+        .is_ok_and(|p| p.inject_integration && is_powershell(&p.program));
     if integrated && !contains_bytes(&seen, PROMPT_START_MARK) {
         return Err(format!(
             "the {profile} session printed no OSC 133;A: the shell integration script was not loaded (looked in {:?})",

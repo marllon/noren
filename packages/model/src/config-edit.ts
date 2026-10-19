@@ -22,6 +22,22 @@ export interface ConfigChange {
   readonly value: ConfigValue;
 }
 
+/** What a list in the file holds: JSON, with `undefined` standing for a key that is left out. */
+export type ConfigJson =
+  ConfigValue | null | readonly ConfigJson[] | { readonly [name: string]: ConfigJson | undefined };
+
+/**
+ * Items to add to the end of a list setting (`["profiles"]`), by its path in the file. The items
+ * already in the list stay as they are; a list the file does not have yet is created with them.
+ */
+export interface ConfigAppend {
+  readonly path: readonly string[];
+  readonly append: readonly ConfigJson[];
+}
+
+/** One edit of the file: a setting set to a value, or items added to a list. */
+export type ConfigEdit = ConfigChange | ConfigAppend;
+
 type Shape = Record<string, z.ZodType>;
 
 /** The settings an object of the schema has, when `schema` is one (an optional one counts). */
@@ -59,33 +75,58 @@ function insertionIndex(parentPath: readonly string[], key: string, names: strin
   return later < 0 ? names.length : later;
 }
 
-/** What a group of new settings is made of: a value, or settings by name. */
-type Tree = ConfigValue | { [name: string]: Tree };
+/** What a group of new settings is made of: a value, a list, or settings by name. */
+type Tree = ConfigJson;
 
 /** `{ "appearance": { "sidebar": { "width": 300 } } }` for the path `appearance.sidebar.width`. */
-function nest(path: readonly string[], value: ConfigValue): Tree {
+function nest(path: readonly string[], value: ConfigJson): Tree {
   const [first, ...rest] = path;
   if (first === undefined) return value;
   return { [first]: nest(rest, value) };
 }
 
-/** On one line: `{ "width": 300 }`. */
-function renderInline(tree: Tree): string {
-  if (typeof tree !== "object") return JSON.stringify(tree);
-  const entries = Object.entries(tree).map(
-    ([name, sub]) => `${JSON.stringify(name)}: ${renderInline(sub)}`,
-  );
-  return `{ ${entries.join(", ")} }`;
+/** A list, as far as the type checker can tell (`Array.isArray` loses `readonly` lists). */
+function isList(tree: Tree): tree is readonly ConfigJson[] {
+  return Array.isArray(tree);
 }
 
-/** One setting to a line, the groups opened over several lines, nested by `unit` from `indent`. */
+/** The settings of a group that have a value (a key left `undefined` is not written). */
+function entriesOf(tree: {
+  readonly [name: string]: ConfigJson | undefined;
+}): [string, ConfigJson][] {
+  return Object.entries(tree).filter(
+    (entry): entry is [string, ConfigJson] => entry[1] !== undefined,
+  );
+}
+
+/** On one line: `{ "width": 300 }`. */
+function renderInline(tree: Tree): string {
+  if (tree === null || typeof tree !== "object") return JSON.stringify(tree);
+  if (isList(tree)) return `[${tree.map(renderInline).join(", ")}]`;
+  const entries = entriesOf(tree).map(
+    ([name, sub]) => `${JSON.stringify(name)}: ${renderInline(sub)}`,
+  );
+  return entries.length === 0 ? "{}" : `{ ${entries.join(", ")} }`;
+}
+
+/**
+ * One setting to a line, the groups opened over several lines, nested by `unit` from `indent`. A
+ * list of plain values stays on one line (`["-NoLogo"]`); a list of groups opens, one group to
+ * each item.
+ */
 function renderBlock(tree: Tree, indent: string, unit: string, eol: string): string {
-  if (typeof tree !== "object") return JSON.stringify(tree);
+  if (tree === null || typeof tree !== "object") return JSON.stringify(tree);
   const inner = indent + unit;
-  const entries = Object.entries(tree).map(
+  if (isList(tree)) {
+    if (tree.length === 0) return "[]";
+    if (tree.every((item) => item === null || typeof item !== "object")) return renderInline(tree);
+    const items = tree.map((item) => `${inner}${renderBlock(item, inner, unit, eol)}`);
+    return `[${eol}${items.join(`,${eol}`)}${eol}${indent}]`;
+  }
+  const entries = entriesOf(tree).map(
     ([name, sub]) => `${inner}${JSON.stringify(name)}: ${renderBlock(sub, inner, unit, eol)}`,
   );
-  return `{${eol}${entries.join(`,${eol}`)}${eol}${indent}}`;
+  return entries.length === 0 ? "{}" : `{${eol}${entries.join(`,${eol}`)}${eol}${indent}}`;
 }
 
 /** The indentation the file already uses for one level (two spaces when it has none to show). */
@@ -233,9 +274,90 @@ function insertInto(
   ]);
 }
 
-/** One change applied to `text` (without a byte order mark). */
-function applyChange(text: string, change: ConfigChange, unit: string, eol: string): string {
-  const { path, value } = change;
+/**
+ * Adds `items` after the last item of the list `array`, each on a line of its own when the list is
+ * written over several lines (indented like the items it has, under the line of the last one, so a
+ * comment at the end of that line stays with it), else on the same line. A trailing comma the list
+ * has is kept, and one it lacks is not added.
+ */
+function appendInto(
+  text: string,
+  array: JsonNode,
+  items: readonly ConfigJson[],
+  unit: string,
+  eol: string,
+): string {
+  const elements = array.children ?? [];
+  const baseIndent = leadingSpace(text, lineStart(text, array.offset));
+  const opening = array.offset + 1;
+  const closing = array.offset + array.length - 1;
+  const first = elements[0];
+
+  if (first === undefined) {
+    // An empty list opens up when it holds nothing but space, else the items follow the bracket.
+    const childIndent = baseIndent + unit;
+    const lines = items
+      .map((item) => `${childIndent}${renderBlock(item, childIndent, unit, eol)}`)
+      .join(`,${eol}`);
+    const inside = text.slice(opening, closing);
+    if (inside.trim() === "") {
+      return applyEdits(text, [
+        { offset: opening, length: inside.length, content: `${eol}${lines}${eol}${baseIndent}` },
+      ]);
+    }
+    return applyEdits(text, [{ offset: opening, length: 0, content: `${eol}${lines}` }]);
+  }
+
+  const last = elements[elements.length - 1] as JsonNode;
+  const lastEnd = last.offset + last.length;
+  const multiline = text.slice(opening, first.offset).includes("\n");
+  if (multiline) {
+    const childIndent = leadingSpace(text, lineStart(text, first.offset));
+    const ends = lineEndAfter(text, lastEnd);
+    if (ends !== undefined && ends.at <= closing) {
+      const lines = items
+        .map(
+          (item, index) =>
+            `${eol}${childIndent}${renderBlock(item, childIndent, unit, eol)}${
+              ends.comma || index < items.length - 1 ? "," : ""
+            }`,
+        )
+        .join("");
+      const withLines = applyEdits(text, [{ offset: ends.at, length: 0, content: lines }]);
+      // The item before them had no comma yet: it has one now that something follows it.
+      return ends.comma
+        ? withLines
+        : applyEdits(withLines, [{ offset: lastEnd, length: 0, content: "," }]);
+    }
+  }
+  // On one line with the others.
+  return applyEdits(text, [
+    { offset: lastEnd, length: 0, content: `, ${items.map(renderInline).join(", ")}` },
+  ]);
+}
+
+/** One list edit applied to `text` (without a byte order mark). */
+function applyAppend(text: string, edit: ConfigAppend, unit: string, eol: string): string {
+  if (edit.append.length === 0) return text;
+  const root = parseTree(text, [], { allowTrailingComma: true, allowEmptyContent: true });
+  // No file yet, or only comments: the list goes after them.
+  if (root === undefined) return applyChange(text, edit.path, edit.append, unit, eol);
+  if (root.type !== "object") throw new Error("the settings file does not hold an object");
+  const list = findNodeAtLocation(root, [...edit.path]);
+  // A list the file lacks is created, with the items in it.
+  if (list === undefined) return applyChange(text, edit.path, edit.append, unit, eol);
+  if (list.type !== "array") throw new Error(`${edit.path.join(".")} is not a list`);
+  return appendInto(text, list, edit.append, unit, eol);
+}
+
+/** One change applied to `text` (without a byte order mark): `value` is put at `path`. */
+function applyChange(
+  text: string,
+  path: readonly string[],
+  value: ConfigJson,
+  unit: string,
+  eol: string,
+): string {
   const root = parseTree(text, [], { allowTrailingComma: true, allowEmptyContent: true });
 
   if (root === undefined) {
@@ -275,16 +397,21 @@ function applyChange(text: string, change: ConfigChange, unit: string, eol: stri
  * The text of `config.jsonc` with `changes` made, in order. `text` is the file as it is (`null`:
  * there is no file yet, and the result is a new one) and must be a valid file (`parseConfigText`).
  * A setting the text holds has only its value replaced; a new one is inserted where the schema
- * lists it, creating the groups it sits in. Whatever else the text holds is left as it is.
+ * lists it, creating the groups it sits in. Items to append are added after the last item of the
+ * list (the list is created when the text lacks it). Whatever else the text holds is left as it is.
  */
-export function editConfigText(text: string | null, changes: readonly ConfigChange[]): string {
+export function editConfigText(text: string | null, changes: readonly ConfigEdit[]): string {
   const source = text ?? "";
   const bom = source.charCodeAt(0) === 0xfeff ? "﻿" : "";
   let edited = bom === "" ? source : source.slice(1);
   const eol = edited.includes("\r\n") ? "\r\n" : "\n";
   const unit = detectUnit(edited);
   for (const change of changes) {
-    if (change.path.length > 0) edited = applyChange(edited, change, unit, eol);
+    if (change.path.length === 0) continue;
+    edited =
+      "append" in change
+        ? applyAppend(edited, change, unit, eol)
+        : applyChange(edited, change.path, change.value, unit, eol);
   }
   return bom + edited;
 }

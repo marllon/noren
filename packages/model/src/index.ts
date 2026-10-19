@@ -48,6 +48,17 @@ export {
 } from "./importers";
 export type { ImportFormat, ImportOptions, ImportResult } from "./importers";
 export type { ImportedProfile, ProfilesResult } from "./import-json";
+export {
+  MAX_PROFILE_ID,
+  MAX_USER_PROFILES,
+  PROFILE_ID_PATTERN,
+  RESERVED_PROFILE_IDS,
+  UserProfileSchema,
+  profilesProblem,
+} from "./user-profile-schema";
+export type { UserProfile } from "./user-profile-schema";
+export { commandLineOf, splitCommandLine, userProfilesFromImported } from "./user-profiles";
+export type { CommandLine, ProfilesFromImport, SkippedProfile } from "./user-profiles";
 export { parseUserThemes, serializeTheme } from "./user-themes";
 export type { UserThemesResult } from "./user-themes";
 export {
@@ -63,7 +74,13 @@ export type { Config, ConfigError, ParseConfigResult } from "./config";
 export { ConfigManager } from "./config-manager";
 export type { ConfigSource, ConfigState, ConfigUpdateResult } from "./config-manager";
 export { editConfigText } from "./config-edit";
-export type { ConfigChange, ConfigValue } from "./config-edit";
+export type {
+  ConfigAppend,
+  ConfigChange,
+  ConfigEdit,
+  ConfigJson,
+  ConfigValue,
+} from "./config-edit";
 export { ManualClock } from "./clock";
 export type { Clock } from "./clock";
 export { createDefaultWorkspace } from "./default-workspace";

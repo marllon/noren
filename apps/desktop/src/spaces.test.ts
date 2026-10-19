@@ -6,18 +6,8 @@ import {
   isSingleGlyph,
   parseEnvLines,
   createWheelGesture,
-  spaceShortcutIndex,
   wheelTravel,
 } from "./spaces";
-
-const key = (code: string, flags: Partial<Parameters<typeof spaceShortcutIndex>[0]> = {}) => ({
-  code,
-  ctrlKey: true,
-  altKey: true,
-  shiftKey: false,
-  metaKey: false,
-  ...flags,
-});
 
 describe("parseEnvLines", () => {
   it("reads KEY=value lines, skipping blanks and keeping everything after the first =", () => {
@@ -42,22 +32,6 @@ describe("parseEnvLines", () => {
       error: expect.stringContaining("Line 1"),
     });
     expect(parseEnvLines("A B=x")).toMatchObject({ ok: false });
-  });
-});
-
-describe("spaceShortcutIndex", () => {
-  it("maps Ctrl+Alt+1..9 to positions 0..8", () => {
-    expect(spaceShortcutIndex(key("Digit1"))).toBe(0);
-    expect(spaceShortcutIndex(key("Digit9"))).toBe(8);
-  });
-
-  it("ignores other keys and other modifier sets", () => {
-    expect(spaceShortcutIndex(key("Digit0"))).toBeUndefined();
-    expect(spaceShortcutIndex(key("KeyA"))).toBeUndefined();
-    expect(spaceShortcutIndex(key("Digit1", { altKey: false }))).toBeUndefined();
-    expect(spaceShortcutIndex(key("Digit1", { ctrlKey: false }))).toBeUndefined();
-    expect(spaceShortcutIndex(key("Digit1", { shiftKey: true }))).toBeUndefined();
-    expect(spaceShortcutIndex(key("Digit1", { metaKey: true }))).toBeUndefined();
   });
 });
 

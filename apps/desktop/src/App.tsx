@@ -53,10 +53,11 @@ import type { SplitLayoutContext } from "./SplitLayout";
 import { joinedPaneCount, paneDropAction, paneLimitNotice, paneSwapAction } from "./sidebar-drop";
 import type { PaneDrop } from "./sidebar-drop";
 import { keyboardResize } from "./split-layout";
-import { splitCommand, typesText } from "./split-keys";
-import type { SplitCommand } from "./split-keys";
+import { currentResolver } from "./keybindings-store";
+import type { ActionCommand } from "./keybindings";
+import { typesText } from "./split-keys";
 import { DropZones, TreeDnd } from "./TreeDnd";
-import { createWheelGesture, spaceShortcutIndex, wheelTravel } from "./spaces";
+import { createWheelGesture, wheelTravel } from "./spaces";
 import { TerminalView } from "./TerminalView";
 import { applySpaceColor, applyTheme, terminalTheme } from "./theme";
 import { TitleBar } from "./TitleBar";
@@ -201,11 +202,27 @@ function ItemView({ store, space, item, shown, colors, home, onReady }: ItemView
 const NOTICE_MS = 3500;
 
 /**
- * Carries out a split shortcut on the focused pane of the active tab. Returns the notice to show
- * when the shortcut is refused (a split past the pane limit changes nothing), else undefined.
+ * Carries out the command of a shortcut: on the space list, the tabs of the active space, or the
+ * focused pane of the active tab. Returns the notice to show when the shortcut is refused (a split
+ * past the pane limit changes nothing), else undefined.
  */
-function runSplitCommand(store: WorkspaceStore, command: SplitCommand): string | undefined {
+function runCommand(store: WorkspaceStore, command: ActionCommand): string | undefined {
   const state = store.getState();
+  switch (command.kind) {
+    case "space":
+      state.activateSpaceAt(command.index);
+      return undefined;
+    case "new-tab":
+      state.newTab();
+      return undefined;
+    case "tab": {
+      const tabId = spaceItemIds(activeSpaceOf(state.workspace))[command.index];
+      if (tabId !== undefined) state.activateItem(tabId);
+      return undefined;
+    }
+    default:
+      break;
+  }
   const itemId = activeItemIdOf(state);
   const item = itemId === undefined ? undefined : activeSpaceOf(state.workspace).items[itemId];
   if (!item) return undefined;
@@ -239,6 +256,8 @@ function runSplitCommand(store: WorkspaceStore, command: SplitCommand): string |
       if (resized) dispatch({ type: "pane/resize", itemId: item.id, ...resized });
       return undefined;
     }
+    default:
+      return undefined;
   }
 }
 
@@ -370,21 +389,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     };
   }, []);
 
-  // Ctrl+Alt+1..9 switches space. Captured on the window so the terminal never sees the keys.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const index = spaceShortcutIndex(event);
-      if (index === undefined) return;
-      event.preventDefault();
-      event.stopPropagation();
-      store.getState().activateSpaceAt(index);
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [store]);
-
-  // The split shortcuts act on the focused pane of the active tab. Captured on the window like the
-  // space shortcut, so a key that is a shortcut never reaches the terminal and any other key does.
+  // The notice about a refused shortcut (a split past the pane limit), shown for a few seconds.
   const [notice, setNotice] = useState("");
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const showNotice = useCallback((text: string) => {
@@ -436,16 +441,18 @@ function Shell({ store }: { store: WorkspaceStore }) {
     const action = paneSwapAction(activeId, paneId, otherPaneId);
     if (action) dispatch(action);
   };
+  // The one keyboard listener: every Noren shortcut goes through the resolver. Captured on the
+  // window, so a key that is a shortcut never reaches the terminal and any other key does.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const command = splitCommand(event);
+      const action = currentResolver()(event);
       const target = event.target instanceof HTMLElement ? event.target : null;
-      if (command === undefined || typesText(target)) return;
+      if (action === undefined || typesText(target)) return;
       event.preventDefault();
       event.stopPropagation();
       // Holding the key must not split, close or zoom over and over.
-      if (event.repeat && !command.repeat) return;
-      const refusal = runSplitCommand(store, command);
+      if (event.repeat && !action.repeat) return;
+      const refusal = runCommand(store, action.command);
       if (refusal !== undefined) showNotice(refusal);
     };
     window.addEventListener("keydown", onKeyDown, true);

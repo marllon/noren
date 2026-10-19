@@ -3,6 +3,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { Density, SidebarSide, TabsPlacement } from "./layout";
 import { updateLayout, useLayout } from "./layout-store";
+import type { Preset } from "./keybindings";
+import { updateKeybindings, useKeybindings } from "./keybindings-store";
 
 interface ChoiceProps<T extends string> {
   legend: string;
@@ -46,12 +48,18 @@ const DENSITIES: readonly { value: Density; label: string }[] = [
   { value: "compact", label: "Compact" },
 ];
 
+const KEY_PRESETS: readonly { value: Preset; label: string }[] = [
+  { value: "safe", label: "Safe" },
+  { value: "browser", label: "Browser" },
+];
+
 /**
  * Provisional control for the layout, in the title bar so it is reachable even when the sidebar is
  * hidden. The settings screen and the palette take over in NOR-F4-06c.
  */
 export function LayoutControl() {
   const layout = useLayout();
+  const keybindings = useKeybindings();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -138,6 +146,13 @@ export function LayoutControl() {
             />
             <span>Pane headers</span>
           </label>
+          <Choice
+            legend="Shortcuts"
+            name="keybindings-preset"
+            value={keybindings.preset}
+            options={KEY_PRESETS}
+            onChange={(preset) => updateKeybindings({ preset })}
+          />
         </div>
       )}
     </div>

@@ -65,22 +65,6 @@ export function isSingleGlyph(text: string): boolean {
   return segments.length === 1;
 }
 
-/** The slice of a keyboard event the space shortcut reads. */
-export interface ShortcutEvent {
-  code: string;
-  ctrlKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-  metaKey: boolean;
-}
-
-/** Zero-based space position for Ctrl+Alt+1..9; `undefined` for any other key. */
-export function spaceShortcutIndex(event: ShortcutEvent): number | undefined {
-  if (!event.ctrlKey || !event.altKey || event.shiftKey || event.metaKey) return undefined;
-  const match = /^Digit([1-9])$/.exec(event.code);
-  return match?.[1] === undefined ? undefined : Number(match[1]) - 1;
-}
-
 /** The slice of a wheel event the space gesture reads. */
 export interface WheelLike {
   deltaX: number;

@@ -100,6 +100,11 @@ export interface LastCommand {
   durationMs?: number;
 }
 
+/** A command the shell is running now; `text` is absent when the shell did not tell the line. */
+export interface RunningCommand {
+  text?: string;
+}
+
 export interface Pane {
   id: Id;
   type: "terminal";
@@ -115,6 +120,9 @@ export interface Pane {
   status: "running" | "idle" | "exited";
   /** Exit code of the shell; set only while `status` is `"exited"`. */
   exitCode?: number;
+  /** The command line the shell reports it is running; gone when it ends or the shell exits. */
+  runningCommand?: RunningCommand;
+  /** The command that ended last: its line, exit code and duration (each only when known). */
   lastCommand?: LastCommand;
   unread: boolean;
   bell: boolean;

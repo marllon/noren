@@ -135,6 +135,7 @@ async function startPane(
   const fresh: Pane = { ...pane, status: "idle" };
   delete fresh.sessionId;
   delete fresh.exitCode;
+  delete fresh.runningCommand;
 
   for (const attempt of [wanted, size]) {
     try {

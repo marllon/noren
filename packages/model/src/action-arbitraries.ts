@@ -430,5 +430,35 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
         ),
       ),
     ),
+    weighted(
+      3,
+      target.chain(({ itemId, paneId }) =>
+        fc.record(
+          {
+            type: tag("pane/command-start"),
+            itemId: fc.constant(itemId),
+            paneId: fc.constant(paneId),
+            text: fc.constantFrom("npm test", "ls -la", " ", "a".repeat(600)),
+          },
+          { requiredKeys: ["type", "itemId", "paneId"] },
+        ),
+      ),
+    ),
+    weighted(
+      3,
+      target.chain(({ itemId, paneId }) =>
+        fc.record(
+          {
+            type: tag("pane/command-end"),
+            itemId: fc.constant(itemId),
+            paneId: fc.constant(paneId),
+            text: fc.constantFrom("npm test", "ls -la", " "),
+            exitCode: fc.integer({ min: -2, max: 255 }),
+            durationMs: fc.integer({ min: -5, max: 90_000 }),
+          },
+          { requiredKeys: ["type", "itemId", "paneId"] },
+        ),
+      ),
+    ),
   );
 }

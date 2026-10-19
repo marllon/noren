@@ -25,6 +25,7 @@ interface PaneShape {
   cwd: Maybe<string>;
   status: Pane["status"];
   exitCode: number;
+  runningCommand: Maybe<{ text: Maybe<string> }>;
   lastCommand: Maybe<{ text: Maybe<string>; exitCode: Maybe<number>; durationMs: Maybe<number> }>;
   unread: boolean;
   bell: boolean;
@@ -97,6 +98,7 @@ const arbPaneShape: fc.Arbitrary<PaneShape> = fc.record({
   cwd: optional(arbCwd),
   status: fc.constantFrom("running", "idle", "exited"),
   exitCode: fc.integer({ min: 0, max: 255 }),
+  runningCommand: optional(fc.record({ text: optional(arbText) })),
   lastCommand: optional(
     fc.record({
       text: optional(arbText),
@@ -249,6 +251,13 @@ class Builder {
       ...(shape.cwd !== undefined ? { cwd: shape.cwd } : {}),
       status: shape.status,
       ...(exited ? { exitCode: shape.exitCode } : {}),
+      // A shell that exited runs nothing.
+      ...(!exited && shape.runningCommand
+        ? {
+            runningCommand:
+              shape.runningCommand.text !== undefined ? { text: shape.runningCommand.text } : {},
+          }
+        : {}),
       ...(lastCommand ? { lastCommand } : {}),
       unread: shape.unread,
       bell: shape.bell,

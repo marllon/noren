@@ -1,6 +1,7 @@
 import { layoutPanes } from "@noren/model";
 import type { Id, Item, LayoutNode, Pane } from "@noren/model";
-import { shortCwd } from "./pane-info";
+import { commandInfo, shortCwd } from "./pane-info";
+import type { CommandInfo } from "./pane-info";
 
 /** A pane of the thumbnail: its box inside the layout, in percent of the whole (0 to 100). */
 export interface ThumbCell {
@@ -51,7 +52,7 @@ export function isSplitItem(item: Item): boolean {
 
 /** Status of a pane as the sidebar words it: `running`, `idle` or `exit N` (`exit` with no code). */
 export function paneStatusText(pane: Pane): string {
-  if (pane.status === "running") return "running";
+  if (pane.status === "running" || pane.runningCommand !== undefined) return "running";
   if (pane.status === "exited")
     return pane.exitCode === undefined ? "exit" : `exit ${pane.exitCode}`;
   return "idle";
@@ -69,6 +70,8 @@ export interface PaneEntry {
   paneId: Id;
   title: string;
   status: string;
+  /** The command the pane runs now, else the last one it ran. */
+  command?: CommandInfo;
   /** The pane that has the keyboard in its item. */
   focused: boolean;
 }
@@ -77,10 +80,14 @@ export interface PaneEntry {
 export function paneEntries(item: Item, defaultCwd?: string, home?: string): PaneEntry[] {
   const panes = layoutPanes(item.layout);
   if (panes.length < 2) return [];
-  return panes.map((pane) => ({
-    paneId: pane.id,
-    title: paneTitleText(pane, defaultCwd, home),
-    status: paneStatusText(pane),
-    focused: pane.id === item.focusedPaneId,
-  }));
+  return panes.map((pane) => {
+    const command = commandInfo(pane);
+    return {
+      paneId: pane.id,
+      title: paneTitleText(pane, defaultCwd, home),
+      status: paneStatusText(pane),
+      ...(command !== undefined ? { command } : {}),
+      focused: pane.id === item.focusedPaneId,
+    };
+  });
 }

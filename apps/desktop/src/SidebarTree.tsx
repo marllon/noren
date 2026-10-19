@@ -17,12 +17,14 @@ import {
   BELL_LABEL,
   RUNNING_LABEL,
   UNREAD_LABEL,
+  commandWords,
+  exitText,
   failureLabel,
   indicatorLabels,
   shortCwd,
   summarizeItem,
 } from "./pane-info";
-import type { ItemSummary } from "./pane-info";
+import type { CommandInfo, ItemSummary } from "./pane-info";
 import type { MenuPoint } from "./SpaceMenu";
 import type { ClickModifiers, TreeRow } from "./sidebar-tree";
 import { DRAG_HELP_ID, DragRow, useOutsideDrop } from "./TreeDnd";
@@ -91,6 +93,40 @@ export function TabBadges({ summary }: { summary: ItemSummary }) {
   );
 }
 
+/**
+ * The command of a pane in a line: its text, then its exit code and how long it took (or
+ * `running`). `part` names the line for the tests; the text is cut by the stylesheet.
+ */
+function CommandLine({ info, part }: { info: CommandInfo; part: string }) {
+  return (
+    <span className={part} data-nr-part={part} data-nr-state={info.state} aria-hidden="true">
+      {info.text !== undefined && (
+        <span className="command-text" data-nr-part={`${part}-text`} title={info.text}>
+          {info.text}
+        </span>
+      )}
+      {info.state === "running" ? (
+        <span className="command-code" data-nr-part={`${part}-code`}>
+          running
+        </span>
+      ) : (
+        <>
+          {info.exitCode !== undefined && (
+            <span className="command-code" data-nr-part={`${part}-code`}>
+              {exitText(info)}
+            </span>
+          )}
+          {info.duration !== undefined && (
+            <span className="command-time" data-nr-part={`${part}-time`}>
+              {info.duration}
+            </span>
+          )}
+        </>
+      )}
+    </span>
+  );
+}
+
 /** A small drawing of how a split tab is laid out; the focused pane is filled. */
 function LayoutThumb({ item }: { item: Item }) {
   return (
@@ -136,6 +172,9 @@ function PaneList({ itemId, label, entries, onPaneClick }: PaneListProps) {
             onClick={() => onPaneClick(itemId, entry.paneId)}
           >
             <span className="item-pane-title">{entry.title}</span>
+            {entry.command !== undefined && (
+              <CommandLine info={entry.command} part="item-pane-command" />
+            )}
             <span className="item-pane-status" data-nr-part="item-pane-status" aria-hidden="true">
               {entry.status}
             </span>
@@ -338,11 +377,14 @@ export function SidebarTree({
       ...indicatorLabels(summary),
       ...(cwdText !== "" ? [`Folder ${cwdText}`] : []),
       ...(summary.gitBranch !== undefined ? [`Branch ${summary.gitBranch}`] : []),
+      ...(summary.command !== undefined ? [commandWords(summary.command)] : []),
     ];
     const descriptionId = `tab-info-${row.id}`;
     const entries = paneEntries(item, space.defaults.cwd, home);
     const isSplit = entries.length > 0;
     const expanded = isSplit && !folded.has(row.id);
+    // An open pane list shows the command of each pane; otherwise the tab shows the focused one.
+    const command = expanded ? undefined : summary.command;
     // Pinned tabs sit still: they are not dragged, but a tab can be dropped on the Pinned zone.
     const content = (drag?: DragHandle) => (
       <>
@@ -394,6 +436,7 @@ export function SidebarTree({
               )}
             </span>
           )}
+          {command !== undefined && <CommandLine info={command} part="item-command" />}
         </button>
         {isSplit && (
           <button

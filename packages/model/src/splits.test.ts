@@ -1044,3 +1044,145 @@ describe("pane/set-location", () => {
     expect(paneOf(next, "a", "p1").cwd).toBe("/with space/ ");
   });
 });
+
+describe("pane/command-start and pane/command-end", () => {
+  const paneOf = (ws: Workspace, itemId: Id, paneId: Id) =>
+    must(layoutPanes(itemOf(ws, itemId).layout).find((p) => p.id === paneId));
+  const start = (itemId: Id, paneId: Id, text?: string): Action => ({
+    type: "pane/command-start",
+    itemId,
+    paneId,
+    ...(text !== undefined ? { text } : {}),
+  });
+  const end = (
+    itemId: Id,
+    paneId: Id,
+    result: { text?: string; exitCode?: number; durationMs?: number } = {},
+  ): Action => ({ type: "pane/command-end", itemId, paneId, ...result });
+
+  it("a started command is the running command of that pane only", () => {
+    const next = applyChecked(fixture(), start("b", "p3", "npm test"));
+    expect(paneOf(next, "b", "p3").runningCommand).toEqual({ text: "npm test" });
+    expect(paneOf(next, "b", "p2")).toEqual(paneOf(fixture(), "b", "p2"));
+    expect(sessionsLost(fixture(), next)).toEqual([]);
+  });
+
+  it("a command whose line the shell did not tell is running without a text", () => {
+    const next = applyChecked(fixture(), start("a", "p1"));
+    expect(paneOf(next, "a", "p1").runningCommand).toEqual({});
+    const blank = applyChecked(fixture(), start("a", "p1", "   "));
+    expect(paneOf(blank, "a", "p1").runningCommand).toEqual({});
+  });
+
+  it("trims the line and cuts a very long one", () => {
+    const next = applyChecked(fixture(), start("a", "p1", "  ls -la  "));
+    expect(paneOf(next, "a", "p1").runningCommand).toEqual({ text: "ls -la" });
+    const long = applyChecked(fixture(), start("a", "p1", "x".repeat(900)));
+    expect(paneOf(long, "a", "p1").runningCommand?.text).toBe("x".repeat(500));
+  });
+
+  it("start is a no-op when the pane already shows that command, and changes when the text does", () => {
+    const first = applyChecked(fixture(), start("a", "p1", "npm test"));
+    expect(reduce(first, start("a", "p1", "npm test"), testContext().ctx)).toBe(first);
+    const second = applyChecked(first, start("a", "p1", "npm run build"));
+    expect(paneOf(second, "a", "p1").runningCommand).toEqual({ text: "npm run build" });
+    const bare = applyChecked(fixture(), start("a", "p1"));
+    expect(reduce(bare, start("a", "p1"), testContext().ctx)).toBe(bare);
+  });
+
+  it("an ended command becomes the last command and stops running", () => {
+    const running = applyChecked(fixture(), start("a", "p1", "npm test"));
+    const done = applyChecked(running, end("a", "p1", { exitCode: 1, durationMs: 2500 }));
+    const pane = paneOf(done, "a", "p1");
+    expect(pane).not.toHaveProperty("runningCommand");
+    // The line the pane showed as running is kept when the end does not repeat it.
+    expect(pane.lastCommand).toEqual({ text: "npm test", exitCode: 1, durationMs: 2500 });
+  });
+
+  it("the text of the end wins over the one that was running", () => {
+    const running = applyChecked(fixture(), start("a", "p1", "old"));
+    const done = applyChecked(running, end("a", "p1", { text: "new", exitCode: 0 }));
+    expect(paneOf(done, "a", "p1").lastCommand).toEqual({ text: "new", exitCode: 0 });
+  });
+
+  it("a command that ends without having been seen to start is still the last command", () => {
+    const done = applyChecked(fixture(), end("a", "p1", { text: "ls", exitCode: 0 }));
+    expect(paneOf(done, "a", "p1").lastCommand).toEqual({ text: "ls", exitCode: 0 });
+  });
+
+  it("the next command replaces the last one", () => {
+    const one = applyChecked(fixture(), end("a", "p1", { text: "ls", exitCode: 0 }));
+    const two = applyChecked(one, end("a", "p1", { text: "false", exitCode: 1 }));
+    expect(paneOf(two, "a", "p1").lastCommand).toEqual({ text: "false", exitCode: 1 });
+  });
+
+  it("keeps only whole exit codes and durations that are not negative, rounding the duration", () => {
+    const done = applyChecked(
+      fixture(),
+      end("a", "p1", { text: "x", exitCode: -1, durationMs: 1.6 }),
+    );
+    expect(paneOf(done, "a", "p1").lastCommand).toEqual({ text: "x", exitCode: -1, durationMs: 2 });
+    const odd = applyChecked(
+      fixture(),
+      end("a", "p1", { text: "x", exitCode: 1.5, durationMs: -3 }),
+    );
+    expect(paneOf(odd, "a", "p1").lastCommand).toEqual({ text: "x" });
+    const nan = applyChecked(
+      fixture(),
+      end("a", "p1", { text: "x", exitCode: Number.NaN, durationMs: Number.POSITIVE_INFINITY }),
+    );
+    expect(paneOf(nan, "a", "p1").lastCommand).toEqual({ text: "x" });
+  });
+
+  it("end is a no-op when the pane already has that last command and nothing runs", () => {
+    const first = applyChecked(
+      fixture(),
+      end("a", "p1", { text: "ls", exitCode: 0, durationMs: 5 }),
+    );
+    expect(
+      reduce(first, end("a", "p1", { text: "ls", exitCode: 0, durationMs: 5 }), testContext().ctx),
+    ).toBe(first);
+    // An end that says nothing and finds nothing running changes nothing either.
+    expectUnchanged(fixture(), end("a", "p1"));
+  });
+
+  it("an end that says nothing still stops the command and keeps the last one", () => {
+    const one = applyChecked(fixture(), end("a", "p1", { text: "ls", exitCode: 0 }));
+    const running = applyChecked(one, start("a", "p1"));
+    const done = applyChecked(running, end("a", "p1"));
+    expect(paneOf(done, "a", "p1")).not.toHaveProperty("runningCommand");
+    expect(paneOf(done, "a", "p1").lastCommand).toEqual({ text: "ls", exitCode: 0 });
+  });
+
+  it("a shell that exits runs nothing, and a shell that exited starts nothing", () => {
+    const running = applyChecked(fixture(), start("a", "p1", "sleep 5"));
+    const exited = applyChecked(running, {
+      type: "pane/set-status",
+      itemId: "a",
+      paneId: "p1",
+      status: "exited",
+      exitCode: 0,
+    });
+    expect(paneOf(exited, "a", "p1")).not.toHaveProperty("runningCommand");
+    expectUnchanged(exited, start("a", "p1", "again"));
+  });
+
+  it("changes nothing for an unknown pane, or a pane of another item", () => {
+    expectUnchanged(fixture(), start("ghost", "p1", "ls"));
+    expectUnchanged(fixture(), start("a", "ghost", "ls"));
+    expectUnchanged(fixture(), start("b", "p1", "ls"));
+    expectUnchanged(fixture(), end("ghost", "p1", { text: "ls" }));
+    expectUnchanged(fixture(), end("b", "p1", { text: "ls" }));
+  });
+
+  it("does not touch the title, the status or the activity time", () => {
+    const next = applyChecked(
+      applyChecked(fixture(), start("a", "p1", "ls")),
+      end("a", "p1", { exitCode: 0 }),
+    );
+    const before = itemOf(fixture(), "a");
+    const after = itemOf(next, "a");
+    expect({ ...after, layout: undefined }).toEqual({ ...before, layout: undefined });
+    expect(paneOf(next, "a", "p1").status).toBe(paneOf(fixture(), "a", "p1").status);
+  });
+});

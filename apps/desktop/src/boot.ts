@@ -1,6 +1,7 @@
 import { restoreWorkspace } from "@noren/model";
 import type { Backend } from "@noren/model";
 import { createBackend } from "./backend";
+import { loadHome } from "./home";
 import { createWorkspaceStore } from "./workspace-store";
 import type { WorkspaceStore } from "./workspace-store";
 
@@ -35,8 +36,10 @@ export async function bootWorkspace(
     const profiles = await target.listProfiles();
     if (profiles.length === 0) return { ok: false, error: "No shell was found on this machine." };
     const restored = await restoreWorkspace(target, { defaults: { newId, clock } });
+    const home = await loadHome();
     const store = createWorkspaceStore({
       backend: target,
+      ...(home !== undefined ? { home } : {}),
       workspace: restored.workspace,
       failedPaneIds: restored.failedPaneIds,
       newId,

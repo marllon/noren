@@ -203,6 +203,26 @@ export type Action =
       cwd?: string;
       gitBranch?: string;
     }
+  /**
+   * The pane's shell starts running a command (OSC 133;C). `text` is the command line when the
+   * shell told it (blank is none, long lines are cut). A pane whose shell exited, an unknown pane
+   * or a command the pane already shows as running leave the workspace as it is.
+   */
+  | { type: "pane/command-start"; itemId: Id; paneId: Id; text?: string }
+  /**
+   * The pane's command ended (OSC 133;D): the running command goes away and becomes `lastCommand`.
+   * `text` absent keeps the line the pane showed as running; `exitCode` and `durationMs` are kept
+   * only when they are whole numbers (the duration not negative). An unknown pane or a result the
+   * pane already has leave the workspace as it is.
+   */
+  | {
+      type: "pane/command-end";
+      itemId: Id;
+      paneId: Id;
+      text?: string;
+      exitCode?: number;
+      durationMs?: number;
+    }
   /** Focus the neighbor by layout geometry (ends zoom); no neighbor, no change. */
   | { type: "pane/focus-direction"; itemId: Id; direction: "left" | "right" | "up" | "down" };
 

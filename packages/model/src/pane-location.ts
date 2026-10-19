@@ -1,4 +1,5 @@
 import type { GitInfo } from "./backend";
+import type { Clock } from "./clock";
 import { sameFolder } from "./deep-link";
 import { ShellIntegrationParser } from "./shell-integration";
 import type { ShellEvent } from "./shell-integration";
@@ -21,12 +22,25 @@ export interface PaneLocationTrackerOptions {
   /** Called with the location of the shell, at every prompt and every time the folder changes. */
   onLocation(location: PaneLocation): void;
   /**
+   * Called when a command starts running (OSC 133;C) and when it ends (OSC 133;D, or the next
+   * prompt when the shell never said). The line comes from OSC 633;E, which a shell sends before
+   * the command starts; `durationMs` is the time between the two on `clock`.
+   */
+  onCommand?(event: PaneCommandEvent): void;
+  /** Time source of the duration of a command. Default: the wall clock. */
+  clock?: Pick<Clock, "now">;
+  /**
    * The folder the pane has before the shell reports anything (a restored pane, or one started in
    * a chosen folder). A pane without one started in the default folder of its shell, which the app
    * does not know until the shell says so.
    */
   cwd?: string;
 }
+
+/** What the command of a pane did: it started, or it ended with what is known about it. */
+export type PaneCommandEvent =
+  | { kind: "start"; text?: string }
+  | { kind: "end"; text?: string; exitCode?: number; durationMs?: number };
 
 /** What one lookup of the branch answers for: a folder, and whether it goes on the pane. */
 interface Lookup {
@@ -46,6 +60,11 @@ interface Lookup {
  * folder starts it there again. The branch of that folder is still reported, and the folder is
  * recorded from the moment the shell leaves it (and from then on, even if it comes back).
  *
+ * It also follows the command of the shell: the line (OSC 633;E), its start (133;C) and its end
+ * (133;D with the exit code), and tells `onCommand`. A command that ends without having been seen
+ * to start (the shell says only 633;E and 133;D) is reported when it ends, without a duration; a
+ * 133;D with nothing before it (the first prompt of some shells) is not a command.
+ *
  * A chunk that holds several of these gives one lookup, not several. Only one lookup is in flight
  * at a time: requests that come meanwhile are replaced by the newest one, so a flood of prompts
  * cannot pile up reads.
@@ -61,6 +80,10 @@ export class PaneLocationTracker {
   #inFlight = false;
   /** What to look up when the lookup in flight ends; only the newest request is kept. */
   #queued: Lookup | undefined;
+  /** The line of the command that is about to run (633;E), until 133;C or 133;D takes it. */
+  #line: string | undefined;
+  /** The command that is running: its line and when it started. */
+  #running: { text: string | undefined; startedAt: number } | undefined;
 
   constructor(options: PaneLocationTrackerOptions) {
     this.#options = options;
@@ -84,13 +107,49 @@ export class PaneLocationTracker {
       if (event.kind === "cwd") {
         this.#follow(event.path);
         refresh = true;
-      } else if (event.kind === "prompt-start" || event.kind === "command-end") {
+      } else if (event.kind === "prompt-start") {
+        // A prompt means the last command is over, even if the shell did not say how it ended.
+        this.#endCommand(undefined);
         refresh = true;
+      } else if (event.kind === "command-end") {
+        this.#endCommand(event.exitCode);
+        refresh = true;
+      } else if (event.kind === "command-line") {
+        this.#line = event.text;
+      } else if (event.kind === "command-start") {
+        this.#startCommand();
       }
     }
     if (refresh && this.#cwd !== undefined) {
       this.#request({ cwd: this.#cwd, placed: this.#placed });
     }
+  }
+
+  #startCommand(): void {
+    const text = this.#line;
+    this.#line = undefined;
+    const now = this.#options.clock?.now() ?? Date.now();
+    this.#running = { text, startedAt: now };
+    this.#options.onCommand?.({ kind: "start", ...(text !== undefined ? { text } : {}) });
+  }
+
+  #endCommand(exitCode: number | undefined): void {
+    const running = this.#running;
+    const text = running?.text ?? this.#line;
+    this.#running = undefined;
+    this.#line = undefined;
+    // Nothing started and nothing was typed: this is a prompt, not the end of a command.
+    if (running === undefined && text === undefined) return;
+    const durationMs =
+      running === undefined
+        ? undefined
+        : Math.max(0, (this.#options.clock?.now() ?? Date.now()) - running.startedAt);
+    this.#options.onCommand?.({
+      kind: "end",
+      ...(text !== undefined ? { text } : {}),
+      ...(exitCode !== undefined ? { exitCode } : {}),
+      ...(durationMs !== undefined ? { durationMs } : {}),
+    });
   }
 
   #follow(path: string): void {

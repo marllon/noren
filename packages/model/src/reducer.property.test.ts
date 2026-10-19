@@ -49,6 +49,8 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "pane/focus-direction": true,
   "pane/set-status": true,
   "pane/set-location": true,
+  "pane/command-start": true,
+  "pane/command-end": true,
 };
 const TYPES = Object.keys(ACTION_TYPES) as ActionType[];
 
@@ -71,6 +73,8 @@ const PANE_ACTIONS = new Set<ActionType>([
   "pane/focus-direction",
   "pane/set-status",
   "pane/set-location",
+  "pane/command-start",
+  "pane/command-end",
 ]);
 
 const itemIdsOf = (ws: Workspace): Set<Id> =>
@@ -159,6 +163,8 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "pane/focus":
     case "pane/set-status":
     case "pane/set-location":
+    case "pane/command-start":
+    case "pane/command-end":
       return !hasPane(ws, action.itemId, action.paneId);
     case "pane/swap":
       return (
@@ -281,7 +287,9 @@ function checkPaneDelta(ws: Workspace, next: Workspace, action: Action, where: (
     case "pane/focus":
     case "pane/focus-direction":
     case "pane/set-status":
-    case "pane/set-location": {
+    case "pane/set-location":
+    case "pane/command-start":
+    case "pane/command-end": {
       // The same panes, only arranged differently, and every session still there.
       const sessions = liveSessionIds(next);
       const kept = [...liveSessionIds(ws)].every((id) => sessions.has(id));

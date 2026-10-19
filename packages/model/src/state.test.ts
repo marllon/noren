@@ -299,3 +299,34 @@ describe("rejected content", () => {
     for (const text of samples) expect(parseState(text).ok).toBe(false);
   });
 });
+
+describe("commands of a pane in the saved state", () => {
+  const withPane = (change: (pane: Record<string, unknown>) => void): string => {
+    const data = plain();
+    change(data.spaces[0].items.i1.layout.pane as Record<string, unknown>);
+    return JSON.stringify(data);
+  };
+
+  it("keeps the running command and the last command through a trip", () => {
+    const text = withPane((pane) => {
+      pane["runningCommand"] = { text: "npm test" };
+      pane["lastCommand"] = { text: "ls", exitCode: 0, durationMs: 12 };
+    });
+    const result = expectOk(text);
+    expect(serializeWorkspace(result.workspace)).toContain('"runningCommand"');
+    expect(parseState(serializeWorkspace(result.workspace)).ok).toBe(true);
+  });
+
+  it("accepts a running command without a text", () => {
+    expectOk(withPane((pane) => (pane["runningCommand"] = {})));
+  });
+
+  it("rejects a running command that is not an object or has a text that is not a string", () => {
+    expect(expectRejected(withPane((pane) => (pane["runningCommand"] = "ls")))).toContain(
+      "runningCommand",
+    );
+    expect(expectRejected(withPane((pane) => (pane["runningCommand"] = { text: 3 })))).toContain(
+      "runningCommand",
+    );
+  });
+});

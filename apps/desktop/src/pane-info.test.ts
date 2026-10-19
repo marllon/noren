@@ -1,6 +1,14 @@
 import type { Item, LayoutNode, Pane } from "@noren/model";
 import { describe, expect, it } from "vitest";
-import { failureLabel, indicatorLabels, shortCwd, summarizeItem } from "./pane-info";
+import {
+  commandInfo,
+  commandWords,
+  failureLabel,
+  formatDuration,
+  indicatorLabels,
+  shortCwd,
+  summarizeItem,
+} from "./pane-info";
 
 describe("shortCwd", () => {
   it("turns the home folder into ~ and keeps what follows it", () => {
@@ -170,5 +178,102 @@ describe("failureLabel", () => {
   it("names the code", () => {
     expect(failureLabel(2)).toBe("Exited with code 2");
     expect(failureLabel(null)).toBe("Exited with an error");
+  });
+});
+
+describe("formatDuration", () => {
+  it("writes a short time with a tenth, a longer one in whole seconds, minutes and hours", () => {
+    expect(formatDuration(0)).toBe("<1s");
+    expect(formatDuration(999)).toBe("<1s");
+    expect(formatDuration(1000)).toBe("1.0s");
+    expect(formatDuration(2599)).toBe("2.5s");
+    expect(formatDuration(9999)).toBe("9.9s");
+    expect(formatDuration(10_000)).toBe("10s");
+    expect(formatDuration(59_999)).toBe("59s");
+    expect(formatDuration(60_000)).toBe("1m 00s");
+    expect(formatDuration(185_000)).toBe("3m 05s");
+    expect(formatDuration(3_720_000)).toBe("1h 02m");
+  });
+
+  it("is empty for a time that makes no sense", () => {
+    expect(formatDuration(-1)).toBe("");
+    expect(formatDuration(Number.NaN)).toBe("");
+  });
+});
+
+describe("commandInfo", () => {
+  it("is none for a pane that ran nothing", () => {
+    expect(commandInfo(pane("p1"))).toBeUndefined();
+    expect(commandInfo(undefined)).toBeUndefined();
+  });
+
+  it("shows the command running now, with its line when the shell told it", () => {
+    expect(commandInfo(pane("p1", { runningCommand: { text: "npm test" } }))).toEqual({
+      state: "running",
+      text: "npm test",
+    });
+    expect(commandInfo(pane("p1", { runningCommand: {} }))).toEqual({ state: "running" });
+  });
+
+  it("the running command comes before the last one", () => {
+    const info = commandInfo(
+      pane("p1", { runningCommand: { text: "b" }, lastCommand: { text: "a", exitCode: 1 } }),
+    );
+    expect(info).toEqual({ state: "running", text: "b" });
+  });
+
+  it("shows the last command with its code and duration", () => {
+    expect(
+      commandInfo(pane("p1", { lastCommand: { text: "ls", exitCode: 0, durationMs: 2500 } })),
+    ).toEqual({ state: "done", text: "ls", exitCode: 0, duration: "2.5s" });
+  });
+
+  it("a code other than 0 is a failure; no code is not", () => {
+    expect(commandInfo(pane("p1", { lastCommand: { text: "x", exitCode: 2 } }))?.state).toBe(
+      "failed",
+    );
+    expect(commandInfo(pane("p1", { lastCommand: { text: "x" } }))).toEqual({
+      state: "done",
+      text: "x",
+    });
+  });
+});
+
+describe("commandWords", () => {
+  it("words a running command and a last one", () => {
+    expect(commandWords({ state: "running", text: "sleep 5" })).toBe("Running sleep 5");
+    expect(commandWords({ state: "running" })).toBe("Running a command");
+    expect(commandWords({ state: "failed", text: "make", exitCode: 2, duration: "12s" })).toBe(
+      "Last command make, exit 2, 12s",
+    );
+    expect(commandWords({ state: "done", exitCode: 0 })).toBe("Last command, exit 0");
+  });
+});
+
+describe("summarizeItem commands", () => {
+  it("takes the command of the focused pane", () => {
+    const split: LayoutNode = {
+      kind: "split",
+      dir: "row",
+      sizes: [50, 50],
+      children: [
+        leaf(pane("p1", { lastCommand: { text: "one", exitCode: 0 } })),
+        leaf(pane("p2", { lastCommand: { text: "two", exitCode: 1 } })),
+      ],
+    };
+    expect(summarizeItem(item(split, "p1")).command).toMatchObject({ text: "one" });
+    expect(summarizeItem(item(split, "p2")).command).toMatchObject({ text: "two" });
+    expect(summarizeItem(item(leaf(pane("p1")), "p1"))).not.toHaveProperty("command");
+  });
+
+  it("a command running in any pane makes the tab running", () => {
+    const split: LayoutNode = {
+      kind: "split",
+      dir: "row",
+      sizes: [50, 50],
+      children: [leaf(pane("p1")), leaf(pane("p2", { runningCommand: { text: "x" } }))],
+    };
+    expect(summarizeItem(item(split, "p1")).running).toBe(true);
+    expect(summarizeItem(item(leaf(pane("p1")), "p1")).running).toBe(false);
   });
 });

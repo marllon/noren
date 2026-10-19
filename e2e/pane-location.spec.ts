@@ -7,10 +7,15 @@ import { SIDEBAR_REPOS, SPLIT_FIXTURE, seedGitRepos, seedSidebarState } from "./
 // backend answers from the repositories seeded under `noren.web.git`.
 
 const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const tab = (page: Page, name: string) => list(page).getByRole("button", { name, exact: true });
-const meta = (page: Page, name: string) => tab(page, name).locator('[data-nr-part="item-meta"]');
-const cwdOf = (page: Page, name: string) => meta(page, name).locator('[data-nr-part="item-cwd"]');
-const branchOf = (page: Page, name: string) =>
+// Without a name, the one tab of the page: the shell names a tab after its folder, so a test that
+// moves around cannot look the tab up by its number.
+const tab = (page: Page, name?: string) =>
+  name === undefined
+    ? list(page).locator('[data-nr-part="item"]')
+    : list(page).getByRole("button", { name, exact: true });
+const meta = (page: Page, name?: string) => tab(page, name).locator('[data-nr-part="item-meta"]');
+const cwdOf = (page: Page, name?: string) => meta(page, name).locator('[data-nr-part="item-cwd"]');
+const branchOf = (page: Page, name?: string) =>
   meta(page, name).locator('[data-nr-part="item-branch"]');
 
 async function run(page: Page, line: string): Promise<void> {
@@ -45,34 +50,34 @@ test("a cd into a repository shows the folder and the branch, and a cd out takes
 }) => {
   await seedGitRepos(page, { "/proj": "main" });
   await page.goto("/");
-  await expect(tab(page, "Tab 1")).toBeVisible();
+  await expect(tab(page)).toBeVisible();
   // The folder the shell starts in is not one the tab went to: there is nothing to show yet.
-  await expect(meta(page, "Tab 1")).toHaveCount(0);
+  await expect(meta(page)).toHaveCount(0);
 
   await run(page, "cd /proj");
-  await expect(cwdOf(page, "Tab 1")).toHaveText("/proj");
-  await expect(branchOf(page, "Tab 1")).toHaveText("main");
+  await expect(cwdOf(page)).toHaveText("/proj");
+  await expect(branchOf(page)).toHaveText("main");
 
   // A subfolder is in the same repository.
   await run(page, "cd src");
-  await expect(cwdOf(page, "Tab 1")).toHaveText("/proj/src");
-  await expect(branchOf(page, "Tab 1")).toHaveText("main");
-  await expect(cwdOf(page, "Tab 1")).toHaveAttribute("title", "/proj/src");
+  await expect(cwdOf(page)).toHaveText("/proj/src");
+  await expect(branchOf(page)).toHaveText("main");
+  await expect(cwdOf(page)).toHaveAttribute("title", "/proj/src");
 
   // Out of the repository: the new folder, and no branch.
   await run(page, "cd /tmp");
-  await expect(cwdOf(page, "Tab 1")).toHaveText("/tmp");
-  await expect(branchOf(page, "Tab 1")).toHaveCount(0);
+  await expect(cwdOf(page)).toHaveText("/tmp");
+  await expect(branchOf(page)).toHaveCount(0);
 
   // Back to the folder the shell started in: it is a place the tab went to now.
   await run(page, "cd ~");
-  await expect(cwdOf(page, "Tab 1")).toHaveText("~");
-  await expect(branchOf(page, "Tab 1")).toHaveCount(0);
+  await expect(cwdOf(page)).toHaveText("~");
+  await expect(branchOf(page)).toHaveCount(0);
 
   // The words read by assistive technology follow.
   await run(page, "cd /proj");
-  await expect(branchOf(page, "Tab 1")).toHaveText("main");
-  const describedBy = await tab(page, "Tab 1").getAttribute("aria-describedby");
+  await expect(branchOf(page)).toHaveText("main");
+  const describedBy = await tab(page).getAttribute("aria-describedby");
   expect(describedBy).not.toBeNull();
   await expect(page.locator(`#${describedBy ?? ""}`)).toContainText("Folder /proj");
   await expect(page.locator(`#${describedBy ?? ""}`)).toContainText("Branch main");
@@ -83,17 +88,17 @@ test("a branch that changes under the shell shows at the next prompt, and a deta
 }) => {
   await seedGitRepos(page, { "/proj": "main" });
   await page.goto("/");
-  await expect(tab(page, "Tab 1")).toBeVisible();
+  await expect(tab(page)).toBeVisible();
   await run(page, "cd /proj");
-  await expect(branchOf(page, "Tab 1")).toHaveText("main");
+  await expect(branchOf(page)).toHaveText("main");
 
   // Something outside the terminal (an editor, another shell) switches the branch.
   await page.evaluate(() =>
     window.localStorage.setItem("noren.web.git", JSON.stringify({ "/proj": "feature/x" })),
   );
-  await expect(branchOf(page, "Tab 1")).toHaveText("main");
+  await expect(branchOf(page)).toHaveText("main");
   await run(page, "true");
-  await expect(branchOf(page, "Tab 1")).toHaveText("feature/x");
+  await expect(branchOf(page)).toHaveText("feature/x");
 
   await page.evaluate(() =>
     window.localStorage.setItem(
@@ -102,7 +107,7 @@ test("a branch that changes under the shell shows at the next prompt, and a deta
     ),
   );
   await run(page, "false");
-  await expect(branchOf(page, "Tab 1")).toHaveText("0123abc");
+  await expect(branchOf(page)).toHaveText("0123abc");
 });
 
 test("the folder and branch are saved with the tab and are back after a reload", async ({
@@ -110,16 +115,16 @@ test("the folder and branch are saved with the tab and are back after a reload",
 }) => {
   await seedGitRepos(page, { "/proj": "main" });
   await page.goto("/");
-  await expect(tab(page, "Tab 1")).toBeVisible();
+  await expect(tab(page)).toBeVisible();
   await run(page, "cd /proj");
-  await expect(branchOf(page, "Tab 1")).toHaveText("main");
+  await expect(branchOf(page)).toHaveText("main");
   await expect.poll(() => savedPanes(page)).toMatchObject([{ cwd: "/proj", gitBranch: "main" }]);
 
   await page.reload();
-  await expect(tab(page, "Tab 1")).toBeVisible();
+  await expect(tab(page)).toBeVisible();
   // The new shell starts in /proj, and the branch is read again for it at its first prompt.
-  await expect(cwdOf(page, "Tab 1")).toHaveText("/proj");
-  await expect(branchOf(page, "Tab 1")).toHaveText("main");
+  await expect(cwdOf(page)).toHaveText("/proj");
+  await expect(branchOf(page)).toHaveText("main");
 });
 
 test("each pane of a split tab follows its own shell", async ({ page }) => {

@@ -1,5 +1,6 @@
 import {
   FakeBackend,
+  ManualClock,
   PaneLocationTracker,
   STATE_SAVE_DELAY_MS,
   createDefaultWorkspace,
@@ -20,7 +21,7 @@ import {
 
 const clock = { now: () => 1000 };
 
-async function openStore(backend: FakeBackend) {
+async function openStore(backend: FakeBackend, home?: string) {
   const newId = createSequentialIds("n");
   const restored = await restoreWorkspace(backend, { defaults: { newId, clock } });
   const store = createWorkspaceStore({
@@ -28,6 +29,7 @@ async function openStore(backend: FakeBackend) {
     workspace: restored.workspace,
     newId,
     clock,
+    ...(home !== undefined ? { home } : {}),
   });
   return { store, restored };
 }
@@ -728,19 +730,24 @@ describe("workspace store", () => {
   });
 
   describe("pane location", () => {
-    async function openOne(backend: FakeBackend) {
-      const { store } = await openStore(backend);
+    async function openOne(backend: FakeBackend, home?: string) {
+      const { store } = await openStore(backend, home);
       const space = activeSpaceOf(store.getState().workspace);
       const item = space.items[spaceItemIds(space)[0] ?? ""];
       const pane = item && layoutPanes(item.layout)[0];
       if (!item || !pane) throw new Error("no pane");
+      const itemNow = () => {
+        const now = activeSpaceOf(store.getState().workspace).items[item.id];
+        if (!now) throw new Error("the item is gone");
+        return now;
+      };
       const paneNow = () => {
         const now = activeSpaceOf(store.getState().workspace).items[item.id];
         const found = now && layoutPanes(now.layout).find((p) => p.id === pane.id);
         if (!found) throw new Error("the pane is gone");
         return found;
       };
-      return { store, itemId: item.id, paneId: pane.id, paneNow };
+      return { store, itemId: item.id, paneId: pane.id, paneNow, itemNow };
     }
 
     it("setPaneLocation puts the folder and the branch on the pane and schedules a save", async () => {
@@ -838,6 +845,110 @@ describe("workspace store", () => {
       await type("cd /");
       expect(paneNow().cwd).toBe("/");
       expect(paneNow()).not.toHaveProperty("gitBranch");
+    });
+
+    describe("commands and the automatic title", () => {
+      /** A pane wired to a session of the fake shell, with the clock of that shell. */
+      async function wired(home?: string) {
+        const backend = new FakeBackend({ home: "/home/fake" });
+        const opened = await openOne(backend, home);
+        const id = await backend.createSession({ cols: 80, rows: 24 });
+        opened.store.getState().attachSession(opened.paneId, String(id));
+        const tracker = new PaneLocationTracker({
+          gitInfo: (folder) => backend.gitInfo(folder),
+          onLocation: (location) =>
+            opened.store.getState().setPaneLocation(opened.paneId, location),
+          onCommand: (event) => opened.store.getState().setPaneCommand(opened.paneId, event),
+          clock: backend.clock,
+        });
+        backend.onOutput(id, (bytes) => tracker.feed(bytes));
+        const type = async (line: string) => {
+          await backend.write(
+            id,
+            `${line}
+`,
+          );
+          await vi.advanceTimersByTimeAsync(0);
+        };
+        await vi.advanceTimersByTimeAsync(0);
+        return { ...opened, backend, type, clock: backend.clock as ManualClock };
+      }
+
+      it("a command shows as running, then as the last command with its code and duration", async () => {
+        const { paneNow, type, clock } = await wired();
+        await type("sleep 3");
+        expect(paneNow().runningCommand).toEqual({ text: "sleep 3" });
+        clock.advance(3000);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(paneNow()).not.toHaveProperty("runningCommand");
+        expect(paneNow().lastCommand).toEqual({ text: "sleep 3", exitCode: 0, durationMs: 3000 });
+
+        await type("false");
+        expect(paneNow().lastCommand).toMatchObject({ text: "false", exitCode: 1, durationMs: 0 });
+      });
+
+      it("the title follows the running command, then the folder, and goes back to none without one", async () => {
+        const { itemNow, type, clock } = await wired("/home/fake");
+        // A fresh tab has no folder yet: nothing to name it after.
+        expect(itemNow()).not.toHaveProperty("title");
+        await type("sleep 2");
+        expect(itemNow().title).toBe("sleep");
+        clock.advance(2000);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(itemNow()).not.toHaveProperty("title");
+
+        await type("cd /srv/api");
+        expect(itemNow().title).toBe("api");
+        await type("sleep 1");
+        expect(itemNow().title).toBe("sleep");
+        clock.advance(1000);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(itemNow().title).toBe("api");
+        expect(itemNow().titleLocked).toBe(false);
+        await type("cd ~");
+        expect(itemNow().title).toBe("~");
+      });
+
+      it("a title the user chose does not change", async () => {
+        const { store, itemId, itemNow, paneNow, type } = await wired();
+        store.getState().dispatch({ type: "item/rename", itemId, title: "mine" });
+        await type("cd /srv/api");
+        await type("sleep 2");
+        expect(itemNow()).toMatchObject({ title: "mine", titleLocked: true });
+        // The pane still records what it does.
+        expect(paneNow()).toMatchObject({ cwd: "/srv/api", runningCommand: { text: "sleep 2" } });
+      });
+
+      it("clearing the title lets the shell name the tab again", async () => {
+        const { store, itemId, itemNow, type } = await wired();
+        store.getState().dispatch({ type: "item/rename", itemId, title: "mine" });
+        await type("cd /srv/api");
+        store.getState().dispatch({ type: "item/rename", itemId, title: "" });
+        // At once: the tab does not wait for the next thing the shell does.
+        expect(itemNow()).toMatchObject({ title: "api", titleLocked: false });
+        await type("cd /srv/web");
+        expect(itemNow().title).toBe("web");
+      });
+
+      it("Ctrl+C ends the running command with the code 130, and a shell that exits keeps none", async () => {
+        const { paneNow, type } = await wired();
+        await type("sleep 9");
+        expect(paneNow().runningCommand).toBeDefined();
+        await type("");
+        expect(paneNow()).not.toHaveProperty("runningCommand");
+        expect(paneNow().lastCommand).toMatchObject({ text: "sleep 9", exitCode: 130 });
+
+        await type("exit 4");
+        expect(paneNow()).toMatchObject({ status: "exited", exitCode: 4 });
+        expect(paneNow()).not.toHaveProperty("runningCommand");
+      });
+
+      it("ignores the command of a pane that is gone", async () => {
+        const { store } = await openOne(new FakeBackend());
+        const before = store.getState().workspace;
+        store.getState().setPaneCommand("no-such-pane", { kind: "start", text: "ls" });
+        expect(store.getState().workspace).toBe(before);
+      });
     });
   });
 });

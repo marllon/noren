@@ -11,6 +11,8 @@ const BEL = "\x07";
 const osc = (body: string): string => `${ESC}]${body}${BEL}`;
 const A = osc("133;A");
 const B = osc("133;B");
+/** The command line the shell reports (OSC 633;E) just before it runs the command. */
+const E = (line: string): string => osc(`633;E;${line}`);
 const C = osc("133;C");
 const D = (code: number): string => osc(`133;D;${code}`);
 const cwdUrl = (path: string): string => osc(`7;file://fake-host${path}`);
@@ -100,7 +102,7 @@ describe("FakeBackend shell", () => {
   it("echoes what the user types and prints the command output", async () => {
     const { run } = await start();
     expect(await run("echo hello world")).toBe(
-      `echo hello world\r\n${C}hello world\r\n${D(0)}${prompt("/home/fake")}`,
+      `echo hello world\r\n${E("echo hello world")}${C}hello world\r\n${D(0)}${prompt("/home/fake")}`,
     );
   });
 
@@ -125,7 +127,7 @@ describe("FakeBackend shell", () => {
     const { backend, id, take } = await start();
     take();
     await backend.write(id, encodeUtf8("echo abx\x7f\r"));
-    expect(take()).toBe(`echo abx\b \b\r\n${C}ab\r\n${D(0)}${prompt("/home/fake")}`);
+    expect(take()).toBe(`echo abx\b \b\r\n${E("echo ab")}${C}ab\r\n${D(0)}${prompt("/home/fake")}`);
   });
 
   it("ignores escape sequences such as arrow keys", async () => {
@@ -153,8 +155,8 @@ describe("FakeBackend shell", () => {
 describe("exit codes", () => {
   it("false reports 1 and true reports 0", async () => {
     const { run } = await start();
-    expect(await run("false")).toBe(`false\r\n${C}${D(1)}${prompt("/home/fake")}`);
-    expect(await run("true")).toBe(`true\r\n${C}${D(0)}${prompt("/home/fake")}`);
+    expect(await run("false")).toBe(`false\r\n${E("false")}${C}${D(1)}${prompt("/home/fake")}`);
+    expect(await run("true")).toBe(`true\r\n${E("true")}${C}${D(0)}${prompt("/home/fake")}`);
   });
 
   it("exit N ends the session with N and fires onExit once", async () => {
@@ -227,7 +229,9 @@ describe("shell integration sequences", () => {
 describe("cd", () => {
   it("changes directory with relative, absolute, parent and home paths", async () => {
     const { backend, id, run } = await start();
-    expect(await run("cd /usr/local")).toBe(`cd /usr/local\r\n${C}${D(0)}${prompt("/usr/local")}`);
+    expect(await run("cd /usr/local")).toBe(
+      `cd /usr/local\r\n${E("cd /usr/local")}${C}${D(0)}${prompt("/usr/local")}`,
+    );
     expect(backend.session(id)).toMatchObject({ cwd: "/usr/local", env: { PWD: "/usr/local" } });
     await run("cd bin");
     expect(backend.session(id)?.cwd).toBe("/usr/local/bin");
@@ -261,7 +265,7 @@ describe("sleep", () => {
   it("only finishes when the injected clock advances", async () => {
     const { clock, run, take } = await start();
     const out = await run("sleep 2");
-    expect(out).toBe(`sleep 2\r\n${C}`);
+    expect(out).toBe(`sleep 2\r\n${E("sleep 2")}${C}`);
     expect(clock.pending).toBe(1);
 
     clock.advance(1999);
@@ -308,12 +312,14 @@ describe("sleep", () => {
 describe("seq", () => {
   it("prints the numbers one per line", async () => {
     const { run } = await start();
-    expect(await run("seq 3")).toBe(`seq 3\r\n${C}1\r\n2\r\n3\r\n${D(0)}${prompt("/home/fake")}`);
+    expect(await run("seq 3")).toBe(
+      `seq 3\r\n${E("seq 3")}${C}1\r\n2\r\n3\r\n${D(0)}${prompt("/home/fake")}`,
+    );
   });
 
   it("prints nothing for 0 and complains about a bad argument", async () => {
     const { run } = await start();
-    expect(await run("seq 0")).toBe(`seq 0\r\n${C}${D(0)}${prompt("/home/fake")}`);
+    expect(await run("seq 0")).toBe(`seq 0\r\n${E("seq 0")}${C}${D(0)}${prompt("/home/fake")}`);
     expect(await run("seq x")).toContain(D(1));
   });
 

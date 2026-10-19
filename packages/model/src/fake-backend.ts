@@ -21,6 +21,13 @@ const LS_OUTPUT = "README.md  notes.txt  src";
 
 const osc = (body: string): string => `${ESC}]${body}${BEL}`;
 
+/** A command line as OSC 633;E carries it: backslash doubled, `;` and control characters as `\xNN`. */
+const escapeCommandLine = (line: string): string =>
+  // eslint-disable-next-line no-control-regex
+  line.replace(/[\\;\u0000-\u001f\u007f]/g, (ch) =>
+    ch === "\\" ? "\\\\" : `\\x${ch.charCodeAt(0).toString(16).padStart(2, "0")}`,
+  );
+
 /** One recorded call to a `Backend` method. Callbacks are not recorded. */
 export interface FakeCall {
   readonly method: keyof Backend;
@@ -223,13 +230,15 @@ class FakeSession {
   }
 
   #submit(): void {
-    const argv = tokenize(this.#line);
+    const line = this.#line;
+    const argv = tokenize(line);
     this.#line = "";
     this.#write("\r\n");
     if (argv.length === 0) {
       this.#write(this.#prompt());
       return;
     }
+    this.#write(osc(`633;E;${escapeCommandLine(line.trim())}`));
     this.#write(osc("133;C"));
     this.#run(argv);
   }
@@ -360,7 +369,8 @@ class FakeSession {
 /**
  * In-memory backend for tests, e2e and the web demo. Sessions run a simulated shell:
  *
- * - prompt `fake$ `, with OSC 7 (`file://host/cwd`) and OSC 133 A, B, C and D (with the exit code)
+ * - prompt `fake$ `, with OSC 7 (`file://host/cwd`), OSC 133 A, B, C and D (with the exit code)
+ *   and OSC 633 E (the command line, before C)
  * - `echo`, `pwd`, `ls` (fixed output), `cd` (relative, absolute, `~`, `..`; any path is accepted),
  *   `true`, `false` (exit 1), `exit [N]` (ends the session), `sleep N` (seconds, on the injected
  *   clock), `seq N`; anything else answers 127

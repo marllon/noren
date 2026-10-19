@@ -81,6 +81,8 @@ describe("paneStatusText", () => {
   it("words running, idle and exit codes", () => {
     expect(paneStatusText(pane("a", { status: "running" }))).toBe("running");
     expect(paneStatusText(pane("a", { status: "idle" }))).toBe("idle");
+    // A command the shell reports is running even when the session state was not told.
+    expect(paneStatusText(pane("a", { runningCommand: { text: "ls" } }))).toBe("running");
     expect(paneStatusText(pane("a", { status: "exited", exitCode: 0 }))).toBe("exit 0");
     expect(paneStatusText(pane("a", { status: "exited", exitCode: 2 }))).toBe("exit 2");
     expect(paneStatusText(pane("a", { status: "exited" }))).toBe("exit");
@@ -112,6 +114,30 @@ describe("paneEntries", () => {
       { paneId: "a", title: "/srv/api", status: "running", focused: false },
       { paneId: "b", title: "Terminal", status: "exit 2", focused: true },
     ]);
+  });
+
+  it("carries the command of each pane: running now, else the last one", () => {
+    const withCommands = item(
+      split(
+        "row",
+        [50, 50],
+        leaf("a", { runningCommand: { text: "sleep 5" } }),
+        leaf("b", { lastCommand: { text: "false", exitCode: 1, durationMs: 40 } }),
+      ),
+      "a",
+    );
+    const entries = paneEntries(withCommands);
+    expect(entries[0]).toMatchObject({
+      status: "running",
+      command: { state: "running", text: "sleep 5" },
+    });
+    expect(entries[1]?.command).toEqual({
+      state: "failed",
+      text: "false",
+      exitCode: 1,
+      duration: "<1s",
+    });
+    expect(paneEntries(two)[0]).not.toHaveProperty("command");
   });
 
   it("is empty for an item with one pane", () => {

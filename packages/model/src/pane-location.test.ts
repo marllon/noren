@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { GitInfo } from "./backend";
 import { FakeBackend } from "./fake-backend";
+import { ManualClock } from "./clock";
 import { PaneLocationTracker } from "./pane-location";
-import type { PaneLocation } from "./pane-location";
+import type { PaneCommandEvent, PaneLocation } from "./pane-location";
 import { encodeUtf8 } from "./utf8";
 
 // This package has no DOM or Node typings; the test runtime provides the timer.
@@ -305,5 +306,127 @@ describe("PaneLocationTracker with a session of the FakeBackend", () => {
     expect(new Set(locations.slice(before).map((l) => JSON.stringify(l)))).toEqual(
       new Set([JSON.stringify({ cwd: "/proj", gitBranch: "main" })]),
     );
+  });
+});
+
+describe("PaneLocationTracker commands", () => {
+  /** A tracker that records the commands, on a clock the test moves. */
+  function commands() {
+    let now = 1000;
+    const events: PaneCommandEvent[] = [];
+    const tracker = new PaneLocationTracker({
+      gitInfo: () => Promise.resolve(null),
+      onLocation: () => undefined,
+      onCommand: (event) => events.push(event),
+      clock: { now: () => now },
+    });
+    return {
+      tracker,
+      events,
+      advance: (ms: number) => {
+        now += ms;
+      },
+    };
+  }
+
+  const line = (text: string): string => osc(`633;E;${text}`);
+
+  it("reports a command at its start with the line, and at its end with the code and duration", () => {
+    const { tracker, events, advance } = commands();
+    tracker.feed(line("npm test") + osc("133;C"));
+    expect(events).toEqual([{ kind: "start", text: "npm test" }]);
+    advance(2500);
+    tracker.feed(osc("133;D;1") + prompt("/proj"));
+    expect(events.at(-1)).toEqual({ kind: "end", text: "npm test", exitCode: 1, durationMs: 2500 });
+    expect(events).toHaveLength(2);
+  });
+
+  it("a command with no line reported starts and ends without a text", () => {
+    const { tracker, events, advance } = commands();
+    tracker.feed(osc("133;C"));
+    advance(40);
+    tracker.feed(osc("133;D;0"));
+    expect(events).toEqual([{ kind: "start" }, { kind: "end", exitCode: 0, durationMs: 40 }]);
+  });
+
+  it("a command that ends without an exit code has none in the report", () => {
+    const { tracker, events } = commands();
+    tracker.feed(line("ls") + osc("133;C") + osc("133;D"));
+    expect(events.at(-1)).toEqual({ kind: "end", text: "ls", durationMs: 0 });
+  });
+
+  it("a 133;D with nothing before it, such as the first prompt of a shell, is not a command", () => {
+    const { tracker, events } = commands();
+    tracker.feed(osc("133;D;0") + prompt("/proj"));
+    expect(events).toEqual([]);
+  });
+
+  it("a prompt that comes while a command runs ends it without a code", () => {
+    const { tracker, events, advance } = commands();
+    tracker.feed(line("sleep 9") + osc("133;C"));
+    advance(300);
+    tracker.feed(prompt("/proj"));
+    expect(events.at(-1)).toEqual({ kind: "end", text: "sleep 9", durationMs: 300 });
+    // The D that follows is not a second end.
+    tracker.feed(osc("133;D;130"));
+    expect(events).toHaveLength(2);
+  });
+
+  it("a line with its end but without a start is reported when it ends, without a duration", () => {
+    const { tracker, events } = commands();
+    tracker.feed(line("make") + osc("133;D;2"));
+    expect(events).toEqual([{ kind: "end", text: "make", exitCode: 2 }]);
+  });
+
+  it("does not take the line of one command for the next", () => {
+    const { tracker, events } = commands();
+    tracker.feed(line("one") + osc("133;C") + osc("133;D;0"));
+    tracker.feed(osc("133;C") + osc("133;D;0"));
+    expect(events.map((e) => (e.kind === "start" ? "start" : `end ${e.text ?? "-"}`))).toEqual([
+      "start",
+      "end one",
+      "start",
+      "end -",
+    ]);
+  });
+
+  it("reads the same commands however the output is cut", () => {
+    const whole = line("echo a;b") + osc("133;C") + osc("133;D;3");
+    const reference = commands();
+    reference.tracker.feed(whole);
+    const bytes = encodeUtf8(whole);
+    for (let cut = 1; cut < bytes.length; cut++) {
+      const split = commands();
+      split.tracker.feed(bytes.slice(0, cut));
+      split.tracker.feed(bytes.slice(cut));
+      expect(split.events).toEqual(reference.events);
+    }
+  });
+
+  it("follows a command of the fake shell: the line, the failure code and how long sleep took", async () => {
+    const backend = new FakeBackend();
+    const events: PaneCommandEvent[] = [];
+    const tracker = new PaneLocationTracker({
+      gitInfo: (folder) => backend.gitInfo(folder),
+      onLocation: () => undefined,
+      onCommand: (event) => events.push(event),
+      clock: backend.clock,
+    });
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    backend.onOutput(id, (bytes) => tracker.feed(bytes));
+    await backend.write(id, "sleep 3\r");
+    expect(events).toEqual([{ kind: "start", text: "sleep 3" }]);
+    (backend.clock as ManualClock).advance(3000);
+    expect(events.at(-1)).toEqual({ kind: "end", text: "sleep 3", exitCode: 0, durationMs: 3000 });
+    await backend.write(id, "false\r");
+    expect(events.at(-1)).toMatchObject({ kind: "end", text: "false", exitCode: 1 });
+  });
+
+  it("without onCommand the commands are ignored", () => {
+    const tracker = new PaneLocationTracker({
+      gitInfo: () => Promise.resolve(null),
+      onLocation: () => undefined,
+    });
+    expect(() => tracker.feed(line("ls") + osc("133;C") + osc("133;D;0"))).not.toThrow();
   });
 });

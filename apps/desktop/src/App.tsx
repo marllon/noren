@@ -2,6 +2,7 @@ import { emit } from "@tauri-apps/api/event";
 import {
   DEFAULT_MAX_PANES,
   FakeBackend,
+  ManualClock,
   PaneLocationTracker,
   layoutPanes,
   treeGroups,
@@ -23,6 +24,7 @@ import { insideTauri } from "./backend";
 import { backend, booted } from "./boot";
 import { consentText } from "./action-consent";
 import { loadHome } from "./home";
+import { realClock } from "./real-clock";
 import { recentFolders, recordFolder } from "./recent-folders-store";
 import { ActionsHeader } from "./ActionsHeader";
 import { handleDeepLink, setDeepLinkHandler } from "./deep-link";
@@ -119,6 +121,11 @@ export interface NorenTestHook {
   failCommands(code: number): void;
   /** Number of times the backend was asked to read an actions file. */
   actionsReads(): number;
+  /**
+   * Moves the clock of the fake shell forward, so a `sleep` ends and a command lasts that long
+   * (the clock does not move by itself in web mode).
+   */
+  advanceClock(ms: number): void;
   /** Hands a raw `noren://` link to the same entry point the desktop app uses; resolves when applied. */
   openUrl(url: string): Promise<void>;
 }
@@ -156,6 +163,10 @@ function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTermi
       new PaneLocationTracker({
         gitInfo: (folder) => backend.gitInfo(folder),
         onLocation: (location) => store.getState().setPaneLocation(pane.id, location),
+        onCommand: (event) => store.getState().setPaneCommand(pane.id, event),
+        // The fake shell of web mode runs on a clock the tests move, so a command lasts as long
+        // as they say.
+        clock: backend instanceof FakeBackend ? backend.clock : realClock,
         ...(pane.cwd !== undefined ? { cwd: pane.cwd } : {}),
       }),
   );
@@ -674,6 +685,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
         commandRuns: () => fake.commands.map(({ cwd, command }) => ({ cwd, command })),
         failCommands: (code) => fake.setCommandExitCode(code),
         actionsReads: () => fake.callsTo("readActionsFile").length,
+        advanceClock: (ms) => {
+          if (fake.clock instanceof ManualClock) fake.clock.advance(ms);
+        },
         openUrl: (url) => handleDeepLink(url),
         killedSessions: () => fake.callsTo("kill").map((call) => Number(call.args[0])),
         sessionStarts: () =>

@@ -16,11 +16,13 @@ import type {
   Item,
   LayoutNode,
   Pane,
+  PaneCommandEvent,
   PaneLocation,
   Space,
   Workspace,
 } from "@noren/model";
 import { createStore } from "zustand/vanilla";
+import { autoTitleAction } from "./auto-title";
 import type { StoreApi } from "zustand/vanilla";
 
 /** What the new-space dialog collects. A missing field leaves the default of the model. */
@@ -115,6 +117,11 @@ export interface WorkspaceState {
    * it is found by its id. A pane that is gone, or a location the pane already has, changes nothing.
    */
   setPaneLocation(paneId: Id, location: PaneLocation): void;
+  /**
+   * Records that the command of a pane started or ended (see `PaneCommandEvent`). Like
+   * `setPaneLocation`, the pane is found by its id and a report that changes nothing changes nothing.
+   */
+  setPaneCommand(paneId: Id, event: PaneCommandEvent): void;
   /** Writes the pending state now (window closing). */
   flush(): Promise<void>;
 }
@@ -134,6 +141,8 @@ export interface WorkspaceStoreOptions {
   /** Must be unique across runs (the default is `crypto.randomUUID`). */
   newId?: IdGenerator;
   clock?: Pick<Clock, "now">;
+  /** The home folder, so the automatic title of a tab in it is `~`. */
+  home?: string;
   maxPanes?: number;
   onError?(error: unknown): void;
 }
@@ -205,6 +214,14 @@ function findPaneBySession(ws: Workspace, sessionId: Id): { itemId: Id; paneId: 
   return undefined;
 }
 
+function findItem(ws: Workspace, itemId: Id): Item | undefined {
+  for (const space of ws.spaces) {
+    const item = space.items[itemId];
+    if (item) return item;
+  }
+  return undefined;
+}
+
 /** The item that holds a pane, among the open items; `undefined` when none does. */
 function findItemOfPane(ws: Workspace, paneId: Id): Id | undefined {
   for (const space of ws.spaces) {
@@ -260,6 +277,13 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
   };
 
   return createStore<WorkspaceState>()((set, get) => {
+    /** Gives the tab the title its pane asks for (the running program, else the folder). */
+    const retitle = (itemId: Id) => {
+      const item = findItem(get().workspace, itemId);
+      const action = item && autoTitleAction(item, options.home);
+      if (action) get().dispatch(action);
+    };
+
     // The store lives as long as the window, so this subscription is never released.
     backend.onExit((exit) => {
       const found = findPaneBySession(get().workspace, String(exit.id));
@@ -280,6 +304,10 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
         const alive = liveSessionIds(after);
         for (const sessionId of liveSessionIds(before)) {
           if (!alive.has(sessionId)) kill(sessionId);
+        }
+        // A title the user cleared goes back to what the shell asks for, without waiting for it.
+        if (action.type === "item/rename" && (action.source ?? "user") === "user") {
+          retitle(action.itemId);
         }
       },
 
@@ -405,6 +433,31 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
           ...(location.cwd !== undefined ? { cwd: location.cwd } : {}),
           ...(location.gitBranch !== undefined ? { gitBranch: location.gitBranch } : {}),
         });
+        retitle(itemId);
+      },
+
+      setPaneCommand(paneId, event) {
+        const { workspace, dispatch } = get();
+        const itemId = findItemOfPane(workspace, paneId);
+        if (itemId === undefined) return;
+        if (event.kind === "start") {
+          dispatch({
+            type: "pane/command-start",
+            itemId,
+            paneId,
+            ...(event.text !== undefined ? { text: event.text } : {}),
+          });
+        } else {
+          dispatch({
+            type: "pane/command-end",
+            itemId,
+            paneId,
+            ...(event.text !== undefined ? { text: event.text } : {}),
+            ...(event.exitCode !== undefined ? { exitCode: event.exitCode } : {}),
+            ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
+          });
+        }
+        retitle(itemId);
       },
 
       flush() {

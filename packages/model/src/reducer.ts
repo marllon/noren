@@ -42,6 +42,7 @@ import {
   type Id,
   type Item,
   type ItemOrigin,
+  type LastCommand,
   type LayoutNode,
   type Node,
   type Pane,
@@ -209,6 +210,10 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       return setPaneStatus(ws, action);
     case "pane/set-location":
       return setPaneLocation(ws, action);
+    case "pane/command-start":
+      return startPaneCommand(ws, action);
+    case "pane/command-end":
+      return endPaneCommand(ws, action);
     default:
       return assertNever(action, ws);
   }
@@ -1060,10 +1065,18 @@ function setPaneStatus(
     status === "exited" && typeof exitCode === "number" && Number.isFinite(exitCode)
       ? exitCode
       : undefined;
-  if (pane.status === status && pane.exitCode === code) return ws;
+  if (
+    pane.status === status &&
+    pane.exitCode === code &&
+    !(status === "exited" && pane.runningCommand)
+  ) {
+    return ws;
+  }
   const next: Pane = { ...pane, status };
   delete next.exitCode;
   if (code !== undefined) next.exitCode = code;
+  // A shell that exited runs nothing.
+  if (status === "exited") delete next.runningCommand;
   return replaceItem(ws, located.space, {
     ...located.item,
     layout: withPane(located.item.layout, next),
@@ -1085,6 +1098,67 @@ function setPaneLocation(
   const next: Pane = { ...pane, ...(cwd !== undefined ? { cwd } : {}) };
   delete next.gitBranch;
   if (branch !== undefined) next.gitBranch = branch;
+  return replaceItem(ws, located.space, {
+    ...located.item,
+    layout: withPane(located.item.layout, next),
+  });
+}
+
+/** Longest command line kept on a pane, in characters. */
+const MAX_COMMAND_TEXT = 500;
+
+/** The command line of a pane as kept: trimmed, none when blank, cut at {@link MAX_COMMAND_TEXT}. */
+function commandText(text: unknown): string | undefined {
+  if (typeof text !== "string") return undefined;
+  const trimmed = clean(text);
+  if (trimmed === undefined) return undefined;
+  const chars = Array.from(trimmed);
+  return chars.length > MAX_COMMAND_TEXT ? chars.slice(0, MAX_COMMAND_TEXT).join("") : trimmed;
+}
+
+function startPaneCommand(
+  ws: Workspace,
+  action: Extract<Action, { type: "pane/command-start" }>,
+): Workspace {
+  const located = locate(ws, action.itemId);
+  const pane = located && findPane(located.item.layout, action.paneId);
+  if (!located || !pane || pane.status === "exited") return ws;
+  const text = commandText(action.text);
+  if (pane.runningCommand && pane.runningCommand.text === text) return ws;
+  const next: Pane = { ...pane, runningCommand: text !== undefined ? { text } : {} };
+  return replaceItem(ws, located.space, {
+    ...located.item,
+    layout: withPane(located.item.layout, next),
+  });
+}
+
+function endPaneCommand(
+  ws: Workspace,
+  action: Extract<Action, { type: "pane/command-end" }>,
+): Workspace {
+  const located = locate(ws, action.itemId);
+  const pane = located && findPane(located.item.layout, action.paneId);
+  if (!located || !pane) return ws;
+  const text = commandText(action.text) ?? pane.runningCommand?.text;
+  const { exitCode, durationMs } = action;
+  const last: LastCommand = {
+    ...(text !== undefined ? { text } : {}),
+    ...(typeof exitCode === "number" && Number.isInteger(exitCode) ? { exitCode } : {}),
+    ...(typeof durationMs === "number" && Number.isFinite(durationMs) && durationMs >= 0
+      ? { durationMs: Math.round(durationMs) }
+      : {}),
+  };
+  const known = Object.keys(last).length > 0;
+  const before = pane.lastCommand;
+  const sameLast = known
+    ? before !== undefined &&
+      before.text === last.text &&
+      before.exitCode === last.exitCode &&
+      before.durationMs === last.durationMs
+    : true;
+  if (!pane.runningCommand && sameLast) return ws;
+  const next: Pane = { ...pane, ...(known ? { lastCommand: last } : {}) };
+  delete next.runningCommand;
   return replaceItem(ws, located.space, {
     ...located.item,
     layout: withPane(located.item.layout, next),

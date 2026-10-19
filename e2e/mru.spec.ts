@@ -26,10 +26,13 @@ const rows = (page: Page): Locator => overlay(page).locator("[data-nr-item-id]")
 const terminalFocused = (page: Page): Locator =>
   page.locator("textarea.xterm-helper-textarea:focus");
 
-/** The name of the tab on screen. */
+/** The name of the tab on screen: its title, not the lines under it (folder, branch, last command). */
 const current = async (page: Page): Promise<string> =>
   (await tabs(page).evaluateAll(
-    (all) => all.find((b) => b.getAttribute("aria-current") === "true")?.textContent ?? "",
+    (all) =>
+      all
+        .find((b) => b.getAttribute("aria-current") === "true")
+        ?.querySelector('[data-nr-part="item-title"]')?.textContent ?? "",
   )) as string;
 
 /** Runs `echo <word>` in the terminal on screen and waits for its output. */

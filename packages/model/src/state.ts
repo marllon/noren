@@ -323,6 +323,9 @@ function checkPane(value: unknown, path: string): void {
     throw new ShapeError(`${path}.status`, '"running", "idle" or "exited"');
   }
   optional(pane, "exitCode", path, num);
+  optional(pane, "runningCommand", path, (v, p) => {
+    optional(obj(v, p), "text", p, str);
+  });
   optional(pane, "lastCommand", path, (v, p) => {
     const last = obj(v, p);
     optional(last, "text", p, str);

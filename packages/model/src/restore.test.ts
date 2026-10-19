@@ -259,3 +259,17 @@ describe("restoreWorkspace when a shell cannot start", () => {
     expectNoOrphans(backend, result.workspace);
   });
 });
+
+describe("restoreWorkspace and commands", () => {
+  it("a command that was running belongs to a shell that is gone; the last command stays", async () => {
+    const saved = richWorkspace();
+    const pane = paneById(saved, "p1");
+    pane.runningCommand = { text: "sleep 100" };
+    pane.lastCommand = { text: "ls", exitCode: 0, durationMs: 4 };
+    const backend = new FakeBackend({ profiles: BASH, state: serializeWorkspace(saved) });
+    const { workspace } = await restoreWorkspace(backend);
+    const restored = paneById(workspace, "p1");
+    expect(restored).not.toHaveProperty("runningCommand");
+    expect(restored.lastCommand).toEqual({ text: "ls", exitCode: 0, durationMs: 4 });
+  });
+});

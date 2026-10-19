@@ -476,6 +476,40 @@ body {
   text-overflow: ellipsis;
 }
 
+/* The command of a pane: its line, then how it ended. The line gives way first. */
+.item-command,
+.item-pane-command {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--nr-muted);
+  font-size: 11px;
+}
+
+.item-pane-command {
+  flex: 2;
+}
+
+.command-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-code,
+.command-time {
+  flex: none;
+  white-space: nowrap;
+}
+
+[data-nr-state="failed"] > .command-code {
+  color: var(--nr-accent);
+}
+
 /* Text for assistive technology only. */
 .sr-only {
   position: absolute;

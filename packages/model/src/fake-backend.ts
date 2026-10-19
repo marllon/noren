@@ -1,7 +1,16 @@
-import { OLLAMA_BASE_URL, OLLAMA_PROVIDER_ID, AiProviderSchema, aiProvidersProblem } from "./ai";
+import {
+  AI_CHAT_ROLES,
+  OLLAMA_BASE_URL,
+  OLLAMA_PROVIDER_ID,
+  AiProviderSchema,
+  aiProvidersProblem,
+} from "./ai";
 import type {
   AiBackend,
+  AiChatEvent,
+  AiChatRequest,
   AiConnectionResult,
+  AiErrorKind,
   AiProviderConfig,
   AiProviderInfo,
   OllamaModels,
@@ -103,7 +112,15 @@ export interface FakeBackendOptions {
   ollamaModels?: readonly string[];
   /** Keys already in the fake keychain, by provider id. */
   aiKeys?: Record<string, string>;
+  /**
+   * What the fake provider answers to `ai.chat`: a text, or a function of the request. It comes
+   * back in deltas, a word at a time. Defaults to `DEFAULT_AI_REPLY`.
+   */
+  aiReply?: string | ((request: AiChatRequest) => string);
 }
+
+/** What the fake provider answers when a test did not say. */
+export const DEFAULT_AI_REPLY = "This is the answer of the fake provider.";
 
 /** One notification given to `notify`, for assertions. */
 export interface FakeNotification {
@@ -439,18 +456,30 @@ const KEYCHAIN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 /** The longest key the keychain accepts, in characters. */
 const MAX_KEY_CHARS = 1024;
 
+/** A text in pieces of a word and the blanks after it (blanks at the start are a piece of their own): the pieces put back make the text. */
+function wordsOf(text: string): string[] {
+  return text.match(/\S+\s*|\s+/g) ?? [];
+}
+
+type AiReply = string | ((request: AiChatRequest) => string);
+
 /** What the fake computer's keychain, providers and Ollama hold, behind `FakeBackend.ai`. */
 class FakeAi implements AiBackend {
   #providers: AiProviderConfig[] = [];
   readonly #keys = new Map<string, string>();
   #ollama: string[] | null = null;
   readonly #connections = new Map<string, AiConnectionResult>();
+  /** The requests of `chat` that are running, by request id; `cancelled` is set by `cancel`. */
+  readonly #chats = new Map<string, { cancelled: boolean }>();
+  #reply: AiReply;
 
   constructor(
     private readonly record: (method: FakeAiMethod, ...args: unknown[]) => void,
     ollamaModels: readonly string[] | undefined,
     keys: Record<string, string> | undefined,
+    reply: AiReply | undefined,
   ) {
+    this.#reply = reply ?? DEFAULT_AI_REPLY;
     if (ollamaModels !== undefined) this.#ollama = [...ollamaModels];
     for (const [id, key] of Object.entries(keys ?? {})) this.#keys.set(id, key);
   }
@@ -528,6 +557,84 @@ class FakeAi implements AiBackend {
     return { ok: true };
   }
 
+  async chat(request: AiChatRequest, onEvent: (event: AiChatEvent) => void): Promise<void> {
+    // The request is kept as it came, and it has no key: a test reads the messages back from the calls.
+    this.record("ai.chat", structuredClone(request));
+    const { requestId, providerId } = request;
+    if (!KEYCHAIN_ID.test(requestId)) {
+      throw new Error("the request id must be 1 to 64 letters, digits, '-' or '_'");
+    }
+    if (!KEYCHAIN_ID.test(providerId)) throw new Error(`\`${providerId}\` is not a provider id`);
+    if (providerId !== OLLAMA_PROVIDER_ID && !this.#providers.some((p) => p.id === providerId)) {
+      throw new Error(`there is no provider \`${providerId}\``);
+    }
+    for (const message of request.messages) {
+      if (!AI_CHAT_ROLES.includes(message.role)) {
+        throw new Error(`\`${String(message.role)}\` is not a role of a message`);
+      }
+    }
+    if (this.#chats.has(requestId)) {
+      throw new Error(`the request \`${requestId}\` is already running`);
+    }
+    const state = { cancelled: false };
+    this.#chats.set(requestId, state);
+
+    try {
+      const failure = this.#chatFailure(providerId);
+      const deltas = failure === undefined ? wordsOf(this.#replyTo(request)) : [];
+      // A turn of the event loop before each event, so a `cancel` has a moment to arrive.
+      for (const text of deltas) {
+        await Promise.resolve();
+        if (state.cancelled) break;
+        onEvent({ type: "delta", text });
+      }
+      await Promise.resolve();
+      if (state.cancelled) {
+        onEvent({ type: "error", kind: "cancelled", message: "cancelled" });
+      } else if (failure !== undefined) {
+        onEvent({ type: "error", kind: failure.kind, message: failure.message });
+      } else {
+        onEvent({ type: "done" });
+      }
+    } finally {
+      this.#chats.delete(requestId);
+    }
+  }
+
+  async cancel(requestId: string): Promise<boolean> {
+    this.record("ai.cancel", requestId);
+    const state = this.#chats.get(requestId);
+    if (state === undefined) return false;
+    state.cancelled = true;
+    return true;
+  }
+
+  /** Why the fake provider cannot answer, as the connection test says it: no Ollama, no key, or the answer a test chose. */
+  #chatFailure(providerId: string): { kind: AiErrorKind; message: string } | undefined {
+    const chosen = this.#connections.get(providerId);
+    if (chosen !== undefined) {
+      const result = this.#withoutKey(providerId, chosen);
+      return result.ok ? undefined : result;
+    }
+    if (providerId === OLLAMA_PROVIDER_ID && this.#ollama === null) {
+      return { kind: "network", message: "could not reach the provider: connection refused" };
+    }
+    const provider = this.#providers.find((p) => p.id === providerId);
+    if (provider?.kind === "anthropic" && !this.#keys.has(providerId)) {
+      return { kind: "invalid-request", message: "this provider needs an API key and none is set" };
+    }
+    return undefined;
+  }
+
+  #replyTo(request: AiChatRequest): string {
+    return typeof this.#reply === "string" ? this.#reply : this.#reply(request);
+  }
+
+  /** Changes what the fake provider answers from now on; `undefined` goes back to the default. */
+  setReply(reply: AiReply | undefined): void {
+    this.#reply = reply ?? DEFAULT_AI_REPLY;
+  }
+
   /** The models of the fake Ollama; `null` takes Ollama away. */
   setOllamaModels(models: readonly string[] | null): void {
     this.#ollama = models === null ? null : [...models];
@@ -591,8 +698,11 @@ class FakeAi implements AiBackend {
  *   them) and a fake keychain: `ai.setKey` keeps the key, `ai.providers` says only `hasKey`, and
  *   `storedAiKey` lets a test peek. `ai.testConnection` answers ok, unless the provider is Ollama
  *   that is not there, or Anthropic without a key, or `setAiConnectionResult` chose the answer (a
- *   key in its text is taken out). Calls are recorded as `ai.providers`, `ai.setKey` (without the
- *   key), and so on.
+ *   key in its text is taken out). `ai.chat` is answered by a fake provider (`aiReply`,
+ *   `setAiReply`) in deltas, a word at a time, then one `done`; it ends with an `error` instead when
+ *   the connection test would fail, and a `cancel` in between ends it with `error` of kind
+ *   `cancelled`. Calls are recorded as `ai.providers`, `ai.setKey` (without the key), `ai.chat` (with
+ *   the request, whose messages are what a test checks was sent), and so on.
  *
  * Everything is synchronous: effects of `write` have been delivered when its promise resolves.
  */
@@ -660,6 +770,7 @@ export class FakeBackend implements Backend {
       (method, ...args) => this.#record(method, ...args),
       options.ollamaModels,
       options.aiKeys,
+      options.aiReply,
     );
     this.ai = this.#ai;
     this.#commandExitCode = options.commandExitCode ?? 0;
@@ -694,6 +805,14 @@ export class FakeBackend implements Backend {
    */
   setAiConnectionResult(providerId: string, result: AiConnectionResult | undefined): void {
     this.#ai.setConnectionResult(providerId, result);
+  }
+
+  /**
+   * Changes what the fake provider answers to `ai.chat` from now on: a text, or a function of the
+   * request; `undefined` goes back to `DEFAULT_AI_REPLY`. Not a `Backend` call.
+   */
+  setAiReply(reply: string | ((request: AiChatRequest) => string) | undefined): void {
+    this.#ai.setReply(reply);
   }
 
   /** The key `ai.setKey` stored for a provider, for a test to check; the interface never gets it. Not a `Backend` call. */

@@ -107,6 +107,8 @@ export type { CommandLine, ProfilesFromImport, SkippedProfile } from "./user-pro
 export { parseUserThemes, serializeTheme } from "./user-themes";
 export type { UserThemesResult } from "./user-themes";
 export {
+  AI_CHAT_ROLES,
+  AI_ERROR_KINDS,
   AI_FUNCTIONS,
   AI_PROVIDER_ID_PATTERN,
   AI_PROVIDER_KINDS,
@@ -123,6 +125,10 @@ export {
 } from "./ai";
 export type {
   AiBackend,
+  AiChatEvent,
+  AiChatMessage,
+  AiChatRequest,
+  AiChatRole,
   AiConnectionResult,
   AiErrorKind,
   AiFunction,
@@ -131,6 +137,16 @@ export type {
   AiProviderKind,
   OllamaModels,
 } from "./ai";
+export { REDACTION_KINDS, redactSecrets, redactionMarker } from "./redact";
+export type { Redaction, RedactionKind } from "./redact";
+export {
+  ASK_SYSTEM_PROMPT,
+  MAX_ASK_CHIP_CHARS,
+  MAX_ASK_QUESTION_CHARS,
+  buildAskMessages,
+  previewOfMessages,
+} from "./ask-context";
+export type { AskChip, AskCut, AskCutFrom, AskInput, AskMessage, AskRefusal } from "./ask-context";
 export {
   ConfigSchema,
   SIDEBAR_MAX_WIDTH,
@@ -273,7 +289,7 @@ export type {
   SplitNode,
   Workspace,
 } from "./types";
-export { FakeBackend } from "./fake-backend";
+export { DEFAULT_AI_REPLY, FakeBackend } from "./fake-backend";
 export type {
   FakeAiMethod,
   FakeBackendOptions,

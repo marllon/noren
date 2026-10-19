@@ -1,8 +1,10 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { OutputStream, fontNameList, sniffImageMime } from "@noren/model";
+import { AI_ERROR_KINDS, OutputStream, fontNameList, sniffImageMime } from "@noren/model";
 import type {
   AiBackend,
+  AiChatEvent,
+  AiChatRequest,
   AiConnectionResult,
   AiErrorKind,
   AiProviderConfig,
@@ -66,6 +68,39 @@ interface ConnectionReportPayload {
   message?: string | null;
 }
 
+/**
+ * How long `ai.chat` waits for the last event after `ai_chat_stream` has returned. The Rust side
+ * sends the end of the stream before it returns, but the channel and the answer of the command are
+ * two roads to the page; if the end has not come by then it will not, and the request ends with an
+ * error instead of hanging.
+ */
+export const AI_END_GRACE_MS = 2000;
+
+/** What the channel of `ai_chat_stream` delivers: the shape is `AiStreamEvent` in `ai.rs`. */
+interface AiStreamPayload {
+  type?: unknown;
+  text?: unknown;
+  kind?: unknown;
+  message?: unknown;
+}
+
+/** One event of the channel as the model's `AiChatEvent`, or `undefined` for something that is not one. */
+function chatEventOf(payload: AiStreamPayload): AiChatEvent | undefined {
+  if (payload.type === "delta" && typeof payload.text === "string") {
+    return { type: "delta", text: payload.text };
+  }
+  if (payload.type === "done") return { type: "done" };
+  if (payload.type === "error") {
+    const kind = AI_ERROR_KINDS.find((known) => known === payload.kind) ?? "protocol";
+    const message =
+      typeof payload.message === "string"
+        ? payload.message
+        : "the provider gave an answer Noren could not read";
+    return { type: "error", kind, message };
+  }
+  return undefined;
+}
+
 /** The AI side of `Backend` over the commands in `src-tauri/src/ai.rs`. */
 function tauriAi(bridge: TauriBridge): AiBackend {
   return {
@@ -108,6 +143,57 @@ function tauriAi(bridge: TauriBridge): AiBackend {
         kind: report.kind ?? "protocol",
         message: report.message ?? "the provider gave an answer Noren could not read",
       };
+    },
+
+    async chat(request: AiChatRequest, onEvent: (event: AiChatEvent) => void): Promise<void> {
+      let ended = false;
+      let release: () => void = () => undefined;
+      const endSeen = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const channel = bridge.createChannel<AiStreamPayload>();
+      channel.onmessage = (payload) => {
+        // One end, and nothing after it: the Rust side promises that, and the page does not rely on it.
+        if (ended) return;
+        const event = chatEventOf(payload);
+        if (event === undefined) return;
+        if (event.type !== "delta") ended = true;
+        try {
+          onEvent(event);
+        } finally {
+          if (ended) release();
+        }
+      };
+
+      // The key is not in the request and does not travel: the Rust side reads it from the keychain.
+      const model = request.model?.trim();
+      await bridge.invoke("ai_chat_stream", {
+        providerId: request.providerId,
+        requestId: request.requestId,
+        ...(model !== undefined && model !== "" ? { model } : {}),
+        messages: request.messages.map(({ role, content }) => ({ role, content })),
+        onEvent: channel,
+      });
+      if (ended) return;
+
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, AI_END_GRACE_MS);
+      });
+      await Promise.race([endSeen, late]);
+      clearTimeout(timer);
+      if (!ended) {
+        ended = true;
+        onEvent({
+          type: "error",
+          kind: "protocol",
+          message: "the answer ended without a final event",
+        });
+      }
+    },
+
+    async cancel(requestId: string): Promise<boolean> {
+      return bridge.invoke<boolean>("ai_cancel", { requestId });
     },
   };
 }

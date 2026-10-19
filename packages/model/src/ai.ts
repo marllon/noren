@@ -110,16 +110,51 @@ export interface AiProviderInfo {
 /** What asking Ollama for its models found. Ollama not running is `found: false`, not an error. */
 export type OllamaModels = { found: true; models: string[] } | { found: false };
 
-/** Why a connection test failed: the kinds of the errors of the AI client. */
-export type AiErrorKind =
-  | "invalid-request"
-  | "auth"
-  | "http"
-  | "network"
-  | "timeout"
-  | "cancelled"
-  | "provider"
-  | "protocol";
+/** Why a call to a provider failed: the kinds of the errors of the AI client. */
+export const AI_ERROR_KINDS = [
+  "invalid-request",
+  "auth",
+  "http",
+  "network",
+  "timeout",
+  "cancelled",
+  "provider",
+  "protocol",
+] as const;
+export type AiErrorKind = (typeof AI_ERROR_KINDS)[number];
+
+/** Who wrote a message of a question. */
+export const AI_CHAT_ROLES = ["system", "user", "assistant"] as const;
+export type AiChatRole = (typeof AI_CHAT_ROLES)[number];
+
+/** One message of a question, exactly as it goes to the provider. */
+export interface AiChatMessage {
+  role: AiChatRole;
+  content: string;
+}
+
+/**
+ * A question for a provider. `requestId` is chosen by the caller (1 to 64 letters, digits, `-` or
+ * `_`, unique among the requests running) so that `cancel` can name it before the first event
+ * arrives. `model` replaces the default model of the provider when it is not blank. There is no
+ * place for a key: the Rust side reads it from the keychain.
+ */
+export interface AiChatRequest {
+  requestId: string;
+  providerId: string;
+  model?: string | undefined;
+  messages: readonly AiChatMessage[];
+}
+
+/**
+ * What a question streams back: zero or more `delta` (the next piece of the answer, in order), then
+ * exactly one `done` or `error`. `error.message` is a sentence for the person and never carries the
+ * key; `kind` tells what to look at. A request cancelled ends with `error` of kind `cancelled`.
+ */
+export type AiChatEvent =
+  | { type: "delta"; text: string }
+  | { type: "done" }
+  | { type: "error"; kind: AiErrorKind; message: string };
 
 /**
  * How testing the connection to a provider ended. A failure is an answer, not a rejection: `message`
@@ -158,6 +193,20 @@ export interface AiBackend {
    * could not start: `providerId` is not an id, there is no such provider, or the keychain cannot be read.
    */
   testConnection(providerId: string): Promise<AiConnectionResult>;
+  /**
+   * Asks the provider and hands each event to `onEvent`: the deltas in order, then exactly one `done`
+   * or `error`, and nothing after it. Resolves once that last event has been delivered, whatever it
+   * was. Rejects, with a reason, when the request could not even start (a bad id, no such provider,
+   * a request id already running, the keychain cannot be read); `onEvent` gets nothing then. What
+   * goes out is `request.messages` as they are: redacting and previewing them is the job of
+   * `buildAskMessages`, before this call.
+   */
+  chat(request: AiChatRequest, onEvent: (event: AiChatEvent) => void): Promise<void>;
+  /**
+   * Cancels the request `requestId`, which ends with an `error` event of kind `cancelled`. Resolves
+   * with whether such a request was running; an id that is not running is not an error.
+   */
+  cancel(requestId: string): Promise<boolean>;
 }
 
 /** The first problem of a failed parse in a sentence: `baseUrl: Must start with http://`. */

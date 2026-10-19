@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { decodeUtf8 } from "@noren/model";
-import type { SessionExit } from "@noren/model";
-import { TauriBackend } from "./tauri-backend";
+import { AI_ERROR_KINDS, decodeUtf8 } from "@noren/model";
+import type { AiChatEvent, AiChatMessage, AiChatRequest, SessionExit } from "@noren/model";
+import { AI_END_GRACE_MS, TauriBackend } from "./tauri-backend";
 import type { ChannelLike, TauriBridge } from "./tauri-backend";
 
 interface Invocation {
@@ -10,7 +10,11 @@ interface Invocation {
 }
 
 /** A bridge whose `invoke` answers from a table and whose events are fired by the test. */
-function fakeBridge(answers: Record<string, unknown> = {}) {
+function fakeBridge(
+  answers: Record<string, unknown> = {},
+  /** Runs when a command is invoked, instead of answering from the table; what it returns is the answer. */
+  behaviors: Record<string, (args: Record<string, unknown> | undefined) => unknown> = {},
+) {
   const invocations: Invocation[] = [];
   const channels: ChannelLike<ArrayBuffer>[] = [];
   const handlers = new Map<string, (event: { payload: unknown }) => void>();
@@ -23,6 +27,8 @@ function fakeBridge(answers: Record<string, unknown> = {}) {
       log.push(`invoke ${command}`);
       invocations.push({ command, args });
       if (failing.has(command)) return Promise.reject(new Error(`${command} failed`));
+      const behavior = behaviors[command];
+      if (behavior !== undefined) return Promise.resolve(behavior(args) as T);
       return Promise.resolve(answers[command] as T);
     },
     listen: (event, handler) => {
@@ -654,5 +660,215 @@ describe("TauriBackend ai", () => {
     await expect(new TauriBackend(fake.bridge).ai.testConnection("nobody")).rejects.toThrow(
       "ai_test_connection failed",
     );
+  });
+});
+
+describe("TauriBackend ai.chat and ai.cancel", () => {
+  const KEY = "sk-test-0123456789abcdef";
+  const REQUEST: AiChatRequest = {
+    requestId: "ask-1",
+    providerId: "my-openai",
+    model: "gpt-4o",
+    messages: [
+      { role: "system", content: "be brief" },
+      { role: "user", content: "hello" },
+    ],
+  };
+
+  /** The channel `ai_chat_stream` was given, to speak into as the Rust side does. */
+  const channelOf = (args: Record<string, unknown> | undefined): ChannelLike<unknown> =>
+    args?.["onEvent"] as ChannelLike<unknown>;
+
+  /** A bridge whose `ai_chat_stream` says each of `events` into the channel before it returns. */
+  function streaming(events: readonly unknown[]) {
+    return fakeBridge(
+      {},
+      {
+        ai_chat_stream: (args) => {
+          for (const event of events) channelOf(args).onmessage(event);
+        },
+      },
+    );
+  }
+
+  async function chatAll(fake: ReturnType<typeof fakeBridge>, request: AiChatRequest = REQUEST) {
+    const events: AiChatEvent[] = [];
+    await new TauriBackend(fake.bridge).ai.chat(request, (event) => events.push(event));
+    return events;
+  }
+
+  it("calls ai_chat_stream with camelCase arguments and a channel, and no key", async () => {
+    const fake = streaming([{ type: "done" }]);
+    await chatAll(fake);
+    const [call] = fake.callsTo("ai_chat_stream");
+    expect(call?.args).toEqual({
+      providerId: "my-openai",
+      requestId: "ask-1",
+      model: "gpt-4o",
+      messages: REQUEST.messages,
+      onEvent: expect.anything(),
+    });
+    expect(JSON.stringify(call?.args)).not.toContain(KEY);
+    expect(fake.channels).toHaveLength(1);
+  });
+
+  it("leaves the model out when there is none or it is blank", async () => {
+    for (const model of [undefined, "", "  "]) {
+      const fake = streaming([{ type: "done" }]);
+      await chatAll(fake, { ...REQUEST, model });
+      expect(Object.keys(fake.callsTo("ai_chat_stream")[0]?.args ?? {}).sort()).toEqual([
+        "messages",
+        "onEvent",
+        "providerId",
+        "requestId",
+      ]);
+    }
+  });
+
+  it("sends the role and content of each message and nothing else", async () => {
+    const fake = streaming([{ type: "done" }]);
+    const odd = { role: "user", content: "hi", apiKey: KEY } as AiChatMessage;
+    await chatAll(fake, { ...REQUEST, messages: [odd] });
+    expect(fake.callsTo("ai_chat_stream")[0]?.args?.["messages"]).toEqual([
+      { role: "user", content: "hi" },
+    ]);
+    expect(JSON.stringify(fake.invocations)).not.toContain(KEY);
+  });
+
+  it("hands over the deltas in order and then the end, and resolves after it", async () => {
+    const fake = streaming([
+      { type: "delta", text: "Hel" },
+      { type: "delta", text: "lo" },
+      { type: "done" },
+    ]);
+    await expect(chatAll(fake)).resolves.toEqual([
+      { type: "delta", text: "Hel" },
+      { type: "delta", text: "lo" },
+      { type: "done" },
+    ]);
+  });
+
+  it("waits for events that come after the command has returned", async () => {
+    let channel: ChannelLike<unknown> | undefined;
+    const fake = fakeBridge(
+      {},
+      {
+        ai_chat_stream: (args) => {
+          channel = channelOf(args);
+        },
+      },
+    );
+    const events: AiChatEvent[] = [];
+    let resolved = false;
+    const chat = new TauriBackend(fake.bridge).ai
+      .chat(REQUEST, (event) => events.push(event))
+      .then(() => {
+        resolved = true;
+      });
+    await vi.waitFor(() => expect(channel).toBeDefined());
+    channel?.onmessage({ type: "delta", text: "late" });
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+    channel?.onmessage({ type: "done" });
+    await chat;
+    expect(events).toEqual([{ type: "delta", text: "late" }, { type: "done" }]);
+  });
+
+  it("hands over an error with its kind and its message", async () => {
+    const fake = streaming([
+      { type: "delta", text: "par" },
+      { type: "error", kind: "auth", message: "the provider refused the key" },
+    ]);
+    await expect(chatAll(fake)).resolves.toEqual([
+      { type: "delta", text: "par" },
+      { type: "error", kind: "auth", message: "the provider refused the key" },
+    ]);
+  });
+
+  it("reads every kind of error the Rust side has, and calls an unknown one protocol", async () => {
+    for (const kind of AI_ERROR_KINDS) {
+      const events = await chatAll(streaming([{ type: "error", kind, message: "m" }]));
+      expect(events).toEqual([{ type: "error", kind, message: "m" }]);
+    }
+    const odd = await chatAll(streaming([{ type: "error", kind: "weird", message: "m" }]));
+    expect(odd).toEqual([{ type: "error", kind: "protocol", message: "m" }]);
+    const bare = await chatAll(streaming([{ type: "error" }]));
+    expect(bare[0]).toMatchObject({ type: "error", kind: "protocol" });
+  });
+
+  it("hands over one end only, and nothing that comes after it", async () => {
+    const fake = streaming([
+      { type: "delta", text: "a" },
+      { type: "done" },
+      { type: "delta", text: "ghost" },
+      { type: "done" },
+      { type: "error", kind: "network", message: "late" },
+    ]);
+    await expect(chatAll(fake)).resolves.toEqual([{ type: "delta", text: "a" }, { type: "done" }]);
+  });
+
+  it("ignores what is not an event", async () => {
+    const fake = streaming([
+      { type: "other" },
+      { type: "delta" },
+      { type: "delta", text: 3 },
+      { type: "delta", text: "ok" },
+      { type: "done" },
+    ]);
+    await expect(chatAll(fake)).resolves.toEqual([{ type: "delta", text: "ok" }, { type: "done" }]);
+  });
+
+  it("rejects, with the reason and no event, when ai_chat_stream could not start", async () => {
+    const fake = fakeBridge();
+    fake.failing.add("ai_chat_stream");
+    const events: AiChatEvent[] = [];
+    await expect(
+      new TauriBackend(fake.bridge).ai.chat(REQUEST, (event) => events.push(event)),
+    ).rejects.toThrow("ai_chat_stream failed");
+    expect(events).toEqual([]);
+  });
+
+  it("ends with a protocol error if the command returned and no end came", async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = streaming([{ type: "delta", text: "half" }]);
+      const events: AiChatEvent[] = [];
+      const chat = new TauriBackend(fake.bridge).ai.chat(REQUEST, (event) => events.push(event));
+      await vi.advanceTimersByTimeAsync(AI_END_GRACE_MS - 1);
+      expect(events).toEqual([{ type: "delta", text: "half" }]);
+      await vi.advanceTimersByTimeAsync(1);
+      await chat;
+      expect(events).toEqual([
+        { type: "delta", text: "half" },
+        { type: "error", kind: "protocol", message: "the answer ended without a final event" },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not leave the grace timer behind when the end came", async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = streaming([{ type: "done" }]);
+      await expect(chatAll(fake)).resolves.toEqual([{ type: "done" }]);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels through ai_cancel with the request id and answers what it says", async () => {
+    const running = fakeBridge({ ai_cancel: true });
+    await expect(new TauriBackend(running.bridge).ai.cancel("ask-1")).resolves.toBe(true);
+    expect(running.invocations).toEqual([{ command: "ai_cancel", args: { requestId: "ask-1" } }]);
+    const gone = fakeBridge({ ai_cancel: false });
+    await expect(new TauriBackend(gone.bridge).ai.cancel("nobody")).resolves.toBe(false);
+  });
+
+  it("lets the reason ai_cancel refused with reach the caller", async () => {
+    const fake = fakeBridge();
+    fake.failing.add("ai_cancel");
+    await expect(new TauriBackend(fake.bridge).ai.cancel("x")).rejects.toThrow("ai_cancel failed");
   });
 });

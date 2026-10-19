@@ -6,6 +6,7 @@ mod bridge;
 mod deeplink;
 mod lifecycle;
 mod notify;
+mod perf;
 mod quick;
 mod route;
 mod shortcut;
@@ -38,7 +39,20 @@ fn main() {
     // The quick run promotes a shell into a new tab, which the interface saves: it keeps the files
     // of the app in a folder of its own.
     let quick_sandbox = smoke_quick.then(smoke::QuickSandbox::new);
-    let any_smoke = smoke || smoke_deeplink || smoke_quick;
+    // The perf run keeps the files of the app in a folder of its own too, with a saved workspace
+    // of the tabs it was asked for, and writes its result to the file it was given.
+    let perf_run = if perf::has_perf_flag(&args) {
+        match perf::parse_args(&args).and_then(|run| run.prepare().map(|()| run)) {
+            Ok(run) => Some(run),
+            Err(message) => {
+                eprintln!("SMOKE FAILED: {message}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        None
+    };
+    let any_smoke = smoke || smoke_deeplink || smoke_quick || perf_run.is_some();
 
     let mut builder = tauri::Builder::default();
     // First of all, so a second instance is detected before the rest of the setup runs. Not in a
@@ -123,18 +137,22 @@ fn main() {
             deeplink::deep_link_applied,
         ])
         .setup(move |app| {
-            match (&smoke_link, &quick_sandbox) {
-                // The deep-link and quick checks never touch the user's files: they run on an empty
+            match (&smoke_link, &quick_sandbox, &perf_run) {
+                // The deep-link, quick and perf checks never touch the user's files: they run on a
                 // folder of their own.
-                (Some(target), _) => {
+                (Some(target), _, _) => {
                     smoke::manage_sandbox_stores(app, &target.state_dir);
                     app.manage(target.clone());
                 }
-                (None, Some(sandbox)) => {
+                (None, Some(sandbox), _) => {
                     smoke::manage_sandbox_stores(app, &sandbox.state_dir);
                     app.manage(sandbox.clone());
                 }
-                (None, None) => {
+                (None, None, Some(run)) => {
+                    smoke::manage_sandbox_stores(app, &run.state_dir);
+                    app.manage(run.clone());
+                }
+                (None, None, None) => {
                     app.manage(bridge::state_store(app.handle())?);
                     let config = ConfigState::new(bridge::config_store(app.handle())?);
                     // The smoke run reads the settings but does not watch them: watching would
@@ -217,6 +235,9 @@ fn main() {
             if let Some(sandbox) = quick_sandbox.clone() {
                 smoke::arm_quick(app, sandbox);
             }
+            if let Some(run) = perf_run.clone() {
+                perf::arm(app, run);
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -231,6 +252,9 @@ fn main() {
             }
             if let Some(sandbox) = handle.try_state::<smoke::QuickSandbox>() {
                 sandbox.remove();
+            }
+            if let Some(run) = handle.try_state::<perf::PerfRun>() {
+                run.remove();
             }
         }
     });

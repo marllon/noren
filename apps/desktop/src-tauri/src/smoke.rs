@@ -42,7 +42,7 @@ pub fn should_show_window(smoke: bool) -> bool {
 }
 
 /// Fails unless the `main` window exists and is hidden.
-fn check_window_hidden(app: &AppHandle) -> Result<(), String> {
+pub(crate) fn check_window_hidden(app: &AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "the main window does not exist".to_string())?;
@@ -53,7 +53,7 @@ fn check_window_hidden(app: &AppHandle) -> Result<(), String> {
 /// Fails when the app holds a global shortcut: no smoke run registers one (it would take a key
 /// from the programs of whoever runs it). The plugin is asked, not only our own books. The page
 /// of the main window does ask for the shortcut of the quick terminal at boot; this run refuses.
-fn check_no_global_shortcut(app: &AppHandle) -> Result<(), String> {
+pub(crate) fn check_no_global_shortcut(app: &AppHandle) -> Result<(), String> {
     let held = shortcut::registered(app);
     if held != 0 {
         return Err(format!(
@@ -154,7 +154,7 @@ fn window_hidden_result(visible: bool) -> Result<(), String> {
 }
 
 /// Prints `line` to stdout and flushes it so a parent process sees it before we exit.
-fn print_line(line: &str) {
+pub(crate) fn print_line(line: &str) {
     let mut out = std::io::stdout().lock();
     // A closed stdout must not turn the smoke check into a panic.
     let _ = writeln!(out, "{line}");
@@ -437,7 +437,7 @@ fn fresh_state_dir() -> PathBuf {
 }
 
 /// A folder name that starts with `prefix` in the temp folder, that no earlier run used.
-fn fresh_dir(prefix: &str) -> PathBuf {
+pub(crate) fn fresh_dir(prefix: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_nanos());

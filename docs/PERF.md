@@ -1,31 +1,34 @@
 # Performance
 
 The targets of the product, how each one is measured, and what was measured. Two tasks fill this
-page: NOR-F11-01a (the measurements that need no window, below) and NOR-F11-01b (the ones that need
-the real app in a release build: the first prompt and the memory of 30 tabs).
+page: NOR-F11-01a (the measurements that need no window, rows 1 to 4 of "Results") and NOR-F11-01b
+(the ones that need the real app in a release build: the first prompt and the memory of 30 tabs,
+rows 5 and 6).
 
 ## Targets
 
-| #   | Target (spec, section 11)                                                  | Measured in | Status                                                                                         |
-| --- | -------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------- |
-| 1   | Opening the app to the first prompt: under 800 ms (release, Windows)       | NOR-F11-01b | not measured yet                                                                               |
-| 2   | `cat` of 50 MB does not freeze the interface: the sidebar answers < 100 ms | NOR-F11-01a | **met** (13 ms)                                                                                |
-| 3   | 30 tabs open: total memory under 500 MB                                    | NOR-F11-01b | not measured yet                                                                               |
-| 4   | Changing space: under 100 ms                                               | NOR-F11-01a | **met** (16 ms), except the first switch of a page (56.5 ms median, up to 155 ms): NOR-F11-01c |
-|     | Terminal throughput (no number in the spec)                                | NOR-F11-01a | measured, see below                                                                            |
+| #   | Target (spec, section 11)                                                  | Measured in | Status                                                                                                                          |
+| --- | -------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Opening the app to the first prompt: under 800 ms (release, Windows)       | NOR-F11-01b | **not met**: 958 ms median (894 to 997), 158 ms over; NOR-F11-01d                                                               |
+| 2   | `cat` of 50 MB does not freeze the interface: the sidebar answers < 100 ms | NOR-F11-01a | **met** (13 ms)                                                                                                                 |
+| 3   | 30 tabs open: total memory under 500 MB                                    | NOR-F11-01b | **not met**: 3,651 MB of working set summed over the tree (private working set 1,384 MB), 30 shells are 83 % of it; NOR-F11-01e |
+| 4   | Changing space: under 100 ms                                               | NOR-F11-01a | **met** (16 ms), except the first switch of a page (56.5 ms median, up to 155 ms): NOR-F11-01c                                  |
+|     | Terminal throughput (no number in the spec)                                | NOR-F11-01a | measured, see below                                                                                                             |
 
 ## Machine
 
 One machine, left alone while the numbers were taken (no other build or test running).
 
-| Part    | Value                                                                               |
-| ------- | ----------------------------------------------------------------------------------- |
-| CPU     | Intel Core i9-14900K (24 cores, 32 threads)                                         |
-| Memory  | 63.8 GB (DDR5-4800)                                                                 |
-| GPU     | NVIDIA GeForce RTX 4090 (the headless Chromium may or may not use it; see "Limits") |
-| System  | Windows 11 Pro, build 10.0.26200                                                    |
-| Browser | Chromium 156.0.8078.4 (the Playwright build), headless                              |
-| Tools   | Node 24.2.0, Rust 1.99.1 (`--release` for the PTY test)                             |
+| Part     | Value                                                                                                                               |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| CPU      | Intel Core i9-14900K (24 cores, 32 threads)                                                                                         |
+| Memory   | 63.8 GB (DDR5-4800)                                                                                                                 |
+| GPU      | NVIDIA GeForce RTX 4090 (the headless Chromium may or may not use it; see "Limits")                                                 |
+| System   | Windows 11 Pro, build 10.0.26200                                                                                                    |
+| Browser  | Chromium 156.0.8078.4 (the Playwright build), headless                                                                              |
+| Tools    | Node 24.2.0, Rust 1.99.1 (`--release` for the PTY test)                                                                             |
+| Web view | Microsoft Edge WebView2 Runtime 155.0.4283.62 (the real app, rows 5 and 6)                                                          |
+| Shell    | Windows PowerShell 5.1.26100 (`powershell`, the default profile: no `pwsh` here), with the user's own profile, as the app starts it |
 
 ## Method
 
@@ -47,6 +50,30 @@ One machine, left alone while the numbers were taken (no other build or test run
   in the first frame".
 - The PTY measurement is `crates/noren-core/tests/perf_pty.rs`, a Rust test marked `#[ignore]` so
   that `pnpm verify` never runs it. It prints one `PERF` line per repetition.
+- The real-app measurements (rows 5 and 6) run `noren --smoke-perf --perf-out <file> [--perf-tabs
+<n>]` from the release build (`tauri build --no-bundle`), started by `scripts/perf.mjs` with the
+  window hidden, as the other `--smoke*` modes. The mode keeps the files of the app in a folder of
+  its own in the temp folder (a saved workspace of `n` tabs, one shell each, written for the run, an
+  empty settings file, no scrollback), so the state and the settings of the person are neither read
+  nor written; the key vault is in memory, no global shortcut is registered and a second instance is
+  not looked for. The hidden quick-terminal window is created, as in a normal start. The result goes
+  to a file, because the release build is a window program with no console. Each repetition is a
+  cold start of a new process. The runs alternate (1 tab, 30 tabs, 1 tab, ...) so that a slow minute
+  of the machine does not fall on one kind only.
+- **First prompt** is the time from the creation of the `noren.exe` process (the system's own
+  record, read by the script from the process list) to the moment the terminal on screen has taken
+  in the chunk that holds the first prompt of the shell: the mark `ESC ] 133 ; A` that the shell
+  integration writes at the start of a prompt. The page reports it (`term.write` callback, event
+  `perf-prompt-shown`) and the app stamps it on arrival. It is measured over a saved workspace of
+  one tab, which is what a first start looks like. Two cross-checks are kept: from the launch call
+  in the script (it also counts the creation of the process by Node, an upper bound) and from the
+  start of `main` in the app (it leaves out the loader of Windows, a lower bound).
+- **Memory** is the sum of the working set of every process in the tree under `noren.exe` (the web
+  view processes, the shells and their console hosts), read from the process list after the 30
+  prompts are in and the app has been left alone for 3 seconds; three readings, 1 second apart, and
+  the median of the three is the figure of the repetition. A working set counts the pages that
+  processes share once per process, so the sum leans high; the private working set (each page once,
+  what is not shared) is quoted beside it. Both are split by who owns the process.
 - Nothing here opens a window or sends a key to the desktop.
 
 ## How to run
@@ -57,9 +84,13 @@ From the repository root, on a machine you will leave alone for about 20 minutes
 node scripts/perf.mjs              # web measurements, then the real PTY
 node scripts/perf.mjs --skip-pty   # only the web ones (about 2 minutes)
 node scripts/perf.mjs --skip-e2e   # only the PTY ones (about 17 minutes)
+node scripts/perf.mjs --only-app   # only the real app: release build, then 5 + 5 hidden runs (about 5 minutes)
 ```
 
-or each part by itself:
+`--only-app` also takes `--no-build` (use the release binary that is there). It refuses to start if a
+`noren.exe` is already running, and it checks after every run that none is left. The pure parts of
+the script (which processes belong to the tree, the sums, the clock) are tested by
+`node --test scripts/perf-app-lib.test.mjs`. Or each part by itself:
 
 ```text
 pnpm --filter @noren/desktop build
@@ -193,6 +224,64 @@ half times more some of the time. The cause was not found here.
 of the 30 tabs alive; not met for the first switch of a page**: the median of 25 is 56.5 ms, but 6 of
 25 are over 100 ms and the worst is 154.6 ms. Task NOR-F11-01c was opened for it.
 
+### 5. Opening the app to the first prompt (real app, release build)
+
+`noren --smoke-perf` over a saved workspace of one tab, the window hidden, 5 cold starts, in ms
+(see "Method" for what the clock starts and stops on):
+
+| Repetition                                 | 1    | 2   | 3   | 4   | 5   | Median  | Min / max  |
+| ------------------------------------------ | ---- | --- | --- | --- | --- | ------- | ---------- |
+| **From the creation of the process**       | 960  | 913 | 894 | 958 | 997 | **958** | 894 / 997  |
+| From the launch call in the script (upper) | 1164 | 915 | 895 | 960 | 999 | 960     | 895 / 1164 |
+| From the start of `main` (lower)           | 878  | 844 | 826 | 882 | 923 | 878     | 826 / 923  |
+| `app-ready` of the page, from `main`       | 825  | 806 | 808 | 833 | 838 | 825     | 806 / 838  |
+
+The two cross-checks bracket the figure (878 to 960 ms) and the five repetitions sit within 103 ms
+of one another (the 1164 ms is the first launch of the series, the slow creation of a process by
+Node, which the system's own creation time leaves out). With 30 tabs saved, the first prompt of
+any of them took 1,761 ms (median; 1,667 to 1,901) and the last of the 30 took 1,936 ms (1,761 to
+2,183): the app starts the shells one after the other before the page appears.
+
+**Target: under 800 ms. Verdict: not met.** The median is 958 ms, 158 ms over, and even the best
+repetition (894 ms) is 94 ms over; the spread is small against that gap, so it is not noise.
+The page says `app-ready` at about 825 ms after `main` and the prompt is on screen 18 to 85 ms
+later, so most of the time is before the interface exists (the web view starting, the page's
+scripts, the boot of the workspace, which starts the shells), not the shell itself. That is a
+reading of the two clocks, not a profile: finding out is the task NOR-F11-01d.
+
+### 6. Memory with 30 tabs open (real app, release build)
+
+`noren --smoke-perf --perf-tabs 30`: 30 tabs in one space, one Windows PowerShell each, all 30
+prompts on screen, 3 seconds of rest, then the process list. 5 repetitions, in MB (1 MB = 1,048,576
+bytes), each the median of three readings:
+
+| Repetition                               | 1       | 2       | 3       | 4       | 5       | Median      | Min / max         |
+| ---------------------------------------- | ------- | ------- | ------- | ------- | ------- | ----------- | ----------------- |
+| **Working set summed over the tree**     | 3,653.0 | 3,642.8 | 3,651.7 | 3,644.7 | 3,650.7 | **3,650.7** | 3,642.8 / 3,653.0 |
+| Private working set summed over the tree | 1,385.8 | 1,377.6 | 1,383.7 | 1,379.3 | 1,385.3 | 1,383.7     | 1,377.6 / 1,385.8 |
+
+Who owns it (median of the 5, working set / private working set), 68 processes in every run:
+
+| Part                                                                  | Processes | Working set | Private |
+| --------------------------------------------------------------------- | --------- | ----------- | ------- |
+| `noren.exe`                                                           | 1         | 37.9        | n/a     |
+| Web view (`msedgewebview2.exe`)                                       | 7         | 580.9       | 227.1   |
+| 30 shells (`powershell.exe`) and 30 console hosts (`openconsole.exe`) | 60        | 3,031.5     | 1,142.4 |
+
+A shell and its console host cost about 101 MB of working set (38 MB private) per tab. With one tab
+open the whole tree is 583.8 MB of working set (580.1 to 584.4) and 177.6 MB private (173.8 to 179.0):
+the web view is the fixed part, the 30 tabs add the rest. The spread over the 5 repetitions is
+under 0.3 %, so the figure is steady.
+
+**Target: 30 tabs open, total memory under 500 MB. Verdict: not met** by the measure this task
+defines (working set summed over the tree): 3,650.7 MB, 7.3 times the target. By the private
+working set it is 1,383.7 MB, still 2.8 times over. Noren and its web view alone (leaving the
+shells out) are about 619 MB of working set and about 241 MB private, so the target is met only
+if the shells are not counted and the private measure is the one that counts; the spec does not say
+which. The 30 shells are 83 % of the working set, and the shell of this machine is Windows
+PowerShell 5.1 with the user's own profile, so the figure moves with the shell and the profile.
+Task NOR-F11-01e was opened for it; its first step is to decide what "total memory" counts.
+
 ## Limits of these numbers
 
 - **Headless Chromium, not the app.** The web build is the same interface, but the shell is the
@@ -202,13 +291,24 @@ of the 30 tabs alive; not met for the first switch of a page**: the median of 25
 - **Renderer.** The WebGL addon was active in the headless browser. Whether the page drew with the
   GPU or with a software rasterizer was not determined, and the drawing speed of the terminal
   (rows 1 and 3) depends on it.
-- **Real app, release build.** The time to the first prompt and the memory of 30 tabs need the app
-  itself in a release build: they are the task NOR-F11-01b (a hidden `--smoke-perf` mode). What
-  only shows with a visible window, such as the feel of dragging a divider while output comes in,
-  is not verified (D19): `apps/desktop/src/TerminalView.tsx` writes every chunk to xterm with
-  `term.write(bytes)` and no flow control, so a producer much faster than the parser would be
-  held in xterm's own queue (which discards above 50 MB); no such producer was seen here (the
-  fastest feed of the harness, a timer-paced one, was drained as it came), so this is a hypothesis
-  from reading the code, not a measurement.
+- **Real app, hidden window.** Rows 5 and 6 are the real release build, but with the main window
+  hidden, as every `--smoke*` mode runs (`apps/desktop/src-tauri/tauri.conf.json:20`, kept hidden by
+  `smoke::should_show_window` at `apps/desktop/src-tauri/src/main.rs:191`). Whether WebView2 loads
+  the page, starts its processes and keeps its terminals slower or lighter with the window hidden
+  than with it shown (a hidden page may skip frames and release its GPU surfaces) is not verified
+  (D19): showing the window would take the focus of whoever is at the machine. The rows say what the
+  hidden run costs; a person's first prompt and memory may differ from them by an amount that was
+  not measured. What only shows with a visible window, such as the feel of dragging a divider while
+  output comes in, is not verified either (D19): `apps/desktop/src/TerminalView.tsx` writes every
+  chunk to xterm with `term.write(bytes)` and no flow control, so a producer much faster than the
+  parser would be held in xterm's own queue (which discards above 50 MB); no such producer was seen
+  here (the fastest feed of the harness, a timer-paced one, was drained as it came), so this is a
+  hypothesis from reading the code, not a measurement.
+- **What the first prompt leaves out.** The clock stops when xterm has taken the prompt in, not when
+  the frame that shows it is painted (`apps/desktop/src/TerminalView.tsx:419`), which is one frame
+  later in a shown window and is not observable in a hidden one. The shell is the one of this
+  machine with the user's own profile (`$PROFILE` runs), and the web view cache of the machine is
+  warm after the first run; a first start after an installation, with a cold cache, is not
+  measured.
 - **One machine.** A faster or slower computer changes every figure; the ratios (idle against
   loaded, Noren against raw) are the part that travels.

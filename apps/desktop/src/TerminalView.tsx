@@ -16,6 +16,8 @@ import type { CommandMarkInfo, CommandOutput, TerminalCommandMarks } from "./com
 import type { ExplainRequest } from "./ask-panel";
 import { parseOsc7 } from "./osc7";
 import { decidePaste, insertableText } from "./paste";
+import { watchFirstPrompt } from "./first-prompt";
+import { reportPromptShown } from "./perf-probe";
 import { isTranslucent } from "./theme";
 
 /** What a right click does: copy the selection or paste, always paste, or leave the native menu. */
@@ -410,9 +412,12 @@ export function TerminalView({
         else ownsSession = true;
       }
       sessionId = id;
+      const firstPrompt = watchFirstPrompt();
       cleanups.push(
         backend.onOutput(id, (bytes) => {
-          term.write(bytes);
+          // The first prompt is reported once xterm has taken the chunk in (`noren --smoke-perf`).
+          if (firstPrompt(bytes)) term.write(bytes, () => reportPromptShown(id));
+          else term.write(bytes);
           onOutputRef.current?.(bytes);
         }),
       );

@@ -732,6 +732,27 @@ body {
   }
 }
 
+/* Tells why a split shortcut did nothing. It stays in the page (a live region) and shows only with text. */
+.pane-notice {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  z-index: 5;
+  max-width: calc(100% - 24px);
+  padding: 6px 12px;
+  border: 1px solid var(--nr-accent);
+  border-radius: var(--nr-radius);
+  background: var(--nr-surface);
+  color: var(--nr-text);
+  font-size: 12px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.pane-notice[data-nr-state="empty"] {
+  opacity: 0;
+}
+
 .pane-slot {
   position: absolute;
   inset: 0;

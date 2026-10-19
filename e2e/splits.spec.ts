@@ -6,6 +6,7 @@ type Hook = {
   paneIds(): string[];
   focusedPaneId(): string | undefined;
   paneLines(paneId: string): string[];
+  writeCalls(): number;
   split(dir: "row" | "column", paneId?: string): string | undefined;
 };
 
@@ -344,4 +345,278 @@ test("Close pane closes only that pane", async ({ page }) => {
   await expect(headers(page)).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Close pane", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Zoom pane", exact: true })).toHaveCount(0);
+});
+
+// Keyboard shortcuts of the splits. Keys go through the page, as a user's would.
+
+const writeCalls = (page: Page): Promise<number> =>
+  page.evaluate(() => (window as Window & { __norenTest?: Hook }).__norenTest?.writeCalls() ?? -1);
+
+/** Waits until the shell of a pane shows its prompt. */
+async function waitForPrompt(page: Page, paneId: string): Promise<void> {
+  await expect
+    .poll(async () => (await paneLines(page, paneId)).some((l) => l.startsWith("fake$")))
+    .toBe(true);
+}
+
+/** Presses the shortcut, then the id of the pane that is new in the tab (after waiting for its prompt). */
+async function splitByKey(page: Page, shortcut: string): Promise<string> {
+  const before = await paneIds(page);
+  await page.keyboard.press(shortcut);
+  await expect.poll(() => paneIds(page).then((ids) => ids.length)).toBe(before.length + 1);
+  const added = (await paneIds(page)).find((id) => !before.includes(id));
+  if (added === undefined) throw new Error("no new pane");
+  await waitForPrompt(page, added);
+  return added;
+}
+
+async function boxOf(
+  page: Page,
+  paneId: string,
+): Promise<{ x: number; y: number; w: number; h: number }> {
+  const box = await frame(page, paneId).boundingBox();
+  if (!box) throw new Error(`pane ${paneId} has no box`);
+  return { x: box.x, y: box.y, w: box.width, h: box.height };
+}
+
+/**
+ * Types a letter and waits for it to be the only write since `before`: a key that was swallowed
+ * wrote nothing, one that leaked to the shell would have written first.
+ */
+async function expectNoWriteSince(page: Page, before: number): Promise<void> {
+  await page.keyboard.type("q");
+  await expect.poll(() => writeCalls(page)).toBe(before + 1);
+}
+
+test("Ctrl+Shift+D splits to the right and Ctrl+Shift+E below, and the new pane has the focus", async ({
+  page,
+}) => {
+  const first = await openFirstTab(page);
+  await frame(page, first).click();
+  const writes = await writeCalls(page);
+
+  const second = await splitByKey(page, "Control+Shift+D");
+  expect(await paneIds(page)).toEqual([first, second]);
+  expect(await focusedPaneId(page)).toBe(second);
+  const a = await boxOf(page, first);
+  const b = await boxOf(page, second);
+  expect(b.x).toBeGreaterThan(a.x + a.w / 2);
+  expect(Math.abs(b.y - a.y)).toBeLessThan(3);
+
+  // The new pane holds the keyboard: Ctrl+Shift+E splits it, and the third goes below the second.
+  const third = await splitByKey(page, "Control+Shift+E");
+  expect(await paneIds(page)).toEqual([first, second, third]);
+  expect(await focusedPaneId(page)).toBe(third);
+  const c = await boxOf(page, second);
+  const d = await boxOf(page, third);
+  expect(d.y).toBeGreaterThan(c.y + c.h / 2);
+  expect(Math.abs(d.x - c.x)).toBeLessThan(3);
+
+  // Neither shortcut reached a shell.
+  await expectNoWriteSince(page, writes);
+});
+
+test("Alt+arrows move the focus to the neighbor and never reach the shell", async ({ page }) => {
+  const first = await openFirstTab(page);
+  await frame(page, first).click();
+  const second = await splitByKey(page, "Control+Shift+D");
+  const third = await splitByKey(page, "Control+Shift+E");
+  // first | (second over third), the focus on third.
+  expect(await focusedPaneId(page)).toBe(third);
+
+  const expectFocus = async (id: string) => {
+    await expect.poll(() => focusedPaneId(page)).toBe(id);
+    await expect(page.locator('[data-nr-focused="true"]')).toHaveAttribute("data-pane-id", id);
+  };
+  await page.keyboard.press("Alt+ArrowUp");
+  await expectFocus(second);
+  await page.keyboard.press("Alt+ArrowLeft");
+  await expectFocus(first);
+  // No neighbor on the left: the focus stays.
+  await page.keyboard.press("Alt+ArrowLeft");
+  await expectFocus(first);
+  await page.keyboard.press("Alt+ArrowRight");
+  expect([second, third]).toContain(await focusedPaneId(page));
+  await page.keyboard.press("Alt+ArrowLeft");
+  await expectFocus(first);
+
+  // The terminal of the focused pane really has the keyboard.
+  await page.keyboard.type("echo here");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await paneLines(page, first)).includes("here")).toBe(true);
+  for (const other of [second, third]) {
+    expect((await paneLines(page, other)).some((line) => line.includes("here"))).toBe(false);
+  }
+
+  // From the lower right pane down finds no neighbor, and up reaches the pane above.
+  await frame(page, third).click();
+  const after = await writeCalls(page);
+  await page.keyboard.press("Alt+ArrowDown");
+  await expectFocus(third);
+  await page.keyboard.press("Alt+ArrowUp");
+  await expectFocus(second);
+  await expectNoWriteSince(page, after);
+});
+
+test("a key that is not a shortcut still reaches the terminal", async ({ page }) => {
+  const first = await openFirstTab(page);
+  await frame(page, first).click();
+  await splitByKey(page, "Control+Shift+D");
+  const writes = await writeCalls(page);
+  // Plain Ctrl+D and Ctrl+Z belong to the shell; so does Ctrl+Arrow (word jumps).
+  await page.keyboard.press("Control+ArrowLeft");
+  await expect.poll(() => writeCalls(page)).toBeGreaterThan(writes);
+  expect((await paneIds(page)).length).toBe(2);
+});
+
+test("Ctrl+Shift+Alt+arrows resize the focused pane in steps, within limits, and a reload keeps it", async ({
+  page,
+}) => {
+  const first = await openFirstTab(page);
+  await frame(page, first).click();
+  const second = await splitByKey(page, "Control+Shift+D");
+  await frame(page, first).click();
+  const writes = await writeCalls(page);
+
+  const share = async () => {
+    const sizes = await sizesOf(page);
+    return at(sizes, 0).w / (at(sizes, 0).w + at(sizes, 1).w);
+  };
+  expect(await share()).toBeCloseTo(0.5, 1);
+
+  // Two steps of 5 points to the right: 60/40.
+  await page.keyboard.press("Control+Shift+Alt+ArrowRight");
+  await page.keyboard.press("Control+Shift+Alt+ArrowRight");
+  await expect.poll(share).toBeGreaterThan(0.58);
+  expect(await share()).toBeLessThan(0.62);
+  await page.keyboard.press("Control+Shift+Alt+ArrowLeft");
+  await expect.poll(share).toBeLessThan(0.57);
+  expect(await share()).toBeGreaterThan(0.53);
+  await page.keyboard.press("Control+Shift+Alt+ArrowRight");
+  await expect.poll(share).toBeGreaterThan(0.58);
+
+  // The arrows of the other axis find no split here and change nothing.
+  await page.keyboard.press("Control+Shift+Alt+ArrowUp");
+  await page.keyboard.press("Control+Shift+Alt+ArrowDown");
+  // None of those keys reached the shell.
+  await expectNoWriteSince(page, writes);
+
+  // Saved as 60/40, and a reload brings it back.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const text = localStorage.getItem("noren.web.state") ?? "";
+        const match = /"sizes":\[([\d.e+-]+),([\d.e+-]+)\]/.exec(text);
+        // 60/40 up to the rounding of the sizes (the model scales them to sum 100).
+        return match !== null && Math.abs(Number(match[1]) - 60) < 0.01;
+      }),
+    )
+    .toBe(true);
+  await page.reload();
+  await expect(panes(page)).toHaveCount(2);
+  expect(await paneIds(page)).toEqual([first, second]);
+  expect(await share()).toBeGreaterThan(0.58);
+  expect(await share()).toBeLessThan(0.62);
+
+  // Pushing on keeps the other pane above the minimum.
+  await frame(page, first).click();
+  for (let i = 0; i < 12; i++) await page.keyboard.press("Control+Shift+Alt+ArrowRight");
+  await expect.poll(share).toBeGreaterThan(0.85);
+  expect(await share()).toBeLessThan(0.92);
+  const sizes = await sizesOf(page);
+  expect(at(sizes, 1).w).toBeGreaterThan(0);
+});
+
+test("Ctrl+Shift+Alt+Up and Down resize a stacked split", async ({ page }) => {
+  const first = await openFirstTab(page);
+  await frame(page, first).click();
+  const second = await splitByKey(page, "Control+Shift+E");
+  const share = async () => {
+    const sizes = await sizesOf(page);
+    return at(sizes, 0).h / (at(sizes, 0).h + at(sizes, 1).h);
+  };
+  // The focus is on the lower pane: down moves the separator above it down, so it shrinks.
+  expect(await focusedPaneId(page)).toBe(second);
+  await page.keyboard.press("Control+Shift+Alt+ArrowDown");
+  await expect.poll(share).toBeGreaterThan(0.53);
+  await page.keyboard.press("Control+Shift+Alt+ArrowUp");
+  await page.keyboard.press("Control+Shift+Alt+ArrowUp");
+  await expect.poll(share).toBeLessThan(0.47);
+});
+
+test("Ctrl+Shift+Z zooms the focused pane and a second press brings the layout back", async ({
+  page,
+}) => {
+  const first = await openFirstTab(page);
+  await frame(page, first).click();
+  const second = await splitByKey(page, "Control+Shift+D");
+  const third = await splitByKey(page, "Control+Shift+E");
+  const before = await fractionsOf(page);
+  const writes = await writeCalls(page);
+
+  await page.keyboard.press("Control+Shift+Z");
+  await expect(panes(page)).toHaveCount(1);
+  await expect(frame(page, third)).toBeVisible();
+  await expect(frame(page, first)).toBeHidden();
+  await expect(frame(page, second)).toBeHidden();
+
+  await page.keyboard.press("Control+Shift+Z");
+  await expect(panes(page)).toHaveCount(3);
+  const after = await fractionsOf(page);
+  for (const [index, box] of before.entries()) {
+    for (const [part, value] of box.entries()) {
+      expect(
+        Math.abs(value - at(after[index] ?? [], part)),
+        `pane ${index}, part ${part}`,
+      ).toBeLessThan(0.01);
+    }
+  }
+  expect(await focusedPaneId(page)).toBe(third);
+  await expectNoWriteSince(page, writes);
+});
+
+test("Ctrl+Shift+W closes only the focused pane", async ({ page }) => {
+  const first = await openFirstTab(page);
+  await frame(page, first).click();
+  const second = await splitByKey(page, "Control+Shift+D");
+  const third = await splitByKey(page, "Control+Shift+E");
+  expect(await paneIds(page)).toEqual([first, second, third]);
+
+  await page.keyboard.press("Control+Shift+W");
+  await expect(panes(page)).toHaveCount(2);
+  expect(await paneIds(page)).toEqual([first, second]);
+  // The focus moved to a pane that is left, and the keyboard follows it.
+  const heir = await focusedPaneId(page);
+  expect([first, second]).toContain(heir);
+
+  await frame(page, first).click();
+  await page.keyboard.press("Control+Shift+W");
+  await expect(panes(page)).toHaveCount(1);
+  expect(await paneIds(page)).toEqual([second]);
+});
+
+test("a fifth pane is refused with a notice and nothing changes", async ({ page }) => {
+  const first = await openFirstTab(page);
+  await frame(page, first).click();
+  await splitByKey(page, "Control+Shift+D");
+  await splitByKey(page, "Control+Shift+E");
+  await splitByKey(page, "Control+Shift+D");
+  const ids = await paneIds(page);
+  expect(ids).toHaveLength(4);
+  const focused = await focusedPaneId(page);
+  const notice = page.locator('[data-nr-part="pane-notice"]');
+  await expect(notice).toHaveText("");
+
+  for (const shortcut of ["Control+Shift+D", "Control+Shift+E"]) {
+    await page.keyboard.press(shortcut);
+    await expect(notice).toHaveText("A tab holds at most 4 panes.");
+    await expect(notice).toHaveAttribute("role", "status");
+    await expect(notice).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "at most 4 panes" })).toBeVisible();
+    expect(await paneIds(page)).toEqual(ids);
+    expect(await focusedPaneId(page)).toBe(focused);
+    await expect(panes(page)).toHaveCount(4);
+  }
+  // The notice goes away by itself.
+  await expect(notice).toHaveText("", { timeout: 8000 });
 });

@@ -1,5 +1,5 @@
 import { emit } from "@tauri-apps/api/event";
-import { FakeBackend, layoutPanes, treeGroups } from "@noren/model";
+import { DEFAULT_MAX_PANES, FakeBackend, layoutPanes, treeGroups } from "@noren/model";
 import type { GroupNode, Id, Item, Pane, Space } from "@noren/model";
 import type { ITheme } from "@xterm/xterm";
 import { Suspense, use, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -34,6 +34,9 @@ import type { MenuPoint } from "./SpaceMenu";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import { SplitLayout } from "./SplitLayout";
 import type { SplitLayoutContext } from "./SplitLayout";
+import { keyboardResize } from "./split-layout";
+import { splitCommand, typesText } from "./split-keys";
+import type { SplitCommand } from "./split-keys";
 import { DropZones, TreeDnd } from "./TreeDnd";
 import { createWheelGesture, spaceShortcutIndex, wheelTravel } from "./spaces";
 import { TerminalView } from "./TerminalView";
@@ -164,6 +167,51 @@ function ItemView({ store, space, item, shown, colors, home, onReady }: ItemView
       <SplitLayout layout={item.layout} context={context} />
     </div>
   );
+}
+
+/** How long the notice about a refused split stays on screen. */
+const NOTICE_MS = 3500;
+
+/**
+ * Carries out a split shortcut on the focused pane of the active tab. Returns the notice to show
+ * when the shortcut is refused (a split past the pane limit changes nothing), else undefined.
+ */
+function runSplitCommand(store: WorkspaceStore, command: SplitCommand): string | undefined {
+  const state = store.getState();
+  const itemId = activeItemIdOf(state);
+  const item = itemId === undefined ? undefined : activeSpaceOf(state.workspace).items[itemId];
+  if (!item) return undefined;
+  const { dispatch } = state;
+  switch (command.kind) {
+    case "split":
+      if (layoutPanes(item.layout).length >= DEFAULT_MAX_PANES) {
+        return `A tab holds at most ${DEFAULT_MAX_PANES} panes.`;
+      }
+      dispatch({
+        type: "pane/split",
+        itemId: item.id,
+        paneId: item.focusedPaneId,
+        dir: command.dir,
+        side: "after",
+      });
+      return undefined;
+    case "close":
+      dispatch({ type: "pane/close", itemId: item.id, paneId: item.focusedPaneId });
+      return undefined;
+    case "zoom":
+      dispatch({ type: "pane/zoom", itemId: item.id });
+      return undefined;
+    case "focus":
+      dispatch({ type: "pane/focus-direction", itemId: item.id, direction: command.direction });
+      return undefined;
+    case "resize": {
+      // A zoomed pane hides the separators; resizing what is not on screen would surprise.
+      if (item.zoomedPaneId !== undefined) return undefined;
+      const resized = keyboardResize(item.layout, item.focusedPaneId, command.direction);
+      if (resized) dispatch({ type: "pane/resize", itemId: item.id, ...resized });
+      return undefined;
+    }
+  }
 }
 
 /** What covers the shell: a tab, group or space menu, or a dialog about one space (or a new one). */
@@ -299,6 +347,32 @@ function Shell({ store }: { store: WorkspaceStore }) {
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [store]);
+
+  // The split shortcuts act on the focused pane of the active tab. Captured on the window like the
+  // space shortcut, so a key that is a shortcut never reaches the terminal and any other key does.
+  const [notice, setNotice] = useState("");
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const command = splitCommand(event);
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (command === undefined || typesText(target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      // Holding the key must not split, close or zoom over and over.
+      if (event.repeat && !command.repeat) return;
+      const refusal = runSplitCommand(store, command);
+      if (refusal === undefined) return;
+      clearTimeout(noticeTimer.current);
+      setNotice(refusal);
+      noticeTimer.current = setTimeout(() => setNotice(""), NOTICE_MS);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      clearTimeout(noticeTimer.current);
+    };
   }, [store]);
 
   // A horizontal wheel (or Shift+wheel) over the sidebar steps to the neighbor space and stops at
@@ -599,6 +673,14 @@ function Shell({ store }: { store: WorkspaceStore }) {
               ))}
             </div>
           ))}
+          <div
+            className="pane-notice"
+            role="status"
+            data-nr-part="pane-notice"
+            data-nr-state={notice !== "" ? "shown" : "empty"}
+          >
+            {notice}
+          </div>
         </section>
       </div>
       {overlayNode}

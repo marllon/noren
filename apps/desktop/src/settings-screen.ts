@@ -14,10 +14,20 @@ import { DEFAULT_LAYOUT, layoutFromConfig } from "./layout";
 import type { Layout } from "./layout";
 import { planProfiles, shownProfiles } from "./settings-profiles";
 import type { ProfileField, ProfileRow } from "./settings-profiles";
-import { planArchive, planTerminal, shownArchive, shownTerminal } from "./settings-sections";
+import {
+  planAi,
+  planArchive,
+  planTerminal,
+  shownAi,
+  shownArchive,
+  shownTerminal,
+} from "./settings-sections";
 import type {
+  AiDraft,
+  AiProblems,
   ArchiveDraft,
   ArchiveProblems,
+  ShownAi,
   ShownArchive,
   ShownTerminal,
   TerminalDraft,
@@ -109,6 +119,8 @@ export type SettingsDraft = Partial<Omit<SettingsValues, "width" | "longCommandS
   terminal?: TerminalDraft;
   /** The Auto-archive section. */
   archive?: ArchiveDraft;
+  /** The AI section. */
+  ai?: AiDraft;
   /** The whole list of profiles as rows, once the person touched it. */
   profiles?: readonly ProfileRow[];
 } & Partial<Record<OptionalKey, string>>;
@@ -158,6 +170,7 @@ export interface ShownSettings
   mods: readonly string[];
   terminal: ShownTerminal;
   archive: ShownArchive;
+  ai: ShownAi;
   profiles: readonly ProfileRow[];
 }
 
@@ -171,6 +184,7 @@ export function shownSettings(config: Config, draft: SettingsDraft): ShownSettin
     mods: draft.mods ?? config.mods ?? [],
     terminal: shownTerminal(config, draft.terminal),
     archive: shownArchive(config, draft.archive),
+    ai: shownAi(config, draft.ai),
     profiles: shownProfiles(config, draft.profiles),
     ...Object.fromEntries(
       OPTIONAL_KEYS.map((key) => [key, draft[key] ?? String(optionalValueOf(config, key) ?? "")]),
@@ -265,6 +279,8 @@ export interface SavePlan {
   terminalProblems: TerminalProblems;
   /** The problems of the Auto-archive section, by setting. */
   archiveProblems: ArchiveProblems;
+  /** The problems of the AI section, by function. */
+  aiProblems: AiProblems;
   /** The problems of the Profiles section, by the key of the row and the box. */
   profileProblems: Record<string, Partial<Record<ProfileField, string>>>;
 }
@@ -275,6 +291,7 @@ export function hasProblems(plan: SavePlan): boolean {
     Object.keys(plan.problems).length > 0 ||
     Object.keys(plan.terminalProblems).length > 0 ||
     Object.keys(plan.archiveProblems).length > 0 ||
+    Object.keys(plan.aiProblems).length > 0 ||
     Object.keys(plan.profileProblems).length > 0
   );
 }
@@ -334,16 +351,18 @@ export function planSave(
   if (draft.mods !== undefined && !sameModList(draft.mods, config.mods ?? [])) {
     changes.push({ path: MODS_PATH, value: draft.mods });
   }
-  // The sections with their own plans, in the order of the file: terminal, profiles, archive.
+  // The sections with their own plans, in the order of the file: terminal, profiles, archive, AI.
   const terminal = planTerminal(config, draft.terminal);
   const profiles = planProfiles(config, draft.profiles, context.takenProfileIds);
   const archive = planArchive(config, draft.archive);
-  changes.push(...terminal.changes, ...profiles.changes, ...archive.changes);
+  const ai = planAi(config, draft.ai);
+  changes.push(...terminal.changes, ...profiles.changes, ...archive.changes, ...ai.changes);
   return {
     changes,
     problems,
     terminalProblems: terminal.problems,
     archiveProblems: archive.problems,
+    aiProblems: ai.problems,
     profileProblems: profiles.problems,
   };
 }

@@ -25,7 +25,12 @@ import {
 import type { SettingKey } from "./settings-screen";
 
 /** What a plan says about the sections with their own boxes when none has a problem. */
-const NO_SECTION_PROBLEMS = { terminalProblems: {}, archiveProblems: {}, profileProblems: {} };
+const NO_SECTION_PROBLEMS = {
+  terminalProblems: {},
+  archiveProblems: {},
+  aiProblems: {},
+  profileProblems: {},
+};
 
 const EVERYTHING: Config = {
   appearance: {

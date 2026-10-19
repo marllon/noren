@@ -14,7 +14,7 @@ It is the config folder of the app (Tauri `app_config_dir`), next to `state.json
 
 ## The settings screen
 
-The **Settings** button (the gear in the title bar), or **Open settings** in the command palette (`Ctrl+Shift+P`, then `>`), opens the screen. It has ten sections:
+The **Settings** button (the gear in the title bar), or **Open settings** in the command palette (`Ctrl+Shift+P`, then `>`), opens the screen. It has eleven sections:
 
 - **Appearance**: the side of the sidebar and its width, where the tabs are (the sidebar or a bar on top), density, compact mode, keeping the sidebar open, and the pane headers.
 - **Window**: the effect the system paints behind the window (None, Mica, Acrylic or Vibrancy) and how opaque the interface is. If the system could not paint the effect that is saved, the section says so under the choices, with the reason (see [The window and the background](#the-window-and-the-background)).
@@ -24,6 +24,7 @@ The **Settings** button (the gear in the title bar), or **Open settings** in the
 - **Shortcuts**: which preset is in force (safe or browser), and a button that opens the screen to see and record the keys of every action (see [KEYBINDINGS.md](KEYBINDINGS.md)).
 - **Notifications**: system notifications on or off, and how many seconds a command runs before it notifies when it ends out of sight.
 - **Auto-archive**: the switch for putting idle tabs in the archive and the hours a tab is left alone before it goes (see [Auto-archive](#auto-archive)).
+- **AI**: the switch for the AI (`ai.enabled`, off until you turn it on) and, for each function (Ask, Explain and Command), the provider (Ollama, or one listed under `ai.providers` in the file) and the model typed as text (`ai.defaults.ask`, `ai.defaults.explain` and `ai.defaults.command`). A function needs both: a provider with no model, or a model with no provider, is refused where you type it. Choose no provider and empty the model to take the function out of the file. The providers themselves, and the keys, are not edited here.
 - **Mods**: the CSS files of the `mods` folder, a box for each to turn it on for every space, and arrows that move the ones that are on earlier or later (the mod applied last wins). A name that is on but has no file in the folder stays listed, marked, so you can turn it off. It is a draft like the rest and Save writes the whole `mods` list (see [Mods](#mods)).
 - **Import**: **Import color scheme...** (the same as the palette action: a theme from a color scheme file, see [THEMING.md](THEMING.md)) and **Import profiles...** (the shell profiles of another program's settings file, see [Profiles](#profiles)). Unlike the other sections these act at once and are not part of the draft: a color scheme is added as soon as the file is read, and profiles are added when you confirm the preview. What happened is told under the buttons.
 

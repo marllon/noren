@@ -12,8 +12,8 @@ import {
 } from "./settings-fixture";
 import { sidebarState } from "./sidebar-fixture";
 
-// The settings screen: appearance and layout, terminal, profiles, shortcuts, notifications and
-// auto-archive. It is opened from the
+// The settings screen: appearance and layout, terminal, profiles, shortcuts, notifications,
+// auto-archive and AI. It is opened from the
 // title bar and from the palette, edits are a draft until Save, and Save writes only the settings
 // that changed into `config.jsonc` (the web build keeps that text under `noren.web.config`), with
 // the comments of the file in place. The interface follows the file, so nothing reloads.
@@ -100,6 +100,7 @@ test.describe("opening the screen", () => {
       "Shortcuts",
       "Notifications",
       "Auto-archive",
+      "AI",
     ]) {
       await expect(screen.getByRole("region", { name, exact: true })).toBeVisible();
     }
@@ -648,5 +649,102 @@ test.describe("the Auto-archive section", () => {
     await expect(saveButton(screen)).toBeEnabled();
     await cancelSettings(page);
     expect(await configText(page)).toBe(ARCHIVE_FILE);
+  });
+});
+
+const AI_FILE = `// My Noren settings, keep this line.
+{
+  "notifications": { "enabled": true }, // quiet
+  // The AI stays off until I say so.
+  "ai": {
+    "providers": [
+      { "id": "work", "kind": "openai-compatible", "baseUrl": "https://llm.example.com/v1", "model": "big" },
+    ],
+  },
+}
+`;
+
+test.describe("the AI section", () => {
+  test("turns the AI on and sets the model of Ask, keeping the comments", async ({ page }) => {
+    await start(page, AI_FILE);
+    const screen = await openSettings(page);
+    const ai = section(screen, "AI");
+    await expect(checkbox(ai, "Turn the AI on")).not.toBeChecked();
+    const provider = ai.getByLabel("Ask provider", { exact: true });
+    // The providers to pick from are Ollama and the ones the file lists.
+    await expect(provider.locator("option")).toHaveText(["No provider", "Ollama", "work"]);
+
+    await checkbox(ai, "Turn the AI on").check();
+    await provider.selectOption("ollama");
+    await textbox(ai, "Ask model").fill("llama3");
+    await expect(saveButton(screen)).toBeEnabled();
+    await saveSettings(page);
+
+    const text = await configText(page);
+    expect(text).toContain("// My Noren settings, keep this line.");
+    expect(text).toContain('"notifications": { "enabled": true }, // quiet');
+    expect(text).toContain("// The AI stays off until I say so.");
+    expect(text).toContain('"id": "work"');
+    expect(text).toMatch(/"enabled": true/);
+    expect(text).toMatch(/"ask": \{[^}]*"provider": "ollama"[^}]*"model": "llama3"/);
+    expect(text).not.toContain('"explain"');
+    expect(text).not.toContain('"command"');
+    expect(await saves(page)).toBe(1);
+
+    // Opened again, the screen shows what was saved.
+    const again = section(await openSettings(page), "AI");
+    await expect(checkbox(again, "Turn the AI on")).toBeChecked();
+    await expect(again.getByLabel("Ask provider", { exact: true })).toHaveValue("ollama");
+    await expect(textbox(again, "Ask model")).toHaveValue("llama3");
+    await expect(again.getByLabel("Explain provider", { exact: true })).toHaveValue("");
+    await cancelSettings(page);
+  });
+
+  test("a provider with no model is refused where it is typed, and nothing is written", async ({
+    page,
+  }) => {
+    await start(page, AI_FILE);
+    const screen = await openSettings(page);
+    const ai = section(screen, "AI");
+    await ai.getByLabel("Explain provider", { exact: true }).selectOption("work");
+    const model = textbox(ai, "Explain model");
+    await expect(model).toHaveAttribute("aria-invalid", "true");
+    await expect(ai).toContainText("Type the model to use with this provider");
+    await expect(saveButton(screen)).toBeDisabled();
+
+    await model.fill("big");
+    await expect(model).not.toHaveAttribute("aria-invalid", "true");
+    await expect(saveButton(screen)).toBeEnabled();
+    await model.fill("");
+    await expect(saveButton(screen)).toBeDisabled();
+    await cancelSettings(page);
+    expect(await configText(page)).toBe(AI_FILE);
+    expect(await saves(page)).toBe(0);
+  });
+
+  test("emptying a function takes it out of the file and leaves the rest", async ({ page }) => {
+    const file = AI_FILE.replace(
+      "  ],\n  },",
+      `  ],
+    "enabled": true,
+    "defaults": {
+      "ask": { "provider": "work", "model": "big" }, // the big one
+      "command": { "provider": "ollama", "model": "llama3" },
+    },
+  },`,
+    );
+    await start(page, file);
+    const screen = await openSettings(page);
+    const ai = section(screen, "AI");
+    await expect(ai.getByLabel("Ask provider", { exact: true })).toHaveValue("work");
+    await ai.getByLabel("Command provider", { exact: true }).selectOption("");
+    await textbox(ai, "Command model").fill("");
+    await saveSettings(page);
+
+    const text = await configText(page);
+    expect(text).not.toContain('"command"');
+    expect(text).toContain('"ask": { "provider": "work", "model": "big" }, // the big one');
+    expect(text).toContain("// The AI stays off until I say so.");
+    expect(text).toContain('"enabled": true');
   });
 });

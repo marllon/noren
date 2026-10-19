@@ -1443,6 +1443,7 @@ body {
 }
 
 .settings-number input[aria-invalid="true"],
+.settings-number select[aria-invalid="true"],
 .settings-number textarea[aria-invalid="true"] {
   border-color: var(--nr-accent);
 }

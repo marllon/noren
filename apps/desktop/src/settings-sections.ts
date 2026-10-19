@@ -1,4 +1,5 @@
 import {
+  AI_FUNCTIONS,
   ConfigSchema,
   DEFAULT_ARCHIVE_AFTER_HOURS,
   DEFAULT_ARCHIVE_ENABLED,
@@ -16,10 +17,19 @@ import {
   MIN_FONT_SIZE,
   MIN_LINE_HEIGHT,
   MIN_SCROLLBACK,
+  OLLAMA_PROVIDER_ID,
 } from "@noren/model";
-import type { BellStyle, Config, ConfigChange, ConfigPath, CursorStyle } from "@noren/model";
+import type {
+  AiFunction,
+  BellStyle,
+  Config,
+  ConfigChange,
+  ConfigEdit,
+  ConfigPath,
+  CursorStyle,
+} from "@noren/model";
 
-// The pure part of the Terminal and Auto-archive sections of the settings screen: where each
+// The pure part of the Terminal, Auto-archive and AI sections of the settings screen: where each
 // setting lives in `config.jsonc`, the values in force (the file over the defaults), and what Save
 // has to write for what the person changed. A value is checked against the schema of the file
 // (`ConfigSchema`) before anything is written, so the screen can never ask for a file the app would
@@ -259,6 +269,174 @@ export function planArchive(
       problems.afterHours = AFTER_HOURS_PROBLEM;
     } else if (hours !== now.afterHours) {
       changes.push({ path: ARCHIVE_PATHS.afterHours, value: hours });
+    }
+  }
+  return { changes, problems };
+}
+
+// ---------------------------------------------------------------------------------------------
+// AI
+
+/** The provider and the model a function of the AI uses; both empty is "no default". */
+export interface AiTarget {
+  provider: string;
+  model: string;
+}
+
+/** The settings of the AI section: the switch, and the default of each function. */
+export interface AiValues {
+  enabled: boolean;
+  ask: AiTarget;
+  explain: AiTarget;
+  command: AiTarget;
+}
+
+export type AiKey = keyof AiValues;
+
+/** The place of each AI setting in `config.jsonc`: a function's target is the group `provider` and `model` sit in. */
+export const AI_PATHS: Readonly<Record<AiKey, readonly string[]>> = {
+  enabled: ["ai", "enabled"],
+  ask: ["ai", "defaults", "ask"],
+  explain: ["ai", "defaults", "explain"],
+  command: ["ai", "defaults", "command"],
+};
+
+export const NO_AI_TARGET: AiTarget = { provider: "", model: "" };
+
+export const DEFAULT_AI_VALUES: AiValues = {
+  enabled: false,
+  ask: NO_AI_TARGET,
+  explain: NO_AI_TARGET,
+  command: NO_AI_TARGET,
+};
+
+/** The AI settings in force: what the file says, and the default (off, no default target) for the rest. */
+export function aiValuesOf(config: Config): AiValues {
+  const { enabled, defaults } = config.ai ?? {};
+  const target = (fn: AiFunction): AiTarget => defaults?.[fn] ?? NO_AI_TARGET;
+  return {
+    enabled: enabled ?? DEFAULT_AI_VALUES.enabled,
+    ask: target("ask"),
+    explain: target("explain"),
+    command: target("command"),
+  };
+}
+
+/** What the person changed for one function: the provider id and the text of the model box. */
+export interface AiTargetDraft {
+  provider?: string;
+  model?: string;
+}
+
+/** What the person changed in the AI section and has not saved. */
+export interface AiDraft {
+  enabled?: boolean;
+  ask?: AiTargetDraft;
+  explain?: AiTargetDraft;
+  command?: AiTargetDraft;
+}
+
+export interface ShownAi {
+  enabled: boolean;
+  ask: AiTarget;
+  explain: AiTarget;
+  command: AiTarget;
+}
+
+export function shownAi(config: Config, draft: AiDraft | undefined): ShownAi {
+  const now = aiValuesOf(config);
+  const target = (fn: AiFunction): AiTarget => ({
+    provider: draft?.[fn]?.provider ?? now[fn].provider,
+    model: draft?.[fn]?.model ?? now[fn].model,
+  });
+  return {
+    enabled: draft?.enabled ?? now.enabled,
+    ask: target("ask"),
+    explain: target("explain"),
+    command: target("command"),
+  };
+}
+
+/** The ids a function can pick: the Ollama of this computer, then the providers of the file. */
+export function aiProviderIds(config: Config): readonly string[] {
+  return [OLLAMA_PROVIDER_ID, ...(config.ai?.providers ?? []).map((provider) => provider.id)];
+}
+
+export const AI_MODEL_MISSING = "Type the model to use with this provider, or choose no provider.";
+export const AI_PROVIDER_MISSING = "Choose the provider this model belongs to.";
+
+/** What is wrong with the target of one function, and in which of its two controls. */
+export interface AiTargetProblem {
+  field: "provider" | "model";
+  message: string;
+}
+
+export type AiProblems = Partial<Record<AiFunction, AiTargetProblem>>;
+
+/**
+ * What `ConfigSchema` says about `target` as the default of `fn`, with the providers of the file
+ * beside it (the schema refuses a provider the file does not list): the first complaint.
+ */
+function aiTargetProblem(
+  config: Config,
+  fn: AiFunction,
+  target: AiTarget,
+): AiTargetProblem | undefined {
+  const providers = config.ai?.providers;
+  const tree = {
+    ai: {
+      ...(providers !== undefined ? { providers } : {}),
+      defaults: { [fn]: target },
+    },
+  };
+  const parsed = ConfigSchema.safeParse(tree);
+  if (parsed.success) return undefined;
+  const [issue] = parsed.error.issues;
+  const field = issue?.path.at(-1) === "model" ? "model" : "provider";
+  return { field, message: issue?.message ?? "Not a valid value." };
+}
+
+/**
+ * The changes to write for the AI draft, with the same rules as `planArchive`, in the order of the
+ * file: the switch, then the functions. A function with a provider and a model is written when it
+ * differs from the file (only the part that differs when the file has it already); one with neither
+ * is taken out of the file, and left alone when the file has none; one with only a provider, or only
+ * a model, or a pair the schema refuses (a provider the file does not list), is a problem and writes
+ * nothing.
+ */
+export function planAi(
+  config: Config,
+  draft: AiDraft | undefined,
+): { changes: ConfigEdit[]; problems: AiProblems } {
+  const now = aiValuesOf(config);
+  const changes: ConfigEdit[] = [];
+  const problems: AiProblems = {};
+  if (draft === undefined) return { changes, problems };
+  if (draft.enabled !== undefined && draft.enabled !== now.enabled) {
+    changes.push({ path: AI_PATHS.enabled, value: draft.enabled });
+  }
+  for (const fn of AI_FUNCTIONS) {
+    const part = draft[fn];
+    if (part === undefined) continue;
+    const had = now[fn];
+    const provider = (part.provider ?? had.provider).trim();
+    const model = (part.model ?? had.model).trim();
+    const path = AI_PATHS[fn];
+    if (provider === "" && model === "") {
+      if (had.provider !== "") changes.push({ path, remove: true });
+    } else if (provider === "") {
+      problems[fn] = { field: "provider", message: AI_PROVIDER_MISSING };
+    } else if (model === "") {
+      problems[fn] = { field: "model", message: AI_MODEL_MISSING };
+    } else {
+      const problem = aiTargetProblem(config, fn, { provider, model });
+      if (problem !== undefined) {
+        problems[fn] = problem;
+      } else {
+        if (provider !== had.provider)
+          changes.push({ path: [...path, "provider"], value: provider });
+        if (model !== had.model) changes.push({ path: [...path, "model"], value: model });
+      }
     }
   }
   return { changes, problems };

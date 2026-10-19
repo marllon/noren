@@ -2,15 +2,17 @@ import { ArrowDown, ArrowUp } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, KeyboardEvent } from "react";
 import {
+  AI_FUNCTIONS,
   BELL_STYLES,
   CURSOR_STYLES,
   WINDOW_EFFECTS,
   WINDOW_EFFECT_LABELS,
+  OLLAMA_PROVIDER_ID,
   describeConfigError,
   movedMod,
   withMod,
 } from "@noren/model";
-import type { Backend, BellStyle, CursorStyle, WindowEffect } from "@noren/model";
+import type { AiFunction, Backend, BellStyle, CursorStyle, WindowEffect } from "@noren/model";
 import { useConfigState, configManager } from "./config-store";
 import { resolveBindings } from "./keybindings";
 import type { Preset } from "./keybindings";
@@ -37,7 +39,8 @@ import {
 import type { SettingsDraft } from "./settings-screen";
 import { withNewProfile, withProfileEdited, withoutProfile } from "./settings-profiles";
 import type { ProfileField, ProfileRow } from "./settings-profiles";
-import { fontChoice } from "./settings-sections";
+import { aiProviderIds, fontChoice } from "./settings-sections";
+import type { AiTargetDraft } from "./settings-sections";
 import { useWindowEffectReport, windowEffectNote } from "./window-effect-store";
 
 interface ChoiceProps<T extends string> {
@@ -165,6 +168,45 @@ function TextArea({ label, value, problem, onChange }: TextAreaProps) {
   );
 }
 
+interface SelectBoxProps {
+  label: string;
+  value: string;
+  options: readonly { value: string; label: string }[];
+  problem: string | undefined;
+  onChange(value: string): void;
+}
+
+/** A drop-down list with its label; a problem is told under it, where the choice is made. */
+function SelectBox({ label, value, options, problem, onChange }: SelectBoxProps) {
+  const hintId = useId();
+  const selectId = useId();
+  return (
+    <div className="settings-number">
+      <div className="settings-option">
+        <label htmlFor={selectId}>{label}</label>
+        <select
+          id={selectId}
+          value={value}
+          aria-invalid={problem !== undefined ? true : undefined}
+          aria-describedby={problem !== undefined ? hintId : undefined}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      {problem !== undefined && (
+        <span id={hintId} className="settings-hint" role="alert">
+          {problem}
+        </span>
+      )}
+    </div>
+  );
+}
+
 const SIDES: readonly { value: SidebarSide; label: string }[] = [
   { value: "left", label: "Left" },
   { value: "right", label: "Right" },
@@ -206,6 +248,31 @@ const BELLS: readonly { value: BellStyle; label: string }[] = BELL_STYLES.map((v
   value,
   label: BELL_LABELS[value],
 }));
+
+const AI_FUNCTION_LABELS: Readonly<Record<AiFunction, string>> = {
+  ask: "Ask",
+  explain: "Explain",
+  command: "Command",
+};
+
+const AI_FUNCTION_HINTS: Readonly<Record<AiFunction, string>> = {
+  ask: "For the Ask panel.",
+  explain: "For explaining the error of a command.",
+  command: "For writing a command from a description.",
+};
+
+/** The choices of a provider list: no provider, Ollama, and the providers of the file. */
+function providerOptions(
+  ids: readonly string[],
+  current: string,
+): readonly { value: string; label: string }[] {
+  // A provider the file no longer lists stays on the list, so the box tells what is chosen.
+  const listed = current === "" || ids.includes(current) ? ids : [...ids, current];
+  return [
+    { value: "", label: "No provider" },
+    ...listed.map((id) => ({ value: id, label: id === OLLAMA_PROVIDER_ID ? "Ollama" : id })),
+  ];
+}
 
 const KEY_PRESETS: readonly { value: Preset; label: string }[] = [
   { value: "safe", label: "Safe" },
@@ -282,6 +349,10 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
   const changeArchive = (patch: NonNullable<SettingsDraft["archive"]>) =>
     setDraft((now) => ({ ...now, archive: { ...now.archive, ...patch } }));
   // The rows of the list are one draft: the first change takes the profiles of the file as they are.
+  const changeAi = (patch: Pick<NonNullable<SettingsDraft["ai"]>, "enabled">) =>
+    setDraft((now) => ({ ...now, ai: { ...now.ai, ...patch } }));
+  const changeAiTarget = (fn: AiFunction, patch: AiTargetDraft) =>
+    setDraft((now) => ({ ...now, ai: { ...now.ai, [fn]: { ...now.ai?.[fn], ...patch } } }));
   const changeProfiles = (next: (rows: readonly ProfileRow[]) => readonly ProfileRow[]) =>
     setDraft((now) => ({ ...now, profiles: next(now.profiles ?? shown.profiles) }));
   const editProfile = (key: string, patch: Partial<Record<ProfileField, string>>) =>
@@ -695,6 +766,47 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 <p className="settings-hint">
                   A tab nobody uses goes to the library. Pinned tabs and favorites are never
                   archived.
+                </p>
+              </section>
+              <section className="settings-section" aria-label="AI" data-nr-part="settings-ai">
+                <h3>AI</h3>
+                <Toggle
+                  label="Turn the AI on"
+                  checked={shown.ai.enabled}
+                  onChange={(enabled) => changeAi({ enabled })}
+                />
+                {AI_FUNCTIONS.map((fn) => {
+                  const problem = plan.aiProblems[fn];
+                  return (
+                    <fieldset
+                      key={fn}
+                      className="settings-field"
+                      data-nr-part="settings-ai-function"
+                    >
+                      <legend>{AI_FUNCTION_LABELS[fn]}</legend>
+                      <SelectBox
+                        label={`${AI_FUNCTION_LABELS[fn]} provider`}
+                        value={shown.ai[fn].provider}
+                        options={providerOptions(aiProviderIds(config), shown.ai[fn].provider)}
+                        problem={problem?.field === "provider" ? problem.message : undefined}
+                        onChange={(provider) => changeAiTarget(fn, { provider })}
+                      />
+                      <NumberBox
+                        label={`${AI_FUNCTION_LABELS[fn]} model`}
+                        value={shown.ai[fn].model}
+                        problem={problem?.field === "model" ? problem.message : undefined}
+                        text
+                        wide
+                        onChange={(model) => changeAiTarget(fn, { model })}
+                      />
+                      <p className="settings-hint">{AI_FUNCTION_HINTS[fn]}</p>
+                    </fieldset>
+                  );
+                })}
+                <p className="settings-hint">
+                  Off until you turn it on: nothing is sent to any provider while it is off. A
+                  function with no provider and no model has no default. Providers of your own are
+                  listed under ai.providers in config.jsonc.
                 </p>
               </section>
               <section className="settings-section" aria-label="Mods" data-nr-part="settings-mods">

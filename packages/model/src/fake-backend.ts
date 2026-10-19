@@ -35,6 +35,16 @@ export interface FakeBackendOptions {
   home?: string;
   /** Initial content of `state.json`. Defaults to `null` (no saved state). */
   state?: string | null;
+  /** Initial `.noren/actions.json` texts, by folder. */
+  actionsFiles?: Record<string, string>;
+  /** Exit code `runCommand` resolves with. Defaults to 0. */
+  commandExitCode?: number;
+}
+
+/** One command run through `runCommand`, for assertions. */
+export interface FakeCommandRun {
+  readonly cwd: string;
+  readonly command: string;
 }
 
 /** Read-only view of a session, for assertions. */
@@ -337,6 +347,8 @@ class FakeSession {
  *   `true`, `false` (exit 1), `exit [N]` (ends the session), `sleep N` (seconds, on the injected
  *   clock), `seq N`; anything else answers 127
  * - Ctrl+C interrupts `sleep`; other input typed while a command runs is dropped
+ * - `.noren/actions.json` texts live in memory (`setActionsFile`); `runCommand` only records the
+ *   command and answers the configured exit code
  *
  * Everything is synchronous: effects of `write` have been delivered when its promise resolves.
  */
@@ -350,11 +362,19 @@ export class FakeBackend implements Backend {
   readonly #exitListeners = new Set<(exit: SessionExit) => void>();
   readonly #calls: FakeCall[] = [];
   readonly #quarantined: string[] = [];
+  readonly #actionsFiles = new Map<string, string>();
+  readonly #commands: FakeCommandRun[] = [];
+  #commandExitCode: number;
+  #commandFailure: Error | undefined;
   #state: string | null;
   #nextId = 1;
 
   constructor(options: FakeBackendOptions = {}) {
     this.#state = options.state ?? null;
+    this.#commandExitCode = options.commandExitCode ?? 0;
+    for (const [cwd, text] of Object.entries(options.actionsFiles ?? {})) {
+      this.#actionsFiles.set(cwd, text);
+    }
     this.clock = options.clock ?? new ManualClock();
     this.#profiles = options.profiles ?? [{ id: "fake", name: "Fake shell", default: true }];
     this.#host = options.host ?? "fake-host";
@@ -384,6 +404,27 @@ export class FakeBackend implements Backend {
   /** How many times `quarantineState` made a copy. */
   get quarantineCount(): number {
     return this.#quarantined.length;
+  }
+
+  /** Puts the text of `.noren/actions.json` in the folder `cwd`; `null` removes the file. */
+  setActionsFile(cwd: string, text: string | null): void {
+    if (text === null) this.#actionsFiles.delete(cwd);
+    else this.#actionsFiles.set(cwd, text);
+  }
+
+  /** Exit code the next `runCommand` calls resolve with. */
+  setCommandExitCode(code: number): void {
+    this.#commandExitCode = code;
+  }
+
+  /** Makes `runCommand` reject with `error` (a command that cannot start or timed out); `undefined` undoes it. */
+  setCommandFailure(error: Error | undefined): void {
+    this.#commandFailure = error;
+  }
+
+  /** Every command `runCommand` was given, in order. Nothing is executed. */
+  get commands(): readonly FakeCommandRun[] {
+    return this.#commands;
   }
 
   /** Snapshot of a session (kept after it ends). */
@@ -492,6 +533,18 @@ export class FakeBackend implements Backend {
     if (this.#state === null) throw new Error("there is no state file to quarantine");
     this.#quarantined.push(this.#state);
     return `state.broken-${this.#quarantined.length}.json`;
+  }
+
+  async readActionsFile(cwd: string): Promise<string | null> {
+    this.#record("readActionsFile", cwd);
+    return this.#actionsFiles.get(cwd) ?? null;
+  }
+
+  async runCommand(cwd: string, command: string): Promise<number> {
+    this.#record("runCommand", cwd, command);
+    this.#commands.push({ cwd, command });
+    if (this.#commandFailure) throw this.#commandFailure;
+    return this.#commandExitCode;
   }
 
   #record(method: keyof Backend, ...args: unknown[]): void {

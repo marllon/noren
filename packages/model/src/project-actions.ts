@@ -48,6 +48,20 @@ export interface ProjectActions {
   dispose(): void;
 }
 
+/**
+ * The real `runStop`: runs the command through `backend.runCommand`, in a short process with no
+ * tab. Rejects when the command cannot run or ends with a code other than 0, so the caller can
+ * tell the user the action was not stopped.
+ */
+export function createRunStop(
+  backend: Pick<Backend, "runCommand">,
+): ProjectActionsOptions["runStop"] {
+  return async (cwd, command) => {
+    const code = await backend.runCommand(cwd, command);
+    if (code !== 0) throw new Error(`The stop command "${command}" ended with code ${code}`);
+  };
+}
+
 const ENTER = "\r";
 
 /**

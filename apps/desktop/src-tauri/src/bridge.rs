@@ -7,10 +7,11 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use noren_core::{
-    ProfileSet, SessionEvent, SessionId, SessionManager, SpawnSpec, StateStore,
-    detect_system_profiles,
+    ACTIONS_FILE_PATH, ProfileSet, SessionEvent, SessionId, SessionManager, SpawnSpec, StateStore,
+    detect_system_profiles, read_project_file, run_short,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -245,6 +246,32 @@ pub async fn state_quarantine(store: State<'_, StateStore>) -> Result<String, St
         .quarantine()
         .map(|path| path.to_string_lossy().into_owned())
         .map_err(|e| e.to_string())
+}
+
+/// Longest a project command (the `stop` of an action) may run before it is killed.
+pub const PROJECT_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Reads `<cwd>/.noren/actions.json` as text; `None` when there is no such file. Parsing and
+/// validation belong to the interface.
+#[tauri::command]
+pub async fn project_actions_read(cwd: String) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        read_project_file(Path::new(&cwd))
+            .map_err(|e| format!("could not read {ACTIONS_FILE_PATH} in '{cwd}': {e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Runs `command` through the system shell in `cwd`, with no terminal and no window, and returns
+/// its exit code. The command is killed after [`PROJECT_COMMAND_TIMEOUT`].
+#[tauri::command]
+pub async fn project_command_run(cwd: String, command: String) -> Result<i32, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_short(Path::new(&cwd), &command, PROJECT_COMMAND_TIMEOUT).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

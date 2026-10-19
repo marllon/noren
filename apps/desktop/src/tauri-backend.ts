@@ -126,6 +126,14 @@ export class TauriBackend implements Backend {
     return this.#bridge.invoke<string>("state_quarantine");
   }
 
+  readActionsFile(cwd: string): Promise<string | null> {
+    return this.#bridge.invoke<string | null>("project_actions_read", { cwd });
+  }
+
+  runCommand(cwd: string, command: string): Promise<number> {
+    return this.#bridge.invoke<number>("project_command_run", { cwd, command });
+  }
+
   /** Stops listening to `session-exit`. Sessions still running will keep their ids until killed. */
   async dispose(): Promise<void> {
     const subscription = this.#exitSubscription;

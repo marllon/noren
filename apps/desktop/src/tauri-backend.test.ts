@@ -243,6 +243,37 @@ describe("TauriBackend", () => {
     await expect(backend.quarantineState()).rejects.toThrow("state_quarantine failed");
   });
 
+  it("reads the actions file through project_actions_read, as text or null", async () => {
+    const fake = fakeBridge({ project_actions_read: '{"actions":[]}' });
+    await expect(new TauriBackend(fake.bridge).readActionsFile("D:\\proj")).resolves.toBe(
+      '{"actions":[]}',
+    );
+    expect(fake.invocations).toEqual([
+      { command: "project_actions_read", args: { cwd: "D:\\proj" } },
+    ]);
+
+    const none = fakeBridge({ project_actions_read: null });
+    await expect(new TauriBackend(none.bridge).readActionsFile("D:\\proj")).resolves.toBeNull();
+  });
+
+  it("runs a command through project_command_run and returns its exit code", async () => {
+    const fake = fakeBridge({ project_command_run: 3 });
+    await expect(new TauriBackend(fake.bridge).runCommand("D:\\proj", "loop parar")).resolves.toBe(
+      3,
+    );
+    expect(fake.invocations).toEqual([
+      { command: "project_command_run", args: { cwd: "D:\\proj", command: "loop parar" } },
+    ]);
+  });
+
+  it("lets project command failures reach the caller", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    fake.failing.add("project_actions_read").add("project_command_run");
+    await expect(backend.readActionsFile("x")).rejects.toThrow("project_actions_read failed");
+    await expect(backend.runCommand("x", "y")).rejects.toThrow("project_command_run failed");
+  });
+
   it("gives onOutput of an unknown session a harmless unsubscribe", () => {
     const backend = new TauriBackend(fakeBridge().bridge);
     expect(() => backend.onOutput(99, () => undefined)()).not.toThrow();

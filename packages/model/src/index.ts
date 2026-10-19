@@ -11,7 +11,13 @@ export type {
 export type { Action, ActionType, Placement, ReducerContext, SpaceItemsFate } from "./actions";
 export { ACTIONS_FILE_PATH, parseActionsFile } from "./actions-file";
 export type { ParseActionsResult, ProjectAction } from "./actions-file";
-export { createProjectActions } from "./project-actions";
+export { ACTIONS_POLL_MS, watchActionsFile } from "./actions-watcher";
+export type {
+  ActionsFileState,
+  ActionsFileWatcher,
+  WatchActionsFileOptions,
+} from "./actions-watcher";
+export { createProjectActions, createRunStop } from "./project-actions";
 export type {
   ActionStatus,
   ProjectActions,
@@ -65,6 +71,6 @@ export type {
   Workspace,
 } from "./types";
 export { FakeBackend } from "./fake-backend";
-export type { FakeBackendOptions, FakeCall, FakeSessionInfo } from "./fake-backend";
+export type { FakeBackendOptions, FakeCall, FakeCommandRun, FakeSessionInfo } from "./fake-backend";
 export { OutputStream } from "./output-stream";
 export { decodeUtf8, encodeUtf8 } from "./utf8";

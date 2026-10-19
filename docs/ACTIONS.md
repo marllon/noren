@@ -34,6 +34,12 @@ A file that is not valid JSON, misses a field, has a field of the wrong type or 
 - **Stop** with a `stop` command runs that command in a short process with no tab, in the default folder of the space. Without `stop`, it ends the session of the tab.
 - **Status** is _running_ while the session of the action's tab is alive, and _idle_ when there is no tab or its session has ended.
 
+## Where the file is read and how stop runs
+
+- **Reading.** The file is read from `.noren/actions.json` inside the default folder of the space, through the backend (`readActionsFile`): the desktop app reads the disk; the web build and the tests read an in-memory file. A folder with no file (or no `.noren` folder) simply has no actions. A file that cannot be read for another reason (a folder in its place, no permission) is reported as unreadable, with the reason. Bytes that are not valid UTF-8 are replaced, so such a file is reported as invalid instead of failing the read.
+- **Reload.** Noren reads the file again every 2 seconds (`ACTIONS_POLL_MS`) while a space is being watched, by polling: no file-watcher dependency. It reports the file when it is first read and after that only when its text changes, including when it appears, disappears, turns invalid or becomes valid again. The next read starts only after the previous one ended, and stopping the watcher drops a read in flight. A change shows up within about 2 seconds.
+- **Stop.** The `stop` command runs through the system shell (`cmd /S /C` on Windows, `sh -c` elsewhere) in the default folder of the space, as a short process with no tab: no terminal, no window, and its output is discarded. A code of 0 means the action was stopped; any other code is reported as an error naming the command and the code. A command that is still running after 30 seconds is killed, together with the processes it started, and reported as an error. A space with no default folder cannot run a `stop` command.
+
 The tab is followed by identity, not by name: once Noren opened it for an action, renaming the tab does not detach it from the action. After a restart Noren finds the tab again by its title.
 
 ## Rules

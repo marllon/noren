@@ -22,6 +22,8 @@ fn main() {
             bridge::state_load,
             bridge::state_save,
             bridge::state_quarantine,
+            bridge::project_actions_read,
+            bridge::project_command_run,
         ])
         .setup(move |app| {
             app.manage(bridge::state_store(app.handle())?);

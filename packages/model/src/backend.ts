@@ -57,4 +57,16 @@ export interface Backend {
   saveState(content: string): Promise<void>;
   /** Keeps a copy of the current `state.json` as `state.broken-<date>.json` and returns its path. */
   quarantineState(): Promise<string>;
+  /**
+   * Text of `.noren/actions.json` inside the folder `cwd`, or `null` when the folder has no such
+   * file. Rejects for any other failure (a folder where the file should be, no permission).
+   * Parsing is the caller's job (`parseActionsFile`).
+   */
+  readActionsFile(cwd: string): Promise<string | null>;
+  /**
+   * Runs a command line through the system shell in the folder `cwd`, in a short process with no
+   * terminal and no window, and resolves with its exit code when it ends. Rejects when it cannot
+   * start, when `cwd` is not a folder, and when it outlives the backend's time limit (it is killed).
+   */
+  runCommand(cwd: string, command: string): Promise<number>;
 }

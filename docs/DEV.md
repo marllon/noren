@@ -76,3 +76,35 @@ Tips:
 - After adding imports, run `pnpm exec eslint --fix .` and then `pnpm format`.
 - Never run a dev server as part of an automated step; tests that need a server start and stop it
   themselves.
+
+## Daily-use build (Windows)
+
+```sh
+pnpm desktop:build
+```
+
+This runs `tauri build` in release mode and produces one NSIS installer. The first run compiles
+the release profile (a few minutes) and the Tauri bundler downloads NSIS and one plugin DLL from
+GitHub; later runs reuse them. The target is set for Windows only in
+`apps/desktop/src-tauri/tauri.windows.conf.json` (no MSI).
+
+The installer is written to `target/release/bundle/nsis/Noren_0.0.1-dev_x64-setup.exe` (about
+2.1 MiB). `target/` is ignored by git; never commit it. The version is `0.0.1-dev`
+(`package.json`, `apps/desktop/package.json`, `tauri.conf.json` and the workspace `Cargo.toml`
+must stay in step). The build is not signed, so Windows SmartScreen may warn on first run.
+
+Install: run the `.exe` (per-user, no administrator rights), or `Noren_0.0.1-dev_x64-setup.exe /S`
+for a silent install. The app goes to `%LOCALAPPDATA%\Noren` and appears in Start and in
+Settings > Apps.
+
+Uninstall: Settings > Apps > Noren, or `%LOCALAPPDATA%\Noren\uninstall.exe` (`/S` for silent).
+The interactive uninstaller offers to delete the app data; the silent one keeps it.
+
+Where data lives (identifier `io.github.marllon.noren`):
+
+| What                                                                                      | Where                                               |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Workspace state (`state.json`: spaces, groups, tabs, layout), created on the first save   | `%APPDATA%\io.github.marllon.noren\`                |
+| Interface preferences (theme, layout, pane headers), kept in the WebView's `localStorage` | `%LOCALAPPDATA%\io.github.marllon.noren\EBWebView\` |
+
+Deleting both folders resets the app to a fresh install.

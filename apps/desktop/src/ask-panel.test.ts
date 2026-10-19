@@ -2,18 +2,24 @@ import { describe, expect, it } from "vitest";
 import type { Config } from "@noren/model";
 import {
   ASK_STEPS,
+  EXPLAIN_QUESTION,
   NO_CHOICE,
   applyAskEvent,
   askNeedsOllama,
   askOffNotice,
   askRequestId,
+  askSteps,
   askTarget,
+  chipsWithExplained,
   cutLine,
+  explainChip,
+  explainChipLabel,
   failExchange,
   liveChoice,
   readAskChips,
   refusalText,
   secretsLine,
+  shellNameOf,
   startExchange,
   statusNote,
   withTab,
@@ -211,6 +217,118 @@ describe("who answers", () => {
   it("has steps that lead to a first provider", () => {
     expect(ASK_STEPS.length).toBeGreaterThanOrEqual(2);
     expect(ASK_STEPS.join(" ")).toContain("Ollama");
+  });
+
+  it("names the function in the last step", () => {
+    expect(askSteps("ask")).toEqual(ASK_STEPS);
+    expect(askSteps("explain")[2]).toContain("for Explain");
+    expect(askSteps("command")[2]).toContain("for Command");
+  });
+});
+
+describe("who answers each function", () => {
+  const named = config({
+    defaults: {
+      ask: { provider: "a", model: "ma" },
+      explain: { provider: "e", model: "me" },
+      command: { provider: "ollama", model: "mc" },
+    },
+    providers: [{ id: "first", kind: "anthropic", baseUrl: "https://a.example", model: "mf" }],
+  });
+
+  it("takes the provider and model the settings name for that function", () => {
+    expect(askTarget(named, undefined, "ask")?.label).toBe("a · ma");
+    expect(askTarget(named, undefined, "explain")).toEqual({
+      providerId: "e",
+      model: "me",
+      label: "e · me",
+    });
+    expect(askTarget(named, undefined, "command")?.label).toBe("Ollama · mc");
+  });
+
+  it("answers for Ask when no function is given", () => {
+    expect(askTarget(named, undefined)).toEqual(askTarget(named, undefined, "ask"));
+  });
+
+  it("falls back, for a function nobody named, to the first provider and then to Ollama", () => {
+    const onlyAsk = config({
+      defaults: { ask: { provider: "a", model: "ma" } },
+      providers: [{ id: "first", kind: "anthropic", baseUrl: "https://a.example", model: "mf" }],
+    });
+    expect(askTarget(onlyAsk, undefined, "explain")?.label).toBe("first · mf");
+    expect(askTarget(onlyAsk, undefined, "command")?.label).toBe("first · mf");
+    const bare = config({ defaults: { ask: { provider: "a", model: "ma" } } });
+    expect(askTarget(bare, { found: true, models: ["llama3"] }, "command")?.label).toBe(
+      "Ollama · llama3",
+    );
+    expect(askTarget(bare, { found: false }, "explain")).toBeUndefined();
+  });
+
+  it("asks Ollama for its models by function: a name for Ask does not answer Explain", () => {
+    const onlyAsk = config({ defaults: { ask: { provider: "a", model: "ma" } } });
+    expect(askNeedsOllama(onlyAsk, "ask")).toBe(false);
+    expect(askNeedsOllama(onlyAsk, "explain")).toBe(true);
+    expect(askNeedsOllama(onlyAsk, "command")).toBe(true);
+    expect(askNeedsOllama(named, "explain")).toBe(false);
+  });
+});
+
+describe("the shell of a pane", () => {
+  const profiles = [
+    { id: "pwsh", name: "PowerShell", default: false },
+    { id: "bash", name: "Git Bash", default: true },
+  ];
+
+  it("is the name of the profile the pane names", () => {
+    expect(shellNameOf("pwsh", profiles)).toBe("PowerShell");
+  });
+
+  it("is the name of the default profile for a pane that names none", () => {
+    expect(shellNameOf("default", profiles)).toBe("Git Bash");
+    expect(shellNameOf("default", [{ id: "x", name: "X", default: false }])).toBe("X");
+  });
+
+  it("falls back to the id, or to a word, when the profile is not listed", () => {
+    expect(shellNameOf("zsh", profiles)).toBe("zsh");
+    expect(shellNameOf("default", [])).toBe("the shell");
+    expect(shellNameOf(undefined, profiles)).toBe("the shell");
+  });
+});
+
+describe("explaining a command", () => {
+  const request = {
+    command: "fake$ cargo build",
+    output: "error: boom",
+    exitCode: 101,
+    truncated: false,
+  };
+
+  it("makes a chip of the command, its output and its code", () => {
+    expect(explainChip(request)).toEqual({
+      kind: "command",
+      command: "fake$ cargo build",
+      text: "error: boom",
+      exitCode: 101,
+      truncated: false,
+    });
+  });
+
+  it("puts the explained command before the chips read from the terminal", () => {
+    const read = [{ kind: "screen" as const, text: "S" }];
+    expect(chipsWithExplained(request, read).map((chip) => chip.kind)).toEqual([
+      "command",
+      "screen",
+    ]);
+    expect(chipsWithExplained(undefined, read)).toEqual(read);
+  });
+
+  it("shows the command on one short line", () => {
+    expect(explainChipLabel({ command: "  a\n  b  " })).toBe("a b");
+    expect(explainChipLabel({ command: "x".repeat(100) })).toBe(`${"x".repeat(40)}…`);
+  });
+
+  it("asks why it failed and how to fix it", () => {
+    expect(EXPLAIN_QUESTION).toContain("fail");
   });
 });
 

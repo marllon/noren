@@ -147,6 +147,20 @@ export {
   previewOfMessages,
 } from "./ask-context";
 export type { AskChip, AskCut, AskCutFrom, AskInput, AskMessage, AskRefusal } from "./ask-context";
+export {
+  MAX_COMMAND_CHARS,
+  MAX_COMMAND_REQUEST_CHARS,
+  buildCommandMessages,
+  commandRequestOf,
+  commandSystemPrompt,
+  extractCommand,
+} from "./command-ask";
+export type {
+  CommandAskInput,
+  CommandAskMessage,
+  CommandAskRefusal,
+  ExtractedCommand,
+} from "./command-ask";
 export { codeBlocksOf, markdownText, parseMarkdown } from "./markdown";
 export type { MdBlock, MdCode, MdInline } from "./markdown";
 export {

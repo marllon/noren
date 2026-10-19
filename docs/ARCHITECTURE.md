@@ -287,6 +287,18 @@ The panel is `AskPanel.tsx`, a side column next to the terminal (on the side the
 
 **What a test can do.** The e2e tests (`e2e/ask-panel.spec.ts`) run against the `FakeBackend`: `window.__norenTest` gives the questions the fake provider was sent (`aiChats`, with the messages exactly as they went), the requests cancelled (`aiCancels`), everything written to a session (`writes`), and sets or holds the answer (`setAiReply`, `holdAiAnswer`).
 
+## Explain and `? text`
+
+Two more ways into the AI, both through a preview that waits for the person's Send, both redacted, neither runs anything, and both gone where the AI is off.
+
+**Who answers, by function.** `askTarget(config, ollama, fn)` and `askNeedsOllama(config, fn)` take the function (`ask`, `explain` or `command`, the keys of `ai.defaults`): the provider and model that function names; else the first provider of the file; else the first model of the Ollama of the computer. A provider named only for Ask does not answer Explain: the fallback is the same for all three. `useAskTarget` (`use-ask-target.ts`) wraps it for the panel and the dialog, asking the Ollama of the computer for its models only when the settings do not say.
+
+**Explain.** The Explain button of a failed command (see [SHELL_INTEGRATION.md](SHELL_INTEGRATION.md#command-marks)) hands an `ExplainRequest` (the command line, its output, the exit code, whether the output was cut at the start) to `TerminalView.onExplain`, which `PaneTerminal` passes only when `aiIsOn(config, space)`, through a context the shell provides (`ExplainContext`). The shell opens the Ask panel with `explain={{ request, seq }}`. The panel puts a `command` chip first in the message (`AskChip` of kind `command`: heading "Output of a command", `Command:` line, `Exit code:` line, a note when the start of the output was gone, text cut from its start when it is too long), types the question `EXPLAIN_QUESTION` and opens the preview at once. Send is still the person's: the preview shows the exact messages, and Edit goes back to the question. The answer comes from `ai.defaults.explain`; the chip is spent with the question, so the next question is Ask's again. Each press replaces the one before. The code blocks of the answer have the same _Insert in terminal_ as any answer.
+
+**`? text` in the palette.** See [PALETTE.md](PALETTE.md#-text-ask-for-a-command). The pure parts are in `@noren/model` (`command-ask.ts`): `commandRequestOf` reads the request out of the query, `buildCommandMessages` makes the two messages (instructions naming the shell and the system, then the request, every text through `redactSecrets`) and the exact preview, and `extractCommand` takes the one-line command out of the answer. The shell is the name of the profile of the focused pane (`shellNameOf`: the default profile when the pane names none) and the system comes from the user agent of the web view (`osNameOf`). Insert reuses `TerminalHandle.insert`.
+
+**What a test can do.** `e2e/explain-command.spec.ts` runs both flows against the `FakeBackend` and checks, in the writes the backend recorded, that no `\r` or `\n` reached the session, that the messages the fake provider received are the text of the preview, and that with the AI off (settings or space) there is no button, no entry and no call.
+
 What is not there yet: the questions of a conversation stand alone (earlier turns are shown but not sent again), a tab chip reads only the focused pane of that tab, and the panel has a fixed width.
 
 ## Quality and tests

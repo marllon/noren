@@ -1,3 +1,4 @@
+import { commandRequestOf } from "@noren/model";
 import { Command } from "cmdk";
 import { useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
@@ -15,6 +16,12 @@ interface CommandPaletteProps {
    * highlighted (`undefined`). A theme entry shows its theme at once, unsaved.
    */
   onHighlight?(entry: PaletteEntry | undefined): void;
+  /**
+   * "? text": the person asks for a command in words. Given only where the AI is on: without it a
+   * query that starts with `?` is a search like any other and nothing offers the AI. The caller
+   * closes the palette and shows what will be sent; nothing is sent from here.
+   */
+  onAskCommand?(request: string): void;
   /** Replaces the hint in the search box (the list of "Set theme for this space" has its own). */
   placeholder?: string;
 }
@@ -46,12 +53,18 @@ export function CommandPalette({
   onRun,
   onClose,
   onHighlight,
+  onAskCommand,
   placeholder,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   // The highlighted entry is controlled: `cmdk` only reports a change of it when it is.
   const [highlighted, setHighlighted] = useState("");
-  const results = useMemo(() => searchEntries(entries, query), [entries, query]);
+  // A query that starts with `?` asks for a command, where the AI is on; the list gives way to it.
+  const request = onAskCommand === undefined ? undefined : commandRequestOf(query);
+  const results = useMemo(
+    () => (request !== undefined ? [] : searchEntries(entries, query)),
+    [entries, query, request],
+  );
 
   // `cmdk` hands back the value it was given (the id), trimmed and, in some versions, lower-cased.
   const onValueChange = (value: string) => {
@@ -98,11 +111,32 @@ export function CommandPalette({
             value={query}
             onValueChange={setQuery}
             placeholder={
-              placeholder ?? "Search tabs, spaces and commands  (> commands, @ tabs, # spaces)"
+              placeholder ??
+              (onAskCommand !== undefined
+                ? "Search tabs, spaces and commands  (> commands, @ tabs, # spaces, ? ask for a command)"
+                : "Search tabs, spaces and commands  (> commands, @ tabs, # spaces)")
             }
           />
           <Command.List>
-            <Command.Empty>No results</Command.Empty>
+            {request !== undefined ? (
+              request === "" ? (
+                <p className="palette-hint" data-nr-part="palette-ask-hint">
+                  Type what you want to do, such as ? list the biggest files here
+                </p>
+              ) : (
+                <Command.Item
+                  key="ask-command"
+                  value="ask-command"
+                  data-nr-kind="ask-command"
+                  onSelect={() => onAskCommand?.(request)}
+                >
+                  <span className="palette-title">Ask for a command: {request}</span>
+                  <span className="palette-detail">Shows what will be sent first</span>
+                </Command.Item>
+              )
+            ) : (
+              <Command.Empty>No results</Command.Empty>
+            )}
             {KINDS.map((kind) => {
               const group = ofKind(results, kind);
               if (group.length === 0) return null;

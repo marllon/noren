@@ -11,6 +11,13 @@
 import { CommandMarks, joinRows, markFailed, parseOsc } from "@noren/model";
 import type { CommandMark, MarkChange, MarkView } from "@noren/model";
 import type { IDecoration, IDisposable, IMarker, ITheme, Terminal } from "@xterm/xterm";
+import type { ExplainRequest } from "./ask-panel";
+
+/** The most rows of a command line that are read as the command (a long one wraps over several). */
+const MAX_COMMAND_ROWS = 8;
+
+/** What the Explain button of a mark does with the command it belongs to. */
+export type ExplainHandler = (request: ExplainRequest) => void;
 
 /** The colors of the marks: a command that ran well, one that failed, one that still runs. */
 export interface MarkColors {
@@ -78,6 +85,8 @@ export class TerminalCommandMarks {
   readonly #elements = new Map<number, HTMLElement>();
   readonly #handlers: IDisposable[];
   #colors: MarkColors;
+  /** What the Explain button of a failed command does; undefined where the AI is off (no button). */
+  #explain: ExplainHandler | undefined;
   /** The command whose decoration is flagged as the current one. */
   #shownId: number | undefined;
 
@@ -152,25 +161,63 @@ export class TerminalCommandMarks {
   /** The output of the last command that ended; undefined when none did. */
   lastOutput(): CommandOutput | undefined {
     const mark = this.#marks.lastFinished();
-    const rows = mark === undefined ? undefined : this.#marks.outputRows(mark);
-    if (mark === undefined || rows === undefined) return undefined;
+    return mark === undefined ? undefined : this.#outputOf(mark);
+  }
+
+  /** The text of the output of a command that ended; undefined when none of its rows is kept. */
+  #outputOf(mark: CommandMark<IMarker>): CommandOutput | undefined {
+    const rows = this.#marks.outputRows(mark);
+    if (rows === undefined) return undefined;
+    return {
+      text: this.#joined(rows.first, rows.count),
+      rows: rows.count,
+      truncated: rows.truncated,
+      ...(mark.exitCode !== undefined ? { exitCode: mark.exitCode } : {}),
+    };
+  }
+
+  /** The rows `first` to `first + count - 1` joined into lines, a wrapped line made whole again. */
+  #joined(first: number, count: number): string {
     const buffer = this.#term.buffer.active;
-    const text = joinRows(
+    return joinRows(
       (row) => {
         const line = buffer.getLine(row);
         return line === undefined
           ? undefined
           : { text: line.translateToString(true), wrapped: line.isWrapped };
       },
-      rows.first,
-      rows.count,
+      first,
+      count,
     );
+  }
+
+  /**
+   * The command of a mark and what it printed, as the Explain button hands them over: the rows from
+   * its prompt to where its output starts (a long command wraps over several), and its output.
+   * Undefined when the command has not ended or its prompt row is gone.
+   */
+  explainRequest(mark: CommandMark<IMarker>): ExplainRequest | undefined {
+    const output = this.#outputOf(mark);
+    const first = mark.prompt.line;
+    if (output === undefined || first < 0) return undefined;
+    const start = mark.output?.line ?? -1;
+    const count = start > first ? Math.min(start - first, MAX_COMMAND_ROWS) : 1;
     return {
-      text,
-      rows: rows.count,
-      truncated: rows.truncated,
+      command: this.#joined(first, count).trim(),
+      output: output.text,
       ...(mark.exitCode !== undefined ? { exitCode: mark.exitCode } : {}),
+      truncated: output.truncated,
     };
+  }
+
+  /**
+   * Gives the failed commands a button that hands the command and its output to `handler`, or takes
+   * the buttons away (`undefined`: where the AI is off nothing offers it).
+   */
+  setExplain(handler: ExplainHandler | undefined): void {
+    if (this.#explain === handler) return;
+    this.#explain = handler;
+    for (const mark of this.#marks.commands()) if (markFailed(mark)) this.#decorate(mark);
   }
 
   /** A new theme: the marks are drawn again in its colors. */
@@ -241,12 +288,42 @@ export class TerminalCommandMarks {
     this.#elements.set(mark.id, element);
     const state = markFailed(mark) ? "failed" : mark.state === "running" ? "running" : "done";
     element.classList.add("command-mark");
-    element.setAttribute("aria-hidden", "true");
     element.setAttribute("data-nr-part", "command-mark");
     element.setAttribute("data-nr-state", state);
     element.style.setProperty("--nr-mark-color", this.#colors[state === "done" ? "ok" : state]);
     if (mark.id === this.#shownId) element.setAttribute("data-nr-current", "true");
     else element.removeAttribute("data-nr-current");
+    this.#styleExplain(element, mark, state === "failed" && this.#explain !== undefined);
+  }
+
+  /**
+   * The Explain button of a failed command, at the right end of its row; taken out when there is no
+   * handler. The mark is only decoration (hidden from assistive technology) until it holds a button.
+   */
+  #styleExplain(element: HTMLElement, mark: CommandMark<IMarker>, wanted: boolean): void {
+    const existing = element.querySelector<HTMLButtonElement>('[data-nr-part="explain-button"]');
+    if (!wanted) {
+      existing?.remove();
+      element.setAttribute("aria-hidden", "true");
+      return;
+    }
+    element.removeAttribute("aria-hidden");
+    if (existing !== null) return;
+    const button = element.ownerDocument.createElement("button");
+    button.type = "button";
+    button.className = "explain-button";
+    button.setAttribute("data-nr-part", "explain-button");
+    button.setAttribute("aria-label", "Explain this error");
+    button.title = "Explain this error";
+    button.textContent = "Explain";
+    // The terminal under the button must not start a selection or take the click for itself.
+    button.addEventListener("mousedown", (event) => event.stopPropagation());
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const request = this.explainRequest(mark);
+      if (request !== undefined) this.#explain?.(request);
+    });
+    element.appendChild(button);
   }
 
   /** Marks the decoration of the prompt stepped to, so it can be told from the others. */

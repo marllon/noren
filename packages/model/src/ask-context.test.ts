@@ -229,6 +229,50 @@ describe("buildAskMessages: refusals", () => {
   });
 });
 
+describe("buildAskMessages: the output of one command", () => {
+  it("has its own heading, the command line, the exit code and its output", () => {
+    const text = userOf(
+      ask("explain", [
+        {
+          kind: "command",
+          command: "cargo build",
+          text: "error[E0432]: unresolved",
+          exitCode: 101,
+        },
+      ]),
+    );
+    expect(text).toContain("### Output of a command");
+    expect(text).toContain("Command: cargo build");
+    expect(text).toContain("Exit code: 101");
+    expect(text).toContain("error[E0432]: unresolved");
+    expect(text).not.toContain("last command");
+    expect(text.indexOf("Command: cargo build")).toBeLessThan(text.indexOf("Exit code: 101"));
+  });
+
+  it("says when the start of the output was already gone, and leaves the line out when it was not", () => {
+    const gone = userOf(
+      ask("q", [{ kind: "command", command: "make", text: "tail", truncated: true }]),
+    );
+    expect(gone).toContain("The start of the output was already gone from the scrollback.");
+    const kept = userOf(ask("q", [{ kind: "command", command: "make", text: "all" }]));
+    expect(kept).not.toContain("already gone");
+    expect(kept).not.toContain("Exit code");
+  });
+
+  it("redacts the command line and the output, and cuts a long output from its start", () => {
+    const built = ask(
+      "q",
+      [{ kind: "command", command: `curl -u me:${KEY}`, text: `${KEY}\n${"x".repeat(100)}` }],
+      { maxChipChars: 50 },
+    );
+    expect(JSON.stringify(built.messages)).not.toContain(KEY);
+    expect(built.redactions).toBeGreaterThanOrEqual(2);
+    expect(built.cuts).toEqual([
+      { index: 0, chip: "command", removed: expect.any(Number), from: "start" },
+    ]);
+  });
+});
+
 describe("buildAskMessages: properties", () => {
   const text = fc.string({ unit: "grapheme", maxLength: 400 });
   const chip: fc.Arbitrary<AskChip> = fc.oneof(
@@ -238,6 +282,9 @@ describe("buildAskMessages: properties", () => {
       .map(([t, command]): AskChip => ({ kind: "lastOutput", text: t, command })),
     text.map((t): AskChip => ({ kind: "screen", text: t })),
     fc.tuple(text, text).map(([title, t]): AskChip => ({ kind: "tab", title, text: t })),
+    fc
+      .tuple(text, text, fc.option(fc.integer({ min: 1, max: 255 }), { nil: undefined }))
+      .map(([command, t, exitCode]): AskChip => ({ kind: "command", command, text: t, exitCode })),
   );
   const secretIn = (chipOf: AskChip): AskChip => {
     const planted = `pre ${KEY} post`;

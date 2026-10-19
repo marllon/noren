@@ -37,6 +37,17 @@ export type AskChip =
   | { kind: "lastOutput"; text: string; command?: string | undefined }
   /** What is on the screen of the current pane. */
   | { kind: "screen"; text: string }
+  /**
+   * One command picked on its mark (the button that explains an error): its line, its output, the
+   * code it ended with, and whether the start of the output was already gone from the scrollback.
+   */
+  | {
+      kind: "command";
+      command: string;
+      text: string;
+      exitCode?: number | undefined;
+      truncated?: boolean | undefined;
+    }
   /** Another tab (`@tab`): its title and the text of its terminal. */
   | { kind: "tab"; title: string; text: string };
 
@@ -94,6 +105,8 @@ function chipHeading(chip: AskChip, title: string): string {
       return "Output of the last command";
     case "screen":
       return "Visible screen";
+    case "command":
+      return "Output of a command";
     case "tab":
       return `Tab: ${title}`;
   }
@@ -163,7 +176,9 @@ export function buildAskMessages(input: AskInput): AskMessage {
     const title = chip.kind === "tab" ? redactSecrets(oneLine(chip.title)) : undefined;
     const body = redactSecrets(chip.text);
     const command =
-      chip.kind === "lastOutput" && chip.command !== undefined && chip.command.trim() !== ""
+      (chip.kind === "lastOutput" || chip.kind === "command") &&
+      chip.command !== undefined &&
+      chip.command.trim() !== ""
         ? redactSecrets(oneLine(chip.command))
         : undefined;
     for (const part of [title, body, command]) if (part !== undefined) found.push(part);
@@ -174,6 +189,14 @@ export function buildAskMessages(input: AskInput): AskMessage {
 
     const lines = [`### ${chipHeading(chip, title?.text ?? "")}`];
     if (command !== undefined) lines.push(`Command: ${command.text}`);
+    if (chip.kind === "command") {
+      if (chip.exitCode !== undefined && Number.isFinite(chip.exitCode)) {
+        lines.push(`Exit code: ${Math.trunc(chip.exitCode)}`);
+      }
+      if (chip.truncated === true) {
+        lines.push("The start of the output was already gone from the scrollback.");
+      }
+    }
     lines.push(fenced(fitted.text === "" ? "(empty)" : fitted.text));
     sections.push(lines.join("\n"));
   });

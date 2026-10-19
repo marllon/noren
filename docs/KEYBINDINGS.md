@@ -37,6 +37,8 @@ The **safe** preset is the default. It does not fight the shell: Ctrl+T, Ctrl+W 
 | Previous recent tab           | Ctrl+Shift+Tab        | Ctrl+Shift+Tab        |
 | Search all tabs               | Ctrl+Shift+Alt+F      | Ctrl+Shift+Alt+F      |
 | Open library                  | Ctrl+Shift+Alt+L      | Ctrl+Shift+Alt+L      |
+| Ask the AI                    | Ctrl+Shift+A          | Ctrl+Shift+A          |
+| Show or hide quick terminal   | Ctrl+`                | Ctrl+`                |
 | Go to last unread tab         | Ctrl+Shift+U          | Ctrl+Shift+U          |
 | Previous / next prompt        | Ctrl+Up / Ctrl+Down   | Ctrl+Up / Ctrl+Down   |
 | Increase font size            | Ctrl+=                | Ctrl+=                |

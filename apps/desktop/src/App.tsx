@@ -15,8 +15,10 @@ import type { ITheme } from "@xterm/xterm";
 import type { ChangeEvent } from "react";
 import {
   Suspense,
+  createContext,
   use,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -42,9 +44,11 @@ import type { PromoteResult } from "./quick-promote";
 import { quickPreviewEnabled, quickPreviewEvents, tauriQuickEvents } from "./quick";
 import { tauriBridge } from "./tauri-backend";
 import { AskPanel } from "./AskPanel";
-import { askOffNotice } from "./ask-panel";
-import type { AskSources } from "./ask-panel";
+import { askOffNotice, shellNameOf } from "./ask-panel";
+import type { AskSources, ExplainRequest } from "./ask-panel";
+import { CommandAskDialog } from "./CommandAskDialog";
 import { CommandPalette } from "./CommandPalette";
+import { osNameOf } from "./os-name";
 import { ConfigErrorNotice } from "./ConfigErrorNotice";
 import { MruSwitcherView } from "./MruSwitcher";
 import { TabSearch } from "./TabSearch";
@@ -299,6 +303,12 @@ function focusedPane(item: Item): Pane | undefined {
   return layoutPanes(item.layout).find((pane) => pane.id === item.focusedPaneId);
 }
 
+/**
+ * What the Explain button of a failed command does: opens the Ask panel on that command. The shell
+ * gives it where the panel is, and a terminal offers the button only where the AI is on.
+ */
+const ExplainContext = createContext<((request: ExplainRequest) => void) | undefined>(undefined);
+
 interface PaneTerminalProps {
   store: WorkspaceStore;
   space: Space;
@@ -318,6 +328,9 @@ function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTermi
   const { profileId, cwd, env } = sessionStartOptions(space, pane);
   // Font, cursor, scrollback and bell: the settings of the file and the zoom of this window.
   const options = useTerminalOptions();
+  // Where the AI is off, a failed command has no Explain button.
+  const openExplain = useContext(ExplainContext);
+  const onExplain = aiIsOn(useConfigState().config, space) ? openExplain : undefined;
   // The scrollback saved before this window opened, written by the terminal before the new shell
   // prints (only a pane restored from a saved state has any).
   const [restored] = useState(() => restoredScrollbackOf(pane.id));
@@ -348,6 +361,7 @@ function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTermi
       onSessionStart={(id) => store.getState().attachSession(pane.id, String(id))}
       onReady={(handle) => onReady(pane.id, handle)}
       onCwd={recordFolder}
+      {...(onExplain !== undefined ? { onExplain } : {})}
       onOutput={(bytes) => {
         tracker.feed(bytes);
         noteTerminalActivity(pane.id);
@@ -539,6 +553,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const [libraryOpen, setLibraryOpen] = useState(false);
   // The Ask panel was opened. It shows only where the AI is on (see `askShown` below).
   const [askOpen, setAskOpen] = useState(false);
+  // A failed command sent to the Ask panel by its Explain button; `seq` tells one press from the next.
+  const [askExplain, setAskExplain] = useState<{ request: ExplainRequest; seq: number }>();
+  // "? text" in the palette: the request waiting in its dialog (the shell and system it is for).
+  const [commandAsk, setCommandAsk] = useState<
+    { request: string; shell: string; os: string } | undefined
+  >();
   const handles = useRef(new Map<Id, TerminalHandle>());
   const theme = useTheme();
   const themeChoice = useThemeChoice();
@@ -840,7 +860,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const aiOn = aiIsOn(configState.config, space);
   // Where the AI is off the panel is gone, and so is the question that was half typed in it.
   useEffect(() => {
-    if (!aiOn) setAskOpen(false);
+    if (!aiOn) {
+      setAskOpen(false);
+      setAskExplain(undefined);
+      setCommandAsk(undefined);
+    }
   }, [aiOn]);
   const askShown = askOpen && aiOn;
   /** Shows the Ask panel or hides it; where the AI is off it only says why it cannot open. */
@@ -856,6 +880,29 @@ function Shell({ store }: { store: WorkspaceStore }) {
   toggleAskRef.current = toggleAsk;
   const closeAsk = () => {
     setAskOpen(false);
+    setAskExplain(undefined);
+    focusTerminal();
+  };
+  /** The Explain button of a failed command: the Ask panel opens on that command and its output. */
+  const explainCommand = useCallback((request: ExplainRequest) => {
+    setAskExplain((last) => ({ request, seq: (last?.seq ?? 0) + 1 }));
+    setAskOpen(true);
+  }, []);
+  /** "? text" in the palette: the dialog opens for the shell and the system of the pane in use. */
+  const askForCommand = (request: string) => {
+    const state = store.getState();
+    const itemId = activeItemIdOf(state);
+    const item = itemId === undefined ? undefined : activeSpaceOf(state.workspace).items[itemId];
+    const pane = item && focusedPane(item);
+    setPaletteOpen(false);
+    setCommandAsk({
+      request,
+      shell: shellNameOf(pane?.profileId, profiles),
+      os: osNameOf(navigator.userAgent),
+    });
+  };
+  const closeCommandAsk = () => {
+    setCommandAsk(undefined);
     focusTerminal();
   };
   /** What the context chips of the Ask panel read: the terminal of the pane in use, and other tabs. */
@@ -1619,7 +1666,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
   }
 
   const { pending } = projectActions;
-  modalOpen.current = overlay !== null || pending !== null || settingsOpen || libraryOpen;
+  modalOpen.current =
+    overlay !== null || pending !== null || settingsOpen || libraryOpen || commandAsk !== undefined;
   const confirmNode = pending !== null && (
     <ConfirmDialog
       title="Run project action"
@@ -1642,173 +1690,191 @@ function Shell({ store }: { store: WorkspaceStore }) {
     pending !== null ||
     (overlay !== null && !fromTabBar && overlay.kind !== "pane-menu");
   return (
-    <div
-      className="app-body"
-      data-nr-side={layout.side}
-      data-nr-density={layout.density}
-      data-nr-sidebar-mode={sidebarMode(layout)}
-    >
-      {autoHide && (
-        <div
-          className="sidebar-edge"
-          data-nr-part="sidebar-edge"
-          aria-hidden="true"
-          {...reveal.edge}
-        />
-      )}
-      <TreeDnd
-        spaces={workspace.spaces}
-        favorites={workspace.favorites}
-        space={space}
-        rows={rows}
-        onAction={dispatch}
-        paneItemId={activeId}
-        onPaneDrop={onPaneDrop}
-        onPaneSwap={onPaneSwap}
+    <ExplainContext.Provider value={explainCommand}>
+      <div
+        className="app-body"
+        data-nr-side={layout.side}
+        data-nr-density={layout.density}
+        data-nr-sidebar-mode={sidebarMode(layout)}
       >
-        <aside
-          ref={sidebarRef}
-          className="sidebar"
-          data-nr-part="sidebar"
-          data-nr-state={autoHide ? (shown ? "revealed" : "hidden") : undefined}
-          aria-label="Sidebar"
-          style={{ width: layout.width }}
-          {...reveal.sidebar}
+        {autoHide && (
+          <div
+            className="sidebar-edge"
+            data-nr-part="sidebar-edge"
+            aria-hidden="true"
+            {...reveal.edge}
+          />
+        )}
+        <TreeDnd
+          spaces={workspace.spaces}
+          favorites={workspace.favorites}
+          space={space}
+          rows={rows}
+          onAction={dispatch}
+          paneItemId={activeId}
+          onPaneDrop={onPaneDrop}
+          onPaneSwap={onPaneSwap}
         >
-          <SidebarResizer
-            side={layout.side}
-            width={layout.width}
-            onPreview={previewSidebarWidth}
-            onCommit={(width) => void saveSidebarWidth(width)}
-            disabled={settingsFileBroken}
-          />
-          {favorites.length > 0 && (
-            <FavoritesGrid
-              favorites={favorites}
-              active={{ spaceId: space.id, itemId: activeId }}
-              onOpen={onOpenFavorite}
-              onMenu={(favorite, point) =>
-                setOverlay({ kind: "favorite-menu", itemId: favorite.id, point })
-              }
+          <aside
+            ref={sidebarRef}
+            className="sidebar"
+            data-nr-part="sidebar"
+            data-nr-state={autoHide ? (shown ? "revealed" : "hidden") : undefined}
+            aria-label="Sidebar"
+            style={{ width: layout.width }}
+            {...reveal.sidebar}
+          >
+            <SidebarResizer
+              side={layout.side}
+              width={layout.width}
+              onPreview={previewSidebarWidth}
+              onCommit={(width) => void saveSidebarWidth(width)}
+              disabled={settingsFileBroken}
             />
-          )}
-          <ActionsHeader spaceName={space.name} ui={projectActions} />
-          {!tabsOnTop && (
-            <SidebarTree
-              {...treeProps}
-              rows={rows}
-              home={home}
-              onPaneClick={onPaneClick}
-              onPeek={(itemId) => {
-                const item = space.items[itemId];
-                return item !== undefined ? peekLinesOfItem(backend, item) : [];
-              }}
-            />
-          )}
-          <div className="sidebar-foot">
-            <button type="button" className="new-tab" onClick={() => newTab()}>
-              New tab
-            </button>
-            <DropZones pinned={space.pinned.length === 0} favorites={favorites.length === 0} />
-          </div>
-          <SpaceSwitcher
-            spaces={workspace.spaces}
-            activeSpaceId={space.id}
-            onActivate={activateSpace}
-            onNewSpace={() => setOverlay({ kind: "new" })}
-            onMenu={(spaceId, point) => setOverlay({ kind: "menu", spaceId, point })}
-          />
-        </aside>
-        <div className="main">
-          {tabsOnTop && <TabBar {...treeProps} onNewTab={() => newTab()} />}
-          <section className="content" aria-label="Content">
-            {workspace.spaces.map((s) => (
-              <div key={s.id} className="space-layer" hidden={s.id !== space.id}>
-                {Object.values(s.items).map((item) => (
-                  <ItemView
-                    key={item.id}
-                    store={store}
-                    space={s}
-                    item={item}
-                    shown={s.id === space.id && item.id === activeId}
-                    colors={colors}
-                    home={home}
-                    onReady={recordHandle}
-                    onPaneMenu={(paneId, point) => setOverlay({ kind: "pane-menu", paneId, point })}
-                  />
-                ))}
-              </div>
-            ))}
-            <div
-              className="pane-notice"
-              role="status"
-              data-nr-part="pane-notice"
-              data-nr-state={notice !== "" ? "shown" : "empty"}
-            >
-              {notice}
+            {favorites.length > 0 && (
+              <FavoritesGrid
+                favorites={favorites}
+                active={{ spaceId: space.id, itemId: activeId }}
+                onOpen={onOpenFavorite}
+                onMenu={(favorite, point) =>
+                  setOverlay({ kind: "favorite-menu", itemId: favorite.id, point })
+                }
+              />
+            )}
+            <ActionsHeader spaceName={space.name} ui={projectActions} />
+            {!tabsOnTop && (
+              <SidebarTree
+                {...treeProps}
+                rows={rows}
+                home={home}
+                onPaneClick={onPaneClick}
+                onPeek={(itemId) => {
+                  const item = space.items[itemId];
+                  return item !== undefined ? peekLinesOfItem(backend, item) : [];
+                }}
+              />
+            )}
+            <div className="sidebar-foot">
+              <button type="button" className="new-tab" onClick={() => newTab()}>
+                New tab
+              </button>
+              <DropZones pinned={space.pinned.length === 0} favorites={favorites.length === 0} />
             </div>
-          </section>
-        </div>
-        {askShown && (
-          <AskPanel
+            <SpaceSwitcher
+              spaces={workspace.spaces}
+              activeSpaceId={space.id}
+              onActivate={activateSpace}
+              onNewSpace={() => setOverlay({ kind: "new" })}
+              onMenu={(spaceId, point) => setOverlay({ kind: "menu", spaceId, point })}
+            />
+          </aside>
+          <div className="main">
+            {tabsOnTop && <TabBar {...treeProps} onNewTab={() => newTab()} />}
+            <section className="content" aria-label="Content">
+              {workspace.spaces.map((s) => (
+                <div key={s.id} className="space-layer" hidden={s.id !== space.id}>
+                  {Object.values(s.items).map((item) => (
+                    <ItemView
+                      key={item.id}
+                      store={store}
+                      space={s}
+                      item={item}
+                      shown={s.id === space.id && item.id === activeId}
+                      colors={colors}
+                      home={home}
+                      onReady={recordHandle}
+                      onPaneMenu={(paneId, point) =>
+                        setOverlay({ kind: "pane-menu", paneId, point })
+                      }
+                    />
+                  ))}
+                </div>
+              ))}
+              <div
+                className="pane-notice"
+                role="status"
+                data-nr-part="pane-notice"
+                data-nr-state={notice !== "" ? "shown" : "empty"}
+              >
+                {notice}
+              </div>
+            </section>
+          </div>
+          {askShown && (
+            <AskPanel
+              backend={backend}
+              config={configState.config}
+              space={space}
+              tabs={askTabs}
+              sources={askSources}
+              explain={askExplain}
+              onInsert={(text) => focusedHandle()?.insert(text) ?? false}
+              onClose={closeAsk}
+            />
+          )}
+        </TreeDnd>
+        {overlayNode}
+        {confirmNode}
+        <input
+          ref={schemeInput}
+          type="file"
+          hidden
+          tabIndex={-1}
+          aria-label="Color scheme file"
+          data-nr-part="scheme-file"
+          onChange={onSchemeFile}
+        />
+
+        {mru.rows !== undefined && <MruSwitcherView rows={mru.rows} />}
+        {searchText !== null && (
+          <TabSearch tabs={searchText} onPick={pickSearchHit} onClose={closeSearch} />
+        )}
+        {libraryOpen && (
+          <Library
+            workspace={workspace}
+            backend={backend}
+            home={home}
+            onRestore={restoreFromLibrary}
+            onDelete={deleteFromLibrary}
+            onClose={closeLibrary}
+          />
+        )}
+        {paletteOpen && (
+          <CommandPalette
+            key={paletteMode}
+            entries={paletteEntries}
+            {...(paletteMode === "space-theme"
+              ? { placeholder: `Theme for ${space.name}  (Enter to keep, Esc to cancel)` }
+              : {})}
+            onRun={runPaletteEntry}
+            onClose={closePalette}
+            onHighlight={onPaletteHighlight}
+            {...(aiOn && paletteMode === "all" ? { onAskCommand: askForCommand } : {})}
+          />
+        )}
+        {commandAsk !== undefined && aiOn && (
+          <CommandAskDialog
             backend={backend}
             config={configState.config}
             space={space}
-            tabs={askTabs}
-            sources={askSources}
+            request={commandAsk.request}
+            shell={commandAsk.shell}
+            os={commandAsk.os}
             onInsert={(text) => focusedHandle()?.insert(text) ?? false}
-            onClose={closeAsk}
+            onClose={closeCommandAsk}
           />
         )}
-      </TreeDnd>
-      {overlayNode}
-      {confirmNode}
-      <input
-        ref={schemeInput}
-        type="file"
-        hidden
-        tabIndex={-1}
-        aria-label="Color scheme file"
-        data-nr-part="scheme-file"
-        onChange={onSchemeFile}
-      />
-
-      {mru.rows !== undefined && <MruSwitcherView rows={mru.rows} />}
-      {searchText !== null && (
-        <TabSearch tabs={searchText} onPick={pickSearchHit} onClose={closeSearch} />
-      )}
-      {libraryOpen && (
-        <Library
-          workspace={workspace}
-          backend={backend}
-          home={home}
-          onRestore={restoreFromLibrary}
-          onDelete={deleteFromLibrary}
-          onClose={closeLibrary}
-        />
-      )}
-      {paletteOpen && (
-        <CommandPalette
-          key={paletteMode}
-          entries={paletteEntries}
-          {...(paletteMode === "space-theme"
-            ? { placeholder: `Theme for ${space.name}  (Enter to keep, Esc to cancel)` }
-            : {})}
-          onRun={runPaletteEntry}
-          onClose={closePalette}
-          onHighlight={onPaletteHighlight}
-        />
-      )}
-      {settingsOpen && (
-        <SettingsDialog
-          backend={backend}
-          onClose={() => {
-            closeSettings();
-            focusTerminal();
-          }}
-        />
-      )}
-    </div>
+        {settingsOpen && (
+          <SettingsDialog
+            backend={backend}
+            onClose={() => {
+              closeSettings();
+              focusTerminal();
+            }}
+          />
+        )}
+      </div>
+    </ExplainContext.Provider>
   );
 }
 

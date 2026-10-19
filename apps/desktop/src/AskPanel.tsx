@@ -1,16 +1,17 @@
 import { buildAskMessages } from "@noren/model";
-import type { Backend, Config, Id, OllamaModels, Space } from "@noren/model";
+import type { Backend, Config, Id, Space } from "@noren/model";
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import {
-  ASK_STEPS,
+  EXPLAIN_QUESTION,
   NO_CHOICE,
   applyAskEvent,
-  askNeedsOllama,
   askRequestId,
-  askTarget,
+  askSteps,
+  chipsWithExplained,
   cutLine,
+  explainChipLabel,
   failExchange,
   liveChoice,
   readAskChips,
@@ -20,9 +21,10 @@ import {
   statusNote,
   withTab,
 } from "./ask-panel";
-import type { AskChoice, AskExchange, AskSources } from "./ask-panel";
+import type { AskChoice, AskExchange, AskSources, ExplainRequest } from "./ask-panel";
 import { aiProvidersSync } from "./config-store";
 import { Markdown } from "./Markdown";
+import { useAskTarget } from "./use-ask-target";
 
 // The Ask panel: a side panel to ask the AI about the shell. The person picks the context with
 // chips (the selection, the output of the last command, the screen, other tabs), types a question
@@ -30,7 +32,9 @@ import { Markdown } from "./Markdown";
 // swapped for markers and a count of them. Only then does Send call the provider, and the answer
 // arrives in pieces, drawn as Markdown. A code block of the answer has a button that puts its text
 // at the prompt of the terminal, never with Enter. Nothing here runs anything, and nothing is sent
-// without the preview. The panel is only mounted where the AI is on.
+// without the preview. The panel is only mounted where the AI is on. The Explain button of a failed
+// command opens it with that command and its output already in as a chip and the question typed,
+// and goes straight to the preview (which still waits for Send); the provider of Explain answers it.
 
 /** A tab the person can add as context. */
 export interface AskTabOption {
@@ -48,6 +52,11 @@ interface AskPanelProps {
   tabs: readonly AskTabOption[];
   /** Where the chips are read from, asked when the question is previewed. */
   sources: AskSources;
+  /**
+   * A failed command to explain (the Explain button of its mark). Each new one, told apart by
+   * `seq`, replaces what was typed and goes to the preview.
+   */
+  explain?: { request: ExplainRequest; seq: number } | undefined;
   /** Puts text at the prompt of the terminal in use; false when there was none to put it in. */
   onInsert(text: string): boolean;
   onClose(): void;
@@ -70,6 +79,7 @@ export function AskPanel({
   space,
   tabs,
   sources,
+  explain,
   onInsert,
   onClose,
 }: AskPanelProps) {
@@ -80,7 +90,8 @@ export function AskPanel({
   const [exchanges, setExchanges] = useState<AskExchange[]>([]);
   const [inserted, setInserted] = useState("");
   const [tabMenu, setTabMenu] = useState(false);
-  const [ollama, setOllama] = useState<OllamaModels | undefined>();
+  // The failed command the question is about: its chip stays until the question is sent or it is taken out.
+  const [explained, setExplained] = useState<ExplainRequest | undefined>();
   const panelBox = useRef<HTMLElement>(null);
   const questionBox = useRef<HTMLTextAreaElement>(null);
   const log = useRef<HTMLDivElement>(null);
@@ -89,9 +100,8 @@ export function AskPanel({
 
   // A tab closed since it was added leaves the chips by itself.
   const chosen = liveChoice(choice, (id) => tabs.some((tab) => tab.id === id));
-  const wantsOllama = askNeedsOllama(config);
-  const target = askTarget(config, ollama);
-  const looking = target === undefined && wantsOllama && ollama === undefined;
+  const fn = explained !== undefined ? "explain" : "ask";
+  const { target, looking } = useAskTarget(backend, config, fn);
   const busy = exchanges.some((exchange) => exchange.status === "streaming");
 
   // The question box takes the keyboard when the panel opens (as soon as it can be typed in, which
@@ -111,23 +121,6 @@ export function AskPanel({
     }
   }, [looking, previewing, busy]);
 
-  // The Ollama of this computer answers when the settings name nobody; its models are asked for here.
-  useEffect(() => {
-    if (!wantsOllama) return undefined;
-    let current = true;
-    backend.ai.listOllamaModels().then(
-      (found) => {
-        if (current) setOllama(found);
-      },
-      () => {
-        if (current) setOllama({ found: false });
-      },
-    );
-    return () => {
-      current = false;
-    };
-  }, [backend, wantsOllama]);
-
   // Closing the panel ends what is still being answered: nobody is left to read it.
   useEffect(() => {
     const inFlight = running.current;
@@ -145,9 +138,15 @@ export function AskPanel({
   const toggle = (chip: "selection" | "lastOutput" | "screen") =>
     setChoice({ ...chosen, [chip]: !chosen[chip] });
 
-  const showPreview = () => {
-    const { chips, left } = readAskChips(chosen, sources);
-    const built = buildAskMessages({ settings: config, space, question, chips });
+  /** Builds what would be sent and shows it; nothing goes until Send. */
+  const openPreview = (text: string, pinned: ExplainRequest | undefined, selected: AskChoice) => {
+    const { chips, left } = readAskChips(selected, sources);
+    const built = buildAskMessages({
+      settings: config,
+      space,
+      question: text,
+      chips: chipsWithExplained(pinned, chips),
+    });
     if (!built.ok) {
       setProblem(refusalText(built.reason, config));
       return;
@@ -155,6 +154,20 @@ export function AskPanel({
     setProblem("");
     setPreview({ built, left });
   };
+  const showPreview = () => openPreview(question, explained, chosen);
+
+  // A command to explain: its chip is put in, the question is typed for the person, and the preview
+  // opens at once. Send is still theirs to press.
+  useEffect(() => {
+    if (explain === undefined) return;
+    setExplained(explain.request);
+    setChoice(NO_CHOICE);
+    setQuestion(EXPLAIN_QUESTION);
+    setTabMenu(false);
+    setInserted("");
+    openPreview(EXPLAIN_QUESTION, explain.request, NO_CHOICE);
+    // Only a new request does this: the rest of what `openPreview` reads is current when it runs.
+  }, [explain]);
 
   const send = async () => {
     if (preview === undefined || target === undefined || busy) return;
@@ -167,6 +180,7 @@ export function AskPanel({
     setExchanges((list) => [...list, exchange]);
     setPreview(undefined);
     setQuestion("");
+    setExplained(undefined);
     setInserted("");
     running.current.add(requestId);
     try {
@@ -265,6 +279,19 @@ export function AskPanel({
         >
           @ Tab
         </button>
+        {explained !== undefined && (
+          <span className="ask-chip ask-chip-tab" data-nr-part="ask-explain-chip">
+            <span>Command: {explainChipLabel(explained)}</span>
+            <button
+              type="button"
+              aria-label="Remove the command"
+              disabled={preview !== undefined || busy}
+              onClick={() => setExplained(undefined)}
+            >
+              <X size={12} aria-hidden="true" />
+            </button>
+          </span>
+        )}
         {chosenTabs.map((tab) => (
           <span key={tab.id} className="ask-chip ask-chip-tab" data-nr-part="ask-tab-chip">
             <span>@{tab.title}</span>
@@ -344,7 +371,7 @@ export function AskPanel({
         <div className="ask-steps" data-nr-part="ask-steps">
           <p>Nothing can answer yet. To get a first answer:</p>
           <ol>
-            {ASK_STEPS.map((step) => (
+            {askSteps(fn).map((step) => (
               <li key={step}>{step}</li>
             ))}
           </ol>
@@ -376,7 +403,13 @@ export function AskPanel({
             </p>
           ))}
           <div className="ask-actions">
-            <button type="button" className="ask-primary" autoFocus onClick={() => void send()}>
+            <button
+              type="button"
+              className="ask-primary"
+              autoFocus
+              disabled={busy}
+              onClick={() => void send()}
+            >
               Send
             </button>
             <button type="button" onClick={() => setPreview(undefined)}>

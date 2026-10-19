@@ -1,6 +1,7 @@
-import { OLLAMA_PROVIDER_ID, aiIsOn } from "@noren/model";
+import { DEFAULT_PROFILE_ID, OLLAMA_PROVIDER_ID, aiIsOn } from "@noren/model";
 import type {
   AiChatEvent,
+  AiFunction,
   AskChip,
   AskCut,
   AskRefusal,
@@ -8,6 +9,7 @@ import type {
   Id,
   OllamaModels,
   RedactionKind,
+  ShellProfile,
   Space,
 } from "@noren/model";
 
@@ -116,6 +118,50 @@ export function liveChoice(choice: AskChoice, exists: (itemId: Id) => boolean): 
 }
 
 // ---------------------------------------------------------------------------------------------
+// Explaining a command
+
+/** A command that ended with an error, picked on its mark: what the Explain button hands to Ask. */
+export interface ExplainRequest {
+  /** The command line, as the row of its prompt shows it (the prompt text may come along). */
+  command: string;
+  /** What the command printed. */
+  output: string;
+  /** The code the shell reported; absent when it did not say. */
+  exitCode?: number | undefined;
+  /** The start of the output was already trimmed from the scrollback, so `output` is only the end of it. */
+  truncated: boolean;
+}
+
+/** What the Explain button asks. The person sees it in the preview and may change it with Edit. */
+export const EXPLAIN_QUESTION = "Why did this command fail, and how do I fix it?";
+
+/** The chip that carries the command and its output. */
+export function explainChip(request: ExplainRequest): AskChip {
+  return {
+    kind: "command",
+    command: request.command,
+    text: request.output,
+    exitCode: request.exitCode,
+    truncated: request.truncated,
+  };
+}
+
+/** The chips of an explained command first, then the ones read from the terminal, as the message will carry them. */
+export function chipsWithExplained(
+  explained: ExplainRequest | undefined,
+  read: readonly AskChip[],
+): AskChip[] {
+  return explained === undefined ? [...read] : [explainChip(explained), ...read];
+}
+
+/** What the chip of an explained command says on the panel: `Command: <line>`, cut to one short line. */
+export function explainChipLabel(request: Pick<ExplainRequest, "command">): string {
+  const flat = request.command.replace(/\s+/g, " ").trim();
+  const chars = [...flat];
+  return chars.length > 40 ? `${chars.slice(0, 40).join("")}…` : flat;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Who answers
 
 /** The provider and model a question goes to. */
@@ -130,24 +176,30 @@ function providerName(id: string): string {
   return id === OLLAMA_PROVIDER_ID ? "Ollama" : id;
 }
 
+/** What the AI is asked to do: the panel asks and explains, the palette asks for a command. */
+export type AskFunction = AiFunction;
+
 /**
- * Whether the settings alone do not say who answers, so the Ollama of this computer has to be asked
- * for its models: no provider is named for Ask in `ai.defaults` and none is listed in `ai.providers`.
+ * Whether the settings alone do not say who answers `fn`, so the Ollama of this computer has to be
+ * asked for its models: no provider is named for `fn` in `ai.defaults` and none is listed in
+ * `ai.providers`.
  */
-export function askNeedsOllama(config: Pick<Config, "ai">): boolean {
-  return config.ai?.defaults?.ask === undefined && (config.ai?.providers ?? []).length === 0;
+export function askNeedsOllama(config: Pick<Config, "ai">, fn: AskFunction = "ask"): boolean {
+  return config.ai?.defaults?.[fn] === undefined && (config.ai?.providers ?? []).length === 0;
 }
 
 /**
- * The provider and model that answer Ask. The one the settings name for Ask wins; else the first
- * provider of the file, with its own model; else Ollama with the first model it has installed.
- * `undefined` when nothing could answer (the steps are shown then).
+ * The provider and model that answer `fn` (Ask, Explain or Command). The one the settings name for
+ * that function in `ai.defaults` wins; else the first provider of the file, with its own model; else
+ * Ollama with the first model it has installed. `undefined` when nothing could answer (the steps
+ * are shown then).
  */
 export function askTarget(
   config: Pick<Config, "ai">,
   ollama: OllamaModels | undefined,
+  fn: AskFunction = "ask",
 ): AskTarget | undefined {
-  const named = config.ai?.defaults?.ask;
+  const named = config.ai?.defaults?.[fn];
   if (named !== undefined) {
     return {
       providerId: named.provider,
@@ -172,12 +224,43 @@ export function askTarget(
   };
 }
 
+const FUNCTION_NAMES: Readonly<Record<AskFunction, string>> = {
+  ask: "Ask",
+  explain: "Explain",
+  command: "Command",
+};
+
+/** The steps to a first provider, shown while nothing could answer `fn`. */
+export function askSteps(fn: AskFunction = "ask"): readonly string[] {
+  return [
+    `Install Ollama, start it and install a model in it (ollama pull followed by the name of a model). Then close ${fn === "command" ? "this" : "this panel"} and open it again.`,
+    "Or open Settings, then AI, and add a provider of your own: the kind, the address of its API and a model. A key goes to the keychain of your system, never to config.jsonc.",
+    `In the same place, choose the provider and the model for ${FUNCTION_NAMES[fn]}, and press Save.`,
+  ];
+}
+
 /** The steps to a first provider, shown in the panel while nothing could answer. */
-export const ASK_STEPS: readonly string[] = [
-  "Install Ollama, start it and install a model in it (ollama pull followed by the name of a model). Then close this panel and open it again.",
-  "Or open Settings, then AI, and add a provider of your own: the kind, the address of its API and a model. A key goes to the keychain of your system, never to config.jsonc.",
-  "In the same place, choose the provider and the model for Ask, and press Save.",
-];
+export const ASK_STEPS: readonly string[] = askSteps("ask");
+
+// ---------------------------------------------------------------------------------------------
+// The shell of a pane
+
+/**
+ * The name of the shell a pane runs, for the request of a command: the profile it names, or the
+ * default profile of the machine when it names none (`default`). The id itself when the profile is
+ * not among those listed, and `the shell` when there is nothing to say.
+ */
+export function shellNameOf(
+  profileId: string | undefined,
+  profiles: readonly ShellProfile[],
+): string {
+  if (profileId === undefined) return "the shell";
+  const profile =
+    profileId === DEFAULT_PROFILE_ID
+      ? (profiles.find((one) => one.default) ?? profiles[0])
+      : profiles.find((one) => one.id === profileId);
+  return profile?.name ?? (profileId === DEFAULT_PROFILE_ID ? "the shell" : profileId);
+}
 
 // ---------------------------------------------------------------------------------------------
 // The words of the panel
@@ -218,6 +301,7 @@ const CHIP_NAMES: Readonly<Record<AskChip["kind"], string>> = {
   selection: "The selection",
   lastOutput: "The output of the last command",
   screen: "The visible screen",
+  command: "The output of the command",
   tab: "A tab",
 };
 

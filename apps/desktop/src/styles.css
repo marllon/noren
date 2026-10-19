@@ -2919,3 +2919,74 @@ body {
   font-size: 12px;
   white-space: pre;
 }
+
+/*
+ * The Explain button of a failed command: at the right end of the row of its prompt, over the
+ * decoration xterm.js lays on that row (which lets the pointer through, so the button takes it back).
+ */
+.command-mark .explain-button {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  box-sizing: border-box;
+  height: 100%;
+  padding: 0 8px;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-surface);
+  color: var(--nr-text);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.command-mark .explain-button:hover {
+  border-color: var(--nr-accent);
+}
+
+/* "? text" in the palette: a hint while nothing is typed, and the dialog with what will be sent. */
+.palette .palette-hint {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--nr-muted);
+  font-size: 12px;
+}
+
+.command-dialog {
+  width: min(560px, 92%);
+}
+
+.command-dialog .dialog-message {
+  margin: 0;
+}
+
+.command-dialog .command-preview {
+  max-height: 240px;
+  margin: 0;
+  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+}
+
+.command-secrets,
+.command-problem {
+  margin: 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--nr-space-color);
+  font-size: 12px;
+}
+
+.command-steps p,
+.command-steps ol {
+  margin: 0;
+}
+
+.command-steps ol {
+  padding-left: 18px;
+}
+
+.command-result .dialog-detail {
+  margin: 6px 0;
+  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-size: 13px;
+}

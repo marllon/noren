@@ -19,9 +19,17 @@ Entries run the same calls as a click or a shortcut; the palette has no commands
 ## Search
 
 - Empty box: everything, tabs first, then spaces, actions, profiles, recent folders and themes.
-- Prefixes limit the list: `>` commands (the actions, the profiles, the recent folders and the themes), `@` tabs, `#` spaces. Only a leading prefix counts. (`?`, for AI, comes with the AI phase.)
+- Prefixes limit the list: `>` commands (the actions, the profiles, the recent folders and the themes), `@` tabs, `#` spaces. Only a leading prefix counts. `?` is not a filter but a request to the AI: see [`? text`](#-text-ask-for-a-command) below, and it exists only where the AI is on.
 - Each word of the text must match the title or the extra text of the entry (the space name and full folder of a tab, the category and chord of an action). A run of the word scores above letters spread out in order; the spread-out form only applies to the title, because in a long folder path it would match anything. A hit nearer the start of the title, or at the start of a word, ranks higher; a title hit counts double. Case, extra spaces and the `+` in a chord do not matter (`ctrl shift d` finds Split right).
 - Within each kind the best match comes first, ties keep the order of the workspace.
+
+## `? text`: ask for a command
+
+Where the AI is on (in the settings and for the space on screen), a query that starts with `?` replaces the list with one entry, **Ask for a command: <text>**; with nothing after the `?` it shows a hint instead. Enter closes the palette and opens a dialog (`CommandAskDialog.tsx`) that shows the exact text that will be sent: the instructions (which name the shell of the pane in use, by the name of its profile, and the system the window runs on) and the request, with the secrets already swapped for markers (`redactSecrets`) and a line with how many were. Nothing goes to the provider until **Send**. The provider is the one `ai.defaults.command` names (else the first provider of the file, else the first model of the Ollama of the computer). When the answer ends, the dialog shows the command taken out of it and **Insert at the prompt** puts it at the prompt of the focused pane through the same path as _Insert in terminal_ of the Ask panel (`TerminalHandle.insert`); it never presses Enter, and the dialog says the command runs only when you press Enter in the terminal. Nothing is executed.
+
+The command is taken by `extractCommand` (`@noren/model`): the first non-blank line of the first fenced block of the answer, or the first non-blank line when there is no block (inside one pair of backticks, or after a leading `$ `, it is unwrapped). Tabs become blanks and every control character, line break and line or paragraph separator is removed, so the command is one line and cannot hold a `\r` or `\n`; a block of several lines gives its first line and the dialog says so. An answer with no command, or one longer than 1000 characters, is refused and nothing is inserted. `buildCommandMessages` refuses a blank request, one longer than 1000 characters, and any request where the AI is off.
+
+Where the AI is off (the settings, or the space) a `?` query is an ordinary search, the entry and the hint do not exist, the search box does not mention it and nothing calls a provider.
 
 ## Keyboard
 

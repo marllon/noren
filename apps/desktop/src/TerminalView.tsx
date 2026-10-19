@@ -13,6 +13,7 @@ import { PasteDialog } from "./PasteDialog";
 import { BELL_FLASH_MS, beep, beeps, flashes } from "./bell";
 import { attachCommandMarks, markColors } from "./command-marks-view";
 import type { CommandMarkInfo, CommandOutput, TerminalCommandMarks } from "./command-marks-view";
+import type { ExplainRequest } from "./ask-panel";
 import { parseOsc7 } from "./osc7";
 import { decidePaste, insertableText } from "./paste";
 import { isTranslucent } from "./theme";
@@ -129,6 +130,11 @@ interface TerminalViewProps {
   rightClick?: RightClickAction;
   /** Called once the terminal is mounted. */
   onReady?(handle: TerminalHandle): void;
+  /**
+   * Called with the command and the output of a failed command when its Explain button is pressed.
+   * Without it (where the AI is off) the failed commands have no button.
+   */
+  onExplain?(request: ExplainRequest): void;
   /** Called with the folder the shell reports through OSC 7 (at each prompt of an integrated shell). */
   onCwd?(path: string): void;
   /**
@@ -164,6 +170,7 @@ export function TerminalView({
   rightClick,
   onReady,
   onCwd,
+  onExplain,
   onOutput,
 }: TerminalViewProps) {
   const container = useRef<HTMLDivElement>(null);
@@ -172,6 +179,7 @@ export function TerminalView({
   const rightClickRef = useRef<RightClickAction>(rightClick ?? "copy-or-paste");
   const onReadyRef = useRef(onReady);
   const onCwdRef = useRef(onCwd);
+  const onExplainRef = useRef(onExplain);
   const onOutputRef = useRef(onOutput);
   const onSessionStartRef = useRef(onSessionStart);
   const activeRef = useRef(active);
@@ -187,6 +195,7 @@ export function TerminalView({
     rightClickRef.current = rightClick ?? "copy-or-paste";
     onReadyRef.current = onReady;
     onCwdRef.current = onCwd;
+    onExplainRef.current = onExplain;
     onOutputRef.current = onOutput;
     onSessionStartRef.current = onSessionStart;
     activeRef.current = active;
@@ -202,6 +211,14 @@ export function TerminalView({
     }
     marksRef.current?.setColors(markColors(theme));
   }, [theme]);
+
+  // The failed commands have an Explain button while there is somewhere to send it (the AI is on).
+  const explains = onExplain !== undefined;
+  useEffect(() => {
+    marksRef.current?.setExplain(
+      explains ? (request) => onExplainRef.current?.(request) : undefined,
+    );
+  }, [explains]);
 
   // New options (the file changed, or the font was zoomed) change the terminal that is running; the
   // session is not touched. The size of a cell may have changed, so the grid is fitted again.
@@ -254,6 +271,9 @@ export function TerminalView({
     term.open(host);
     const commandMarks = attachCommandMarks(term, markColors(themeRef.current));
     marksRef.current = commandMarks;
+    if (onExplainRef.current !== undefined) {
+      commandMarks.setExplain((request) => onExplainRef.current?.(request));
+    }
 
     // WebGL is the fast path; any failure (no WebGL2, lost context) drops back to the DOM renderer.
     let webgl: WebglAddon | null = null;

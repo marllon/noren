@@ -68,6 +68,17 @@ fn check_window_effect(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Lists the monospaced fonts of the machine (the same call as the `fonts_list_monospace` command)
+/// and prints how many families there are. It only reads the system font folders; a machine with
+/// none (a server) is not a failure, since the terminal falls back to the generic monospace font.
+fn check_fonts() {
+    let families = noren_core::list_monospace_families();
+    print_line(&format!(
+        "SMOKE fonts {} monospaced families",
+        families.len()
+    ));
+}
+
 fn window_hidden_result(visible: bool) -> Result<(), String> {
     if visible {
         Err("the main window is visible; the smoke run must keep it hidden".to_string())
@@ -282,6 +293,7 @@ pub fn arm(app: &tauri::App) {
             // The effect goes on the hidden window, and the check that it stayed hidden comes after.
             let result = check_session(&handle, started + SMOKE_TIMEOUT)
                 .and_then(|()| check_window_effect(&handle))
+                .inspect(|()| check_fonts())
                 .and_then(|()| check_window_hidden(&handle));
             match result {
                 Ok(()) => {

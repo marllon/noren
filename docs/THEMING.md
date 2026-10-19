@@ -70,7 +70,7 @@ The colors of the terminal are kept exactly as the file gives them. A theme also
 - `ui.text` is the terminal foreground, moved toward white (dark) or black (light) only as far as needed to reach a contrast of 4.5:1 on the background; `ui.muted` is the text blended 40% toward the background, with a contrast of at least 3:1; `ui.accent` is the scheme's blue (the normal one, then the bright one), else its cyan, its magenta, the cursor color or the foreground, the first with a contrast of at least 3:1 on the background;
 - `ui.surface` and `ui.border` are the background moved 6% and 15% toward the text;
 - with no cursor color the cursor is the foreground, and with no selection color the selection is the background a quarter of the way to the foreground;
-- the radius, blur, opacity, font and background are the ones the built-in themes start with.
+- the radius, blur, opacity, font and background are the ones the built-in themes start with. (The `font` of a theme is part of the format but is not used to draw the terminal: the terminal takes its font from `terminal.font` in `config.jsonc`, see [CONFIG.md](CONFIG.md#the-terminal). If a later build reads the font of a theme, its family is text from a file and will go through the same rule for font names.)
 
 So the interface stays legible even for a scheme with a low-contrast terminal; the terminal itself shows what the scheme says.
 

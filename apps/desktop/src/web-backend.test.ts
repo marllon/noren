@@ -244,4 +244,20 @@ describe("WebBackend", () => {
       expect(await backend.listUserThemes()).toEqual(["{}"]);
     });
   });
+
+  describe("fonts", () => {
+    it("lists the families the terminal falls back to, since a browser cannot list the installed fonts", async () => {
+      expect(await new WebBackend(memoryStorage()).listMonospaceFonts()).toEqual([
+        "Cascadia Mono",
+        "Consolas",
+        "DejaVu Sans Mono",
+      ]);
+    });
+
+    it("writes nothing to the storage", async () => {
+      const storage = memoryStorage();
+      await new WebBackend(storage).listMonospaceFonts();
+      expect(storage.keys()).toEqual([]);
+    });
+  });
 });

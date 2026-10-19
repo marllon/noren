@@ -3,6 +3,25 @@ import type { Node as JsonNode, ParseError } from "jsonc-parser";
 import { z } from "zod";
 import { MAX_BACKGROUND_BLUR, MAX_BACKGROUND_PATH, backgroundImageProblem } from "./background";
 import { MAX_MODS, MOD_FILE_NAME_PATTERN, isReservedModName } from "./mods";
+import {
+  BELL_STYLES,
+  CURSOR_STYLES,
+  DEFAULT_BELL_STYLE,
+  DEFAULT_CURSOR_BLINK,
+  DEFAULT_CURSOR_STYLE,
+  DEFAULT_FONT_FAMILY,
+  DEFAULT_FONT_SIZE,
+  DEFAULT_LIGATURES,
+  DEFAULT_LINE_HEIGHT,
+  DEFAULT_SCROLLBACK,
+  MAX_FONT_SIZE,
+  MAX_LINE_HEIGHT,
+  MAX_SCROLLBACK,
+  MIN_FONT_SIZE,
+  MIN_LINE_HEIGHT,
+  MIN_SCROLLBACK,
+  fontFamilyProblem,
+} from "./terminal-options";
 import { THEME_ID_PATTERN } from "./theme";
 import { MAX_USER_PROFILES, RESERVED_PROFILE_IDS, UserProfileSchema } from "./user-profile-schema";
 import { DEFAULT_WINDOW_EFFECT, MIN_WINDOW_OPACITY, WINDOW_EFFECTS } from "./window-effect";
@@ -125,6 +144,58 @@ const appearanceSchema = z
   })
   .meta({ description: "How the window looks and is laid out." });
 
+const terminalFontSchema = z
+  .strictObject({
+    family: setting(
+      z.string().superRefine((text, context) => {
+        const problem = fontFamilyProblem(text);
+        if (problem !== undefined) context.addIssue({ code: "custom", message: problem });
+      }),
+      'The fonts of the terminal, by name, separated by commas: the first one found on this computer is used, such as "Cascadia Code, Consolas, monospace". Only names of font families are accepted (a web address, a semicolon or a brace is an error).',
+      DEFAULT_FONT_FAMILY,
+    ),
+    size: setting(
+      z.number().min(MIN_FONT_SIZE).max(MAX_FONT_SIZE),
+      "The size of the text in pixels. Ctrl+= and Ctrl+- change it for the open window, and Ctrl+0 goes back to this size; they do not change the file.",
+      DEFAULT_FONT_SIZE,
+    ),
+    lineHeight: setting(
+      z.number().min(MIN_LINE_HEIGHT).max(MAX_LINE_HEIGHT),
+      "The height of a row of text, as a multiple of the font size. 1 is the tightest the terminal can draw.",
+      DEFAULT_LINE_HEIGHT,
+    ),
+    ligatures: setting(
+      z.boolean(),
+      "Joins the characters that a programming font draws as one sign (for example => or !=). Accepted, but it has no effect yet: the terminal draws every character on its own.",
+      DEFAULT_LIGATURES,
+    ),
+  })
+  .meta({ description: "The text of the terminal." });
+
+const terminalCursorSchema = z
+  .strictObject({
+    style: setting(z.enum(CURSOR_STYLES), "The shape of the cursor.", DEFAULT_CURSOR_STYLE),
+    blink: setting(z.boolean(), "Whether the cursor blinks.", DEFAULT_CURSOR_BLINK),
+  })
+  .meta({ description: "The cursor of the terminal." });
+
+const terminalSchema = z
+  .strictObject({
+    font: terminalFontSchema.optional(),
+    cursor: terminalCursorSchema.optional(),
+    scrollback: setting(
+      z.number().int().min(MIN_SCROLLBACK).max(MAX_SCROLLBACK),
+      `How many lines the terminal keeps above the screen, from ${MIN_SCROLLBACK} (none) to ${MAX_SCROLLBACK.toLocaleString("en-US")}. Every line takes memory in every terminal that is open.`,
+      DEFAULT_SCROLLBACK,
+    ),
+    bell: setting(
+      z.enum(BELL_STYLES),
+      'What the terminal does when a program rings the bell: "none", "visual" (the pane flashes), "sound" (a short beep) or "both". The tab is marked as unread whichever it is.',
+      DEFAULT_BELL_STYLE,
+    ),
+  })
+  .meta({ description: "The terminal: its font, cursor, scrollback and bell." });
+
 const MOD_NAME_MESSAGE =
   'Not a mod file name: letters, digits, ".", "_" and "-" (the first a letter or digit), ending in ".css", and not a device name such as "con"';
 
@@ -211,6 +282,7 @@ export const ConfigSchema = z
       .optional()
       .meta({ description: "Where the JSON Schema of this file is, for the editor." }),
     appearance: appearanceSchema.optional(),
+    terminal: terminalSchema.optional(),
     mods: modsSchema.optional(),
     profiles: profilesSchema.optional(),
     keybindings: keybindingsSchema.optional(),

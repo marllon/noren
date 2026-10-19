@@ -110,6 +110,19 @@ body {
 }
 
 /*
+ * The visual bell (terminal.bell "visual" or "both"): the pane lights up for a moment when a program
+ * rings the bell. It is a layer over the terminal that never takes a click, and it dims by itself.
+ */
+.terminal-view.bell-flash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--nr-text);
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+/*
  * The mark of a command: xterm.js lays this element over the first cell of the row of the prompt
  * (and sets its size), the stylesheet gives it the whole row and draws the mark in the margin to the
  * left of the text. The color comes from the terminal theme (--nr-mark-color, set by the view). A

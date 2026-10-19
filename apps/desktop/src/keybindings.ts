@@ -9,6 +9,7 @@
 import type { Direction } from "@noren/model";
 import type { LayoutCommand } from "./layout-actions";
 import { WIDTH_STEP_LARGE } from "./layout";
+import type { FontZoom } from "./terminal-options-store";
 
 /** Key of the shortcut preferences in the browser storage. */
 export const KEYBINDINGS_KEY = "noren.ui.keybindings";
@@ -48,7 +49,8 @@ export type ActionCommand =
   | { kind: "last-unread" }
   | { kind: "prompt"; direction: "previous" | "next" }
   | { kind: "select-output" }
-  | { kind: "copy-output" };
+  | { kind: "copy-output" }
+  | { kind: "font-zoom"; change: FontZoom };
 
 export interface ActionDef {
   id: string;
@@ -244,6 +246,30 @@ export const ACTIONS: readonly ActionDef[] = [
     command: { kind: "copy-output" },
     repeat: false,
     chords: { safe: undefined, browser: undefined },
+  },
+  {
+    id: "terminal.font-larger",
+    title: "Increase font size",
+    category: "Terminal",
+    command: { kind: "font-zoom", change: "in" },
+    repeat: true,
+    chords: { safe: "Ctrl+Equal", browser: "Ctrl+Equal" },
+  },
+  {
+    id: "terminal.font-smaller",
+    title: "Decrease font size",
+    category: "Terminal",
+    command: { kind: "font-zoom", change: "out" },
+    repeat: true,
+    chords: { safe: "Ctrl+Minus", browser: "Ctrl+Minus" },
+  },
+  {
+    id: "terminal.font-reset",
+    title: "Reset font size",
+    category: "Terminal",
+    command: { kind: "font-zoom", change: "reset" },
+    repeat: false,
+    chords: { safe: "Ctrl+Digit0", browser: "Ctrl+Digit0" },
   },
   {
     id: "pane.close",

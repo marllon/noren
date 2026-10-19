@@ -74,6 +74,20 @@ Every setting is optional. Unknown settings are an error, so a typo does not go 
       "blur": null, // pixels, 0 to 100; null or missing: the theme says
     },
   },
+  "terminal": {
+    "font": {
+      "family": "Cascadia Mono, Consolas, DejaVu Sans Mono, monospace", // font names; the first found is used
+      "size": 14, // pixels, 6 to 72
+      "lineHeight": 1, // times the font size, 1 to 3
+      "ligatures": false, // accepted, no effect yet (see The terminal)
+    },
+    "cursor": {
+      "style": "block", // "block" | "bar" | "underline"
+      "blink": true,
+    },
+    "scrollback": 10000, // lines kept above the screen, 0 to 100000
+    "bell": "none", // "none" | "visual" | "sound" | "both"
+  },
   "mods": [], // CSS files of the mods folder that are on for every space, see Mods below
   "profiles": [], // shells of your own, see Profiles below
   "keybindings": {
@@ -86,7 +100,23 @@ Every setting is optional. Unknown settings are an error, so a typo does not go 
 }
 ```
 
-The values above are the defaults. More sections (terminal, auto-archive, AI) arrive with the tasks that need them; the schema is the list of what exists now. Your own shortcuts (the keys you record for an action) and a few other preferences (the recent folders, the answers to the question about running a project action) are still kept in the browser storage of the window, not in this file, until their settings get a place here.
+The values above are the defaults. More sections (auto-archive, AI) arrive with the tasks that need them; the schema is the list of what exists now. The `terminal` section is written in the file for now: the settings screen does not have a section for it yet. Your own shortcuts (the keys you record for an action) and a few other preferences (the recent folders, the answers to the question about running a project action) are still kept in the browser storage of the window, not in this file, until their settings get a place here.
+
+## The terminal
+
+`terminal` sets how the text of every terminal looks and how much it keeps. A file without it gives the terminal what it had before these settings existed (the values in the example above).
+
+- `terminal.font.family` is a list of font names separated by commas, such as `"Cascadia Code, Consolas, monospace"`. The first one installed on this computer is used, so end the list with a font every system has (`monospace`). A name can have quotes around it. **Only names of font families are accepted**: letters, digits, spaces and `. _ + & -`, at most 64 characters each, at most 12 names and 300 characters in all. A web address, `url(...)`, a semicolon, a brace, a quote or a backslash inside a name is an error of the file, shown with its line like any other, and the last valid settings stay in force. This is deliberate: the text of the file (and of a theme file somebody gave you) is never handed to the page as CSS. Noren writes each name between quotes in the value it gives the terminal, so nothing in it can be read as anything but a name. `monospace`, `serif`, `sans-serif` and the other generic families of CSS are accepted without quotes.
+- `terminal.font.size` is the size of the text in pixels, 6 to 72 (a decimal such as 13.5 is fine). **Ctrl+=** makes the text one pixel bigger, **Ctrl+-** one pixel smaller and **Ctrl+0** goes back to this size, for every terminal of the window (the panes of a tab and the other tabs too, and the ones opened afterwards). The zoom stops at 6 and at 72, is also in the command palette (_Increase font size_, _Decrease font size_, _Reset font size_, see [KEYBINDINGS.md](KEYBINDINGS.md)), and is **never written to the file**: it only lasts as long as the window is open. If the file changes `size` while the window is zoomed, the zoom keeps its steps over the new size.
+- `terminal.font.lineHeight` is the height of a row as a multiple of the font size, 1 to 3. 1 is the tightest the terminal can draw.
+- `terminal.font.ligatures` is accepted but **has no effect yet**. Drawing the ligatures of a font (such as `=>` or `!=` as one sign) needs the terminal to read the font file, and the addon that does it for xterm.js looks the file up through Node.js or through a browser permission to read the installed fonts, neither of which the window of the app has. Noren does not draw its own text to get around that. The setting is kept in the schema so a file that already has it stays valid when the support arrives.
+- `terminal.cursor.style` is `"block"`, `"bar"` or `"underline"`, and `terminal.cursor.blink` says whether it blinks.
+- `terminal.scrollback` is how many lines the terminal keeps above the screen, 0 to 100000. Every line takes memory in every terminal that is open, so the ceiling is there on purpose. A smaller value than before drops the oldest lines at once.
+- `terminal.bell` is what happens when a program rings the bell (`BEL`): `"none"` (the default), `"visual"` (the pane lights up for a moment), `"sound"` (a short quiet beep) or `"both"`. A tab in the background is marked as unread whichever it is (see [SHELL_INTEGRATION.md](SHELL_INTEGRATION.md)). The beep needs the system to let the page play sound; if it does not, there is silence and no error.
+
+The terminal follows the file like every other setting: save it and the terminals that are open change at once, with no restart, and **their sessions are not touched** (no shell starts again, nothing printed is lost). The font of a theme (the `font` of the theme format) is not used for the terminal: the terminal reads its font here only.
+
+The list of the monospaced fonts installed on this computer comes from the Rust side (`Backend.listMonospaceFonts`, see For contributors); the settings screen will offer it when it gets its terminal section.
 
 ## The window and the background
 
@@ -179,6 +209,7 @@ Before the settings screen, the layout, the notification settings and the shortc
 - `ConfigManager.update(changes)` reads the file now, refuses when it has a problem or when the result would not be valid (nothing is written), edits it, saves it through the backend and applies the new text at once; the watcher then reports the same text and it is ignored. Updates queue up, so two quick ones both land.
 - **Profiles.** `UserProfileSchema` (`user-profile-schema.ts`) is the schema of one entry and is part of `ConfigSchema`. `profiles-store.ts` hands the `profiles` of the settings in force to the backend with `Backend.setUserProfiles` (at start, before any shell is restored, and at every change of that list) and keeps the joined list `listProfiles` answers; a list the backend refuses is `getProfilesProblem`, shown as a notice. In `noren-core` (`profiles.rs`) `UserProfile` is validated and `ProfileSet::with_user_profiles` joins it to the detected shells (`%NAME%` replaced through an injected environment); the Tauri command is `profiles_set_user`, and `AppState` keeps the detected set and the joined one. `FakeBackend` checks the list with the same rules (`profilesProblem`) and starts a session of a profile of the user in its `cwd`.
 - **Mods.** The `mods` key is `modsSchema` in `config.ts` (the name rule is `MOD_FILE_NAME_PATTERN` of `mods.ts`, the same rule the Rust store applies to the folder). An edit whose value is a list of names (`{ path: ["mods"], value: [...] }`) replaces the list the file has, or creates it where the schema puts it; this is how the screen writes it (`MODS_PATH` and `planSave` in `settings-screen.ts`). See [THEMING.md](THEMING.md#for-contributors) for the rest.
+- **The terminal.** The keys are `terminalSchema` in `config.ts`; the limits, the defaults and the rule for font names are `terminal-options.ts` (`parseFontFamilies`, `safeFontFamily`, `terminalOptionsOf`, `nextZoom`), with the defaults held to what `TerminalView` hard-coded before. The interface reads the options through `terminal-options-store.ts` (the settings in force with the zoom of the window over the size, the same object while nothing changes) and `TerminalView` applies a new set to its xterm without recreating it; the bell is `bell.ts`. `Backend.listMonospaceFonts()` answers the monospaced families installed on the machine, once each and in alphabetical order, only names (`fontNameList` holds every backend to that). In `noren-core` it is `fonts.rs` (`list_monospace_families`, over the `fontdb` crate, MIT, which scans the system font folders and reads the names and the fixed-pitch flag of each file); the Tauri command is `fonts_list_monospace`. It only reads: the smoke run lists the fonts and never writes. The web build cannot list the fonts of a visitor, so its backend answers the families the terminal falls back to. The tests hold the rest: `terminal-options.test.ts`, `terminal-config.test.ts`, `fonts.rs` (it finds at least one monospaced family on Windows and macOS) and `e2e/terminal-options.spec.ts`.
 - **Window and background.** The keys are `windowSchema` and `backgroundSchema` in `config.ts`; the path check is `backgroundImageProblem` (`background.ts`), mirrored by `path_problem` in `crates/noren-core/src/background.rs` and tested with the same cases. The boxes of the screen that may be empty (`OPTIONAL_PATHS` in `settings-screen.ts`) are written as `null` when emptied. See [THEMING.md](THEMING.md#for-contributors) for the rest.
 - The screen is `SettingsDialog.tsx`; what it shows and what Save writes is the pure `settings-screen.ts` (`settingsOf`, `planSave`). `layout-store.ts`, `notification-settings.ts` and `keybindings-store.ts` read the settings in force; `legacy-settings.ts` is the one-time move described above.
 - The theme: `theme-choice.ts` reads `appearance.theme` from the settings in force (`themeChoiceOf`) and plans picking one (`planThemeChoice`, `runThemeChoice`, which hands the change to `ConfigManager.update`). `effectiveThemeChoice` there is the order above (pure, tested), `space-theme.ts` lists what a space can pick, and `use-theme.ts` follows the active space of the store (`followActiveSpaceTheme`, started at boot) and holds the preview of the palette over the saved choice: `previewTheme`, `clearThemePreview` and `chooseTheme`, which keeps the chosen theme on screen until the file has it, so the window does not flicker back. The built-in themes are in `packages/model/src/builtin-themes.ts`; `user-themes-store.ts` holds the list of them and of the user's (see [THEMING.md](THEMING.md)), and `theme-choice.ts` looks a theme up in the list it is given (the built-in ones by default, the whole list where the window asks).

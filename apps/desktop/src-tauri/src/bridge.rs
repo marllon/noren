@@ -538,6 +538,17 @@ pub async fn background_image_read(
         .map_err(|e| e.to_string())
 }
 
+/// The monospaced font families installed on this machine, once each and in alphabetical order.
+/// It only reads the system font folders (the smoke run may call it as well); a family name that is
+/// not the name of a font is left out, so the list is safe to show and to write into the settings.
+/// The scan reads font files, so it runs off the async workers.
+#[tauri::command]
+pub async fn fonts_list_monospace() -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(noren_core::list_monospace_families)
+        .await
+        .map_err(|e| format!("could not list the fonts: {e}"))
+}
+
 /// Gives the window the effect named `effect` (`none`, `mica`, `acrylic` or `vibrancy`), painted in
 /// the look `scheme` names (`dark` or `light`: the kind of a theme that was chosen; `system`: the
 /// mode of the system), and answers what it has: a system that cannot paint it keeps the window
@@ -1419,6 +1430,7 @@ mod tests {
             .manage(BackgroundState::new(BackgroundStore::new(pictures)))
             .invoke_handler(tauri::generate_handler![
                 background_image_read,
+                fonts_list_monospace,
                 window_effect_set
             ])
             .build(mock_context(noop_assets()))
@@ -1443,6 +1455,31 @@ mod tests {
                 invoke_key: INVOKE_KEY.to_string(),
             },
         )
+    }
+
+    #[test]
+    fn the_page_lists_the_monospace_fonts_through_the_command() {
+        let dir = TempDir::new("fonts-command");
+        let answer =
+            call_command("fonts_list_monospace", serde_json::json!({}), &dir.0).expect("the fonts");
+        let InvokeResponseBody::Json(json) = answer else {
+            panic!("a raw answer for a list of names");
+        };
+        let names: Vec<String> = serde_json::from_str(&json).expect("a list of names");
+        for name in &names {
+            assert!(
+                noren_core::is_font_name(name),
+                "{name:?} is not a font name"
+            );
+        }
+        let mut sorted = names.clone();
+        sorted.sort_by_key(|name| name.to_lowercase());
+        assert_eq!(names, sorted);
+        if cfg!(any(windows, target_os = "macos")) {
+            assert!(!names.is_empty(), "no monospaced font was listed");
+        }
+        // Reading the fonts leaves nothing behind in the folder the run was given.
+        assert_eq!(std::fs::read_dir(&dir.0).expect("dir").count(), 0);
     }
 
     const PNG_BYTES: [u8; 12] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4];

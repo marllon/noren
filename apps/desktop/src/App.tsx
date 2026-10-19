@@ -122,7 +122,8 @@ import { ModStyles } from "./ModStyles";
 import { useModFiles } from "./mods-store";
 import { importSchemeFile } from "./scheme-import";
 import { useProfiles, useProfilesProblem } from "./profiles-store";
-import type { TerminalHandle } from "./TerminalView";
+import type { TerminalDrawing, TerminalHandle } from "./TerminalView";
+import { useTerminalOptions, zoomTerminalFont } from "./terminal-options-store";
 import {
   activeItemIdOf,
   activeSpaceOf,
@@ -141,6 +142,10 @@ export interface NorenTestHook {
   /** The commands the shell of the active terminal reported, oldest first, with the prompt stepped to flagged. */
   marks(): CommandMarkInfo[];
   renderer(): "webgl" | "dom";
+  /** The font, cursor and scrollback xterm has in the focused pane (settings and zoom included). */
+  terminalDrawing(): TerminalDrawing | undefined;
+  /** The same for any pane of the window, whichever tab it is in. */
+  paneDrawing(paneId: string): TerminalDrawing | undefined;
   /** Number of `write` calls the backend received. */
   writeCalls(): number;
   /** Ids of the sessions the backend was asked to kill, in order. */
@@ -232,6 +237,8 @@ interface PaneTerminalProps {
  */
 function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTerminalProps) {
   const { profileId, cwd, env } = sessionStartOptions(space, pane);
+  // Font, cursor, scrollback and bell: the settings of the file and the zoom of this window.
+  const options = useTerminalOptions();
   const [tracker] = useState(
     () =>
       new PaneLocationTracker({
@@ -249,6 +256,7 @@ function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTermi
     <TerminalView
       backend={backend}
       theme={colors}
+      options={options}
       active={active}
       {...(pane.sessionId !== undefined ? { attach: Number(pane.sessionId) } : {})}
       {...(profileId !== undefined ? { profileId } : {})}
@@ -343,6 +351,10 @@ function runCommand(store: WorkspaceStore, command: ActionCommand): string | und
       return undefined;
     case "last-unread":
       return state.showLastUnread() ? undefined : NOTHING_UNREAD_NOTICE;
+    case "font-zoom":
+      // The font of every terminal of the window; the file keeps its size.
+      zoomTerminalFont(command.change);
+      return undefined;
     case "tab": {
       const tabId = spaceItemIds(activeSpaceOf(state.workspace))[command.index];
       if (tabId !== undefined) state.activateItem(tabId);
@@ -879,6 +891,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
           return activeItem()?.focusedPaneId;
         },
         renderer: () => current()?.renderer() ?? "dom",
+        terminalDrawing: () => current()?.drawing(),
+        paneDrawing: (paneId) => handles.current.get(paneId)?.drawing(),
         writeCalls: () => fake.callsTo("write").length,
         sendOutput: (paneId, text) => {
           for (const space of store.getState().workspace.spaces) {

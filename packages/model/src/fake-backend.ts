@@ -15,6 +15,7 @@ import type { Clock } from "./clock";
 import { sameFolder } from "./deep-link";
 import { MAX_MOD_BYTES, MAX_MODS, isValidModFileName } from "./mods";
 import { OutputStream } from "./output-stream";
+import { fontNameList } from "./terminal-options";
 import { THEME_ID_PATTERN } from "./theme";
 import { profilesProblem } from "./user-profile-schema";
 import type { UserProfile } from "./user-profile-schema";
@@ -36,6 +37,13 @@ const escapeCommandLine = (line: string): string =>
   line.replace(/[\\;\u0000-\u001f\u007f]/g, (ch) =>
     ch === "\\" ? "\\\\" : `\\x${ch.charCodeAt(0).toString(16).padStart(2, "0")}`,
   );
+
+/** The monospaced families a fake computer has unless it is told otherwise: the fallbacks of the terminal. */
+export const DEFAULT_MONOSPACE_FONTS: readonly string[] = [
+  "Cascadia Mono",
+  "Consolas",
+  "DejaVu Sans Mono",
+];
 
 /** One recorded call to a `Backend` method. Callbacks are not recorded. */
 export interface FakeCall {
@@ -69,6 +77,8 @@ export interface FakeBackendOptions {
   windowEffects?: readonly WindowEffect[];
   /** Picture files by path (as `readBackgroundImage` is asked for them). */
   images?: Record<string, Uint8Array>;
+  /** The monospaced font families this fake computer has. Defaults to the ones the terminal falls back to. */
+  monospaceFonts?: readonly string[];
 }
 
 /** One notification given to `notify`, for assertions. */
@@ -455,6 +465,7 @@ export class FakeBackend implements Backend {
   readonly #windowEffects: Set<WindowEffect>;
   #appliedEffect: WindowEffect = "none";
   readonly #images = new Map<string, Uint8Array>();
+  #monospaceFonts: readonly string[];
   #modListFailure: Error | undefined;
   #userThemeSaveFailure: Error | undefined;
   #config: string | null;
@@ -479,6 +490,7 @@ export class FakeBackend implements Backend {
     for (const [path, bytes] of Object.entries(options.images ?? {})) {
       this.#images.set(path, bytes);
     }
+    this.#monospaceFonts = options.monospaceFonts ?? DEFAULT_MONOSPACE_FONTS;
     this.#commandExitCode = options.commandExitCode ?? 0;
     for (const [cwd, text] of Object.entries(options.actionsFiles ?? {})) {
       this.#actionsFiles.set(cwd, text);
@@ -880,6 +892,16 @@ export class FakeBackend implements Backend {
   protected putImage(path: string, bytes: Uint8Array | null): void {
     if (bytes === null) this.#images.delete(path);
     else this.#images.set(path, bytes);
+  }
+
+  async listMonospaceFonts(): Promise<string[]> {
+    this.#record("listMonospaceFonts");
+    return fontNameList(this.#monospaceFonts);
+  }
+
+  /** Changes the monospaced families this fake computer has (as installing a font would). Not a `Backend` call. */
+  setMonospaceFonts(names: readonly string[]): void {
+    this.#monospaceFonts = names;
   }
 
   async readActionsFile(cwd: string): Promise<string | null> {

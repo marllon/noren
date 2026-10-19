@@ -6,9 +6,11 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import type { ITheme } from "@xterm/xterm";
-import type { Backend, SessionId } from "@noren/model";
+import { DEFAULT_TERMINAL_OPTIONS } from "@noren/model";
+import type { Backend, SessionId, TerminalOptions } from "@noren/model";
 import { useEffect, useRef, useState } from "react";
 import { PasteDialog } from "./PasteDialog";
+import { BELL_FLASH_MS, beep, beeps, flashes } from "./bell";
 import { attachCommandMarks, markColors } from "./command-marks-view";
 import type { CommandMarkInfo, CommandOutput, TerminalCommandMarks } from "./command-marks-view";
 import { parseOsc7 } from "./osc7";
@@ -18,8 +20,20 @@ import { isTranslucent } from "./theme";
 /** What a right click does: copy the selection or paste, always paste, or leave the native menu. */
 export type RightClickAction = "copy-or-paste" | "paste" | "menu";
 
+/** What xterm draws with, as it has it now: the options of the terminal settings and the zoom. */
+export interface TerminalDrawing {
+  fontFamily: string;
+  fontSize: number;
+  lineHeight: number;
+  cursorStyle: string;
+  cursorBlink: boolean;
+  scrollback: number;
+}
+
 /** Read-only view of a mounted terminal, for tests and diagnostics. */
 export interface TerminalHandle {
+  /** The font, cursor and scrollback xterm has now (what the settings and the zoom made of them). */
+  drawing(): TerminalDrawing;
   /** Text of every line in the buffer (scrollback included), without trailing spaces. */
   readLines(): string[];
   /** Renderer in use: the WebGL addon, or xterm's DOM renderer after a fallback. */
@@ -73,6 +87,11 @@ interface TerminalViewProps {
   onSessionStart?(id: SessionId): void;
   /** Colors of the terminal; changing them repaints the live terminal. */
   theme: ITheme;
+  /**
+   * Font, cursor, scrollback and bell (the `terminal` settings, with the zoom). Changing them
+   * changes the live terminal; its session goes on. The defaults when left out.
+   */
+  options?: TerminalOptions;
   /** False while the view is hidden (another tab shows). Default true. */
   active?: boolean;
   /** Default `copy-or-paste`. */
@@ -108,6 +127,7 @@ export function TerminalView({
   env,
   onSessionStart,
   theme,
+  options = DEFAULT_TERMINAL_OPTIONS,
   active = true,
   rightClick,
   onReady,
@@ -124,6 +144,9 @@ export function TerminalView({
   const onSessionStartRef = useRef(onSessionStart);
   const activeRef = useRef(active);
   const themeRef = useRef(theme);
+  const optionsRef = useRef(options);
+  const viewRef = useRef<HTMLDivElement>(null);
+  const refitRef = useRef<(() => void) | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   // What the shell starts with is fixed when the view mounts; a later change must not restart it.
   const [start0] = useState(() => ({ attach, profileId, cwd, env }));
@@ -136,6 +159,7 @@ export function TerminalView({
     onSessionStartRef.current = onSessionStart;
     activeRef.current = active;
     themeRef.current = theme;
+    optionsRef.current = options;
   });
 
   // A new theme repaints the terminal that is already running.
@@ -146,6 +170,20 @@ export function TerminalView({
     }
     marksRef.current?.setColors(markColors(theme));
   }, [theme]);
+
+  // New options (the file changed, or the font was zoomed) change the terminal that is running; the
+  // session is not touched. The size of a cell may have changed, so the grid is fitted again.
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    term.options.fontFamily = options.fontFamily;
+    term.options.fontSize = options.fontSize;
+    term.options.lineHeight = options.lineHeight;
+    term.options.cursorStyle = options.cursorStyle;
+    term.options.cursorBlink = options.cursorBlink;
+    term.options.scrollback = options.scrollback;
+    refitRef.current?.();
+  }, [options]);
 
   // Showing a tab again gives it the keyboard.
   useEffect(() => {
@@ -158,10 +196,12 @@ export function TerminalView({
 
     const term = new Terminal({
       allowProposedApi: true,
-      cursorBlink: true,
-      fontFamily: '"Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace',
-      fontSize: 14,
-      scrollback: 10_000,
+      cursorBlink: optionsRef.current.cursorBlink,
+      cursorStyle: optionsRef.current.cursorStyle,
+      fontFamily: optionsRef.current.fontFamily,
+      fontSize: optionsRef.current.fontSize,
+      lineHeight: optionsRef.current.lineHeight,
+      scrollback: optionsRef.current.scrollback,
       // The ruler beside the scrollbar shows the commands that failed. 14 is the scrollbar width
       // xterm.js uses without a ruler, so the terminal keeps the columns it had.
       overviewRuler: { width: 14 },
@@ -204,6 +244,19 @@ export function TerminalView({
       }
     };
     safeFit();
+    refitRef.current = safeFit;
+
+    // The bell: the pane flashes and/or beeps as the settings say (the tab is marked either way).
+    let flashTimer: ReturnType<typeof setTimeout> | undefined;
+    const bellSub = term.onBell(() => {
+      const style = optionsRef.current.bell;
+      if (beeps(style)) beep();
+      const view = viewRef.current;
+      if (!flashes(style) || !view) return;
+      view.classList.add("bell-flash");
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(() => view.classList.remove("bell-flash"), BELL_FLASH_MS);
+    });
 
     let disposed = false;
     let sessionId: SessionId | undefined;
@@ -323,6 +376,14 @@ export function TerminalView({
     });
 
     onReadyRef.current?.({
+      drawing: () => ({
+        fontFamily: term.options.fontFamily ?? "",
+        fontSize: term.options.fontSize ?? 0,
+        lineHeight: term.options.lineHeight ?? 0,
+        cursorStyle: term.options.cursorStyle ?? "",
+        cursorBlink: term.options.cursorBlink ?? false,
+        scrollback: term.options.scrollback ?? 0,
+      }),
       readLines: () => {
         const buffer = term.buffer.active;
         const lines: string[] = [];
@@ -357,6 +418,10 @@ export function TerminalView({
     return () => {
       disposed = true;
       observer.disconnect();
+      refitRef.current = null;
+      bellSub.dispose();
+      clearTimeout(flashTimer);
+      viewRef.current?.classList.remove("bell-flash");
       host.removeEventListener("paste", onNativePaste, true);
       host.removeEventListener("contextmenu", onContextMenu);
       dataSub.dispose();
@@ -381,7 +446,7 @@ export function TerminalView({
   };
 
   return (
-    <div className="terminal-view">
+    <div ref={viewRef} className="terminal-view">
       <div ref={container} className="terminal-host" role="region" aria-label="Terminal" />
       {pending !== null && (
         <PasteDialog

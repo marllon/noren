@@ -210,6 +210,9 @@ export function seededProfiles(storage: Pick<Storage, "getItem">): ShellProfile[
 /**
  * The in-memory backend with `state.json` kept in `localStorage`, so a reload in web mode finds
  * the workspace again. Sessions stay fake and in memory. The unit tests keep using `FakeBackend`.
+ * `listMonospaceFonts` is the fake one's: a browser cannot list the fonts of its visitor (the Local
+ * Font Access API asks the visitor for permission), so it answers the families the terminal falls
+ * back to.
  */
 export class WebBackend extends FakeBackend {
   readonly #storage: StateStorage;

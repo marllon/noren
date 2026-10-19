@@ -2,6 +2,7 @@
 
 pub mod background;
 pub mod config;
+pub mod fonts;
 pub mod git;
 pub mod integration;
 pub mod mods;
@@ -14,6 +15,7 @@ pub mod window;
 
 pub use background::{BackgroundError, BackgroundStore, MAX_BACKGROUND_BYTES, sniff_image};
 pub use config::{CONFIG_FILE_NAME, ConfigError, ConfigStore, ConfigWatcher};
+pub use fonts::{MAX_FONT_NAME_CHARS, is_font_name, list_monospace_families, monospace_families};
 pub use git::{GitHead, read_head};
 pub use integration::{
     BASH_LOGIN_VAR, BASH_SCRIPT, POWERSHELL_SCRIPT, ZSH_DIR, ZSH_RC, ZSH_USER_DIR_VAR,

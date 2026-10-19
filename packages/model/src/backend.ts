@@ -156,6 +156,16 @@ export interface Backend {
    */
   readBackgroundImage(path: string): Promise<BackgroundImageFile>;
   /**
+   * The names of the font families installed on this computer that are monospaced, without
+   * repeats, in alphabetical order (upper and lower case alike). A name is only a family name: one
+   * that has a quote, a backslash, a semicolon or another sign a family name does not have is left
+   * out (`fontFamilyProblem` tells what a name may hold), so the list is safe to show and to write
+   * into the settings. It reads the fonts and writes nothing. A computer with none answers an
+   * empty list; a browser, which cannot list the fonts of its visitor, answers the families the
+   * terminal falls back to. Rejects only when the lookup itself fails.
+   */
+  listMonospaceFonts(): Promise<string[]>;
+  /**
    * Text of `.noren/actions.json` inside the folder `cwd`, or `null` when the folder has no such
    * file. Rejects for any other failure (a folder where the file should be, no permission).
    * Parsing is the caller's job (`parseActionsFile`).

@@ -408,6 +408,43 @@ describe("TauriBackend", () => {
     await expect(backend.saveUserTheme("a", "{}")).rejects.toThrow("theme_save failed");
   });
 
+  it("lists the monospaced fonts through fonts_list_monospace, as the names the Rust side sent", async () => {
+    const fake = fakeBridge({ fonts_list_monospace: ["Cascadia Mono", "Consolas", "Courier New"] });
+    await expect(new TauriBackend(fake.bridge).listMonospaceFonts()).resolves.toEqual([
+      "Cascadia Mono",
+      "Consolas",
+      "Courier New",
+    ]);
+    expect(fake.invocations).toEqual([{ command: "fonts_list_monospace", args: undefined }]);
+  });
+
+  it("does not take the word of the Rust side that a name is a font name", async () => {
+    // A font file with a name like a rule of CSS must not reach the page as a name.
+    const fake = fakeBridge({
+      fonts_list_monospace: [
+        "Consolas",
+        "consolas",
+        'Evil"; background: url(http://example.com)',
+        "a;b",
+        42,
+        null,
+        "Courier New",
+      ],
+    });
+    await expect(new TauriBackend(fake.bridge).listMonospaceFonts()).resolves.toEqual([
+      "Consolas",
+      "Courier New",
+    ]);
+  });
+
+  it("lets a fonts_list_monospace failure reach the caller", async () => {
+    const fake = fakeBridge();
+    fake.failing.add("fonts_list_monospace");
+    await expect(new TauriBackend(fake.bridge).listMonospaceFonts()).rejects.toThrow(
+      "fonts_list_monospace failed",
+    );
+  });
+
   it("hears config-changed before it asks for the watching, once however many callbacks", async () => {
     const fake = fakeBridge();
     const backend = new TauriBackend(fake.bridge);

@@ -37,6 +37,9 @@ The **safe** preset is the default. It does not fight the shell: Ctrl+T, Ctrl+W 
 | Search all tabs               | Ctrl+Shift+Alt+F      | Ctrl+Shift+Alt+F      |
 | Go to last unread tab         | Ctrl+Shift+U          | Ctrl+Shift+U          |
 | Previous / next prompt        | Ctrl+Up / Ctrl+Down   | Ctrl+Up / Ctrl+Down   |
+| Increase font size            | Ctrl+=                | Ctrl+=                |
+| Decrease font size            | Ctrl+-                | Ctrl+-                |
+| Reset font size               | Ctrl+0                | Ctrl+0                |
 | Select command output         | none                  | none                  |
 | Copy last command output      | none                  | none                  |
 | Open settings                 | none                  | none                  |
@@ -105,6 +108,12 @@ Ctrl+Up and Ctrl+Down (the same in both presets; "Previous prompt" and "Next pro
 These are the only registry actions whose key is not always taken. The listener asks the focused terminal first: if it has no command mark to go to (a shell without integration, a tab with no command yet, a program such as an editor on the alternate screen), or the keyboard is not in a terminal, the listener returns before `preventDefault`, and Ctrl+Up reaches the shell as it did before. With a mark the press is taken even when there is no further prompt in that direction (the first prompt, or the live end), so the shell does not get a Ctrl+Up that was only half ours. Up and Down with other modifiers are not ours: Alt+arrows focus a pane and Ctrl+Alt+Shift+arrows resize one, as before.
 
 "Select command output" and "Copy last command output" are registry actions with no chord in either preset (an action may have none). They show as _None_ in the shortcuts screen, where a chord can be recorded for them, and they are always in the palette. A press of a chord recorded for them says in a notice why it did nothing.
+
+## The font size
+
+Ctrl+= (`Ctrl+Equal`), Ctrl+- (`Ctrl+Minus`) and Ctrl+0 (`Ctrl+Digit0`), the same in both presets, are "Increase font size", "Decrease font size" and "Reset font size" (`terminal.font-larger`, `terminal.font-smaller`, `terminal.font-reset`, category _Terminal_, so the shortcuts screen shows and records them and the palette lists them). They change the font of every terminal of the window by one pixel, hold the key to keep going (the first two repeat; the reset does not), stop at 6 and at 72 pixels, and Ctrl+0 returns to `terminal.font.size` of the settings file (14 without one). The zoom lasts as long as the window and is never written to the file; see [CONFIG.md](CONFIG.md#the-terminal). The chords are matched by the physical key like every other: on a layout where the plus sign needs Shift, Ctrl+Shift+= is a different chord (and goes to the terminal); record it for "Increase font size" in the shortcuts screen if you want it too.
+
+These keys were the shell's before: in a terminal Ctrl+- sends `0x1f`, which readline uses as "undo". They are Noren's now. To get them back for a program, record another chord for the action, or one that no program uses.
 
 ## The last unread tab
 

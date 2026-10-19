@@ -7,6 +7,15 @@ license.workspace = true
 publish = false
 
 [dependencies]
+# Lists the monospaced font families installed on the machine, for the font setting of the terminal:
+# it scans the system font folders (Windows, macOS, Linux and the fonts of the user) and reads the
+# names and the fixed-pitch flag of each font file, which is all the settings need and which the
+# page cannot do (a WebView lists no installed fonts without asking the user for permission). It
+# carries its own font-name parser, so it adds only memmap2 and slotmap besides what is already in
+# the tree. The default `fontconfig` feature is off: it only changes how Linux finds the folders
+# and would add a fontconfig parser; the known folders are scanned instead. 0.24.0, MIT (memmap2
+# 0.9.11: MIT OR Apache-2.0; slotmap 1.1.1: Zlib).
+fontdb = { version = "0.24.0", default-features = false, features = ["std", "fs", "memmap"] }
 # Watches the folder of config.jsonc so an edit made outside the app (an editor, a script) reaches
 # the interface without a restart: the OS notification APIs (ReadDirectoryChangesW, inotify,
 # FSEvents) instead of polling the file. 8.2.0, CC0-1.0.

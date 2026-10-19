@@ -131,6 +131,63 @@ describe("the search over all tabs", () => {
   });
 });
 
+describe("the font size", () => {
+  const find = (id: string) => ACTIONS.find((action) => action.id === id);
+
+  it("has three actions in the Terminal category: larger, smaller and back to the size of the settings", () => {
+    const larger = find("terminal.font-larger");
+    const smaller = find("terminal.font-smaller");
+    const reset = find("terminal.font-reset");
+    expect(larger?.title).toBe("Increase font size");
+    expect(smaller?.title).toBe("Decrease font size");
+    expect(reset?.title).toBe("Reset font size");
+    for (const action of [larger, smaller, reset]) expect(action?.category).toBe("Terminal");
+    expect(larger?.command).toEqual({ kind: "font-zoom", change: "in" });
+    expect(smaller?.command).toEqual({ kind: "font-zoom", change: "out" });
+    expect(reset?.command).toEqual({ kind: "font-zoom", change: "reset" });
+  });
+
+  it("resolves Ctrl+=, Ctrl+- and Ctrl+0 in both presets", () => {
+    for (const keybindings of [safe, browser]) {
+      expect(commandOf(keybindings, press("Equal", ctrl))).toEqual({
+        kind: "font-zoom",
+        change: "in",
+      });
+      expect(commandOf(keybindings, press("Minus", ctrl))).toEqual({
+        kind: "font-zoom",
+        change: "out",
+      });
+      expect(commandOf(keybindings, press("Digit0", ctrl))).toEqual({
+        kind: "font-zoom",
+        change: "reset",
+      });
+    }
+  });
+
+  it("leaves the same keys with other modifiers, and the plain keys, to the terminal", () => {
+    for (const code of ["Equal", "Minus", "Digit0"]) {
+      expect(commandOf(safe, press(code))).toBeUndefined();
+      expect(commandOf(safe, press(code, { shiftKey: true }))).toBeUndefined();
+      expect(commandOf(safe, press(code, ctrlShift))).toBeUndefined();
+      expect(commandOf(safe, press(code, ctrlAlt))).toBeUndefined();
+      expect(commandOf(safe, press(code, alt))).toBeUndefined();
+    }
+  });
+
+  it("does not take a chord another action has, in either preset", () => {
+    for (const preset of PRESETS) {
+      const chords = resolveBindings({ preset, overrides: {} }).chords;
+      expect(findConflicts(chords)).toEqual([]);
+    }
+  });
+
+  it("repeats for larger and smaller, not for the reset", () => {
+    expect(find("terminal.font-larger")?.repeat).toBe(true);
+    expect(find("terminal.font-smaller")?.repeat).toBe(true);
+    expect(find("terminal.font-reset")?.repeat).toBe(false);
+  });
+});
+
 describe("the command marks", () => {
   const find = (id: string) => ACTIONS.find((action) => action.id === id);
 
@@ -309,13 +366,15 @@ describe("the safe preset (the default)", () => {
     expect(commandOf(safe, press("ArrowLeft", { altKey: true, metaKey: true }))).toBeUndefined();
   });
 
-  it("repeats only the actions that move (focus, resize, recent tabs, prompts)", () => {
+  it("repeats only the actions that move or step (focus, resize, recent tabs, prompts, font size)", () => {
     for (const action of ACTIONS) {
       const moves =
         action.command.kind === "focus" ||
         action.command.kind === "resize" ||
         action.command.kind === "mru" ||
-        action.command.kind === "prompt";
+        action.command.kind === "prompt" ||
+        // Holding Ctrl+= or Ctrl+- keeps changing the size; Ctrl+0 is a single reset.
+        (action.command.kind === "font-zoom" && action.command.change !== "reset");
       expect(action.repeat).toBe(moves);
     }
   });

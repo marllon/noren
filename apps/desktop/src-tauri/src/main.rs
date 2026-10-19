@@ -69,6 +69,7 @@ fn main() {
             bridge::mod_watch,
             bridge::window_effect_set,
             bridge::background_image_read,
+            bridge::fonts_list_monospace,
             notify::notify_show,
             notify::window_is_focused,
             deeplink::deep_link_take_waiting,

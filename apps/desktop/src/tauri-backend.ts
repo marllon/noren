@@ -1,6 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { OutputStream, sniffImageMime } from "@noren/model";
+import { OutputStream, fontNameList, sniffImageMime } from "@noren/model";
 import type {
   Backend,
   BackgroundImageFile,
@@ -206,6 +206,11 @@ export class TauriBackend implements Backend {
     const mime = sniffImageMime(bytes);
     if (mime === undefined) throw new Error(`${path} is not a picture Noren can show.`);
     return { mime, bytes };
+  }
+
+  async listMonospaceFonts(): Promise<string[]> {
+    // The Rust side already keeps only family names; the page does not take its word for it.
+    return fontNameList(await this.#bridge.invoke<unknown[]>("fonts_list_monospace"));
   }
 
   readActionsFile(cwd: string): Promise<string | null> {

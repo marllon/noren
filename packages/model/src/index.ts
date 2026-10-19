@@ -116,6 +116,35 @@ export {
   parseConfigText,
 } from "./config";
 export type { Config, ConfigError, ParseConfigResult } from "./config";
+export {
+  BELL_STYLES,
+  CURSOR_STYLES,
+  DEFAULT_FONT_FAMILY,
+  DEFAULT_FONT_FAMILY_CSS,
+  DEFAULT_TERMINAL_OPTIONS,
+  FONT_ZOOM_STEP,
+  MAX_FONT_SIZE,
+  MAX_SCROLLBACK,
+  MIN_FONT_SIZE,
+  clampFontSize,
+  cssFontFamily,
+  fontFamilyProblem,
+  fontNameList,
+  isFontName,
+  nextZoom,
+  parseFontFamilies,
+  safeFontFamily,
+  terminalOptionsOf,
+  zoomedFontSize,
+} from "./terminal-options";
+export type {
+  BellStyle,
+  CursorStyle,
+  FontFamiliesResult,
+  FontFamily,
+  TerminalOptions,
+  TerminalSettings,
+} from "./terminal-options";
 export { ConfigManager } from "./config-manager";
 export type { ConfigSource, ConfigState, ConfigUpdateResult } from "./config-manager";
 export { editConfigText } from "./config-edit";

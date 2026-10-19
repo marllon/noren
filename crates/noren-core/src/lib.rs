@@ -1,10 +1,12 @@
 //! Noren core library. Kept free of Tauri so it can be tested on its own.
 
+pub mod integration;
 pub mod profiles;
 pub mod project;
 pub mod pty;
 pub mod store;
 
+pub use integration::{POWERSHELL_SCRIPT, is_powershell, powershell_integration_args};
 pub use profiles::{
     Platform, ProbeEnv, Profile, ProfileSet, SystemEnv, detect_profiles, detect_system_profiles,
 };

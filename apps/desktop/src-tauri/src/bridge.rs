@@ -5,7 +5,7 @@
 //! `session-exit` event.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -15,10 +15,15 @@ use noren_core::{
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
+use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 /// File name of the workspace state inside the app data folder.
 pub const STATE_FILE_NAME: &str = "state.json";
+
+/// Where the shell integration scripts are inside the app's resource folder (see `bundle.resources`
+/// in tauri.conf.json).
+pub const INTEGRATION_RESOURCE_DIR: &str = "resources/shell-integration";
 
 /// Name of the event emitted when a session's child ended and all its output was delivered.
 pub const SESSION_EXIT_EVENT: &str = "session-exit";
@@ -105,6 +110,16 @@ pub fn apply_session_options(
     Ok(spec)
 }
 
+/// The folder with the shell integration scripts, when the app has it (installed app, or the
+/// copy `tauri-build` keeps next to the debug binary).
+pub fn integration_dir(app: &AppHandle) -> Option<PathBuf> {
+    let dir = app
+        .path()
+        .resolve(INTEGRATION_RESOURCE_DIR, BaseDirectory::Resource)
+        .ok()?;
+    dir.is_dir().then_some(dir)
+}
+
 fn profile_dtos(set: &ProfileSet) -> Vec<ProfileDto> {
     set.profiles
         .iter()
@@ -145,7 +160,11 @@ pub fn create_session(
             .ok_or_else(|| "no shell profile was found on this machine".to_owned())?,
     };
 
-    let spec = apply_session_options(profile.spawn_spec(cols, rows), cwd, env)?;
+    let spec = apply_session_options(
+        profile.spawn_spec_with_integration(cols, rows, integration_dir(app).as_deref()),
+        cwd,
+        env,
+    )?;
 
     // The exit event carries the session id, which exists only after `spawn` returned. The
     // callback waits on this lock for it; a session that ends at once cannot report too early.
@@ -318,6 +337,7 @@ mod tests {
             name: name.to_owned(),
             program: format!("/bin/{id}"),
             args: Vec::new(),
+            inject_integration: true,
         }
     }
 

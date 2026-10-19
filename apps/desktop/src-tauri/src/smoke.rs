@@ -10,7 +10,7 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use noren_core::{SessionId, StateStore};
+use noren_core::{SessionId, StateStore, is_powershell};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Listener, Manager};
 
@@ -126,7 +126,9 @@ fn fail(app: &AppHandle, message: &str) -> ! {
 }
 
 /// Opens a session of the default profile through [`bridge::create_session`], types the marker
-/// command and waits until the marker shows up on a line of its own. Always releases the session.
+/// command and waits until the marker shows up on a line of its own. A PowerShell session must
+/// also have loaded the shell integration script (its first prompt carries `OSC 133;A`), which
+/// proves the script was found in the resource folder. Always releases the session.
 fn check_session(app: &AppHandle, deadline: Instant) -> Result<(), String> {
     let state = app.state::<AppState>();
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
@@ -144,7 +146,27 @@ fn check_session(app: &AppHandle, deadline: Instant) -> Result<(), String> {
 
     let result = wait_for_marker(&state, SessionId(id), &rx, deadline);
     let _ = state.sessions.kill(SessionId(id));
-    result
+    let seen = result?;
+    let integrated = state
+        .profiles
+        .get(&profile)
+        .is_some_and(|p| p.inject_integration && is_powershell(&p.program));
+    if integrated && !contains_bytes(&seen, PROMPT_START_MARK) {
+        return Err(format!(
+            "the {profile} session printed no OSC 133;A: the shell integration script was not loaded (looked in {:?})",
+            bridge::integration_dir(app)
+        ));
+    }
+    Ok(())
+}
+
+/// The sequence the integration script writes at the start of every prompt (`OSC 133;A`).
+const PROMPT_START_MARK: &[u8] = b"\x1b]133;A\x07";
+
+fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
 }
 
 fn wait_for_marker(
@@ -152,7 +174,7 @@ fn wait_for_marker(
     id: SessionId,
     rx: &mpsc::Receiver<Vec<u8>>,
     deadline: Instant,
-) -> Result<(), String> {
+) -> Result<Vec<u8>, String> {
     state
         .sessions
         .write(id, format!("echo {SMOKE_MARKER}\r").as_bytes())
@@ -165,7 +187,7 @@ fn wait_for_marker(
             Ok(bytes) => {
                 seen.extend_from_slice(&bytes);
                 if has_marker_line(&seen) {
-                    return Ok(());
+                    return Ok(seen);
                 }
             }
             Err(RecvTimeoutError::Timeout) => {

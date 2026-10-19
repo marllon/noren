@@ -26,10 +26,13 @@ pub struct Profile {
     /// Executable to launch (an absolute path when it was found on disk).
     pub program: String,
     pub args: Vec<String>,
+    /// Whether Noren loads its shell integration script into this shell (see
+    /// [`Profile::spawn_spec_with_integration`]). `true` for every detected profile.
+    pub inject_integration: bool,
 }
 
 impl Profile {
-    /// Builds the [`SpawnSpec`] that opens this profile.
+    /// Builds the [`SpawnSpec`] that opens this profile, exactly as detected (no integration).
     pub fn spawn_spec(&self, cols: u16, rows: u16) -> SpawnSpec {
         SpawnSpec {
             program: self.program.clone(),
@@ -239,6 +242,7 @@ fn detect_windows(env: &dyn ProbeEnv) -> ProfileSet {
             name: "PowerShell 7".into(),
             program,
             args: Vec::new(),
+            inject_integration: true,
         });
     }
 
@@ -254,6 +258,7 @@ fn detect_windows(env: &dyn ProbeEnv) -> ProfileSet {
             name: "Windows PowerShell".into(),
             program,
             args: Vec::new(),
+            inject_integration: true,
         });
     }
 
@@ -267,6 +272,7 @@ fn detect_windows(env: &dyn ProbeEnv) -> ProfileSet {
             name: "Command Prompt".into(),
             program,
             args: Vec::new(),
+            inject_integration: true,
         });
     }
 
@@ -280,6 +286,7 @@ fn detect_windows(env: &dyn ProbeEnv) -> ProfileSet {
             name: "Git Bash".into(),
             program,
             args: vec!["--login".into(), "-i".into()],
+            inject_integration: true,
         });
     }
 
@@ -292,6 +299,7 @@ fn detect_windows(env: &dyn ProbeEnv) -> ProfileSet {
                     name: format!("WSL: {distro}"),
                     program: "wsl.exe".into(),
                     args: vec!["-d".into(), distro],
+                    inject_integration: true,
                 });
             }
         }
@@ -359,6 +367,7 @@ fn detect_unix(env: &dyn ProbeEnv) -> ProfileSet {
             name,
             program: path,
             args: Vec::new(),
+            inject_integration: true,
         });
     }
 
@@ -589,6 +598,7 @@ mod tests {
             name: "Git Bash".into(),
             program: "bash.exe".into(),
             args: vec!["--login".into(), "-i".into()],
+            inject_integration: true,
         };
         let spec = profile.spawn_spec(100, 30);
         assert_eq!(spec.program, "bash.exe");

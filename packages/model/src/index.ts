@@ -76,3 +76,20 @@ export { FakeBackend } from "./fake-backend";
 export type { FakeBackendOptions, FakeCall, FakeCommandRun, FakeSessionInfo } from "./fake-backend";
 export { OutputStream } from "./output-stream";
 export { decodeUtf8, encodeUtf8 } from "./utf8";
+export {
+  DEFAULT_MAX_OSC_BYTES,
+  ShellIntegrationParser,
+  parseOsc,
+  pathFromFileUri,
+  unescapeCommandLine,
+} from "./shell-integration";
+export type {
+  CommandEndEvent,
+  CommandLineEvent,
+  CommandStartEvent,
+  CwdEvent,
+  PromptEndEvent,
+  PromptStartEvent,
+  ShellEvent,
+  ShellIntegrationParserOptions,
+} from "./shell-integration";

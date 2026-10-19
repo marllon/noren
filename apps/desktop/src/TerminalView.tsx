@@ -74,9 +74,10 @@ export interface TerminalHandle {
   /**
    * The last lines of the terminal as the serialize addon writes them (text and colors, and the
    * cursor moves it needs for empty cells), for the scrollback snapshot. It is raw: `cleanSnapshot`
-   * is what makes it fit to keep.
+   * is what makes it fit to keep. `lines` asks for fewer scrollback lines than the snapshot keeps
+   * (the peek of a tab wants the last few, not two thousand).
    */
-  snapshot(): string;
+  snapshot(lines?: number): string;
 }
 
 interface TerminalViewProps {
@@ -457,9 +458,9 @@ export function TerminalView({
       },
       // The normal screen only: a program on the alternate screen (an editor) leaves the lines of the
       // shell under it, which are what is worth keeping. No modes either: they are not text.
-      snapshot: () =>
+      snapshot: (lines = SCROLLBACK_SAVE_LINES) =>
         serialize.serialize({
-          scrollback: SCROLLBACK_SAVE_LINES,
+          scrollback: lines,
           excludeModes: true,
           excludeAltBuffer: true,
         }),

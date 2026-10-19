@@ -248,6 +248,7 @@ Set on the root element of the page by the active theme (and the active space, f
 | `palette`        | The command palette.                                           |                                                   |
 | `library`        | The library of archived and closed tabs.                       |                                                   |
 | `library-row`    | One tab of the library.                                        | `selected`                                        |
+| `peek`           | The peek of a tab: its last lines in a popover beside it.      |                                                   |
 | `settings`       | The settings screen.                                           |                                                   |
 | `background`     | The picture behind the terminals, only while one is on screen. |                                                   |
 

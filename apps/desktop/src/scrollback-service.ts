@@ -17,17 +17,21 @@ import type { WorkspaceStore } from "./workspace-store";
 // panes note in the workspace that they have a file.
 
 /** What the terminal of each pane serializes: the last lines, with their colors. */
-const sources = new Map<Id, () => string>();
+const sources = new Map<Id, (lines?: number) => string>();
 
 /** The terminal of `paneId` can be asked for its snapshot with `source` (a later one replaces it). */
-export function registerTerminalSnapshot(paneId: Id, source: () => string): void {
+export function registerTerminalSnapshot(paneId: Id, source: (lines?: number) => string): void {
   sources.set(paneId, source);
 }
 
-/** What the terminal of `paneId` serializes now; `undefined` when it has none, or it is already gone. */
-function readTerminal(paneId: Id): string | undefined {
+/**
+ * What the terminal of `paneId` serializes now (its last `lines` lines when given, else everything a
+ * snapshot keeps); `undefined` when it has none, or it is already gone. Raw: it is cleaned before it
+ * is kept or shown.
+ */
+export function readTerminal(paneId: Id, lines?: number): string | undefined {
   try {
-    return sources.get(paneId)?.();
+    return sources.get(paneId)?.(lines);
   } catch {
     return undefined;
   }

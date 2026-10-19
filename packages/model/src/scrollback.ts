@@ -334,3 +334,45 @@ export function orphanScrollbackIds(workspace: Workspace, listed: readonly strin
   }
   return [...orphans];
 }
+
+// ---------------------------------------------------------------------------------------------
+// Peek
+
+/** How many lines the peek of a tab shows (the last ones that hold something). */
+export const PEEK_LINES = 15;
+
+/** The longest line of a peek, in characters; a longer one is cut and ends in an ellipsis. */
+export const PEEK_LINE_CHARS = 200;
+
+/**
+ * The last `count` lines of a snapshot that hold something, for the peek of a tab: `raw` cleaned
+ * like any snapshot (`cleanSnapshot`), stripped of its colors, with the empty lines left out and
+ * each line cut to `PEEK_LINE_CHARS` (trailing blanks dropped first). What comes back is plain text
+ * that nothing can take for markup or for an escape. Never throws; `count` below 1 gives no lines.
+ */
+export function peekLines(
+  raw: string,
+  count: number = PEEK_LINES,
+  maxChars: number = PEEK_LINE_CHARS,
+): string[] {
+  const wanted = Math.floor(count);
+  if (!(wanted >= 1)) return [];
+  const limit = Math.max(1, Math.floor(maxChars));
+  const kept: string[] = [];
+  const lines = snapshotSearchText(raw).split("\n");
+  for (let i = lines.length - 1; i >= 0 && kept.length < wanted; i--) {
+    const text = (lines[i] ?? "").trimEnd();
+    if (text.trim() === "") continue;
+    kept.push(cutLine(text, limit));
+  }
+  return kept.reverse();
+}
+
+/** `text` cut to `limit` characters with an ellipsis at the end, without splitting a surrogate pair. */
+function cutLine(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  let end = Math.max(0, limit - 1);
+  const last = code(text, end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end--;
+  return `${text.slice(0, end).trimEnd()}…`;
+}

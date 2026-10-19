@@ -54,6 +54,7 @@ import {
 import type { ClickModifiers, Selection } from "./sidebar-tree";
 import { sidebarMode } from "./layout";
 import { NOTHING_UNREAD_NOTICE, shortCwd } from "./pane-info";
+import { peekLinesOfItem } from "./peek-source";
 import { configManager, useConfigState } from "./config-store";
 import { runLayoutCommand } from "./layout-actions";
 import type { LayoutCommand } from "./layout-actions";
@@ -1087,7 +1088,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const recordHandle = (paneId: Id, handle: TerminalHandle) => {
     handles.current.set(paneId, handle);
     // The scrollback snapshot asks this terminal for its lines every minute and when the window closes.
-    registerTerminalSnapshot(paneId, () => handle.snapshot());
+    registerTerminalSnapshot(paneId, (lines) => handle.snapshot(lines));
   };
 
   const onOpenFavorite = (favorite: ResolvedFavorite) => showTab(favorite.spaceId, favorite.id);
@@ -1467,7 +1468,16 @@ function Shell({ store }: { store: WorkspaceStore }) {
           )}
           <ActionsHeader spaceName={space.name} ui={projectActions} />
           {!tabsOnTop && (
-            <SidebarTree {...treeProps} rows={rows} home={home} onPaneClick={onPaneClick} />
+            <SidebarTree
+              {...treeProps}
+              rows={rows}
+              home={home}
+              onPaneClick={onPaneClick}
+              onPeek={(itemId) => {
+                const item = space.items[itemId];
+                return item !== undefined ? peekLinesOfItem(backend, item) : [];
+              }}
+            />
           )}
           <div className="sidebar-foot">
             <button type="button" className="new-tab" onClick={() => newTab()}>

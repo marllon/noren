@@ -538,6 +538,47 @@ body {
   color: var(--nr-accent);
 }
 
+/*
+ * The peek of a tab: the last lines of its terminal in a popover beside the tab. A tooltip, so the
+ * pointer goes through it and nothing in it takes the keyboard.
+ */
+.peek {
+  position: fixed;
+  z-index: 40;
+  box-sizing: border-box;
+  width: max-content;
+  max-height: calc(100vh - 16px);
+  overflow: hidden;
+  padding: 6px 8px;
+  border: 1px solid var(--nr-border);
+  border-radius: var(--nr-radius);
+  background: var(--nr-surface);
+  color: var(--nr-text);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--nr-bg) 70%, transparent);
+  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.peek-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.peek-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.peek-empty {
+  margin: 0;
+  color: var(--nr-muted);
+  font-family: system-ui, sans-serif;
+}
+
 /* Text for assistive technology only. */
 .sr-only {
   position: absolute;

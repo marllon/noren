@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import type { GroupNode, Id, Item, Space } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
+import { PeekPopover, peekId, usePeek } from "./Peek";
 import { layoutThumbnail, paneEntries } from "./item-panes";
 import type { PaneEntry } from "./item-panes";
 import {
@@ -32,6 +33,9 @@ import type { ClickModifiers, TreeRow } from "./sidebar-tree";
 import { DRAG_HELP_ID, DragRow, useOutsideDrop } from "./TreeDnd";
 import type { DragHandle } from "./TreeDnd";
 import { spaceItemIds } from "./workspace-store";
+
+/** The peek of a tab when the tree is given no way to read its lines: nothing to show. */
+const noPeek = (): readonly string[] => [];
 
 /** What is being renamed on the spot. */
 export interface Editing {
@@ -58,6 +62,8 @@ interface SidebarTreeProps {
   /** Enter or leaving the field: the new text of the name; `restoreFocus` is set for Enter. */
   onCommitEdit(editing: Editing, value: string, restoreFocus: boolean): void;
   onCancelEdit(): void;
+  /** The last lines of the tab's terminal, for the peek that opens when the pointer rests on it. */
+  onPeek?(itemId: Id): Promise<readonly string[]> | readonly string[];
 }
 
 interface InlineNameProps {
@@ -280,8 +286,16 @@ export function SidebarTree({
   onStartEdit,
   onCommitEdit,
   onCancelEdit,
+  onPeek,
 }: SidebarTreeProps) {
   const order = spaceItemIds(space);
+  const peek = usePeek(onPeek ?? noPeek);
+  // A peek whose tab left the list (closed, moved to another space) goes with it.
+  const peekedId = peek.view?.itemId;
+  const closePeek = peek.close;
+  useEffect(() => {
+    if (peekedId !== undefined && space.items[peekedId] === undefined) closePeek();
+  }, [peekedId, space, closePeek]);
   // The pane lists the user folded; a split tab is expanded unless it is here. Only in memory: it
   // is not part of the saved workspace.
   const [folded, setFolded] = useState<ReadonlySet<Id>>(new Set());
@@ -405,6 +419,11 @@ export function SidebarTree({
       ...(summary.command !== undefined ? [commandWords(summary.command)] : []),
     ];
     const descriptionId = `tab-info-${row.id}`;
+    const peeking = peek.view?.itemId === row.id;
+    const describedBy = [
+      ...(words.length > 0 ? [descriptionId] : []),
+      ...(peeking ? [peekId(row.id)] : []),
+    ].join(" ");
     const entries = paneEntries(item, space.defaults.cwd, home);
     const isSplit = entries.length > 0;
     const expanded = isSplit && !folded.has(row.id);
@@ -425,9 +444,13 @@ export function SidebarTree({
           data-nr-depth={row.depth}
           aria-current={isActive ? "true" : undefined}
           aria-label={label}
-          aria-describedby={words.length > 0 ? descriptionId : undefined}
+          aria-describedby={describedBy !== "" ? describedBy : undefined}
+          {...(onPeek !== undefined ? peek.anchorProps(row.id) : {})}
           {...drag?.buttonProps}
-          onClick={(event) => onItemClick(row.id, modifiersOf(event))}
+          onClick={(event) => {
+            peek.close();
+            onItemClick(row.id, modifiersOf(event));
+          }}
           onDoubleClick={() => onStartEdit(edit)}
           onKeyDown={(event) => {
             drag?.onKeyDown(event);
@@ -506,9 +529,12 @@ export function SidebarTree({
   const pinnedRows = rows.filter((row) => row.kind === "item" && row.pinned);
   const treeRows = rows.filter((row) => !(row.kind === "item" && row.pinned));
   return (
-    <ul key={space.id} className="tab-list" aria-label="Tabs" aria-describedby={DRAG_HELP_ID}>
-      {pinnedRows.length > 0 && <PinnedList>{pinnedRows.map(renderRow)}</PinnedList>}
-      {treeRows.map(renderRow)}
-    </ul>
+    <>
+      <ul key={space.id} className="tab-list" aria-label="Tabs" aria-describedby={DRAG_HELP_ID}>
+        {pinnedRows.length > 0 && <PinnedList>{pinnedRows.map(renderRow)}</PinnedList>}
+        {treeRows.map(renderRow)}
+      </ul>
+      {peek.view !== null && <PeekPopover view={peek.view} />}
+    </>
   );
 }

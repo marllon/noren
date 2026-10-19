@@ -100,6 +100,46 @@ describe("the recent-tab switcher", () => {
   });
 });
 
+describe("the Ask panel", () => {
+  it("is one action on Ctrl+Shift+A in both presets, in General, and it does not repeat", () => {
+    const action = ACTIONS.find((a) => a.id === "ask.toggle");
+    expect(action?.title).toBe("Ask the AI");
+    expect(action?.category).toBe("General");
+    expect(action?.command).toEqual({ kind: "ask-toggle" });
+    expect(action?.repeat).toBe(false);
+    for (const preset of PRESETS) expect(action?.chords[preset]).toBe("Ctrl+Shift+KeyA");
+  });
+
+  it("resolves Ctrl+Shift+A to it in the safe and the browser preset", () => {
+    for (const keybindings of [safe, browser]) {
+      expect(commandOf(keybindings, press("KeyA", ctrlShift))).toEqual({ kind: "ask-toggle" });
+    }
+  });
+
+  it("leaves A with other modifiers to the terminal", () => {
+    expect(commandOf(safe, press("KeyA"))).toBeUndefined();
+    expect(commandOf(safe, press("KeyA", ctrl))).toBeUndefined();
+    expect(commandOf(safe, press("KeyA", { shiftKey: true }))).toBeUndefined();
+    expect(commandOf(safe, press("KeyA", ctrlAlt))).toBeUndefined();
+    expect(commandOf(safe, press("KeyA", { ...ctrlShift, metaKey: true }))).toBeUndefined();
+  });
+
+  it("can be moved to another chord by an override, and the old chord is the terminal's again", () => {
+    const moved: Keybindings = { preset: "safe", overrides: { "ask.toggle": "Alt+KeyK" } };
+    expect(commandOf(moved, press("KeyA", ctrlShift))).toBeUndefined();
+    expect(commandOf(moved, press("KeyK", alt))).toEqual({ kind: "ask-toggle" });
+  });
+
+  it("refuses a chord another action holds, and keeps its own", () => {
+    const taken: Keybindings = { preset: "safe", overrides: { "ask.toggle": "Ctrl+Shift+KeyP" } };
+    const { chords, rejected } = resolveBindings(taken);
+    expect(chords["ask.toggle"]).toBe("Ctrl+Shift+KeyA");
+    expect(rejected).toEqual([
+      { actionId: "ask.toggle", chord: "Ctrl+Shift+KeyP", keptBy: ["palette.open"] },
+    ]);
+  });
+});
+
 describe("the search over all tabs", () => {
   it("is one action on Ctrl+Shift+Alt+F in both presets, and it does not repeat", () => {
     const action = ACTIONS.find((a) => a.id === "tab.search-all");

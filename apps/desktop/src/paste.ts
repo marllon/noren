@@ -25,6 +25,31 @@ export function decidePaste(text: string): PasteDecision {
   return needsPasteConfirmation(text) ? "confirm" : "send";
 }
 
+/** Tab, line feed and carriage return: the only control characters text may carry into the terminal. */
+const KEPT_CONTROLS = new Set([0x09, 0x0a, 0x0d]);
+
+/** A control character of the C0 or C1 range, or DEL. */
+function isControl(code: number): boolean {
+  return code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+}
+
+/**
+ * The text of a code block the AI wrote, made fit to be put at the prompt: the line breaks at its
+ * two ends are dropped (so what lands is never a finished command) and every control character
+ * other than tab and the line breaks is taken out. An answer is untrusted, and Escape, Ctrl+C or
+ * Ctrl+D typed into a shell by an answer would be a key press the person did not make. Line breaks
+ * inside the text stay: `decidePaste` makes the person confirm text that has more than one line.
+ */
+export function insertableText(text: string): string {
+  const clean = [...text]
+    .filter((char) => {
+      const code = char.codePointAt(0) ?? 0;
+      return KEPT_CONTROLS.has(code) || !isControl(code);
+    })
+    .join("");
+  return clean.replace(/^[\r\n]+/, "").replace(/[\r\n]+$/, "");
+}
+
 export interface PastePreview {
   /** First lines of the text, each cut to `maxColumns` characters. */
   lines: string[];

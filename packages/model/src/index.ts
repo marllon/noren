@@ -147,6 +147,8 @@ export {
   previewOfMessages,
 } from "./ask-context";
 export type { AskChip, AskCut, AskCutFrom, AskInput, AskMessage, AskRefusal } from "./ask-context";
+export { codeBlocksOf, markdownText, parseMarkdown } from "./markdown";
+export type { MdBlock, MdCode, MdInline } from "./markdown";
 export {
   ConfigSchema,
   SIDEBAR_MAX_WIDTH,

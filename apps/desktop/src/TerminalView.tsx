@@ -6,7 +6,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import type { ITheme } from "@xterm/xterm";
-import { DEFAULT_TERMINAL_OPTIONS, SCROLLBACK_SAVE_LINES } from "@noren/model";
+import { DEFAULT_TERMINAL_OPTIONS, SCROLLBACK_SAVE_LINES, joinRows } from "@noren/model";
 import type { Backend, SessionId, TerminalOptions } from "@noren/model";
 import { useEffect, useRef, useState } from "react";
 import { PasteDialog } from "./PasteDialog";
@@ -14,7 +14,7 @@ import { BELL_FLASH_MS, beep, beeps, flashes } from "./bell";
 import { attachCommandMarks, markColors } from "./command-marks-view";
 import type { CommandMarkInfo, CommandOutput, TerminalCommandMarks } from "./command-marks-view";
 import { parseOsc7 } from "./osc7";
-import { decidePaste } from "./paste";
+import { decidePaste, insertableText } from "./paste";
 import { isTranslucent } from "./theme";
 
 /** What a right click does: copy the selection or paste, always paste, or leave the native menu. */
@@ -65,6 +65,18 @@ export interface TerminalHandle {
   selectOutput(): boolean;
   /** The output of the last command that ended; undefined when none did. */
   lastOutput(): CommandOutput | undefined;
+  /**
+   * The text of the rows on screen (what the view shows now, scrolled or not): one line per logical
+   * line, a wrapped line joined again, the blank rows at the end dropped.
+   */
+  screen(): string;
+  /**
+   * Puts `text` at the prompt as if it were pasted, and gives the terminal the keyboard. Never
+   * presses Enter: the line breaks at the ends are dropped and control characters are taken out
+   * (`insertableText`), and text of several lines asks the person first, like any paste. False when
+   * nothing is left to put.
+   */
+  insert(text: string): boolean;
   /**
    * The text of the rows of the buffer whose characters are all dimmed (a row with no text is not
    * one). The scrollback shown again is dimmed, and what the new shell prints is not: this tells
@@ -438,6 +450,26 @@ export function TerminalView({
       jumpToPrompt: (direction) => commandMarks.jump(direction),
       selectOutput: () => commandMarks.selectOutput(),
       lastOutput: () => commandMarks.lastOutput(),
+      screen: () => {
+        const buffer = term.buffer.active;
+        return joinRows(
+          (row) => {
+            const line = buffer.getLine(row);
+            return line === undefined
+              ? undefined
+              : { text: line.translateToString(true), wrapped: line.isWrapped };
+          },
+          buffer.viewportY,
+          term.rows,
+        ).replace(/\s+$/, "");
+      },
+      insert: (text) => {
+        const clean = insertableText(text);
+        if (clean === "") return false;
+        requestPaste(clean);
+        term.focus();
+        return true;
+      },
       dimLines: () => {
         const buffer = term.buffer.active;
         const cell = buffer.getNullCell();

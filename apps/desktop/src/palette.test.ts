@@ -106,6 +106,21 @@ describe("buildEntries", () => {
     const found = searchEntries(entries, ">import color");
     expect(found.map((entry) => entry.title)).toEqual(["Import color scheme..."]);
   });
+
+  it("lists Ask the AI, with its key, only when the AI is on where the palette opens", async () => {
+    const { store } = await openStore();
+    const chords = resolveBindings(DEFAULT_KEYBINDINGS).chords;
+    const workspace = store.getState().workspace;
+    // Off unless said otherwise, so a caller that forgets cannot offer the AI where it is off.
+    expect(action(buildEntries({ workspace, chords }), "Ask the AI")).toBeUndefined();
+    expect(action(buildEntries({ workspace, chords, aiOn: false }), "Ask the AI")).toBeUndefined();
+    const on = action(buildEntries({ workspace, chords, aiOn: true }), "Ask the AI");
+    expect(on).toMatchObject({
+      detail: "General",
+      chord: "Ctrl+Shift+A",
+      action: { id: "ask.toggle", command: { kind: "ask-toggle" } },
+    });
+  });
 });
 
 const order = (kind: PaletteEntry["kind"]) => ["tab", "space", "action"].indexOf(kind);

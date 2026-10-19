@@ -36,6 +36,7 @@ export type ActionCommand =
   | { kind: "reopen-closed" }
   | { kind: "library" }
   | { kind: "quick-toggle" }
+  | { kind: "ask-toggle" }
   | { kind: "close" }
   | { kind: "split"; dir: "row" | "column" }
   | { kind: "zoom" }
@@ -187,6 +188,16 @@ export const ACTIONS: readonly ActionDef[] = [
     command: { kind: "quick-toggle" },
     repeat: false,
     chords: { safe: "Ctrl+Backquote", browser: "Ctrl+Backquote" },
+  },
+  {
+    // The Ask panel: it opens only where the AI is on (the settings and the space both say so);
+    // elsewhere the key says why it does nothing.
+    id: "ask.toggle",
+    title: "Ask the AI",
+    category: "General",
+    command: { kind: "ask-toggle" },
+    repeat: false,
+    chords: { safe: "Ctrl+Shift+KeyA", browser: "Ctrl+Shift+KeyA" },
   },
   {
     id: "tab.mru-next",

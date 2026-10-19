@@ -186,6 +186,52 @@ describe("FakeBackend ai.cancel", () => {
   });
 });
 
+describe("FakeBackend holdAiAnswer", () => {
+  it("stops an answer after its first piece until it is released, then finishes it", async () => {
+    const backend = withOllama("one two three");
+    backend.holdAiAnswer(true);
+    const events: AiChatEvent[] = [];
+    const finished = backend.ai.chat(request(), (event) => events.push(event));
+    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+    expect(events).toEqual([{ type: "delta", text: "one " }]);
+    backend.holdAiAnswer(false);
+    await finished;
+    expect(deltasOf(events)).toEqual(["one ", "two ", "three"]);
+    expect(events.at(-1)).toEqual({ type: "done" });
+  });
+
+  it("lets a cancel end a held answer at once, with what had come and one cancelled", async () => {
+    const backend = withOllama("one two three");
+    backend.holdAiAnswer(true);
+    const events: AiChatEvent[] = [];
+    const finished = backend.ai.chat(request(), (event) => events.push(event));
+    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+    await expect(backend.ai.cancel("r1")).resolves.toBe(true);
+    await finished;
+    expect(events).toEqual([
+      { type: "delta", text: "one " },
+      { type: "error", kind: "cancelled", message: "cancelled" },
+    ]);
+  });
+
+  it("holds nothing when it is off, and holds every answer started while it is on", async () => {
+    const backend = withOllama("a b");
+    expect(deltasOf(await run(backend)).join("")).toBe("a b");
+    backend.holdAiAnswer(true);
+    const first: AiChatEvent[] = [];
+    const second: AiChatEvent[] = [];
+    const one = backend.ai.chat(request({ requestId: "one" }), (e) => first.push(e));
+    const two = backend.ai.chat(request({ requestId: "two" }), (e) => second.push(e));
+    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(1);
+    backend.holdAiAnswer(false);
+    await Promise.all([one, two]);
+    expect(first.at(-1)).toEqual({ type: "done" });
+    expect(second.at(-1)).toEqual({ type: "done" });
+  });
+});
+
 describe("FakeBackend ai.chat: when the provider cannot answer", () => {
   it("ends with a network error when there is no Ollama", async () => {
     const events = await run(new FakeBackend());

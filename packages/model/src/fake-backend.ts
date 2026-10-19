@@ -469,8 +469,13 @@ class FakeAi implements AiBackend {
   readonly #keys = new Map<string, string>();
   #ollama: string[] | null = null;
   readonly #connections = new Map<string, AiConnectionResult>();
-  /** The requests of `chat` that are running, by request id; `cancelled` is set by `cancel`. */
-  readonly #chats = new Map<string, { cancelled: boolean }>();
+  /**
+   * The requests of `chat` that are running, by request id; `cancelled` is set by `cancel`, and
+   * `wake` ends the wait of a request that is being held (see `hold`).
+   */
+  readonly #chats = new Map<string, { cancelled: boolean; wake?: () => void }>();
+  #holding = false;
+  readonly #held = new Set<() => void>();
   #reply: AiReply;
 
   constructor(
@@ -576,17 +581,21 @@ class FakeAi implements AiBackend {
     if (this.#chats.has(requestId)) {
       throw new Error(`the request \`${requestId}\` is already running`);
     }
-    const state = { cancelled: false };
+    const state: { cancelled: boolean; wake?: () => void } = { cancelled: false };
     this.#chats.set(requestId, state);
 
     try {
       const failure = this.#chatFailure(providerId);
       const deltas = failure === undefined ? wordsOf(this.#replyTo(request)) : [];
       // A turn of the event loop before each event, so a `cancel` has a moment to arrive.
+      let first = true;
       for (const text of deltas) {
         await Promise.resolve();
         if (state.cancelled) break;
         onEvent({ type: "delta", text });
+        // A held answer waits here, after its first piece, until released or cancelled.
+        if (first && this.#holding) await this.#waitForRelease(state);
+        first = false;
       }
       await Promise.resolve();
       if (state.cancelled) {
@@ -606,7 +615,29 @@ class FakeAi implements AiBackend {
     const state = this.#chats.get(requestId);
     if (state === undefined) return false;
     state.cancelled = true;
+    state.wake?.();
     return true;
+  }
+
+  async #waitForRelease(state: { wake?: () => void }): Promise<void> {
+    await new Promise<void>((resolve) => {
+      const wake = () => {
+        this.#held.delete(wake);
+        delete state.wake;
+        resolve();
+      };
+      state.wake = wake;
+      this.#held.add(wake);
+    });
+  }
+
+  /**
+   * Holds every answer after its first piece (the rest waits, so a test can stop it in the middle)
+   * until `hold(false)`, which lets the held ones go on; a `cancel` ends a held answer at once.
+   */
+  hold(on: boolean): void {
+    this.#holding = on;
+    if (!on) for (const wake of [...this.#held]) wake();
   }
 
   /** Why the fake provider cannot answer, as the connection test says it: no Ollama, no key, or the answer a test chose. */
@@ -701,7 +732,8 @@ class FakeAi implements AiBackend {
  *   key in its text is taken out). `ai.chat` is answered by a fake provider (`aiReply`,
  *   `setAiReply`) in deltas, a word at a time, then one `done`; it ends with an `error` instead when
  *   the connection test would fail, and a `cancel` in between ends it with `error` of kind
- *   `cancelled`. Calls are recorded as `ai.providers`, `ai.setKey` (without the key), `ai.chat` (with
+ *   `cancelled`. `holdAiAnswer(true)` makes the answers wait after their first piece, so a test can
+ *   stop one in the middle. Calls are recorded as `ai.providers`, `ai.setKey` (without the key), `ai.chat` (with
  *   the request, whose messages are what a test checks was sent), and so on.
  *
  * Everything is synchronous: effects of `write` have been delivered when its promise resolves.
@@ -813,6 +845,14 @@ export class FakeBackend implements Backend {
    */
   setAiReply(reply: string | ((request: AiChatRequest) => string) | undefined): void {
     this.#ai.setReply(reply);
+  }
+
+  /**
+   * Holds the answers of the fake provider after their first piece until released with `false`, so
+   * a test can press Stop while an answer is in the middle. Not a `Backend` call.
+   */
+  holdAiAnswer(on: boolean): void {
+    this.#ai.hold(on);
   }
 
   /** The key `ai.setKey` stored for a provider, for a test to check; the interface never gets it. Not a `Backend` call. */

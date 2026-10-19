@@ -4,6 +4,7 @@ import {
   FakeBackend,
   ManualClock,
   PaneLocationTracker,
+  aiIsOn,
   layoutPanes,
   scrollbackAllowed,
   treeGroups,
@@ -40,6 +41,9 @@ import { followQuickPromotions, promoteQuickSession } from "./quick-promote";
 import type { PromoteResult } from "./quick-promote";
 import { quickPreviewEnabled, quickPreviewEvents, tauriQuickEvents } from "./quick";
 import { tauriBridge } from "./tauri-backend";
+import { AskPanel } from "./AskPanel";
+import { askOffNotice } from "./ask-panel";
+import type { AskSources } from "./ask-panel";
 import { CommandPalette } from "./CommandPalette";
 import { ConfigErrorNotice } from "./ConfigErrorNotice";
 import { MruSwitcherView } from "./MruSwitcher";
@@ -48,7 +52,7 @@ import { collectSearchTabs } from "./tab-search";
 import type { SearchHit, SearchTab, TabHits } from "./tab-search";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FavoritesGrid } from "./FavoritesGrid";
-import { resolveFavorites } from "./favorites";
+import { itemTitle, resolveFavorites } from "./favorites";
 import type { ResolvedFavorite } from "./favorites";
 import {
   clickSelection,
@@ -232,6 +236,20 @@ export interface NorenTestHook {
   aiKeyCalls(): string[];
   /** The key held for a provider in the fake keychain, `undefined` for none: lets a test check where it did not go. */
   storedAiKey(providerId: string): string | undefined;
+  /** Everything the backend was asked to write to a session, in order, as the terminal sent it. */
+  writes(): { id: number; data: string }[];
+  /** The questions the Ask panel sent to the AI (`ai.chat`), in order, with the messages exactly as they went. */
+  aiChats(): {
+    providerId: string;
+    model: string | undefined;
+    messages: { role: string; content: string }[];
+  }[];
+  /** The ids of the requests the AI was asked to cancel (`ai.cancel`), in order. */
+  aiCancels(): string[];
+  /** Sets what the fake AI answers to the next questions; `null` goes back to its default answer. */
+  setAiReply(text: string | null): void;
+  /** Makes the fake AI stop each answer after its first piece (`true`) or lets it finish (`false`). */
+  holdAiAnswer(held: boolean): void;
   /** Makes saving `config.jsonc` fail with this message (the disk refused); `null` undoes it. */
   failConfigSaves(message: string | null): void;
   /** Number of times the app was asked to write `config.jsonc`. */
@@ -519,6 +537,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const [searchText, setSearchText] = useState<SearchTab[] | null>(null);
   // The library (archive and closed tabs) is open.
   const [libraryOpen, setLibraryOpen] = useState(false);
+  // The Ask panel was opened. It shows only where the AI is on (see `askShown` below).
+  const [askOpen, setAskOpen] = useState(false);
   const handles = useRef(new Map<Id, TerminalHandle>());
   const theme = useTheme();
   const themeChoice = useThemeChoice();
@@ -817,6 +837,58 @@ function Shell({ store }: { store: WorkspaceStore }) {
     return pane ? handles.current.get(pane.id) : undefined;
   }, [store]);
 
+  const aiOn = aiIsOn(configState.config, space);
+  // Where the AI is off the panel is gone, and so is the question that was half typed in it.
+  useEffect(() => {
+    if (!aiOn) setAskOpen(false);
+  }, [aiOn]);
+  const askShown = askOpen && aiOn;
+  /** Shows the Ask panel or hides it; where the AI is off it only says why it cannot open. */
+  const toggleAsk = () => {
+    if (!aiOn) {
+      showNotice(askOffNotice(configState.config, space));
+      return;
+    }
+    setAskOpen(!askOpen);
+    if (askOpen) focusTerminal();
+  };
+  const toggleAskRef = useRef(toggleAsk);
+  toggleAskRef.current = toggleAsk;
+  const closeAsk = () => {
+    setAskOpen(false);
+    focusTerminal();
+  };
+  /** What the context chips of the Ask panel read: the terminal of the pane in use, and other tabs. */
+  const askSources: AskSources = {
+    selection: () => focusedHandle()?.selection() ?? "",
+    lastOutput: () => {
+      const handle = focusedHandle();
+      const output = handle?.lastOutput();
+      if (handle === undefined || output === undefined) return undefined;
+      // The row of the prompt that ended last holds the command line (after the prompt text).
+      const command = handle
+        .marks()
+        .filter((mark) => mark.state === "done")
+        .at(-1)
+        ?.text.trim();
+      return { text: output.text, ...(command !== undefined && command !== "" ? { command } : {}) };
+    },
+    screen: () => focusedHandle()?.screen() ?? "",
+    tab: (itemId) => {
+      const item = space.items[itemId];
+      const pane = item && focusedPane(item);
+      const handle = pane && handles.current.get(pane.id);
+      if (handle === undefined) return undefined;
+      return {
+        title: itemTitle(space, itemId),
+        text: handle.readLines().join("\n").replace(/\s+$/, ""),
+      };
+    },
+  };
+  const askTabs = itemIds
+    .filter((id) => id !== activeId)
+    .map((id) => ({ id, title: itemTitle(space, id) }));
+
   /**
    * Carries out a command mark action on a pane (the focused one of the tab on screen by default):
    * a step to a prompt, selecting the output of a command, copying the output of the last one. Each
@@ -962,6 +1034,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) openSchemePicker();
         return;
       }
+      if (action.command.kind === "ask-toggle") {
+        if (!modalOpen.current) toggleAskRef.current();
+        return;
+      }
       if (action.command.kind === "settings") {
         if (!modalOpen.current) openSettings();
         return;
@@ -1089,6 +1165,30 @@ function Shell({ store }: { store: WorkspaceStore }) {
             .map((call) => (call.args[0] as { id: string }[]).map((provider) => provider.id)),
         aiKeyCalls: () => fake.callsTo("ai.setKey").map((call) => String(call.args[0])),
         storedAiKey: (providerId) => fake.storedAiKey(providerId),
+        writes: () =>
+          fake.callsTo("write").map((call) => {
+            const data = call.args[1];
+            return {
+              id: Number(call.args[0]),
+              data: typeof data === "string" ? data : new TextDecoder().decode(data as Uint8Array),
+            };
+          }),
+        aiChats: () =>
+          fake.callsTo("ai.chat").map((call) => {
+            const request = call.args[0] as {
+              providerId: string;
+              model?: string;
+              messages: { role: string; content: string }[];
+            };
+            return {
+              providerId: request.providerId,
+              model: request.model,
+              messages: request.messages,
+            };
+          }),
+        aiCancels: () => fake.callsTo("ai.cancel").map((call) => String(call.args[0])),
+        setAiReply: (text) => fake.setAiReply(text ?? undefined),
+        holdAiAnswer: (held) => fake.holdAiAnswer(held),
         failConfigSaves: (message) =>
           fake.setConfigSaveFailure(message === null ? undefined : new Error(message)),
         configSaves: () => fake.callsTo("saveConfig").length,
@@ -1225,8 +1325,20 @@ function Shell({ store }: { store: WorkspaceStore }) {
               profiles,
               folders: recentFolders(),
               themes: { list: themes, choice: themeChoice },
+              aiOn,
             }),
-    [paletteOpen, paletteMode, space, workspace, keybindings, home, profiles, themeChoice, themes],
+    [
+      paletteOpen,
+      paletteMode,
+      space,
+      workspace,
+      keybindings,
+      home,
+      profiles,
+      themeChoice,
+      themes,
+      aiOn,
+    ],
   );
 
   /** An entry of the palette: the same calls a click or a shortcut makes. */
@@ -1269,6 +1381,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
       // The file picker takes over; the terminal gets the keyboard back with the palette's close.
       closePalette();
       openSchemePicker();
+      return;
+    } else if (entry.action.command.kind === "ask-toggle") {
+      // The panel takes the keyboard itself; the palette must not hand it to the terminal.
+      setPaletteOpen(false);
+      toggleAsk();
       return;
     } else if (entry.action.command.kind === "settings") {
       // The settings screen takes the keyboard itself, and hands it back to the terminal on close.
@@ -1632,6 +1749,17 @@ function Shell({ store }: { store: WorkspaceStore }) {
             </div>
           </section>
         </div>
+        {askShown && (
+          <AskPanel
+            backend={backend}
+            config={configState.config}
+            space={space}
+            tabs={askTabs}
+            sources={askSources}
+            onInsert={(text) => focusedHandle()?.insert(text) ?? false}
+            onClose={closeAsk}
+          />
+        )}
       </TreeDnd>
       {overlayNode}
       {confirmNode}

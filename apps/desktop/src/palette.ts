@@ -127,6 +127,11 @@ export interface EntrySources {
   folders?: readonly string[];
   /** The themes on offer and the id in force, `null` while the theme follows the system. */
   themes?: { list: readonly Theme[]; choice: string | null };
+  /**
+   * The AI is on for the space on screen. Without it (the default) no entry of the AI is listed:
+   * where the AI is off nothing offers it.
+   */
+  aiOn?: boolean;
 }
 
 /** The list of "Set theme for this space": one entry per option, `Use global theme` last. */
@@ -160,6 +165,7 @@ function plural(count: number, one: string): string {
  */
 export function buildEntries(sources: EntrySources): PaletteEntry[] {
   const { workspace, chords, home } = sources;
+  const aiOn = sources.aiOn === true;
   const tabs: TabEntry[] = [];
   const spaces: SpaceEntry[] = [];
   for (const space of workspace.spaces) {
@@ -197,21 +203,21 @@ export function buildEntries(sources: EntrySources): PaletteEntry[] {
       active: space.id === workspace.activeSpaceId,
     });
   }
-  const actions = ACTIONS.filter((action) => action.command.kind !== "palette").map(
-    (action): ActionEntry => {
-      const raw = chords[action.id];
-      const chord = raw !== undefined ? formatChord(raw) : undefined;
-      return {
-        kind: "action",
-        id: `action:${action.id}`,
-        title: action.title,
-        detail: action.category,
-        keywords: [action.category, ...(chord !== undefined ? [chord] : [])],
-        action,
-        ...(chord !== undefined ? { chord } : {}),
-      };
-    },
-  );
+  const actions = ACTIONS.filter(
+    (action) => action.command.kind !== "palette" && (aiOn || action.command.kind !== "ask-toggle"),
+  ).map((action): ActionEntry => {
+    const raw = chords[action.id];
+    const chord = raw !== undefined ? formatChord(raw) : undefined;
+    return {
+      kind: "action",
+      id: `action:${action.id}`,
+      title: action.title,
+      detail: action.category,
+      keywords: [action.category, ...(chord !== undefined ? [chord] : [])],
+      action,
+      ...(chord !== undefined ? { chord } : {}),
+    };
+  });
   const where = workspace.spaces.find((space) => space.id === workspace.activeSpaceId)?.name ?? "";
   const profiles = (sources.profiles ?? []).map((profile): ProfileEntry => ({
     kind: "profile",

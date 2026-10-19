@@ -31,12 +31,14 @@ const LIBRARY = "Control+Alt+Shift+L";
 /** One hour of waiting, and the tabs that are quiet get archived. */
 const ONE_HOUR = '{ "archive": { "afterHours": 1 } }';
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const tab = (page: Page, name: string) => list(page).getByRole("button", { name, exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const tab = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
 const labels = (page: Page): Promise<string[]> =>
   list(page)
     .locator('[data-nr-part="item"]')
-    .evaluateAll((all) => all.map((el) => el.getAttribute("aria-label") ?? ""));
+    .evaluateAll((all) =>
+      all.map((el) => el.querySelector('[data-nr-part="item-title"]')?.textContent ?? ""),
+    );
 
 const lines = (page: Page): Promise<string[]> =>
   page.evaluate(() => (window as HookWindow).__norenTest?.lines() ?? []);

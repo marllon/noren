@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 const tabs = (page: Page) =>
-  page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button");
+  page.getByRole("tree", { name: "Tabs", exact: true }).getByRole("treeitem");
 
 const tabLabels = (page: Page): Promise<string[]> => tabs(page).allInnerTexts();
 

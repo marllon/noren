@@ -17,8 +17,8 @@ interface Hook {
 }
 type HookWindow = Window & { __norenTest?: Hook };
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const tab = (page: Page, name: string) => list(page).getByRole("button", { name, exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const tab = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
 const header = (page: Page) => page.getByRole("region", { name: "Project actions", exact: true });
 const button = (page: Page, name: string) =>
   header(page).getByRole("button", { name, exact: true });

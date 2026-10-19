@@ -17,7 +17,7 @@ const lines = (page: Page): Promise<string[]> =>
   page.evaluate(() => (window as TestWindow).__norenTest?.lines() ?? []);
 
 const tabs = (page: Page) =>
-  page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button");
+  page.getByRole("tree", { name: "Tabs", exact: true }).getByRole("treeitem");
 const switcher = (page: Page) => page.getByRole("navigation", { name: "Spaces", exact: true });
 const spaceButton = (page: Page, name: string) =>
   switcher(page).getByRole("button", { name, exact: true });

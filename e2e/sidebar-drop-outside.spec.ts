@@ -9,8 +9,8 @@ import { seedSidebarState } from "./sidebar-fixture";
 
 const WEB_STATE_KEY = "noren.web.state";
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const row = (page: Page, name: string) => list(page).getByRole("button", { name, exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const row = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
 const spaceButton = (page: Page, name: string) =>
   page.getByRole("navigation", { name: "Spaces", exact: true }).getByRole("button", {
     name,
@@ -26,7 +26,8 @@ async function rows(page: Page): Promise<string[]> {
     .locator("[data-row-id]")
     .evaluateAll((nodes) =>
       nodes.map(
-        (node) => `${node.getAttribute("aria-label") ?? ""}@${node.getAttribute("data-nr-depth")}`,
+        (node) =>
+          `${node.querySelector('[data-nr-part="item-title"], .group-name')?.textContent ?? ""}@${node.getAttribute("data-nr-depth")}`,
       ),
     );
 }

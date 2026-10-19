@@ -13,8 +13,9 @@ const paneIds = (page: Page): Promise<string[]> =>
 const writeCalls = (page: Page): Promise<number> =>
   page.evaluate(() => (window as TestWindow).__norenTest?.writeCalls() ?? -1);
 
-const tabList = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const tab = (page: Page, name: string) => tabList(page).getByRole("button", { name, exact: true });
+const tabList = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const tab = (page: Page, name: string) =>
+  tabList(page).getByRole("treeitem", { name, exact: true });
 const switcher = (page: Page) => page.getByRole("navigation", { name: "Spaces", exact: true });
 const spaceButton = (page: Page, name: string) =>
   switcher(page).getByRole("button", { name, exact: true });
@@ -174,7 +175,7 @@ test("no shortcut acts while the palette search box has the keyboard", async ({ 
   const before = await writeCalls(page);
   await page.keyboard.press("Control+Shift+T");
   await page.keyboard.press("Control+Shift+D");
-  await expect(tabList(page).getByRole("button")).toHaveCount(1);
+  await expect(tabList(page).getByRole("treeitem")).toHaveCount(1);
   expect(await paneIds(page)).toHaveLength(1);
   expect(await writeCalls(page)).toBe(before);
   await expect(palette(page)).toBeVisible();

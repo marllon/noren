@@ -49,6 +49,7 @@ export type ActionCommand =
   | { kind: "settings" }
   | { kind: "space-theme" }
   | { kind: "import-scheme" }
+  | { kind: "focus-sidebar" }
   | LayoutCommand
   | { kind: "last-unread" }
   | { kind: "prompt"; direction: "previous" | "next" }
@@ -236,6 +237,14 @@ export const ACTIONS: readonly ActionDef[] = [
     title: "Open settings",
     category: "General",
     command: { kind: "settings" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
+  },
+  {
+    id: "sidebar.focus",
+    title: "Focus sidebar",
+    category: "General",
+    command: { kind: "focus-sidebar" },
     repeat: false,
     chords: { safe: undefined, browser: undefined },
   },

@@ -22,6 +22,7 @@
     "e2e:visual": "pnpm --filter @noren/desktop build && playwright test -c e2e/playwright.config.ts --grep @visual --pass-with-no-tests"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.64.1",
     "@types/node": "^24.19.2",

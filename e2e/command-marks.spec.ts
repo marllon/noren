@@ -56,7 +56,7 @@ const currentText = async (page: Page): Promise<string | undefined> =>
   (await marks(page)).find((m) => m.current)?.text;
 
 const notice = (page: Page): Locator => page.locator('[data-nr-part="pane-notice"]');
-const tabList = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
+const tabList = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
 
 /** Types a command line in the terminal of the focused pane and presses Enter. */
 async function run(page: Page, line: string): Promise<void> {

@@ -6,13 +6,13 @@ import { SIDEBAR_REPOS, SPLIT_FIXTURE, seedGitRepos, seedSidebarState } from "./
 // branch of that folder from `.git/HEAD` and shows both in the sidebar. In web mode the fake
 // backend answers from the repositories seeded under `noren.web.git`.
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
 // Without a name, the one tab of the page: the shell names a tab after its folder, so a test that
 // moves around cannot look the tab up by its number.
 const tab = (page: Page, name?: string) =>
   name === undefined
     ? list(page).locator('[data-nr-part="item"]')
-    : list(page).getByRole("button", { name, exact: true });
+    : list(page).getByRole("treeitem", { name, exact: true });
 const meta = (page: Page, name?: string) => tab(page, name).locator('[data-nr-part="item-meta"]');
 const cwdOf = (page: Page, name?: string) => meta(page, name).locator('[data-nr-part="item-cwd"]');
 const branchOf = (page: Page, name?: string) =>

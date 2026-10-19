@@ -478,7 +478,7 @@ export function DragRow({ id, kind, style, children }: DragRowProps) {
   };
 
   return (
-    <li ref={setDropRef} style={style}>
+    <li ref={setDropRef} role="none" style={style}>
       <div
         ref={setNodeRef}
         className="drag-slot"

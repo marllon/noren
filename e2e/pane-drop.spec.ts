@@ -23,8 +23,8 @@ const paneLines = (page: Page, paneId: string): Promise<string[]> =>
 const splitRight = (page: Page): Promise<string | undefined> =>
   page.evaluate(() => (window as Window & { __norenTest?: Hook }).__norenTest?.split("row"));
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const row = (page: Page, name: string) => list(page).getByRole("button", { name, exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const row = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
 const zone = (page: Page) => page.locator('[data-nr-part="pane-drop-zone"]');
 const notice = (page: Page) =>
   page.getByRole("status").filter({ hasText: "A tab holds at most 4 panes." });

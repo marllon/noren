@@ -16,7 +16,7 @@ const startCount = async (page: Page): Promise<number> => (await sessionStarts(p
 const killed = (page: Page): Promise<number[]> =>
   page.evaluate(() => (window as TestWindow).__norenTest?.killedSessions() ?? []);
 
-const tabs = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
+const tabs = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
 const pinnedTab = (page: Page) =>
   page.locator('[data-nr-part="pinned-list"]').locator("[data-nr-pinned]");
 const menuItem = (page: Page, name: string) => page.getByRole("menuitem", { name, exact: true });
@@ -62,7 +62,7 @@ test("Reset on a pinned tab ends its shell and starts a new one in the folder it
   await expect.poll(() => startCount(page)).toBe(3);
 
   // Pin the second tab: nothing offers Reset before that.
-  await tabs(page).getByRole("button").nth(1).click({ button: "right" });
+  await tabs(page).getByRole("treeitem").nth(1).click({ button: "right" });
   await expect(menuItem(page, "Pin")).toBeVisible();
   await expect(menuItem(page, "Reset")).toHaveCount(0);
   await menuItem(page, "Pin").click();
@@ -100,7 +100,7 @@ test("Reset on a pinned tab ends its shell and starts a new one in the folder it
   await pinnedTab(page).click({ button: "right" });
   await menuItem(page, "Unpin").click();
   await expect(pinnedTab(page)).toHaveCount(0);
-  await tabs(page).getByRole("button").nth(1).click({ button: "right" });
+  await tabs(page).getByRole("treeitem").nth(1).click({ button: "right" });
   await expect(menuItem(page, "Pin")).toBeVisible();
   await expect(menuItem(page, "Reset")).toHaveCount(0);
   await page.keyboard.press("Escape");

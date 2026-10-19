@@ -15,9 +15,11 @@ const paneIds = (page: Page): Promise<string[]> =>
   page.evaluate(() => (window as TestWindow).__norenTest?.paneIds() ?? []);
 
 const tabs = (page: Page) =>
-  page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button");
+  page.getByRole("tree", { name: "Tabs", exact: true }).getByRole("treeitem");
 const tab = (page: Page, name: string) =>
-  page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button", { name, exact: true });
+  page
+    .getByRole("tree", { name: "Tabs", exact: true })
+    .getByRole("treeitem", { name, exact: true });
 
 /** Opens the first tab and clicks its terminal so it holds the keyboard, as a user typing would. */
 async function openTerminal(page: Page): Promise<void> {

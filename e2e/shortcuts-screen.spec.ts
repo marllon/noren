@@ -20,7 +20,7 @@ const saved = (page: Page): Promise<string | null> =>
   page.evaluate(() => window.localStorage.getItem("noren.ui.keybindings"));
 
 const tabs = (page: Page) =>
-  page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button");
+  page.getByRole("tree", { name: "Tabs", exact: true }).getByRole("treeitem");
 
 /** Opens the first tab and clicks its terminal so it holds the keyboard, as a user typing would. */
 async function openTerminal(page: Page): Promise<void> {
@@ -59,7 +59,7 @@ test("search, record a chord for New tab, and it works at once while the old cho
   await openScreen(page);
   await expect(
     screen(page).getByRole("list", { name: "Shortcuts" }).getByRole("listitem"),
-  ).toHaveCount(57);
+  ).toHaveCount(58);
 
   await screen(page).getByRole("textbox", { name: "Search shortcuts" }).fill("new tab");
   await expect(

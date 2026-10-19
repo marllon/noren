@@ -15,7 +15,7 @@ const spaceButton = (page: Page, name: string) =>
   switcher(page).getByRole("button", { name, exact: true });
 const sidebar = (page: Page) => page.locator("aside.sidebar");
 const tabs = (page: Page) =>
-  page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button");
+  page.getByRole("tree", { name: "Tabs", exact: true }).getByRole("treeitem");
 
 async function createSpace(page: Page, name: string): Promise<void> {
   await page.getByRole("button", { name: "New space", exact: true }).click();

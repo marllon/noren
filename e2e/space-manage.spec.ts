@@ -20,7 +20,7 @@ const spaceNames = (page: Page): Promise<string[]> =>
     .locator(".space-button:not(.space-add):not(.space-more)")
     .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") ?? ""));
 const tabs = (page: Page) =>
-  page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button");
+  page.getByRole("tree", { name: "Tabs", exact: true }).getByRole("treeitem");
 const spaceColor = (page: Page): Promise<string> =>
   page.evaluate(() =>
     document.documentElement.style.getPropertyValue("--nr-space-color").trim().toLowerCase(),

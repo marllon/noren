@@ -354,7 +354,7 @@ test.describe("the zoom of the font", () => {
     await expect.poll(() => size(page)).toBe(17);
     await page.keyboard.press("Control+Shift+T");
     await expect(
-      page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button"),
+      page.getByRole("tree", { name: "Tabs", exact: true }).getByRole("treeitem"),
     ).toHaveCount(2);
     await page.locator('[data-nr-part="pane"]:visible').click();
     await expect.poll(() => size(page)).toBe(17);
@@ -530,7 +530,7 @@ test.describe("the bell", () => {
     const first = (await paneIds(page))[0] ?? "";
     await page.keyboard.press("Control+Shift+T");
     await expect(
-      page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button"),
+      page.getByRole("tree", { name: "Tabs", exact: true }).getByRole("treeitem"),
     ).toHaveCount(2);
     const rang = await page.evaluate(
       (id) => (window as HookWindow).__norenTest?.sendOutput(id, "\x07"),

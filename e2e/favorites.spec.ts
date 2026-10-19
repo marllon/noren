@@ -8,8 +8,8 @@ import { seedSidebarState } from "./sidebar-fixture";
 
 const WEB_STATE_KEY = "noren.web.state";
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const row = (page: Page, name: string) => list(page).getByRole("button", { name, exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const row = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
 const grid = (page: Page) => page.locator('[data-nr-part="favorites"]');
 const favorite = (page: Page, name: string) =>
   grid(page).getByRole("button", { name, exact: true });
@@ -151,9 +151,9 @@ test("closing a favorite tab takes it off the grid", async ({ page }) => {
 test("the Pinned list is a list of its own above the tree and holds the pinned tabs", async ({
   page,
 }) => {
-  const pinned = page.getByRole("list", { name: "Pinned", exact: true });
-  await expect(pinned.getByRole("button")).toHaveCount(1);
-  await expect(pinned.getByRole("button", { name: "notes", exact: true })).toHaveAttribute(
+  const pinned = page.getByRole("group", { name: "Pinned", exact: true });
+  await expect(pinned.getByRole("treeitem")).toHaveCount(1);
+  await expect(pinned.getByRole("treeitem", { name: "notes", exact: true })).toHaveAttribute(
     "data-nr-pinned",
     "true",
   );
@@ -161,10 +161,10 @@ test("the Pinned list is a list of its own above the tree and holds the pinned t
   // Pinning another tab puts it in that list; unpinning takes it back to the tree.
   await row(page, "scratch").click({ button: "right" });
   await menuItem(page, "Pin").click();
-  await expect(pinned.getByRole("button", { name: "scratch", exact: true })).toBeVisible();
+  await expect(pinned.getByRole("treeitem", { name: "scratch", exact: true })).toBeVisible();
   await row(page, "scratch").click({ button: "right" });
   await menuItem(page, "Unpin").click();
-  await expect(pinned.getByRole("button", { name: "scratch", exact: true })).toHaveCount(0);
+  await expect(pinned.getByRole("treeitem", { name: "scratch", exact: true })).toHaveCount(0);
   await expect(row(page, "scratch")).toBeVisible();
 });
 
@@ -181,7 +181,7 @@ test("with nothing pinned the list is gone and a zone over New tab takes the dro
   await expect(zone).toHaveAttribute("data-nr-state", "over");
   await page.mouse.up();
   await expect(
-    page.getByRole("list", { name: "Pinned", exact: true }).getByRole("button", {
+    page.getByRole("group", { name: "Pinned", exact: true }).getByRole("treeitem", {
       name: "scratch",
       exact: true,
     }),

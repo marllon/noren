@@ -26,7 +26,7 @@ const viewport = (page: Page): Promise<{ top: number; rows: number }> =>
   page.evaluate(() => (window as TestWindow).__norenTest?.viewport() ?? { top: 0, rows: 0 });
 
 const tabs = (page: Page) =>
-  page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button");
+  page.getByRole("tree", { name: "Tabs", exact: true }).getByRole("treeitem");
 const switcher = (page: Page) => page.getByRole("navigation", { name: "Spaces", exact: true });
 const spaceButton = (page: Page, name: string) =>
   switcher(page).getByRole("button", { name, exact: true });

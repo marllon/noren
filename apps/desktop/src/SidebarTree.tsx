@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
+import { layoutPanes } from "@noren/model";
 import type { GroupNode, Id, Item, Space } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
 import { PeekPopover, peekId, usePeek } from "./Peek";
@@ -29,9 +30,19 @@ import {
 } from "./pane-info";
 import type { CommandInfo, ItemSummary, UnreadMarks } from "./pane-info";
 import type { MenuPoint } from "./SpaceMenu";
+import { menuTargets } from "./sidebar-tree";
 import type { ClickModifiers, TreeRow } from "./sidebar-tree";
-import { DRAG_HELP_ID, DragRow, useOutsideDrop } from "./TreeDnd";
+import { DRAG_HELP_ID, DragRow, useDragging, useOutsideDrop } from "./TreeDnd";
 import type { DragHandle } from "./TreeDnd";
+import {
+  buildNav,
+  focusAfterRemoval,
+  groupKey,
+  itemKey,
+  paneKey,
+  treeKeyAction,
+} from "./tree-keys";
+import type { NavEntry } from "./tree-keys";
 import { spaceItemIds } from "./workspace-store";
 
 /** The peek of a tab when the tree is given no way to read its lines: nothing to show. */
@@ -58,6 +69,10 @@ interface SidebarTreeProps {
   onItemMenu(itemId: Id, point: MenuPoint): void;
   onGroupMenu(groupId: Id, point: MenuPoint): void;
   onToggleGroup(group: GroupNode): void;
+  /** Delete on a tab: close these tabs (the selection when the tab is part of it). */
+  onCloseItems(itemIds: readonly Id[]): void;
+  /** Delete on a group: dissolve it; its tabs stay where they are. */
+  onUngroup(groupId: Id): void;
   onStartEdit(editing: Editing): void;
   /** Enter or leaving the field: the new text of the name; `restoreFocus` is set for Enter. */
   onCommitEdit(editing: Editing, value: string, restoreFocus: boolean): void;
@@ -65,6 +80,17 @@ interface SidebarTreeProps {
   /** The last lines of the tab's terminal, for the peek that opens when the pointer rests on it. */
   onPeek?(itemId: Id): Promise<readonly string[]> | readonly string[];
 }
+
+/** What a row of the tree needs to be a treeitem the keyboard can reach (see `tree-keys.ts`). */
+type RowProps = (key: string) => {
+  role: "treeitem";
+  tabIndex: number;
+  onFocus(): void;
+  "data-tree-key": string;
+  "aria-level": number | undefined;
+  "aria-setsize": number | undefined;
+  "aria-posinset": number | undefined;
+};
 
 interface InlineNameProps {
   label: string;
@@ -170,29 +196,36 @@ interface PaneListProps {
   /** Name of the tab, for the name of the list. */
   label: string;
   entries: readonly PaneEntry[];
+  rowProps: RowProps;
   onPaneClick(itemId: Id, paneId: Id): void;
 }
 
-/** The panes of a split tab, one button each; the pane that has the keyboard is marked. */
-function PaneList({ itemId, label, entries, onPaneClick }: PaneListProps) {
+/** The panes of a split tab, one row each; the pane that has the keyboard is marked. */
+function PaneList({ itemId, label, entries, rowProps, onPaneClick }: PaneListProps) {
   return (
-    <ul className="item-panes" data-nr-part="item-panes" aria-label={`Panes of ${label}`}>
+    <ul
+      className="item-panes"
+      data-nr-part="item-panes"
+      role="group"
+      aria-label={`Panes of ${label}`}
+    >
       {entries.map((entry) => (
-        <li key={entry.paneId}>
+        <li key={entry.paneId} role="none">
           <button
             type="button"
             className="item-pane"
             data-nr-part="item-pane"
             data-nr-pane={entry.paneId}
+            {...rowProps(paneKey(entry.paneId))}
+            aria-selected={entry.focused}
             aria-current={entry.focused ? "true" : undefined}
-            aria-label={`${entry.title}, ${entry.status}`}
             onClick={() => onPaneClick(itemId, entry.paneId)}
           >
             <span className="item-pane-title">{entry.title}</span>
             {entry.command !== undefined && (
               <CommandLine info={entry.command} part="item-pane-command" />
             )}
-            <span className="item-pane-status" data-nr-part="item-pane-status" aria-hidden="true">
+            <span className="item-pane-status" data-nr-part="item-pane-status">
               {entry.status}
             </span>
           </button>
@@ -256,11 +289,12 @@ function PinnedList({ children }: { children: ReactNode }) {
   return (
     <li
       ref={drop.ref}
+      role="none"
       className="pinned"
       data-nr-part="pinned-list"
       data-nr-state={drop.over ? "over" : undefined}
     >
-      <ul className="pinned-list" aria-label="Pinned">
+      <ul className="pinned-list" role="group" aria-label="Pinned">
         {children}
       </ul>
     </li>
@@ -283,6 +317,8 @@ export function SidebarTree({
   onItemMenu,
   onGroupMenu,
   onToggleGroup,
+  onCloseItems,
+  onUngroup,
   onStartEdit,
   onCommitEdit,
   onCancelEdit,
@@ -316,6 +352,90 @@ export function SidebarTree({
     onStartEdit(edit);
   };
 
+  // The keyboard side of the tree (the ARIA tree pattern). One row is in the Tab order (roving
+  // tabindex): the one that last had the focus, else the tab on screen, else the first.
+  const treeRef = useRef<HTMLUListElement>(null);
+  const dragging = useDragging();
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  const focusAfter = useRef<string | null>(null);
+  const nav = buildNav(rows, (itemId) => {
+    const item = space.items[itemId];
+    const paneIds = item === undefined ? [] : layoutPanes(item.layout).map((pane) => pane.id);
+    return paneIds.length >= 2 ? { paneIds, expanded: !folded.has(itemId) } : undefined;
+  });
+  const navByKey = new Map<string, NavEntry>(nav.map((entry) => [entry.key, entry]));
+  const activeKey = activeId !== undefined ? itemKey(activeId) : undefined;
+  const tabbableKey =
+    [focusKey, activeKey].find((key): key is string => key != null && navByKey.has(key)) ??
+    nav[0]?.key;
+  const rowProps: RowProps = (key) => {
+    const entry = navByKey.get(key);
+    return {
+      role: "treeitem",
+      tabIndex: key === tabbableKey ? 0 : -1,
+      onFocus: () => setFocusKey(key),
+      "data-tree-key": key,
+      "aria-level": entry?.level,
+      "aria-setsize": entry?.setSize,
+      "aria-posinset": entry?.posInSet,
+    };
+  };
+
+  const focusRow = (key: string) => {
+    const rowsInDom = treeRef.current?.querySelectorAll<HTMLElement>("[data-tree-key]") ?? [];
+    for (const element of rowsInDom) {
+      if (element.dataset["treeKey"] === key) {
+        element.focus();
+        return;
+      }
+    }
+  };
+  // After a row left the tree (Delete) the focus goes to its neighbor once the rows are drawn. A
+  // frame later, because a terminal that is shown again takes the keyboard in its own effect.
+  useEffect(() => {
+    const key = focusAfter.current;
+    if (key === null) return;
+    focusAfter.current = null;
+    requestAnimationFrame(() => focusRow(key));
+  });
+
+  const onTreeKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
+    // A drag by keyboard owns the arrow keys; a chord belongs to the shortcuts.
+    if (dragging || event.defaultPrevented) return;
+    if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+    if (!(event.target instanceof HTMLElement)) return;
+    const key = event.target.dataset["treeKey"];
+    const entry = key === undefined ? undefined : navByKey.get(key);
+    if (key === undefined || entry === undefined) return;
+    if (event.key === "Delete") {
+      // A pane leaves with Close pane, not from here.
+      if (entry.kind === "pane") return;
+      event.preventDefault();
+      const closing = entry.kind === "item" ? menuTargets(selected, entry.id) : [];
+      const removed = new Set(entry.kind === "item" ? closing.map(itemKey) : [key]);
+      focusAfter.current = focusAfterRemoval(nav, key, removed) ?? null;
+      if (entry.kind === "item") onCloseItems(closing);
+      else onUngroup(entry.id);
+      return;
+    }
+    const action = treeKeyAction(nav, key, event.key);
+    if (action === undefined) return;
+    event.preventDefault();
+    if (action.type === "focus") {
+      focusRow(action.key);
+      return;
+    }
+    const target = navByKey.get(action.key);
+    if (target?.kind === "group") {
+      const row = rows.find(
+        (candidate) => candidate.kind === "group" && candidate.group.id === target.id,
+      );
+      if (row?.kind === "group") onToggleGroup(row.group);
+    } else if (target?.kind === "item") {
+      toggleFolded(target.id);
+    }
+  };
+
   const renderRow = (row: TreeRow) => {
     const indent = { marginInlineStart: row.depth * 14 };
     if (row.kind === "group") {
@@ -323,7 +443,7 @@ export function SidebarTree({
       const edit: Editing = { kind: "group", id: group.id };
       if (editing?.kind === "group" && editing.id === group.id) {
         return (
-          <li key={group.id} style={indent}>
+          <li key={group.id} role="none" style={indent}>
             <InlineName
               label="Group name"
               initial={group.name}
@@ -334,7 +454,11 @@ export function SidebarTree({
         );
       }
       const marks = groupMarks(space, group);
-      const words = marksWords(marks);
+      const markWords = marksWords(marks);
+      const countWords = count === 1 ? "1 tab" : `${count} tabs`;
+      // The button is named by the group name alone (read from its content); the number of tabs and
+      // the marks are its description.
+      const words = [countWords, ...markWords];
       const descriptionId = `group-info-${group.id}`;
       return (
         <DragRow key={group.id} id={group.id} kind="group" style={indent}>
@@ -346,9 +470,9 @@ export function SidebarTree({
               data-nr-state={group.collapsed ? "collapsed" : "expanded"}
               data-row-id={group.id}
               data-nr-depth={row.depth}
-              aria-label={group.name}
               aria-expanded={!group.collapsed}
-              aria-describedby={words.length > 0 ? descriptionId : undefined}
+              aria-describedby={descriptionId}
+              {...rowProps(groupKey(group.id))}
               {...drag.buttonProps}
               onClick={() => onToggleGroup(group)}
               onDoubleClick={() => onStartEdit(edit)}
@@ -368,20 +492,19 @@ export function SidebarTree({
               )}
               <span className="group-dot" style={{ background: group.color }} aria-hidden="true" />
               <span className="group-name">{group.name}</span>
-              {words.length > 0 && (
+              {markWords.length > 0 && (
                 <span className="tab-badges" data-nr-part="group-marks" aria-hidden="true">
                   <MarkBadges marks={marks} />
                 </span>
               )}
-              {words.length > 0 && (
-                <span id={descriptionId} className="sr-only">
-                  {words.join(". ")}
-                </span>
-              )}
+              <span id={descriptionId} className="sr-only" aria-hidden="true">
+                {words.join(". ")}
+              </span>
               <span
                 className="group-count"
                 data-nr-part="group-count"
-                title={count === 1 ? "1 tab" : `${count} tabs`}
+                title={countWords}
+                aria-hidden="true"
               >
                 {count}
               </span>
@@ -397,7 +520,7 @@ export function SidebarTree({
     const edit: Editing = { kind: "item", id: row.id };
     if (editing?.kind === "item" && editing.id === row.id) {
       return (
-        <li key={row.id} style={indent}>
+        <li key={row.id} role="none" style={indent}>
           <InlineName
             label="Tab name"
             initial={label}
@@ -443,8 +566,10 @@ export function SidebarTree({
           data-row-id={row.id}
           data-nr-depth={row.depth}
           aria-current={isActive ? "true" : undefined}
-          aria-label={label}
+          aria-selected={isActive || selected.includes(row.id)}
+          aria-expanded={isSplit ? expanded : undefined}
           aria-describedby={describedBy !== "" ? describedBy : undefined}
+          {...rowProps(itemKey(row.id))}
           {...(onPeek !== undefined ? peek.anchorProps(row.id) : {})}
           {...drag?.buttonProps}
           onClick={(event) => {
@@ -491,6 +616,8 @@ export function SidebarTree({
             type="button"
             className="pane-toggle"
             data-nr-part="item-panes-toggle"
+            tabIndex={-1}
+            aria-hidden="true"
             aria-expanded={expanded}
             aria-label={expanded ? "Hide panes" : "Show panes"}
             onClick={() => toggleFolded(row.id)}
@@ -508,13 +635,19 @@ export function SidebarTree({
           </span>
         )}
         {expanded && (
-          <PaneList itemId={row.id} label={label} entries={entries} onPaneClick={onPaneClick} />
+          <PaneList
+            itemId={row.id}
+            label={label}
+            entries={entries}
+            rowProps={rowProps}
+            onPaneClick={onPaneClick}
+          />
         )}
       </>
     );
     if (row.pinned) {
       return (
-        <li key={row.id} style={indent}>
+        <li key={row.id} role="none" style={indent}>
           {content()}
         </li>
       );
@@ -530,7 +663,16 @@ export function SidebarTree({
   const treeRows = rows.filter((row) => !(row.kind === "item" && row.pinned));
   return (
     <>
-      <ul key={space.id} className="tab-list" aria-label="Tabs" aria-describedby={DRAG_HELP_ID}>
+      <ul
+        key={space.id}
+        ref={treeRef}
+        className="tab-list"
+        role="tree"
+        aria-label="Tabs"
+        aria-multiselectable="true"
+        aria-describedby={DRAG_HELP_ID}
+        onKeyDown={onTreeKeyDown}
+      >
         {pinnedRows.length > 0 && <PinnedList>{pinnedRows.map(renderRow)}</PinnedList>}
         {treeRows.map(renderRow)}
       </ul>

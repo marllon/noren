@@ -15,12 +15,13 @@ import {
 const LAYOUT_KEY = "noren.ui.layout";
 
 const bar = (page: Page) => page.locator('[data-nr-part="tabbar"]');
-const barTab = (page: Page, name: string) => bar(page).getByRole("button", { name, exact: true });
+const barTab = (page: Page, name: string) => bar(page).getByRole("tab", { name, exact: true });
 const island = (page: Page) => page.locator('[data-nr-part="island"]');
 const sidebar = (page: Page) => page.locator('[data-nr-part="sidebar"]');
 const content = (page: Page) => page.getByRole("region", { name: "Content", exact: true });
-const tree = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const treeTab = (page: Page, name: string) => tree(page).getByRole("button", { name, exact: true });
+const tree = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const treeTab = (page: Page, name: string) =>
+  tree(page).getByRole("treeitem", { name, exact: true });
 const radio = (screen: Locator, name: string) => screen.getByRole("radio", { name, exact: true });
 const menuItem = (page: Page, name: string) => page.getByRole("menuitem", { name, exact: true });
 // The bar has its own New tab button; the (hidden) sidebar has another one.
@@ -28,7 +29,7 @@ const newTab = (page: Page) =>
   page
     .getByRole("navigation", { name: "Tab bar", exact: true })
     .getByRole("button", { name: "New tab", exact: true });
-const header = (page: Page) => island(page).getByRole("button", { name: "Work", exact: true });
+const header = (page: Page) => island(page).getByRole("tab", { name: "Work", exact: true });
 
 /** The names of the tabs on the bar, left to right (a folded group holds none). */
 async function barTabNames(page: Page): Promise<string[]> {
@@ -93,8 +94,9 @@ test("switching to top tabs shows the bar above the terminal, one tab per item i
   expect(contentBox.x).toBe(0);
   expect(contentBox.width).toBe(page.viewportSize()?.width);
   await expect(sidebar(page)).toHaveAttribute("data-nr-state", "hidden");
-  // The tree is not in the sidebar any more: the list on screen is the bar.
-  await expect(tree(page)).toHaveCount(1);
+  // The tree is not in the sidebar any more: the list of tabs on screen is the bar.
+  await expect(tree(page)).toHaveCount(0);
+  await expect(page.getByRole("tablist", { name: "Tabs", exact: true })).toHaveCount(1);
   await expect(bar(page)).toHaveCount(1);
 });
 
@@ -121,7 +123,7 @@ test("a group is a colored island that holds its tabs, with its name and count",
   await page.goto("/");
 
   await expect(island(page)).toHaveCount(1);
-  const header = island(page).getByRole("button", { name: "Work", exact: true });
+  const header = island(page).getByRole("tab", { name: "Work", exact: true });
   await expect(header).toHaveAttribute("aria-expanded", "true");
   await expect(header.locator('[data-nr-part="group-count"]')).toHaveText("3");
   // The island carries the color of the group and draws it as its border.
@@ -146,7 +148,7 @@ test("folding a group hides its tabs and keeps the island with name and count", 
 }) => {
   await startWithTopTabs(page);
   await page.goto("/");
-  const header = island(page).getByRole("button", { name: "Work", exact: true });
+  const header = island(page).getByRole("tab", { name: "Work", exact: true });
 
   await header.click();
   await expect(header).toHaveAttribute("aria-expanded", "false");
@@ -188,7 +190,7 @@ test("the mode stays after a reload, and going back to the sidebar brings the tr
   expect(side.x).toBe(0);
   expect(main.x).toBeGreaterThanOrEqual(side.x + side.width);
   // The folded or open state of the group is the same as before.
-  await expect(page.getByRole("button", { name: "Work", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("treeitem", { name: "Work", exact: true })).toHaveAttribute(
     "aria-expanded",
     "true",
   );
@@ -251,7 +253,7 @@ test("the tab menu of the bar closes a tab and renaming works in place", async (
   const groupField = page.getByRole("textbox", { name: "Group name", exact: true });
   await groupField.fill("Backend");
   await page.keyboard.press("Enter");
-  await expect(island(page).getByRole("button", { name: "Backend", exact: true })).toBeVisible();
+  await expect(island(page).getByRole("tab", { name: "Backend", exact: true })).toBeVisible();
 });
 
 test("the keyboard reaches the bar: arrows move between tabs and group headers, Enter activates", async ({

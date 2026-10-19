@@ -2,8 +2,8 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { seedSidebarState } from "./sidebar-fixture";
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const tab = (page: Page, name: string) => list(page).getByRole("button", { name, exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const tab = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
 const meta = (page: Page, name: string) => tab(page, name).locator('[data-nr-part="item-meta"]');
 const indicator = (page: Page, name: string, kind: string) =>
   tab(page, name).locator(`[data-nr-indicator="${kind}"]`);

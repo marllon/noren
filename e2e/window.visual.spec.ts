@@ -14,7 +14,9 @@ const PICTURE = "fixtures/background.png";
 const FIXTURE = readFileSync(new URL("./fixtures/background.png", import.meta.url));
 
 const tab = (page: Page, name: string) =>
-  page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button", { name, exact: true });
+  page
+    .getByRole("tree", { name: "Tabs", exact: true })
+    .getByRole("treeitem", { name, exact: true });
 
 test.use({ colorScheme: "dark" });
 

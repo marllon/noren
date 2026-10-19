@@ -196,7 +196,7 @@ test("the panes and their proportions stay when another tab shows", async ({ pag
 
   await page.getByRole("button", { name: "New tab", exact: true }).click();
   await expect(panes(page)).toHaveCount(1);
-  await page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button").nth(0).click();
+  await page.getByRole("tree", { name: "Tabs", exact: true }).getByRole("treeitem").nth(0).click();
 
   await expect(panes(page)).toHaveCount(2);
   expect(await paneIds(page)).toEqual([first, second]);

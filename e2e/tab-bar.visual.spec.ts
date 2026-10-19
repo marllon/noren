@@ -21,7 +21,7 @@ for (const scheme of ["dark", "light"] as const) {
         "data-nr-state",
         "hidden",
       );
-      await expect(bar.getByRole("button", { name: "api", exact: true })).toHaveAttribute(
+      await expect(bar.getByRole("tab", { name: "api", exact: true })).toHaveAttribute(
         "aria-current",
         "true",
       );

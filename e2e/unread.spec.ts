@@ -43,11 +43,13 @@ async function seed(page: Page): Promise<void> {
   );
 }
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
 const tab = (page: Page, name: string): Locator =>
-  list(page).getByRole("button", { name, exact: true });
+  list(page).getByRole("treeitem", { name, exact: true });
 const group = (page: Page, name: string): Locator =>
-  list(page).getByRole("button", { name, exact: true }).and(page.locator('[data-nr-part="group"]'));
+  list(page)
+    .getByRole("treeitem", { name, exact: true })
+    .and(page.locator('[data-nr-part="group"]'));
 const space = (page: Page, name: string): Locator =>
   page.getByRole("navigation", { name: "Spaces", exact: true }).getByRole("button", { name });
 const mark = (where: Locator, kind: "unread" | "bell"): Locator =>

@@ -40,7 +40,9 @@ const WEB_STATE_KEY = "noren.web.state";
 const body = (page: Page) => page.locator(".app-body");
 const sidebar = (page: Page) => page.locator('[data-nr-part="sidebar"]');
 const tab = (page: Page, name: string) =>
-  page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button", { name, exact: true });
+  page
+    .getByRole("tree", { name: "Tabs", exact: true })
+    .getByRole("treeitem", { name, exact: true });
 const radio = (screen: Locator, name: string) => screen.getByRole("radio", { name, exact: true });
 const checkbox = (screen: Locator, name: string) =>
   screen.getByRole("checkbox", { name, exact: true });

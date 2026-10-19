@@ -10,15 +10,17 @@ type Hook = { focusedPaneId(): string | undefined };
 const focusedPaneId = (page: Page): Promise<string | undefined> =>
   page.evaluate(() => (window as Window & { __norenTest?: Hook }).__norenTest?.focusedPaneId());
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const tab = (page: Page, name: string) => list(page).getByRole("button", { name, exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const tab = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
 const thumb = (page: Page, name: string) => tab(page, name).locator('[data-nr-part="item-layout"]');
 const panes = (page: Page, name: string) =>
-  page.getByRole("list", { name: `Panes of ${name}`, exact: true });
+  page.getByRole("group", { name: `Panes of ${name}`, exact: true });
 const entries = (page: Page, name: string) =>
   panes(page, name).locator('[data-nr-part="item-pane"]');
+// The toggle is a mouse control only: hidden from assistive technology (the tab carries
+// aria-expanded and Left and Right), so it is found by its part and label.
 const toggle = (page: Page, label: "Show panes" | "Hide panes") =>
-  page.getByRole("button", { name: label, exact: true });
+  page.locator(`[data-nr-part="item-panes-toggle"][aria-label="${label}"]`);
 
 const { title, first, second } = SPLIT_FIXTURE;
 

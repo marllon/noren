@@ -1,5 +1,28 @@
 /* Colors come only from the theme tokens (--nr-*), set on the root element by theme.ts. */
 
+/*
+ * Keyboard focus. Anything a key can reach shows a ring in the accent of the theme. The selector
+ * has no specificity (`:where`), so a control that draws its own focus mark (the menu items, the
+ * resize handle, the text fields) keeps it. Rows of the sidebar and the bar sit in boxes that clip
+ * what is drawn outside them, so their ring is drawn inside.
+ */
+:where(button, a, summary, select, textarea, input):focus-visible {
+  outline: 2px solid var(--nr-accent);
+  outline-offset: 2px;
+}
+
+:where(
+  .tab-button,
+  .group-button,
+  .item-pane,
+  .pane-toggle,
+  .bar-tab,
+  .bar-group,
+  .bar-new
+):focus-visible {
+  outline-offset: -2px;
+}
+
 html,
 body,
 #root {
@@ -397,6 +420,11 @@ body {
 .tab-button[data-nr-state="active"] {
   border-color: var(--nr-border);
   background: color-mix(in srgb, var(--nr-space-color) 16%, var(--nr-surface));
+}
+
+/* The tint of the active tab is darker than the surface: the muted text on it is pulled toward the text color to stay readable (4.5:1). */
+.tab-button[data-nr-state="active"] .tab-meta {
+  color: color-mix(in srgb, var(--nr-muted) 70%, var(--nr-text));
 }
 
 .tab-button {
@@ -1195,6 +1223,12 @@ body {
   flex: none;
   background: var(--nr-border);
   transition: background 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .split-separator {
+    transition: none;
+  }
 }
 
 .split-separator[data-nr-dir="row"] {
@@ -2118,6 +2152,12 @@ body {
 
 .palette [cmdk-item][data-selected="true"] {
   background: color-mix(in srgb, var(--nr-text) 12%, transparent);
+}
+
+/* The highlight of the selected entry is darker than the panel: the muted text on it is pulled toward the text color to stay readable (4.5:1). */
+.palette [cmdk-item][data-selected="true"] .palette-detail,
+.palette [cmdk-item][data-selected="true"] .palette-chord {
+  color: color-mix(in srgb, var(--nr-muted) 60%, var(--nr-text));
 }
 
 .palette .palette-dot {

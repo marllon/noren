@@ -20,8 +20,8 @@ type HookWindow = Window & {
   __norenHandleDeepLink?: (url: unknown) => Promise<void>;
 };
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const tab = (page: Page, name: string) => list(page).getByRole("button", { name, exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const tab = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
 const space = (page: Page, name: string) =>
   page.getByRole("navigation", { name: "Spaces", exact: true }).getByRole("button", {
     name,

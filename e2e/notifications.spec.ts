@@ -74,7 +74,7 @@ test.describe("with the default settings", () => {
   test.beforeEach(async ({ page }) => {
     await seed(page);
     await page.goto("/");
-    await expect(page.getByRole("button", { name: "api", exact: true })).toHaveAttribute(
+    await expect(page.getByRole("treeitem", { name: "api", exact: true })).toHaveAttribute(
       "aria-current",
       "true",
     );

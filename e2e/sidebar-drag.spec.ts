@@ -4,8 +4,8 @@ import { seedSidebarState } from "./sidebar-fixture";
 
 // The seeded sidebar: pinned "notes", then the group "Work" (api, build, logs), "deploy", "scratch".
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const row = (page: Page, name: string) => list(page).getByRole("button", { name, exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const row = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
 const indicator = (page: Page) => list(page).locator('[data-nr-part="drop-indicator"]');
 
 /** The rows top to bottom as `name@depth`, groups included. */
@@ -14,7 +14,8 @@ async function rows(page: Page): Promise<string[]> {
     .locator("[data-row-id]")
     .evaluateAll((nodes) =>
       nodes.map(
-        (node) => `${node.getAttribute("aria-label") ?? ""}@${node.getAttribute("data-nr-depth")}`,
+        (node) =>
+          `${node.querySelector('[data-nr-part="item-title"], .group-name')?.textContent ?? ""}@${node.getAttribute("data-nr-depth")}`,
       ),
     );
 }
@@ -23,8 +24,9 @@ async function rows(page: Page): Promise<string[]> {
 async function indicatorAt(page: Page): Promise<string> {
   const marks = await indicator(page).evaluateAll((nodes) =>
     nodes.map((node) => {
-      const owner = node.closest("li")?.querySelector("[data-row-id]")?.getAttribute("aria-label");
-      return `${node.getAttribute("data-nr-position")} ${owner ?? ""}`;
+      const owner = node.closest("li")?.querySelector("[data-row-id]");
+      const name = owner?.querySelector('[data-nr-part="item-title"], .group-name')?.textContent;
+      return `${node.getAttribute("data-nr-position")} ${name ?? ""}`;
     }),
   );
   return marks.join(",");

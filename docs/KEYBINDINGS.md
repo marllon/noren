@@ -47,6 +47,7 @@ The **safe** preset is the default. It does not fight the shell: Ctrl+T, Ctrl+W 
 | Select command output         | none                  | none                  |
 | Copy last command output      | none                  | none                  |
 | Open settings                 | none                  | none                  |
+| Focus sidebar                 | none                  | none                  |
 | Import color scheme...        | none                  | none                  |
 | Set theme for this space      | none                  | none                  |
 | Switch sidebar side           | none                  | none                  |
@@ -78,7 +79,7 @@ The chosen preset is a setting of `config.jsonc`: `"keybindings": { "preset": "s
 
 The user's own chords (the overrides) are still provisional: they live in the browser storage under `noren.ui.keybindings`, as `{"overrides": {"<action id>": "<chord>" | null}}`, until the file gets a place for them. A value that is missing, not JSON or not an object falls back to no overrides; an override for an unknown action, or with a chord that cannot match, is dropped. Earlier builds kept the preset here too (`{"preset": ..., "overrides": ...}`): it is moved into the file once, at the first start, and removed from this key.
 
-"Open settings", "Import color scheme..." (category General: it opens a file picker, see [THEMING.md](THEMING.md)), "Set theme for this space" and the layout actions (category **Layout**, see below) have no key by default; record one for them in the shortcuts screen if you want.
+"Open settings", "Focus sidebar" (see [The sidebar by keyboard](#the-sidebar-by-keyboard)), "Import color scheme..." (category General: it opens a file picker, see [THEMING.md](THEMING.md)), "Set theme for this space" and the layout actions (category **Layout**, see below) have no key by default; record one for them in the shortcuts screen if you want.
 
 ## Layout actions
 
@@ -134,3 +135,24 @@ Ctrl+Shift+Alt+L (the same in both presets, free in both; "Open library", `tab.l
 ## The search over all tabs
 
 Ctrl+Shift+Alt+F (the same in both presets; "Search all tabs" in the registry, so the shortcuts screen shows and records it, and the palette lists it) opens a search over the output of every open tab of every space. The screen writes the chord as `Ctrl+Alt+Shift+F`, the fixed order of chord text. The key goes to a text field like any other shortcut, so pressing it again while the box has the keyboard does nothing. See [SEARCH.md](SEARCH.md).
+
+## The sidebar by keyboard
+
+The tabs of the sidebar are an ARIA tree (`role="tree"`, one `treeitem` per group, tab and pane of a split tab, with `aria-level`, `aria-setsize`, `aria-posinset`, `aria-expanded` and `aria-selected`; the Pinned tabs are the `group` "Pinned"). With the tabs on top the bar is a `tablist` of `tab`s (the header of a group is a tab that opens or folds it).
+
+The terminal keeps Tab for the shell, so the way in for the keyboard is the action **Focus sidebar** (`sidebar.focus`, category General): it has no key by default, run it from the palette (`>focus sidebar`) or record a chord for it in the shortcuts screen. It puts the focus on the row of the tree that is in the Tab order (a roving tabindex: exactly one row, the one that last had the focus, else the tab on screen, else the first), or on the tab on screen in the bar when the tabs are on top. Tab then leaves the tree, and Shift+Tab leaves it backwards.
+
+These keys act only while the focus is on a row of the tree, and only with no modifier held, so no shortcut of the table above changes:
+
+| Key        | Does                                                                                                                                                                                                                                                                  |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Up / Down  | Moves the focus to the row above / below (the panes of an unfolded split tab are rows). Stops at the ends. Does not open a tab.                                                                                                                                       |
+| Home / End | First / last row.                                                                                                                                                                                                                                                     |
+| Right      | On a folded group or split tab, unfolds it; on an unfolded one, goes to its first child.                                                                                                                                                                              |
+| Left       | On an unfolded group or split tab, folds it; on any other row, goes to its parent.                                                                                                                                                                                    |
+| Enter      | Activates the row: shows the tab, folds or unfolds the group, shows the tab and focuses the pane.                                                                                                                                                                     |
+| Space      | Picks the row up to move it (see below); Space again drops it, Escape cancels.                                                                                                                                                                                        |
+| F2         | Renames the tab or group; Enter confirms and the focus comes back to the row.                                                                                                                                                                                         |
+| Delete     | Closes the tab (every tab of the selection when the row is part of it, as "Close" in the tab menu). On a group it dissolves the group and keeps its tabs ("Ungroup"). On a pane it does nothing: use Close pane. The focus goes to the row below, else the one above. |
+
+While a row is picked up the arrows choose a place, not a row. Focus rings use the accent of the theme (`--nr-accent`); under `prefers-reduced-motion: reduce` every animation and transition of the interface is off.

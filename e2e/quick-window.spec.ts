@@ -69,7 +69,7 @@ const quick = <K extends keyof QuickHook>(
   ) as Promise<ReturnType<QuickHook[K]>>;
 
 const tabs = (page: Page) =>
-  page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button");
+  page.getByRole("tree", { name: "Tabs", exact: true }).getByRole("treeitem");
 const panel = (page: Page) => page.locator('[data-nr-part="quick-preview"]');
 const promoteButton = (page: Page) => panel(page).locator('[data-nr-part="quick-promote"]');
 

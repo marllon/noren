@@ -4,8 +4,8 @@ import { ACTIONS_CWD, ACTIONS_TEXT, seedActionsFile, seedSidebarState } from "./
 
 // Baselines are per operating system (Windows only, D7): `pnpm e2e:visual`.
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const tab = (page: Page, name: string) => list(page).getByRole("button", { name, exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const tab = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
 
 /** Loads the saved workspace and makes the tab "build" fail with `exit 2`. Ends on the tab "api". */
 async function openSidebar(page: Page): Promise<void> {
@@ -35,7 +35,7 @@ async function openSplitSidebar(page: Page): Promise<void> {
   await seedSidebarState(page, { split: true });
   await page.goto("/");
   await expect(tab(page, "servers")).toBeVisible();
-  await expect(page.getByRole("list", { name: "Panes of servers", exact: true })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Panes of servers", exact: true })).toBeVisible();
   await tab(page, "api").click();
   await page.evaluate(() => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();

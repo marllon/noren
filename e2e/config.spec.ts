@@ -40,7 +40,9 @@ const body = (page: Page) => page.locator(".app-body");
 const sidebar = (page: Page) => page.locator('[data-nr-part="sidebar"]');
 const notice = (page: Page) => page.locator('[data-nr-part="config-notice"]');
 const tab = (page: Page, name: string) =>
-  page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button", { name, exact: true });
+  page
+    .getByRole("tree", { name: "Tabs", exact: true })
+    .getByRole("treeitem", { name, exact: true });
 const handle = (page: Page) => page.getByRole("separator", { name: "Resize sidebar", exact: true });
 
 /** Starts the app with a workspace and, when given, a settings file already on disk. */

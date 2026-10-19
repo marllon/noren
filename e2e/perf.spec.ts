@@ -31,8 +31,9 @@ interface ProbeWindow extends HookWindow {
 test.describe.configure({ mode: "serial" });
 test.setTimeout(300_000);
 
-const tabList = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const tab = (page: Page, name: string) => tabList(page).getByRole("button", { name, exact: true });
+const tabList = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const tab = (page: Page, name: string) =>
+  tabList(page).getByRole("treeitem", { name, exact: true });
 const spaceButton = (page: Page, name: string) =>
   page
     .getByRole("navigation", { name: "Spaces", exact: true })
@@ -286,7 +287,7 @@ test("sidebar: answers a click within a few frames while 50 MB of output comes i
 
   for (let rep = 1; rep <= REPS; rep++) {
     const page = await freshPage(browser, baseURL);
-    const work = tabList(page).getByRole("button", { name: "Work", exact: true });
+    const work = tabList(page).getByRole("treeitem", { name: "Work", exact: true });
     // The same two gestures with nothing coming in: the noise the loaded ones are read against.
     for (let i = 0; i < 4; i++) {
       idleGroup.push(await clickAndTime(page, work, "data-nr-state", null));

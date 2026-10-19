@@ -13,7 +13,7 @@ interface Hook {
 }
 type HookWindow = Window & { __norenTest?: Hook };
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
 /** The one tab of the page: its title changes with the shell, so it cannot be found by name. */
 const tab = (page: Page): Locator => list(page).locator('[data-nr-part="item"]');
 const title = (page: Page): Locator => tab(page).locator('[data-nr-part="item-title"]');

@@ -18,7 +18,7 @@ const sessionStarts = (page: Page): Promise<Start[]> =>
 const rootVar = (page: Page, name: string): Promise<string> =>
   page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
 
-const tabList = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
+const tabList = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
 const palette = (page: Page): Locator => page.locator('[data-nr-part="palette"]');
 const options = (page: Page): Locator => palette(page).getByRole("option");
 const ofKind = (page: Page, kind: string): Locator =>
@@ -51,7 +51,7 @@ test("a profile entry opens a new tab that starts that profile", async ({ page }
     window.localStorage.setItem("noren.web.profiles", JSON.stringify(profiles));
   }, SEED_PROFILES);
   await openApp(page);
-  await expect(tabList(page).getByRole("button")).toHaveCount(1);
+  await expect(tabList(page).getByRole("treeitem")).toHaveCount(1);
 
   await openPalette(page);
   // One entry per profile, listed without a prefix and under >.
@@ -63,7 +63,7 @@ test("a profile entry opens a new tab that starts that profile", async ({ page }
   await page.keyboard.press("Enter");
 
   await expect(palette(page)).toBeHidden();
-  await expect(tabList(page).getByRole("button")).toHaveCount(2);
+  await expect(tabList(page).getByRole("treeitem")).toHaveCount(2);
   await expect
     .poll(async () => (await sessionStarts(page)).map((start) => start.profileId))
     .toContain("pwsh");
@@ -78,7 +78,7 @@ test("a profile entry also works with the single profile of the machine", async 
   await expect(options(page)).toHaveCount(1);
   await expect(options(page).first()).toHaveAttribute("data-nr-kind", "profile");
   await page.keyboard.press("Enter");
-  await expect(tabList(page).getByRole("button")).toHaveCount(2);
+  await expect(tabList(page).getByRole("treeitem")).toHaveCount(2);
 });
 
 test.describe("themes", () => {
@@ -156,7 +156,7 @@ test("a folder reported by OSC 7 is listed as recent and opens a tab there", asy
   await page.keyboard.press("Enter");
 
   await expect(palette(page)).toBeHidden();
-  await expect(tabList(page).getByRole("button")).toHaveCount(2);
+  await expect(tabList(page).getByRole("treeitem")).toHaveCount(2);
   await expect
     .poll(async () => (await sessionStarts(page)).map((s) => s.cwd))
     .toContain("/srv/api");

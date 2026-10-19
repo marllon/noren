@@ -28,7 +28,7 @@ for (const scheme of ["dark", "light"] as const) {
       // Low in the sidebar, where no row is under the pointer.
       await page.mouse.move(2, 560);
       await expect(sidebar).toHaveAttribute("data-nr-state", "revealed");
-      await expect(page.getByRole("list", { name: "Tabs", exact: true })).toBeVisible();
+      await expect(page.getByRole("tree", { name: "Tabs", exact: true })).toBeVisible();
 
       // The terminal is never part of a screenshot: its layers are hidden (the area stays empty,
       // since the terminal takes the whole width) and the sidebar shows over it.

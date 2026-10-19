@@ -14,7 +14,9 @@ const THEMES = [
 ] as const;
 
 const tab = (page: Page, name: string) =>
-  page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button", { name, exact: true });
+  page
+    .getByRole("tree", { name: "Tabs", exact: true })
+    .getByRole("treeitem", { name, exact: true });
 
 test.use({ colorScheme: "dark" });
 

@@ -17,8 +17,8 @@ const paneIds = (page: Page): Promise<string[]> =>
 const splitRight = (page: Page): Promise<string | undefined> =>
   page.evaluate(() => (window as Window & { __norenTest?: Hook }).__norenTest?.split("row"));
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const row = (page: Page, name: string) => list(page).getByRole("button", { name, exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const row = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
 const swapZone = (page: Page) => page.locator('[data-nr-part="pane-swap-zone"]');
 const joinZone = (page: Page) => page.locator('[data-nr-part="pane-drop-zone"]');
 const frame = (page: Page, paneId: string) => page.locator(`[data-pane-id="${paneId}"]`);

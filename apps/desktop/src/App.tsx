@@ -823,6 +823,21 @@ function Shell({ store }: { store: WorkspaceStore }) {
     });
   }, [store]);
 
+  /**
+   * Puts the keyboard on the tabs: the row of the sidebar tree that is in the Tab order, or the tab
+   * on screen in the bar when the tabs are on top. The terminal keeps Tab for the shell, so this is
+   * the way in for the keyboard.
+   */
+  const focusSidebar = useCallback(() => {
+    requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>(
+          '[data-nr-part="sidebar"] [role="treeitem"][tabindex="0"], [data-nr-part="tabbar"] [role="tab"][aria-selected="true"]',
+        )
+        ?.focus();
+    });
+  }, []);
+
   /** Opens the library over everything else; the palette and the search give way to it. */
   const openLibrary = useCallback(() => {
     setPaletteOpen(false);
@@ -1098,6 +1113,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) openSchemePicker();
         return;
       }
+      if (action.command.kind === "focus-sidebar") {
+        if (!modalOpen.current) focusSidebar();
+        return;
+      }
       if (action.command.kind === "ask-toggle") {
         if (!modalOpen.current) toggleAskRef.current();
         return;
@@ -1127,6 +1146,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     showNotice,
     openSearch,
     openSchemePicker,
+    focusSidebar,
     focusedHandle,
     terminalAction,
     runLayout,
@@ -1442,6 +1462,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
       setPaletteOpen(false);
       toggleQuick();
       return;
+    } else if (entry.action.command.kind === "focus-sidebar") {
+      // The tabs take the keyboard; the palette must not hand it to the terminal.
+      setPaletteOpen(false);
+      focusSidebar();
+      return;
     } else if (entry.action.command.kind === "import-scheme") {
       // The file picker takes over; the terminal gets the keyboard back with the palette's close.
       closePalette();
@@ -1496,6 +1521,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
       setOverlay({ kind: "group-menu", groupId, point }),
     onToggleGroup: (group: GroupNode) =>
       dispatch({ type: "group/set-collapsed", groupId: group.id, collapsed: !group.collapsed }),
+    // Delete in the tree does what "Close" and "Ungroup" in the context menus do.
+    onCloseItems: (itemIds: readonly Id[]) => {
+      store.getState().closeItems(itemIds);
+      clearSelection();
+    },
+    onUngroup: (groupId: Id) => dispatch({ type: "group/ungroup", groupId }),
     onStartEdit: setEditing,
     onCommitEdit,
     onCancelEdit,

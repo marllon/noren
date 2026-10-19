@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const tab = (page: Page, name: string) => list(page).getByRole("button", { name, exact: true });
-const group = (page: Page, name: string) => list(page).getByRole("button", { name, exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const tab = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
+const group = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
 const itemLabels = (page: Page): Promise<string[]> =>
   list(page).locator('[data-nr-part="item"]').allInnerTexts();
 const groupCount = (page: Page, name: string) =>

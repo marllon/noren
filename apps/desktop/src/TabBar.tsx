@@ -72,14 +72,16 @@ export function TabBar({
           onCancel={onCancelEdit}
         />
       ) : (
+        // A tab list owns only tabs, so the header of a group is a tab too: it opens or folds the
+        // group instead of showing a panel, which `aria-expanded` says.
         <button
           type="button"
+          role="tab"
           className="bar-group"
           data-nr-part="group"
           data-nr-state={group.collapsed ? "collapsed" : "expanded"}
           data-nr-bar-control=""
           data-row-id={group.id}
-          aria-label={group.name}
           aria-expanded={!group.collapsed}
           onClick={() => onToggleGroup(group)}
           onDoubleClick={() => onStartEdit(edit)}
@@ -99,6 +101,7 @@ export function TabBar({
             className="group-count"
             data-nr-part="group-count"
             title={count === 1 ? "1 tab" : `${count} tabs`}
+            aria-hidden="true"
           >
             {count}
           </span>
@@ -107,6 +110,7 @@ export function TabBar({
     return (
       <li
         key={group.id}
+        role="none"
         className="bar-island"
         data-nr-part="island"
         data-nr-state={group.collapsed ? "collapsed" : "expanded"}
@@ -114,7 +118,7 @@ export function TabBar({
       >
         {header}
         {nodes.length > 0 && (
-          <ul className="bar-list" aria-label={`${group.name} tabs`}>
+          <ul className="bar-list" role="none">
             {nodes.map(renderNode)}
           </ul>
         )}
@@ -129,7 +133,7 @@ export function TabBar({
     const edit: Editing = { kind: "item", id: node.id };
     if (editing?.kind === "item" && editing.id === node.id) {
       return (
-        <li key={node.id} className="bar-slot">
+        <li key={node.id} role="none" className="bar-slot">
           <InlineName
             label="Tab name"
             initial={label}
@@ -144,9 +148,10 @@ export function TabBar({
     const words = indicatorLabels(summary);
     const descriptionId = `bar-info-${node.id}`;
     return (
-      <li key={node.id} className="bar-slot">
+      <li key={node.id} role="none" className="bar-slot">
         <button
           type="button"
+          role="tab"
           className="bar-tab"
           data-nr-part="item"
           data-nr-state={isActive ? "active" : undefined}
@@ -154,6 +159,7 @@ export function TabBar({
           data-nr-pinned={node.pinned ? "true" : undefined}
           data-nr-bar-control=""
           data-row-id={node.id}
+          aria-selected={isActive}
           aria-current={isActive ? "true" : undefined}
           aria-label={label}
           aria-describedby={words.length > 0 ? descriptionId : undefined}
@@ -199,7 +205,7 @@ export function TabBar({
 
   return (
     <nav className="tab-bar" aria-label="Tab bar" onKeyDown={onBarKeyDown}>
-      <ul className="bar-list bar-root" data-nr-part="tabbar" aria-label="Tabs">
+      <ul className="bar-list bar-root" data-nr-part="tabbar" role="tablist" aria-label="Tabs">
         {barNodes(space).map(renderNode)}
       </ul>
       <button

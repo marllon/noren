@@ -37,7 +37,7 @@ const hook = (page: Page) => ({
 });
 
 const tabs = (page: Page) =>
-  page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button");
+  page.getByRole("tree", { name: "Tabs", exact: true }).getByRole("treeitem");
 
 async function open(page: Page): Promise<void> {
   await page.goto("/");

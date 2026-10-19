@@ -15,8 +15,8 @@ interface Hook {
 }
 type HookWindow = Window & { __norenTest?: Hook };
 
-const list = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
-const tab = (page: Page, name: string) => list(page).getByRole("button", { name, exact: true });
+const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+const tab = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
 const tooltip = (page: Page) => page.getByRole("tooltip");
 const peekLines = (page: Page) => tooltip(page).locator('[data-nr-part="peek-line"]');
 

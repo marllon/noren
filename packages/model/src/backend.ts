@@ -1,9 +1,11 @@
 /**
- * Terminal side of the backend contract. It never imports DOM or Tauri.
- *
- * The AI methods (`ai.*`) join this interface in the tasks of their own phase.
+ * The backend contract: the terminal, the files of the app and the AI. It never imports DOM or
+ * Tauri. The AI side is the `ai` member (`ai.providers`, `ai.configure`, `ai.setKey`,
+ * `ai.listOllamaModels`, `ai.testConnection`); asking a question (`ai.*` streaming) joins it with
+ * the Ask panel.
  */
 
+import type { AiBackend } from "./ai";
 import type { BackgroundImageFile } from "./background";
 import type { UserProfile } from "./user-profile-schema";
 import type { WindowEffect, WindowEffectReport, WindowScheme } from "./window-effect";
@@ -56,6 +58,8 @@ export interface ModFile {
 }
 
 export interface Backend {
+  /** The AI providers: which ones there are, their keys, Ollama's models and the connection test. */
+  readonly ai: AiBackend;
   /**
    * The shells a session can start: the ones found on the machine (the default one marked), then
    * the profiles of the user the backend was given (`setUserProfiles`), in their order.

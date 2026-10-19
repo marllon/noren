@@ -326,6 +326,117 @@
       },
       "additionalProperties": false,
       "description": "Auto-archive: tabs that nobody uses go to the archive with their saved output, and come back from the library."
+    },
+    "ai": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Off: no AI function is offered and nothing is ever sent to a provider. A space can turn the AI off for itself too; it takes both being on.",
+          "default": false,
+          "type": "boolean"
+        },
+        "providers": {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z0-9][a-z0-9_-]*$",
+                "description": "The id of the provider, such as \"my-openai\". Unique among the providers; \"ollama\" is taken by the Ollama that Noren already knows. The API key is kept in the system keychain under this id."
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["openai-compatible", "anthropic"],
+                "description": "\"openai-compatible\" for Ollama, LM Studio, vLLM, OpenRouter, OpenAI, Groq and the like (the address is the API root, such as \"https://api.openai.com/v1\"); \"anthropic\" for the Anthropic API (such as \"https://api.anthropic.com\")."
+              },
+              "baseUrl": {
+                "type": "string",
+                "maxLength": 2048,
+                "description": "The address of the API, up to its root. Only http and https; never put a key in it, the key goes to the system keychain."
+              },
+              "model": {
+                "type": "string",
+                "maxLength": 200,
+                "pattern": "\\S",
+                "description": "The model this provider uses when a function does not name one in ai.defaults."
+              }
+            },
+            "required": ["id", "kind", "baseUrl", "model"],
+            "additionalProperties": false,
+            "description": "An AI provider of your own."
+          },
+          "description": "AI providers of your own, besides the Ollama on this computer that Noren already knows (id \"ollama\"). The API key of each is kept in the system keychain and never in this file."
+        },
+        "defaults": {
+          "type": "object",
+          "properties": {
+            "ask": {
+              "description": "For the Ask panel.",
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The id of a provider: \"ollama\" or one listed in ai.providers."
+                },
+                "model": {
+                  "type": "string",
+                  "maxLength": 200,
+                  "pattern": "\\S",
+                  "description": "The model to ask."
+                }
+              },
+              "required": ["provider", "model"],
+              "additionalProperties": false
+            },
+            "explain": {
+              "description": "For explaining the error of a command.",
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The id of a provider: \"ollama\" or one listed in ai.providers."
+                },
+                "model": {
+                  "type": "string",
+                  "maxLength": 200,
+                  "pattern": "\\S",
+                  "description": "The model to ask."
+                }
+              },
+              "required": ["provider", "model"],
+              "additionalProperties": false
+            },
+            "command": {
+              "description": "For writing a command from a description.",
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The id of a provider: \"ollama\" or one listed in ai.providers."
+                },
+                "model": {
+                  "type": "string",
+                  "maxLength": 200,
+                  "pattern": "\\S",
+                  "description": "The model to ask."
+                }
+              },
+              "required": ["provider", "model"],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false,
+          "description": "The provider and model each function uses by default (ask, explain, command). A function that is not listed has no default."
+        }
+      },
+      "additionalProperties": false,
+      "description": "The AI, off until you turn it on: providers (Ollama on this computer, and any you add) and which of them each function uses. Noren never runs what the AI suggests."
     }
   },
   "additionalProperties": false,

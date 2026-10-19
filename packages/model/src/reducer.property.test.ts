@@ -20,6 +20,7 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "space/set-theme": true,
   "space/set-background": true,
   "space/set-mods": true,
+  "space/set-ai": true,
   "space/set-defaults": true,
   "space/move": true,
   "space/activate": true,
@@ -152,6 +153,7 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "space/set-theme":
     case "space/set-background":
     case "space/set-mods":
+    case "space/set-ai":
     case "space/set-defaults":
     case "space/move":
     case "space/activate":

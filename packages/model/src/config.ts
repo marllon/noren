@@ -1,6 +1,13 @@
 import { findNodeAtLocation, getNodeValue, parseTree, printParseErrorCode } from "jsonc-parser";
 import type { Node as JsonNode, ParseError } from "jsonc-parser";
 import { z } from "zod";
+import {
+  AI_FUNCTIONS,
+  AiProviderSchema,
+  MAX_AI_MODEL,
+  MAX_AI_PROVIDERS,
+  OLLAMA_PROVIDER_ID,
+} from "./ai";
 import { DEFAULT_ARCHIVE_AFTER_HOURS, DEFAULT_ARCHIVE_ENABLED } from "./archive";
 import { MAX_BACKGROUND_BLUR, MAX_BACKGROUND_PATH, backgroundImageProblem } from "./background";
 import { MAX_MODS, MOD_FILE_NAME_PATTERN, isReservedModName } from "./mods";
@@ -300,6 +307,91 @@ const profilesSchema = z
       "Shell profiles of your own, listed in the command palette after the ones Noren finds on the machine. An id the machine already has is refused when the profiles are loaded.",
   });
 
+/** The providers of your own; Ollama is always there and cannot be listed. */
+const aiProvidersSchema = z
+  .array(AiProviderSchema)
+  .max(MAX_AI_PROVIDERS)
+  .superRefine((providers, context) => {
+    const seen = new Set<string>();
+    providers.forEach((provider, index) => {
+      if (provider.id === OLLAMA_PROVIDER_ID) {
+        context.addIssue({
+          code: "custom",
+          message: `The id "${provider.id}" is reserved for the Ollama Noren already knows`,
+          path: [index, "id"],
+        });
+      } else if (seen.has(provider.id)) {
+        context.addIssue({
+          code: "custom",
+          message: `The id "${provider.id}" is used by another provider`,
+          path: [index, "id"],
+        });
+      }
+      seen.add(provider.id);
+    });
+  })
+  .meta({
+    description:
+      'AI providers of your own, besides the Ollama on this computer that Noren already knows (id "ollama"). The API key of each is kept in the system keychain and never in this file.',
+  });
+
+/** Which provider and model a function of the AI uses by default. */
+const aiTargetSchema = z
+  .strictObject({
+    provider: z
+      .string()
+      .min(1)
+      .meta({ description: 'The id of a provider: "ollama" or one listed in ai.providers.' }),
+    model: z
+      .string()
+      .max(MAX_AI_MODEL)
+      .regex(/\S/, "The model is empty")
+      .meta({ description: "The model to ask." }),
+  })
+  .meta({ description: "A provider and a model." });
+
+const aiDefaultsSchema = z
+  .strictObject({
+    ask: aiTargetSchema.optional().meta({ description: "For the Ask panel." }),
+    explain: aiTargetSchema
+      .optional()
+      .meta({ description: "For explaining the error of a command." }),
+    command: aiTargetSchema
+      .optional()
+      .meta({ description: "For writing a command from a description." }),
+  })
+  .meta({
+    description: `The provider and model each function uses by default (${AI_FUNCTIONS.join(", ")}). A function that is not listed has no default.`,
+  });
+
+const aiSchema = z
+  .strictObject({
+    enabled: setting(
+      z.boolean(),
+      "Off: no AI function is offered and nothing is ever sent to a provider. A space can turn the AI off for itself too; it takes both being on.",
+      false,
+    ),
+    providers: aiProvidersSchema.optional(),
+    defaults: aiDefaultsSchema.optional(),
+  })
+  .superRefine((ai, context) => {
+    const known = new Set([OLLAMA_PROVIDER_ID, ...(ai.providers ?? []).map((p) => p.id)]);
+    for (const fn of AI_FUNCTIONS) {
+      const target = ai.defaults?.[fn];
+      if (target !== undefined && !known.has(target.provider)) {
+        context.addIssue({
+          code: "custom",
+          message: `The provider "${target.provider}" is not "${OLLAMA_PROVIDER_ID}" and is not listed in ai.providers`,
+          path: ["defaults", fn, "provider"],
+        });
+      }
+    }
+  })
+  .meta({
+    description:
+      "The AI, off until you turn it on: providers (Ollama on this computer, and any you add) and which of them each function uses. Noren never runs what the AI suggests.",
+  });
+
 export const ConfigSchema = z
   .strictObject({
     $schema: z
@@ -313,6 +405,7 @@ export const ConfigSchema = z
     keybindings: keybindingsSchema.optional(),
     notifications: notificationsSchema.optional(),
     archive: archiveSchema.optional(),
+    ai: aiSchema.optional(),
   })
   .meta({
     title: "Noren settings",

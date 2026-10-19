@@ -33,6 +33,9 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// The longest the probe for Ollama waits, whatever the timeout of the client.
 const OLLAMA_PROBE_TIMEOUT: Duration = Duration::from_secs(3);
+/// The longest the connection test waits for the answer, whatever the timeout of the client: a
+/// person is looking at a button.
+const CONNECTION_TEST_TIMEOUT: Duration = Duration::from_secs(15);
 /// Largest piece of an error body read to explain it.
 const MAX_ERROR_BODY_BYTES: usize = 8 * 1024;
 /// Largest list of models accepted from Ollama.
@@ -99,23 +102,34 @@ impl Provider {
         }
     }
 
+    /// What a chat request needs: the id, a model and an address.
     fn validate(&self) -> Result<(), AiError> {
-        if self.id.trim().is_empty() {
-            return Err(AiError::InvalidRequest(
-                "the provider has no id".to_string(),
-            ));
-        }
+        self.check_id()?;
         if self.model.trim().is_empty() {
             return Err(AiError::InvalidRequest(
                 "the provider has no model".to_string(),
             ));
         }
-        let base = self.base_url.trim();
-        let host = base
-            .strip_prefix("http://")
-            .or_else(|| base.strip_prefix("https://"))
-            .unwrap_or("");
-        if host.is_empty() || host.starts_with('/') {
+        self.check_address()
+    }
+
+    /// What reaching the provider needs, without a model: the id and an address.
+    fn validate_endpoint(&self) -> Result<(), AiError> {
+        self.check_id()?;
+        self.check_address()
+    }
+
+    fn check_id(&self) -> Result<(), AiError> {
+        if self.id.trim().is_empty() {
+            return Err(AiError::InvalidRequest(
+                "the provider has no id".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn check_address(&self) -> Result<(), AiError> {
+        if !is_http_address(&self.base_url) {
             return Err(AiError::InvalidRequest(
                 "the address of the provider must start with http:// or https:// and name a host"
                     .to_string(),
@@ -133,6 +147,33 @@ impl Provider {
             ProviderKind::Anthropic => format!("{base}/v1/messages"),
         }
     }
+
+    /// The address of the list of models, which both kinds have and which needs the key but costs
+    /// nothing to read: what the connection test asks.
+    pub fn models_url(&self) -> String {
+        let base = self.base_url.trim().trim_end_matches('/');
+        match self.kind {
+            ProviderKind::OpenAiCompatible => format!("{base}/models"),
+            ProviderKind::Anthropic if base.ends_with("/v1") => format!("{base}/models"),
+            ProviderKind::Anthropic => format!("{base}/v1/models"),
+        }
+    }
+}
+
+/// Whether `address` starts with `http://` or `https://` and names a host after it. The only
+/// schemes a provider may use: anything else (`file:`, `ftp:`) is refused. An address with blanks
+/// or control characters, or with a user name or password in it (`http://user:pass@host`, which
+/// would keep a secret outside the keychain), is refused too.
+pub fn is_http_address(address: &str) -> bool {
+    let address = address.trim();
+    let rest = address
+        .strip_prefix("http://")
+        .or_else(|| address.strip_prefix("https://"))
+        .unwrap_or("");
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    !authority.is_empty()
+        && !authority.contains('@')
+        && !address.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
 /// Who wrote a message.
@@ -669,29 +710,15 @@ impl AiClient {
     ) -> Result<(), AiError> {
         provider.validate()?;
         let body = request_body(provider, messages)?;
-        let mut request = self
-            .http
-            .post(provider.chat_url())
-            .header("content-type", "application/json")
-            .header("accept", "text/event-stream");
-        let key = api_key.map(str::trim).filter(|key| !key.is_empty());
-        match (provider.kind, key) {
-            (ProviderKind::OpenAiCompatible, Some(key)) => {
-                request = request.bearer_auth(key);
-            }
-            (ProviderKind::OpenAiCompatible, None) => {}
-            (ProviderKind::Anthropic, Some(key)) => {
-                request = request
-                    .header("x-api-key", key)
-                    .header("anthropic-version", ANTHROPIC_VERSION);
-            }
-            (ProviderKind::Anthropic, None) => {
-                return Err(AiError::InvalidRequest(
-                    "this provider needs an API key and none is set".to_string(),
-                ));
-            }
-        }
-        let request = request.body(body.to_string());
+        let request = authorize(
+            self.http
+                .post(provider.chat_url())
+                .header("content-type", "application/json")
+                .header("accept", "text/event-stream"),
+            provider.kind,
+            api_key,
+        )?
+        .body(body.to_string());
 
         let sent = tokio::select! {
             biased;
@@ -735,6 +762,59 @@ impl AiClient {
                 return Ok(());
             }
         }
+    }
+
+    /// Checks that the provider answers and accepts the key, by reading its list of models
+    /// (`Provider::models_url`): a request that costs nothing, unlike a chat, and needs no model.
+    /// Any success status is `Ok`. Otherwise the error says what to fix, in the words of `AiError`,
+    /// with the key taken out of every text: a rejected key (401/403), another HTTP status, a
+    /// provider that cannot be reached, no answer in time, a missing key (`anthropic` needs one).
+    /// The wait is at most `CONNECTION_TEST_TIMEOUT`, whatever the timeout of the client.
+    pub async fn check_connection(
+        &self,
+        provider: &Provider,
+        api_key: Option<&str>,
+    ) -> Result<(), AiError> {
+        self.probe(provider, api_key)
+            .await
+            .map_err(|error| error.without_key(api_key.map(str::trim).unwrap_or("")))
+    }
+
+    async fn probe(&self, provider: &Provider, api_key: Option<&str>) -> Result<(), AiError> {
+        provider.validate_endpoint()?;
+        let request = authorize(
+            self.http
+                .get(provider.models_url())
+                .header("accept", "application/json"),
+            provider.kind,
+            api_key,
+        )?;
+        let limit = self.timeout.min(CONNECTION_TEST_TIMEOUT);
+        let response = tokio::time::timeout(limit, request.send())
+            .await
+            .map_err(|_| AiError::Timeout)?
+            .map_err(|e| from_reqwest(&e))?;
+        let status = response.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        // The body only explains the status: one that stalls or breaks loses the explanation.
+        let mut stream = pin!(response.bytes_stream());
+        let bytes = tokio::time::timeout(
+            limit,
+            self.read_limited(&mut stream, MAX_ERROR_BODY_BYTES, &CancellationToken::new()),
+        )
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or_default();
+        let message = body_reason(&bytes);
+        let status = status.as_u16();
+        Err(if status == 401 || status == 403 {
+            AiError::Auth { status, message }
+        } else {
+            AiError::Http { status, message }
+        })
     }
 
     /// Reads at most `limit` bytes of a body, under the timeout and the cancellation.
@@ -804,6 +884,27 @@ impl AiClient {
             Ok(Some(models)) => OllamaProbe::Found(models),
             _ => OllamaProbe::NotFound,
         }
+    }
+}
+
+/// Puts the key in the header its kind of provider reads. A key that is blank counts as none:
+/// `openai-compatible` goes without a header (Ollama and others need no key) and `anthropic` is
+/// refused, as it cannot be asked anything without one.
+fn authorize(
+    request: reqwest::RequestBuilder,
+    kind: ProviderKind,
+    api_key: Option<&str>,
+) -> Result<reqwest::RequestBuilder, AiError> {
+    let key = api_key.map(str::trim).filter(|key| !key.is_empty());
+    match (kind, key) {
+        (ProviderKind::OpenAiCompatible, Some(key)) => Ok(request.bearer_auth(key)),
+        (ProviderKind::OpenAiCompatible, None) => Ok(request),
+        (ProviderKind::Anthropic, Some(key)) => Ok(request
+            .header("x-api-key", key)
+            .header("anthropic-version", ANTHROPIC_VERSION)),
+        (ProviderKind::Anthropic, None) => Err(AiError::InvalidRequest(
+            "this provider needs an API key and none is set".to_string(),
+        )),
     }
 }
 
@@ -1850,5 +1951,221 @@ mod tests {
             client(250).detect_ollama("localhost:11434").await,
             OllamaProbe::NotFound
         );
+    }
+
+    // ---- the connection test ----------------------------------------------------------------
+
+    #[test]
+    fn models_url_follows_the_kind_and_the_base() {
+        let mut provider = Provider::ollama("");
+        assert_eq!(provider.models_url(), "http://localhost:11434/v1/models");
+        provider.base_url = "https://api.example.com/v1/".to_string();
+        assert_eq!(provider.models_url(), "https://api.example.com/v1/models");
+        provider.kind = ProviderKind::Anthropic;
+        assert_eq!(provider.models_url(), "https://api.example.com/v1/models");
+        provider.base_url = "https://api.anthropic.com".to_string();
+        assert_eq!(provider.models_url(), "https://api.anthropic.com/v1/models");
+    }
+
+    #[test]
+    fn only_http_and_https_addresses_with_a_host_and_no_secret_are_accepted() {
+        for good in [
+            "http://localhost:11434/v1",
+            "https://api.openai.com/v1",
+            " https://api.anthropic.com ",
+            "http://127.0.0.1:8080",
+            "http://[::1]:11434/v1",
+            "https://openrouter.ai/api/v1?x=1#y",
+        ] {
+            assert!(is_http_address(good), "{good:?}");
+        }
+        for bad in [
+            "",
+            "   ",
+            "localhost:11434",
+            "ftp://example.com",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "http://",
+            "https:///path",
+            "http://user:pass@example.com/v1",
+            "https://token@example.com",
+            "http://exa mple.com",
+            "http://example.com/\nx",
+            "HTTP://example.com",
+        ] {
+            assert!(!is_http_address(bad), "{bad:?}");
+        }
+    }
+
+    /// A provider whose model is blank: the connection test does not need one.
+    fn no_model(server: &TestServer, kind: ProviderKind) -> Provider {
+        Provider {
+            model: String::new(),
+            ..provider_at(server, kind)
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_connection_test_reads_the_models_with_the_key_in_the_header_of_each_kind() {
+        let server = TestServer::start(|_, stream, _| {
+            respond(stream, "200 OK", "application/json", r#"{"data":[]}"#);
+        });
+        let openai = no_model(&server, ProviderKind::OpenAiCompatible);
+        assert_eq!(
+            client(3000)
+                .check_connection(&openai, Some("sk-open"))
+                .await,
+            Ok(())
+        );
+        let request = server.request(0);
+        assert_eq!(request.request_line, "GET /v1/models HTTP/1.1");
+        assert_eq!(request.header("authorization"), Some("Bearer sk-open"));
+        assert_eq!(request.header("x-api-key"), None);
+        assert_eq!(request.body, "");
+
+        let anthropic = no_model(&server, ProviderKind::Anthropic);
+        assert_eq!(
+            client(3000)
+                .check_connection(&anthropic, Some(" sk-ant "))
+                .await,
+            Ok(())
+        );
+        let request = server.request(1);
+        assert_eq!(request.request_line, "GET /v1/models HTTP/1.1");
+        assert_eq!(request.header("x-api-key"), Some("sk-ant"));
+        assert!(request.header("anthropic-version").is_some());
+        assert_eq!(request.header("authorization"), None);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_provider_that_needs_no_key_is_tested_without_a_header() {
+        let server = TestServer::start(|_, stream, _| {
+            respond(stream, "200 OK", "application/json", r#"{"data":[]}"#);
+        });
+        let provider = no_model(&server, ProviderKind::OpenAiCompatible);
+        for key in [None, Some(""), Some("  ")] {
+            assert_eq!(client(3000).check_connection(&provider, key).await, Ok(()));
+        }
+        assert_eq!(server.request_count(), 3);
+        for index in 0..3 {
+            assert_eq!(server.request(index).header("authorization"), None);
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_connection_test_of_anthropic_without_a_key_is_refused_before_any_request() {
+        let server = TestServer::start(|_, stream, _| respond(stream, "200 OK", "text/plain", ""));
+        let provider = no_model(&server, ProviderKind::Anthropic);
+        for key in [None, Some(" ")] {
+            let error = client(3000)
+                .check_connection(&provider, key)
+                .await
+                .expect_err("no key");
+            assert!(matches!(error, AiError::InvalidRequest(_)), "{error:?}");
+            assert!(error.to_string().contains("API key"), "{error}");
+        }
+        assert_eq!(server.request_count(), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_rejected_key_in_the_connection_test_is_readable_and_the_text_hides_the_key() {
+        let key = "sk-test-SECRET-123456";
+        for kind in [ProviderKind::OpenAiCompatible, ProviderKind::Anthropic] {
+            let body = format!(
+                "{{\"error\":{{\"message\":\"Incorrect API key provided: {key}. Check it in your account.\"}}}}"
+            );
+            let server = TestServer::start(move |_, stream, _| {
+                respond(stream, "401 Unauthorized", "application/json", &body);
+            });
+            let provider = no_model(&server, kind);
+            let error = client(3000)
+                .check_connection(&provider, Some(key))
+                .await
+                .expect_err("401 is an error");
+            assert!(
+                matches!(error, AiError::Auth { status: 401, .. }),
+                "{error:?}"
+            );
+            let shown = error.to_string();
+            assert!(shown.contains("rejected the API key"), "{shown}");
+            assert!(shown.contains("Incorrect API key provided"), "{shown}");
+            assert!(shown.contains("[key]"), "{shown}");
+            assert!(!shown.contains(key), "the text leaks the key: {shown}");
+            assert!(!format!("{error:?}").contains(key), "{error:?}");
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn other_answers_to_the_connection_test_are_errors_and_a_redirect_is_not_followed() {
+        let server = TestServer::start(|_, stream, _| {
+            respond(stream, "404 Not Found", "text/plain", "no such page");
+        });
+        let provider = no_model(&server, ProviderKind::OpenAiCompatible);
+        assert_eq!(
+            client(3000).check_connection(&provider, None).await,
+            Err(AiError::Http {
+                status: 404,
+                message: "no such page".to_string()
+            })
+        );
+
+        let target = TestServer::start(|_, stream, _| respond(stream, "200 OK", "text/plain", ""));
+        let location = format!("{}/stolen", target.url);
+        let redirecting = TestServer::start(move |_, stream, _| {
+            let head = format!(
+                "HTTP/1.1 307 Temporary Redirect\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            );
+            let _ = stream.write_all(head.as_bytes());
+        });
+        let provider = no_model(&redirecting, ProviderKind::Anthropic);
+        let error = client(3000)
+            .check_connection(&provider, Some("sk-ant"))
+            .await
+            .expect_err("a redirect is not a success");
+        assert!(
+            matches!(error, AiError::Http { status: 307, .. }),
+            "{error:?}"
+        );
+        assert_eq!(target.request_count(), 0, "the key went to another host");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_connection_test_tells_unreachable_silent_and_invalid_providers_apart() {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .expect("bind")
+            .local_addr()
+            .expect("addr")
+            .port();
+        let gone = Provider {
+            base_url: format!("http://127.0.0.1:{port}/v1"),
+            ..Provider::ollama("")
+        };
+        // A refused connection takes about 2 s to be reported on Windows: the timeout is longer.
+        match client(8000).check_connection(&gone, None).await {
+            Err(AiError::Network(reason)) => assert!(!reason.is_empty()),
+            other => panic!("expected a network error, got {other:?}"),
+        }
+
+        let silent = TestServer::start(|_, stream, signals| stall(stream, signals));
+        let provider = no_model(&silent, ProviderKind::OpenAiCompatible);
+        let started = Instant::now();
+        assert_eq!(
+            client(250).check_connection(&provider, None).await,
+            Err(AiError::Timeout)
+        );
+        assert!(started.elapsed() < Duration::from_secs(3));
+
+        for address in ["file:///etc/passwd", "http://", "http://u:p@host/v1", ""] {
+            let invalid = Provider {
+                base_url: address.to_string(),
+                ..Provider::ollama("")
+            };
+            let result = client(500).check_connection(&invalid, None).await;
+            assert!(
+                matches!(result, Err(AiError::InvalidRequest(_))),
+                "{address:?}: {result:?}"
+            );
+        }
     }
 }

@@ -80,6 +80,9 @@ fn main() {
         .on_window_event(lifecycle::on_window_event)
         .invoke_handler(tauri::generate_handler![
             ai::ai_providers,
+            ai::ai_configure,
+            ai::ai_ollama_models,
+            ai::ai_test_connection,
             ai::ai_set_key,
             ai::ai_chat_stream,
             ai::ai_cancel,

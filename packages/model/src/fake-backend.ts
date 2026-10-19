@@ -1,3 +1,11 @@
+import { OLLAMA_BASE_URL, OLLAMA_PROVIDER_ID, AiProviderSchema, aiProvidersProblem } from "./ai";
+import type {
+  AiBackend,
+  AiConnectionResult,
+  AiProviderConfig,
+  AiProviderInfo,
+  OllamaModels,
+} from "./ai";
 import type {
   Backend,
   CreateSessionOptions,
@@ -46,9 +54,15 @@ export const DEFAULT_MONOSPACE_FONTS: readonly string[] = [
   "DejaVu Sans Mono",
 ];
 
+/** The name a call to the AI side is recorded under: `ai.providers`, `ai.setKey`, ... */
+export type FakeAiMethod = `ai.${keyof AiBackend & string}`;
+
+/** The name of a recorded call: a method of the `Backend`, or one of its `ai` member. */
+export type FakeCallMethod = keyof Backend | FakeAiMethod;
+
 /** One recorded call to a `Backend` method. Callbacks are not recorded. */
 export interface FakeCall {
-  readonly method: keyof Backend;
+  readonly method: FakeCallMethod;
   readonly args: readonly unknown[];
 }
 
@@ -82,6 +96,13 @@ export interface FakeBackendOptions {
   images?: Record<string, Uint8Array>;
   /** The monospaced font families this fake computer has. Defaults to the ones the terminal falls back to. */
   monospaceFonts?: readonly string[];
+  /**
+   * The models of the Ollama this fake computer has installed. Without it there is no Ollama here
+   * (`ai.listOllamaModels` answers `found: false`), which is what most computers are.
+   */
+  ollamaModels?: readonly string[];
+  /** Keys already in the fake keychain, by provider id. */
+  aiKeys?: Record<string, string>;
 }
 
 /** One notification given to `notify`, for assertions. */
@@ -413,6 +434,124 @@ class FakeSession {
   }
 }
 
+/** A provider id as the keychain takes it: the check of the Rust side (`is_valid_provider_id`). */
+const KEYCHAIN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+/** The longest key the keychain accepts, in characters. */
+const MAX_KEY_CHARS = 1024;
+
+/** What the fake computer's keychain, providers and Ollama hold, behind `FakeBackend.ai`. */
+class FakeAi implements AiBackend {
+  #providers: AiProviderConfig[] = [];
+  readonly #keys = new Map<string, string>();
+  #ollama: string[] | null = null;
+  readonly #connections = new Map<string, AiConnectionResult>();
+
+  constructor(
+    private readonly record: (method: FakeAiMethod, ...args: unknown[]) => void,
+    ollamaModels: readonly string[] | undefined,
+    keys: Record<string, string> | undefined,
+  ) {
+    if (ollamaModels !== undefined) this.#ollama = [...ollamaModels];
+    for (const [id, key] of Object.entries(keys ?? {})) this.#keys.set(id, key);
+  }
+
+  async providers(): Promise<AiProviderInfo[]> {
+    this.record("ai.providers");
+    const ollama: AiProviderInfo = {
+      id: OLLAMA_PROVIDER_ID,
+      kind: "openai-compatible",
+      baseUrl: OLLAMA_BASE_URL,
+      model: "",
+      hasKey: this.#keys.has(OLLAMA_PROVIDER_ID),
+    };
+    return [ollama, ...this.#providers.map((p) => ({ ...p, hasKey: this.#keys.has(p.id) }))];
+  }
+
+  async configure(providers: readonly AiProviderConfig[]): Promise<void> {
+    this.record("ai.configure", providers);
+    const problem = aiProvidersProblem(providers);
+    if (problem !== undefined) throw new Error(problem);
+    // The same as the Rust side keeps: the address and the model without the blanks around them.
+    this.#providers = providers.map((p) => {
+      const parsed = AiProviderSchema.parse(p);
+      return { ...parsed, baseUrl: parsed.baseUrl.trim(), model: parsed.model.trim() };
+    });
+  }
+
+  async setKey(providerId: string, key: string): Promise<void> {
+    // The key is not recorded with the call: nothing that outlives the call holds it but the keychain.
+    this.record("ai.setKey", providerId);
+    if (!KEYCHAIN_ID.test(providerId)) {
+      throw new Error(
+        "the provider id must be 1 to 64 letters, digits, '-' or '_', starting with a letter or digit",
+      );
+    }
+    const clean = key.trim();
+    if (clean === "") {
+      this.#keys.delete(providerId);
+      return;
+    }
+    if ([...clean].length > MAX_KEY_CHARS) {
+      throw new Error(`the key is longer than ${MAX_KEY_CHARS} characters`);
+    }
+    this.#keys.set(providerId, clean);
+  }
+
+  async listOllamaModels(): Promise<OllamaModels> {
+    this.record("ai.listOllamaModels");
+    return this.#ollama === null ? { found: false } : { found: true, models: [...this.#ollama] };
+  }
+
+  async testConnection(providerId: string): Promise<AiConnectionResult> {
+    this.record("ai.testConnection", providerId);
+    if (!KEYCHAIN_ID.test(providerId)) throw new Error(`\`${providerId}\` is not a provider id`);
+    const provider = this.#providers.find((p) => p.id === providerId);
+    if (providerId !== OLLAMA_PROVIDER_ID && provider === undefined) {
+      throw new Error(`there is no provider \`${providerId}\``);
+    }
+    const chosen = this.#connections.get(providerId);
+    if (chosen !== undefined) return this.#withoutKey(providerId, chosen);
+    if (providerId === OLLAMA_PROVIDER_ID && this.#ollama === null) {
+      return {
+        ok: false,
+        kind: "network",
+        message: "could not reach the provider: connection refused",
+      };
+    }
+    if (provider?.kind === "anthropic" && !this.#keys.has(providerId)) {
+      return {
+        ok: false,
+        kind: "invalid-request",
+        message: "this provider needs an API key and none is set",
+      };
+    }
+    return { ok: true };
+  }
+
+  /** The models of the fake Ollama; `null` takes Ollama away. */
+  setOllamaModels(models: readonly string[] | null): void {
+    this.#ollama = models === null ? null : [...models];
+  }
+
+  /** What `testConnection` answers for a provider, instead of what its key and Ollama say; `undefined` undoes it. */
+  setConnectionResult(providerId: string, result: AiConnectionResult | undefined): void {
+    if (result === undefined) this.#connections.delete(providerId);
+    else this.#connections.set(providerId, result);
+  }
+
+  /** The key stored for a provider. Not a `Backend` call: a test peeks into the fake keychain. */
+  storedKey(providerId: string): string | undefined {
+    return this.#keys.get(providerId);
+  }
+
+  /** The text of an answer without the key of the provider, as the Rust side takes it out. */
+  #withoutKey(providerId: string, result: AiConnectionResult): AiConnectionResult {
+    const key = this.#keys.get(providerId);
+    if (result.ok || key === undefined) return result;
+    return { ...result, message: result.message.split(key).join("[key]") };
+  }
+}
+
 /**
  * In-memory backend for tests, e2e and the web demo. Sessions run a simulated shell:
  *
@@ -447,11 +586,20 @@ class FakeSession {
  * - the profiles of the user (`setUserProfiles`) are checked as the real backend checks them and
  *   listed after the profiles it was built with; a session of one starts in its `cwd` unless the call
  *   names a folder, and `session(id)` tells the `program` and `args` it was asked to run
+ * - the AI (`ai`) has a fake Ollama (`ollamaModels`, `setOllamaModels`; none unless it is given
+ *   models), the providers handed over with `ai.configure` (checked as the real backend checks
+ *   them) and a fake keychain: `ai.setKey` keeps the key, `ai.providers` says only `hasKey`, and
+ *   `storedAiKey` lets a test peek. `ai.testConnection` answers ok, unless the provider is Ollama
+ *   that is not there, or Anthropic without a key, or `setAiConnectionResult` chose the answer (a
+ *   key in its text is taken out). Calls are recorded as `ai.providers`, `ai.setKey` (without the
+ *   key), and so on.
  *
  * Everything is synchronous: effects of `write` have been delivered when its promise resolves.
  */
 export class FakeBackend implements Backend {
   readonly clock: Clock;
+  readonly ai: AiBackend;
+  readonly #ai: FakeAi;
   readonly #profiles: ShellProfile[];
   #userProfiles: UserProfile[] = [];
   readonly #host: string;
@@ -508,6 +656,12 @@ export class FakeBackend implements Backend {
       this.#images.set(path, bytes);
     }
     this.#monospaceFonts = options.monospaceFonts ?? DEFAULT_MONOSPACE_FONTS;
+    this.#ai = new FakeAi(
+      (method, ...args) => this.#record(method, ...args),
+      options.ollamaModels,
+      options.aiKeys,
+    );
+    this.ai = this.#ai;
     this.#commandExitCode = options.commandExitCode ?? 0;
     for (const [cwd, text] of Object.entries(options.actionsFiles ?? {})) {
       this.#actionsFiles.set(cwd, text);
@@ -524,9 +678,27 @@ export class FakeBackend implements Backend {
     return this.#calls;
   }
 
-  /** The calls to one method. */
-  callsTo(method: keyof Backend): FakeCall[] {
+  /** The calls to one method (`"ai.setKey"` for a method of `ai`). */
+  callsTo(method: FakeCallMethod): FakeCall[] {
     return this.#calls.filter((call) => call.method === method);
+  }
+
+  /** Changes the models of the fake Ollama (as installing or removing one would); `null` takes Ollama away. Not a `Backend` call. */
+  setOllamaModels(models: readonly string[] | null): void {
+    this.#ai.setOllamaModels(models);
+  }
+
+  /**
+   * Makes `ai.testConnection` answer `result` for the provider, instead of what its key and Ollama
+   * say; `undefined` undoes it. Not a `Backend` call.
+   */
+  setAiConnectionResult(providerId: string, result: AiConnectionResult | undefined): void {
+    this.#ai.setConnectionResult(providerId, result);
+  }
+
+  /** The key `ai.setKey` stored for a provider, for a test to check; the interface never gets it. Not a `Backend` call. */
+  storedAiKey(providerId: string): string | undefined {
+    return this.#ai.storedKey(providerId);
   }
 
   /** Current content of the in-memory `state.json`, `null` when there is none. */
@@ -1072,7 +1244,7 @@ export class FakeBackend implements Backend {
     return this.#notifications;
   }
 
-  #record(method: keyof Backend, ...args: unknown[]): void {
+  #record(method: FakeCallMethod, ...args: unknown[]): void {
     this.#calls.push({ method, args });
   }
 

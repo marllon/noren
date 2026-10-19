@@ -77,6 +77,13 @@ export type Action =
    * empty list turns the space's mods off. A list the space already has changes nothing.
    */
   | { type: "space/set-mods"; spaceId: Id; modIds: readonly string[] }
+  /**
+   * Turns the AI on or off for the space (`Space.aiEnabled`, on for a new space). Off, no AI function
+   * is offered in it and nothing of it is sent to a provider, whatever `ai.enabled` says in the
+   * settings (see `aiIsOn`). A value that is not a boolean, or the one the space already has,
+   * changes nothing.
+   */
+  | { type: "space/set-ai"; spaceId: Id; enabled: boolean }
   | { type: "space/move"; spaceId: Id; index: number }
   | { type: "space/activate"; spaceId: Id }
   /**

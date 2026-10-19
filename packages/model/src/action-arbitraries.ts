@@ -246,6 +246,7 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
       fc.record({ type: tag("space/set-background"), spaceId, background: arbBackground }),
     ),
     weighted(1, fc.record({ type: tag("space/set-mods"), spaceId, modIds: arbModIds })),
+    weighted(1, fc.record({ type: tag("space/set-ai"), spaceId, enabled: fc.boolean() })),
     weighted(1, fc.record({ type: tag("space/move"), spaceId, index: arbIndex })),
     weighted(2, fc.record({ type: tag("space/activate"), spaceId })),
     weighted(

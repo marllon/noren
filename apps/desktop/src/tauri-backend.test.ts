@@ -542,3 +542,117 @@ describe("TauriBackend", () => {
     expect(() => backend.onOutput(99, () => undefined)()).not.toThrow();
   });
 });
+
+describe("TauriBackend ai", () => {
+  const KEY = "sk-test-0123456789abcdef";
+  const OPENAI = {
+    id: "my-openai",
+    kind: "openai-compatible",
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-4o-mini",
+  } as const;
+
+  it("lists the providers through ai_providers, with hasKey and nothing else", async () => {
+    const fake = fakeBridge({
+      ai_providers: [
+        {
+          id: "ollama",
+          kind: "openai-compatible",
+          baseUrl: "http://localhost:11434/v1",
+          model: "",
+          hasKey: false,
+          surprise: KEY,
+        },
+        { ...OPENAI, hasKey: true },
+      ],
+    });
+    const providers = await new TauriBackend(fake.bridge).ai.providers();
+    expect(providers).toEqual([
+      {
+        id: "ollama",
+        kind: "openai-compatible",
+        baseUrl: "http://localhost:11434/v1",
+        model: "",
+        hasKey: false,
+      },
+      { ...OPENAI, hasKey: true },
+    ]);
+    expect(JSON.stringify(providers)).not.toContain(KEY);
+    expect(fake.invocations).toEqual([{ command: "ai_providers", args: undefined }]);
+  });
+
+  it("hands the providers over through ai_configure with only their four fields", async () => {
+    const fake = fakeBridge();
+    const withKey = { ...OPENAI, apiKey: KEY } as typeof OPENAI;
+    await expect(new TauriBackend(fake.bridge).ai.configure([withKey])).resolves.toBeUndefined();
+    expect(fake.invocations).toEqual([{ command: "ai_configure", args: { providers: [OPENAI] } }]);
+    expect(JSON.stringify(fake.invocations)).not.toContain(KEY);
+  });
+
+  it("lets the reason ai_configure refused with reach the caller", async () => {
+    const fake = fakeBridge();
+    fake.failing.add("ai_configure");
+    await expect(new TauriBackend(fake.bridge).ai.configure([])).rejects.toThrow(
+      "ai_configure failed",
+    );
+  });
+
+  it("stores a key through ai_set_key, the only command that carries one", async () => {
+    const fake = fakeBridge();
+    await expect(
+      new TauriBackend(fake.bridge).ai.setKey("my-openai", KEY),
+    ).resolves.toBeUndefined();
+    expect(fake.invocations).toEqual([
+      { command: "ai_set_key", args: { providerId: "my-openai", key: KEY } },
+    ]);
+  });
+
+  it("lists the models of Ollama through ai_ollama_models, found or not", async () => {
+    const found = fakeBridge({ ai_ollama_models: { found: true, models: ["llama3.2", "qwen"] } });
+    await expect(new TauriBackend(found.bridge).ai.listOllamaModels()).resolves.toEqual({
+      found: true,
+      models: ["llama3.2", "qwen"],
+    });
+    expect(found.invocations).toEqual([{ command: "ai_ollama_models", args: undefined }]);
+    const absent = fakeBridge({ ai_ollama_models: { found: false, models: [] } });
+    await expect(new TauriBackend(absent.bridge).ai.listOllamaModels()).resolves.toEqual({
+      found: false,
+    });
+  });
+
+  it("tests a connection through ai_test_connection: ok, or a failure with its kind and message", async () => {
+    const ok = fakeBridge({ ai_test_connection: { ok: true } });
+    await expect(new TauriBackend(ok.bridge).ai.testConnection("my-openai")).resolves.toEqual({
+      ok: true,
+    });
+    expect(ok.invocations).toEqual([
+      { command: "ai_test_connection", args: { providerId: "my-openai" } },
+    ]);
+
+    const failed = fakeBridge({
+      ai_test_connection: {
+        ok: false,
+        kind: "auth",
+        message: "the provider rejected the API key (HTTP 401)",
+      },
+    });
+    await expect(new TauriBackend(failed.bridge).ai.testConnection("my-openai")).resolves.toEqual({
+      ok: false,
+      kind: "auth",
+      message: "the provider rejected the API key (HTTP 401)",
+    });
+
+    // An answer that lacks the reason still reads as a failure with words.
+    const odd = fakeBridge({ ai_test_connection: { ok: false } });
+    const result = await new TauriBackend(odd.bridge).ai.testConnection("my-openai");
+    expect(result).toMatchObject({ ok: false, kind: "protocol" });
+  });
+
+  it("lets a test that could not start reach the caller as a rejection", async () => {
+    const fake = fakeBridge();
+    fake.failing.add("ai_test_connection");
+    await expect(new TauriBackend(fake.bridge).ai.testConnection("nobody")).rejects.toThrow(
+      "ai_test_connection failed",
+    );
+  });
+});

@@ -107,6 +107,31 @@ export type { CommandLine, ProfilesFromImport, SkippedProfile } from "./user-pro
 export { parseUserThemes, serializeTheme } from "./user-themes";
 export type { UserThemesResult } from "./user-themes";
 export {
+  AI_FUNCTIONS,
+  AI_PROVIDER_ID_PATTERN,
+  AI_PROVIDER_KINDS,
+  AiProviderSchema,
+  MAX_AI_BASE_URL,
+  MAX_AI_MODEL,
+  MAX_AI_PROVIDER_ID,
+  MAX_AI_PROVIDERS,
+  OLLAMA_BASE_URL,
+  OLLAMA_PROVIDER_ID,
+  aiIsOn,
+  aiProvidersProblem,
+  isHttpAddress,
+} from "./ai";
+export type {
+  AiBackend,
+  AiConnectionResult,
+  AiErrorKind,
+  AiFunction,
+  AiProviderConfig,
+  AiProviderInfo,
+  AiProviderKind,
+  OllamaModels,
+} from "./ai";
+export {
   ConfigSchema,
   SIDEBAR_MAX_WIDTH,
   SYSTEM_THEME,
@@ -250,8 +275,10 @@ export type {
 } from "./types";
 export { FakeBackend } from "./fake-backend";
 export type {
+  FakeAiMethod,
   FakeBackendOptions,
   FakeCall,
+  FakeCallMethod,
   FakeCommandRun,
   FakeNotification,
   FakeSessionInfo,

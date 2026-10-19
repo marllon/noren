@@ -2,11 +2,17 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { OutputStream, fontNameList, sniffImageMime } from "@noren/model";
 import type {
+  AiBackend,
+  AiConnectionResult,
+  AiErrorKind,
+  AiProviderConfig,
+  AiProviderInfo,
   Backend,
   BackgroundImageFile,
   CreateSessionOptions,
   GitInfo,
   ModFile,
+  OllamaModels,
   SessionExit,
   SessionId,
   ShellProfile,
@@ -53,8 +59,62 @@ const CONFIG_CHANGED_EVENT = "config-changed";
 /** Event emitted by the Rust side when a mod file is added, changed or removed; the payload is the whole list. */
 const MODS_CHANGED_EVENT = "mods-changed";
 
+/** What `ai_test_connection` answers: `kind` and `message` are there for a failure. */
+interface ConnectionReportPayload {
+  ok: boolean;
+  kind?: AiErrorKind | null;
+  message?: string | null;
+}
+
+/** The AI side of `Backend` over the commands in `src-tauri/src/ai.rs`. */
+function tauriAi(bridge: TauriBridge): AiBackend {
+  return {
+    async providers(): Promise<AiProviderInfo[]> {
+      const list = await bridge.invoke<AiProviderInfo[]>("ai_providers");
+      // The Rust side never sends a key; the page copies the fields it knows and nothing else.
+      return list.map(({ id, kind, baseUrl, model, hasKey }) => ({
+        id,
+        kind,
+        baseUrl,
+        model,
+        hasKey,
+      }));
+    },
+
+    async configure(providers: readonly AiProviderConfig[]): Promise<void> {
+      // Only the four fields of a provider cross the bridge, whatever the objects carry: a key
+      // never travels with the list, and the Rust side would refuse the list if it did.
+      await bridge.invoke("ai_configure", {
+        providers: providers.map(({ id, kind, baseUrl, model }) => ({ id, kind, baseUrl, model })),
+      });
+    },
+
+    async setKey(providerId: string, key: string): Promise<void> {
+      await bridge.invoke("ai_set_key", { providerId, key });
+    },
+
+    async listOllamaModels(): Promise<OllamaModels> {
+      const found = await bridge.invoke<{ found: boolean; models: string[] }>("ai_ollama_models");
+      return found.found ? { found: true, models: [...found.models] } : { found: false };
+    },
+
+    async testConnection(providerId: string): Promise<AiConnectionResult> {
+      const report = await bridge.invoke<ConnectionReportPayload>("ai_test_connection", {
+        providerId,
+      });
+      if (report.ok) return { ok: true };
+      return {
+        ok: false,
+        kind: report.kind ?? "protocol",
+        message: report.message ?? "the provider gave an answer Noren could not read",
+      };
+    },
+  };
+}
+
 /** `Backend` over the Tauri commands in `src-tauri/src/bridge.rs`. */
 export class TauriBackend implements Backend {
+  readonly ai: AiBackend;
   readonly #bridge: TauriBridge;
   readonly #streams = new Map<SessionId, OutputStream>();
   readonly #exitListeners = new Set<(exit: SessionExit) => void>();
@@ -70,6 +130,7 @@ export class TauriBackend implements Backend {
 
   constructor(bridge: TauriBridge = tauriBridge()) {
     this.#bridge = bridge;
+    this.ai = tauriAi(bridge);
   }
 
   listProfiles(): Promise<ShellProfile[]> {

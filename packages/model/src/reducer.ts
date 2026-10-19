@@ -131,6 +131,11 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
         sameModList(space.modIds, modIds) ? undefined : { ...space, modIds },
       );
     }
+    case "space/set-ai":
+      if (typeof action.enabled !== "boolean") return ws;
+      return updateSpace(ws, action.spaceId, (space) =>
+        space.aiEnabled === action.enabled ? undefined : { ...space, aiEnabled: action.enabled },
+      );
     case "space/set-background": {
       if (action.background === null) {
         return updateSpace(ws, action.spaceId, (space) => {

@@ -24,13 +24,17 @@ import {
   FAVORITES_DROP_ID,
   PINNED_DROP_ID,
   dropAction,
+  canDropOnPane,
   dropSlots,
   outsideAction,
   outsideId,
   outsideOf,
+  paneDropId,
+  paneOf,
+  paneZone,
   resolveDrop,
 } from "./sidebar-drop";
-import type { DragSource, DropTarget, OutsideDrop } from "./sidebar-drop";
+import type { DragSource, DropTarget, OutsideDrop, PaneDrop, PaneZone } from "./sidebar-drop";
 import type { TreeRow } from "./sidebar-tree";
 import { spaceItemIds } from "./workspace-store";
 
@@ -52,6 +56,8 @@ interface DragState {
   target: DropTarget | null;
   /** The space icon or zone under the pointer, when dropping there would change something. */
   outside: OutsideDrop | null;
+  /** The zone of a pane of the tab on screen under the pointer, when dropping there would join the tab. */
+  pane: PaneDrop | null;
   /** Whether a drag is under way (the empty-state drop zones only show then). */
   dragging: boolean;
 }
@@ -59,6 +65,7 @@ interface DragState {
 const DragStateContext = createContext<DragState>({
   target: null,
   outside: null,
+  pane: null,
   dragging: false,
 });
 
@@ -88,7 +95,16 @@ const rowCollision: CollisionDetection = ({
       return [
         {
           id: container.id,
-          data: { droppableContainer: container, value: 0, y, top: rect.top, height: rect.height },
+          data: {
+            droppableContainer: container,
+            value: 0,
+            x,
+            y,
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+          },
         },
       ];
     }
@@ -109,6 +125,10 @@ const sameOutside = (a: OutsideDrop | null, b: OutsideDrop | null): boolean =>
     a.kind === b.kind &&
     (a.kind !== "space" || (b.kind === "space" && a.spaceId === b.spaceId)));
 
+const samePane = (a: PaneDrop | null, b: PaneDrop | null): boolean =>
+  a === b ||
+  (a !== null && b !== null && a.paneId === b.paneId && a.dir === b.dir && a.side === b.side);
+
 const sameTarget = (a: DropTarget | null, b: DropTarget | null): boolean =>
   a === b ||
   (a !== null &&
@@ -122,9 +142,15 @@ const sameTarget = (a: DropTarget | null, b: DropTarget | null): boolean =>
 interface Place {
   target: DropTarget | null;
   outside: OutsideDrop | null;
+  pane: PaneDrop | null;
 }
 
-const NOWHERE: Place = { target: null, outside: null };
+const NOWHERE: Place = { target: null, outside: null, pane: null };
+
+const SIDE_WORDS = {
+  row: { before: "left", after: "right" },
+  column: { before: "above", after: "below" },
+} as const;
 
 interface TreeDndProps {
   /** Every space: a tab can be dropped on the icon of any of them. */
@@ -136,6 +162,10 @@ interface TreeDndProps {
   rows: readonly TreeRow[];
   /** A drop that changes the workspace. */
   onAction(action: Action): void;
+  /** The tab on screen, whose panes take drops; undefined when no pane can take one. */
+  paneItemId: Id | undefined;
+  /** A tab was dropped on a pane of the tab on screen: join it there (or refuse). */
+  onPaneDrop(sourceId: Id, drop: PaneDrop): void;
   children: ReactNode;
 }
 
@@ -143,11 +173,20 @@ interface TreeDndProps {
  * Owns the one `DndContext` of the sidebar: it wraps the tree, the Pinned list, the Favorites grid
  * and the space icons, and keeps the place the dragged row would land in.
  */
-export function TreeDnd({ spaces, favorites, space, rows, onAction, children }: TreeDndProps) {
+export function TreeDnd({
+  spaces,
+  favorites,
+  space,
+  rows,
+  onAction,
+  paneItemId,
+  onPaneDrop,
+  children,
+}: TreeDndProps) {
   const [place, setPlace] = useState<Place>(NOWHERE);
   const [status, setStatus] = useState("");
   const [dragging, setDragging] = useState<Id | null>(null);
-  const { target, outside } = place;
+  const { target, outside, pane } = place;
 
   const order = spaceItemIds(space);
   /** The name of a tab or group, for what is read aloud and shown on the ghost. */
@@ -157,7 +196,8 @@ export function TreeDnd({ spaces, favorites, space, rows, onAction, children }: 
     return treeGroups(space.tree).find((group) => group.id === id)?.name ?? id;
   };
 
-  const describe = ({ target: spot, outside: away }: Place): string => {
+  const describe = ({ target: spot, outside: away, pane: beside }: Place): string => {
+    if (beside) return `Open beside the pane, on the ${SIDE_WORDS[beside.dir][beside.side]}.`;
     if (away) {
       if (away.kind === "pinned") return "Pin this tab.";
       if (away.kind === "favorites") return "Add this tab to the favorites.";
@@ -178,16 +218,26 @@ export function TreeDnd({ spaces, favorites, space, rows, onAction, children }: 
     const away = outsideOf(String(collision.id));
     if (away) {
       const valid = outsideAction(spaces, favorites, source, away) !== undefined;
-      return { target: null, outside: valid ? away : null };
+      return { target: null, outside: valid ? away : null, pane: null };
     }
-    const { y, top, height } = (collision.data ?? {}) as Record<string, unknown>;
+    const { x, y, left, top, width, height } = (collision.data ?? {}) as Record<string, unknown>;
     if (typeof y !== "number" || typeof top !== "number" || typeof height !== "number") {
       return NOWHERE;
+    }
+    const paneId = paneOf(String(collision.id));
+    if (paneId !== undefined) {
+      if (!canDropOnPane(source, paneItemId)) return NOWHERE;
+      if (typeof x !== "number" || typeof left !== "number" || typeof width !== "number") {
+        return NOWHERE;
+      }
+      const zone = paneZone({ left, top, width, height }, { x, y });
+      return zone ? { target: null, outside: null, pane: { paneId, ...zone } } : NOWHERE;
     }
     const fraction = height > 0 ? Math.min(1, Math.max(0, (y - top) / height)) : 0.5;
     return {
       target: resolveDrop(space, rows, source, String(collision.id), fraction) ?? null,
       outside: null,
+      pane: null,
     };
   };
 
@@ -267,7 +317,13 @@ export function TreeDnd({ spaces, favorites, space, rows, onAction, children }: 
 
   const onDragMove = (event: DragMoveEvent) => {
     const next = placeOf(event);
-    if (sameTarget(target, next.target) && sameOutside(outside, next.outside)) return;
+    if (
+      sameTarget(target, next.target) &&
+      sameOutside(outside, next.outside) &&
+      samePane(pane, next.pane)
+    ) {
+      return;
+    }
     setPlace(next);
     setStatus(describe(next));
   };
@@ -284,7 +340,8 @@ export function TreeDnd({ spaces, favorites, space, rows, onAction, children }: 
     clear();
     if (!source) return;
     let action: Action | undefined;
-    if (landing.outside) action = outsideAction(spaces, favorites, source, landing.outside);
+    if (landing.pane) onPaneDrop(source.id, landing.pane);
+    else if (landing.outside) action = outsideAction(spaces, favorites, source, landing.outside);
     else if (landing.target) action = dropAction(space, source, landing.target);
     if (action) onAction(action);
   };
@@ -296,7 +353,7 @@ export function TreeDnd({ spaces, favorites, space, rows, onAction, children }: 
   };
 
   return (
-    <DragStateContext value={{ target, outside, dragging: dragging !== null }}>
+    <DragStateContext value={{ target, outside, pane, dragging: dragging !== null }}>
       <DndContext
         sensors={sensors}
         collisionDetection={rowCollision}
@@ -400,6 +457,19 @@ export function useOutsideDrop(drop: OutsideDrop): OutsideDropHandle {
   const { outside } = useContext(DragStateContext);
   const { setNodeRef } = useDroppable({ id: outsideId(drop) });
   return { ref: setNodeRef, over: sameOutside(outside, drop) };
+}
+
+/** What a pane needs to take the drop of a tab; `zone` is the side the tab would land on. */
+export interface PaneDropHandle {
+  ref(node: HTMLElement | null): void;
+  zone: PaneZone | undefined;
+}
+
+/** Makes a pane a drop place; `zone` follows the same rule the drop uses. */
+export function usePaneDrop(paneId: Id, enabled: boolean): PaneDropHandle {
+  const { pane } = useContext(DragStateContext);
+  const { setNodeRef } = useDroppable({ id: paneDropId(paneId), disabled: !enabled });
+  return { ref: setNodeRef, zone: enabled && pane?.paneId === paneId ? pane : undefined };
 }
 
 function DropZone({ drop, label }: { drop: OutsideDrop; label: string }) {

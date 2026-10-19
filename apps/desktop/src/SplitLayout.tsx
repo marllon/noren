@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { Group, Panel, Separator, useGroupRef } from "react-resizable-panels";
 import type { Layout } from "react-resizable-panels";
+import { usePaneDrop } from "./TreeDnd";
 import {
   MIN_PANEL_PERCENT,
   childPanelId,
@@ -20,6 +21,8 @@ export interface SplitLayoutContext {
   framed: boolean;
   /** The pane that fills the item while the others stay hidden (mounted), if any. */
   zoomedPaneId: Id | undefined;
+  /** The panes take the drop of a tab dragged from the sidebar (this is the tab on screen). */
+  dropEnabled: boolean;
   /** Every pane shows a header with its title and the zoom and close buttons. */
   headers: boolean;
   /** The text of a pane's header. */
@@ -138,14 +141,22 @@ interface LayoutNodeViewProps {
 
 function LayoutNodeView({ node, path, context }: LayoutNodeViewProps) {
   if (node.kind === "split") return <SplitGroup node={node} path={path} context={context} />;
-  const { pane } = node;
+  return <PaneFrame pane={node.pane} context={context} />;
+}
+
+function PaneFrame({ pane, context }: { pane: Pane; context: SplitLayoutContext }) {
   const focused = pane.id === context.focusedPaneId;
   const zoom = context.zoomedPaneId;
+  const drop = usePaneDrop(
+    pane.id,
+    context.dropEnabled && (zoom === undefined || zoom === pane.id),
+  );
   // The zoom is only a style: the other panes stay where they are in the tree, hidden, so no
   // terminal is unmounted or moved (a moved terminal remounts and loses its screen).
   const zoomState = zoom === undefined ? undefined : zoom === pane.id ? "zoomed" : "hidden";
   return (
     <div
+      ref={drop.ref}
       className="pane-frame"
       data-nr-part="pane"
       data-pane-id={pane.id}
@@ -165,6 +176,15 @@ function LayoutNodeView({ node, path, context }: LayoutNodeViewProps) {
         />
       ) : null}
       {context.renderPane(pane)}
+      {drop.zone && (
+        <span
+          className="pane-drop-zone"
+          data-nr-part="pane-drop-zone"
+          data-nr-dir={drop.zone.dir}
+          data-nr-side={drop.zone.side}
+          aria-hidden="true"
+        />
+      )}
     </div>
   );
 }

@@ -2,7 +2,16 @@ import { emit } from "@tauri-apps/api/event";
 import { DEFAULT_MAX_PANES, FakeBackend, layoutPanes, treeGroups } from "@noren/model";
 import type { GroupNode, Id, Item, Pane, Space } from "@noren/model";
 import type { ITheme } from "@xterm/xterm";
-import { Suspense, use, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  use,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useStore } from "zustand";
 import { insideTauri } from "./backend";
 import { backend, booted } from "./boot";
@@ -34,6 +43,8 @@ import type { MenuPoint } from "./SpaceMenu";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import { SplitLayout } from "./SplitLayout";
 import type { SplitLayoutContext } from "./SplitLayout";
+import { joinedPaneCount, paneDropAction, paneLimitNotice } from "./sidebar-drop";
+import type { PaneDrop } from "./sidebar-drop";
 import { keyboardResize } from "./split-layout";
 import { splitCommand, typesText } from "./split-keys";
 import type { SplitCommand } from "./split-keys";
@@ -135,6 +146,7 @@ function ItemView({ store, space, item, shown, colors, home, onReady }: ItemView
     focusedPaneId: item.focusedPaneId,
     framed: item.layout.kind === "split",
     zoomedPaneId: item.zoomedPaneId,
+    dropEnabled: shown,
     headers: paneHeaders,
     paneTitle: (pane) => {
       const cwd = pane.cwd ?? space.defaults.cwd;
@@ -185,7 +197,7 @@ function runSplitCommand(store: WorkspaceStore, command: SplitCommand): string |
   switch (command.kind) {
     case "split":
       if (layoutPanes(item.layout).length >= DEFAULT_MAX_PANES) {
-        return `A tab holds at most ${DEFAULT_MAX_PANES} panes.`;
+        return paneLimitNotice(DEFAULT_MAX_PANES);
       }
       dispatch({
         type: "pane/split",
@@ -353,6 +365,23 @@ function Shell({ store }: { store: WorkspaceStore }) {
   // space shortcut, so a key that is a shortcut never reaches the terminal and any other key does.
   const [notice, setNotice] = useState("");
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const showNotice = useCallback((text: string) => {
+    clearTimeout(noticeTimer.current);
+    setNotice(text);
+    noticeTimer.current = setTimeout(() => setNotice(""), NOTICE_MS);
+  }, []);
+  /** A tab was dropped on a pane of the tab on screen: join it, or say why it cannot be. */
+  const onPaneDrop = (sourceId: Id, drop: PaneDrop) => {
+    if (activeId === undefined) return;
+    const panes = joinedPaneCount(space, sourceId, activeId);
+    if (panes === undefined) return;
+    if (panes > DEFAULT_MAX_PANES) {
+      showNotice(paneLimitNotice(DEFAULT_MAX_PANES));
+      return;
+    }
+    const action = paneDropAction({ kind: "item", id: sourceId }, activeId, drop);
+    if (action) dispatch(action);
+  };
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const command = splitCommand(event);
@@ -363,17 +392,14 @@ function Shell({ store }: { store: WorkspaceStore }) {
       // Holding the key must not split, close or zoom over and over.
       if (event.repeat && !command.repeat) return;
       const refusal = runSplitCommand(store, command);
-      if (refusal === undefined) return;
-      clearTimeout(noticeTimer.current);
-      setNotice(refusal);
-      noticeTimer.current = setTimeout(() => setNotice(""), NOTICE_MS);
+      if (refusal !== undefined) showNotice(refusal);
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => {
       window.removeEventListener("keydown", onKeyDown, true);
       clearTimeout(noticeTimer.current);
     };
-  }, [store]);
+  }, [store, showNotice]);
 
   // A horizontal wheel (or Shift+wheel) over the sidebar steps to the neighbor space and stops at
   // the ends. The listener is not passive so it can cancel the event, and it does that only when it
@@ -607,27 +633,29 @@ function Shell({ store }: { store: WorkspaceStore }) {
           {...reveal.edge}
         />
       )}
-      <aside
-        ref={sidebarRef}
-        className="sidebar"
-        data-nr-part="sidebar"
-        data-nr-state={autoHide ? (shown ? "revealed" : "hidden") : undefined}
-        aria-label="Sidebar"
-        style={{ width: layout.width }}
-        {...reveal.sidebar}
+      <TreeDnd
+        spaces={workspace.spaces}
+        favorites={workspace.favorites}
+        space={space}
+        rows={rows}
+        onAction={dispatch}
+        paneItemId={activeId}
+        onPaneDrop={onPaneDrop}
       >
-        <SidebarResizer
-          side={layout.side}
-          width={layout.width}
-          onResize={(width) => updateLayout({ width })}
-        />
-        <TreeDnd
-          spaces={workspace.spaces}
-          favorites={workspace.favorites}
-          space={space}
-          rows={rows}
-          onAction={dispatch}
+        <aside
+          ref={sidebarRef}
+          className="sidebar"
+          data-nr-part="sidebar"
+          data-nr-state={autoHide ? (shown ? "revealed" : "hidden") : undefined}
+          aria-label="Sidebar"
+          style={{ width: layout.width }}
+          {...reveal.sidebar}
         >
+          <SidebarResizer
+            side={layout.side}
+            width={layout.width}
+            onResize={(width) => updateLayout({ width })}
+          />
           {favorites.length > 0 && (
             <FavoritesGrid
               favorites={favorites}
@@ -652,37 +680,37 @@ function Shell({ store }: { store: WorkspaceStore }) {
             onNewSpace={() => setOverlay({ kind: "new" })}
             onMenu={(spaceId, point) => setOverlay({ kind: "menu", spaceId, point })}
           />
-        </TreeDnd>
-      </aside>
-      <div className="main">
-        {tabsOnTop && <TabBar {...treeProps} onNewTab={() => newTab()} />}
-        <section className="content" aria-label="Content">
-          {workspace.spaces.map((s) => (
-            <div key={s.id} className="space-layer" hidden={s.id !== space.id}>
-              {Object.values(s.items).map((item) => (
-                <ItemView
-                  key={item.id}
-                  store={store}
-                  space={s}
-                  item={item}
-                  shown={s.id === space.id && item.id === activeId}
-                  colors={colors}
-                  home={home}
-                  onReady={recordHandle}
-                />
-              ))}
+        </aside>
+        <div className="main">
+          {tabsOnTop && <TabBar {...treeProps} onNewTab={() => newTab()} />}
+          <section className="content" aria-label="Content">
+            {workspace.spaces.map((s) => (
+              <div key={s.id} className="space-layer" hidden={s.id !== space.id}>
+                {Object.values(s.items).map((item) => (
+                  <ItemView
+                    key={item.id}
+                    store={store}
+                    space={s}
+                    item={item}
+                    shown={s.id === space.id && item.id === activeId}
+                    colors={colors}
+                    home={home}
+                    onReady={recordHandle}
+                  />
+                ))}
+              </div>
+            ))}
+            <div
+              className="pane-notice"
+              role="status"
+              data-nr-part="pane-notice"
+              data-nr-state={notice !== "" ? "shown" : "empty"}
+            >
+              {notice}
             </div>
-          ))}
-          <div
-            className="pane-notice"
-            role="status"
-            data-nr-part="pane-notice"
-            data-nr-state={notice !== "" ? "shown" : "empty"}
-          >
-            {notice}
-          </div>
-        </section>
-      </div>
+          </section>
+        </div>
+      </TreeDnd>
       {overlayNode}
     </div>
   );

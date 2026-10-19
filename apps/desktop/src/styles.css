@@ -785,6 +785,43 @@ body {
   pointer-events: none;
 }
 
+/* While a tab is dragged over a pane: the half where the tab would land if dropped now. */
+.pane-drop-zone {
+  position: absolute;
+  z-index: 3;
+  border: 2px solid var(--nr-accent);
+  background: color-mix(in srgb, var(--nr-accent) 22%, transparent);
+  pointer-events: none;
+}
+
+.pane-drop-zone[data-nr-dir="row"] {
+  top: 0;
+  bottom: 0;
+  width: 50%;
+}
+
+.pane-drop-zone[data-nr-dir="column"] {
+  right: 0;
+  left: 0;
+  height: 50%;
+}
+
+.pane-drop-zone[data-nr-side="before"][data-nr-dir="row"] {
+  left: 0;
+}
+
+.pane-drop-zone[data-nr-side="after"][data-nr-dir="row"] {
+  right: 0;
+}
+
+.pane-drop-zone[data-nr-side="before"][data-nr-dir="column"] {
+  top: 0;
+}
+
+.pane-drop-zone[data-nr-side="after"][data-nr-dir="column"] {
+  bottom: 0;
+}
+
 /* Optional header of a pane: its title and the zoom and close buttons. */
 .pane-header {
   display: flex;

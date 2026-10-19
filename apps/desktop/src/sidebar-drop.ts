@@ -1,3 +1,4 @@
+import { layoutPanes } from "@noren/model";
 import type { Action, Id, Node, Space } from "@noren/model";
 import type { TreeRow } from "./sidebar-tree";
 
@@ -266,3 +267,93 @@ export function outsideAction(
         : { type: "item/favorite", itemId: source.id };
   }
 }
+
+// Drops on a pane of the tab on screen: the tab joins that tab, beside the pane.
+
+/** Prefix of the droppable id of a pane; the rest is the pane id. */
+export const PANE_DROP_PREFIX = "pane:";
+
+/** The droppable id of a pane (the inverse of `paneOf`). */
+export const paneDropId = (paneId: Id): string => `${PANE_DROP_PREFIX}${paneId}`;
+
+/** The pane a droppable id stands for; undefined for anything else. */
+export function paneOf(id: string): Id | undefined {
+  return id.startsWith(PANE_DROP_PREFIX) ? id.slice(PANE_DROP_PREFIX.length) : undefined;
+}
+
+/** Which side of a pane the dropped tab lands on, as the split it makes. */
+export interface PaneZone {
+  dir: "row" | "column";
+  side: "before" | "after";
+}
+
+/** A drop on one zone of a pane. */
+export interface PaneDrop extends PaneZone {
+  paneId: Id;
+}
+
+/**
+ * How deep into the pane (a fraction of its width or height, counted from the nearest edge) the
+ * pointer still means "beside this pane". The middle is left alone for the swap (NOR-F5-02c).
+ */
+export const PANE_EDGE_BAND = 0.3;
+
+/**
+ * The zone of a pane the pointer is over: the nearest edge decides (left and right are a row split,
+ * top and bottom a column split; before is left or top). The middle of the pane is no zone, and a
+ * tie between a vertical and a horizontal edge goes to the horizontal one.
+ */
+export function paneZone(
+  rect: { left: number; top: number; width: number; height: number },
+  point: { x: number; y: number },
+): PaneZone | undefined {
+  if (rect.width <= 0 || rect.height <= 0) return undefined;
+  const x = Math.min(1, Math.max(0, (point.x - rect.left) / rect.width));
+  const y = Math.min(1, Math.max(0, (point.y - rect.top) / rect.height));
+  const edges: { depth: number; zone: PaneZone }[] = [
+    { depth: x, zone: { dir: "row", side: "before" } },
+    { depth: 1 - x, zone: { dir: "row", side: "after" } },
+    { depth: y, zone: { dir: "column", side: "before" } },
+    { depth: 1 - y, zone: { dir: "column", side: "after" } },
+  ];
+  let nearest = edges[0];
+  for (const edge of edges) if (nearest && edge.depth < nearest.depth) nearest = edge;
+  return nearest && nearest.depth < PANE_EDGE_BAND ? nearest.zone : undefined;
+}
+
+/**
+ * Whether a tab can be dropped on the panes of `targetItemId`: only a tab other than the one on
+ * screen (dropping a tab on its own panes changes nothing); groups are not tabs.
+ */
+export function canDropOnPane(source: DragSource, targetItemId: Id | undefined): boolean {
+  return source.kind === "item" && targetItemId !== undefined && source.id !== targetItemId;
+}
+
+/** The action that joins the dragged tab into `targetItemId`, beside the pane of the drop. */
+export function paneDropAction(
+  source: DragSource,
+  targetItemId: Id,
+  drop: PaneDrop,
+): Action | undefined {
+  if (!canDropOnPane(source, targetItemId)) return undefined;
+  return {
+    type: "item/join",
+    itemId: source.id,
+    targetItemId,
+    targetPaneId: drop.paneId,
+    dir: drop.dir,
+    side: drop.side,
+  };
+}
+
+/** The panes the target tab would hold after the join: more than `maxPanes` and the model refuses. */
+export function joinedPaneCount(space: Space, sourceId: Id, targetItemId: Id): number | undefined {
+  const source = space.items[sourceId];
+  const target = space.items[targetItemId];
+  if (!source || !target) return undefined;
+  return layoutPanes(source.layout).length + layoutPanes(target.layout).length;
+}
+
+/** What the notice says when a join would pass the pane limit. */
+export const paneLimitNotice = (maxPanes: number): string =>
+  `A tab holds at most ${maxPanes} panes.`;

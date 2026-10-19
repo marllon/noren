@@ -35,7 +35,8 @@ export type ActionCommand =
   | { kind: "focus"; direction: Direction }
   | { kind: "resize"; direction: Direction }
   | { kind: "space"; index: number }
-  | { kind: "tab"; index: number };
+  | { kind: "tab"; index: number }
+  | { kind: "mru"; delta: 1 | -1 };
 
 export interface ActionDef {
   id: string;
@@ -77,6 +78,22 @@ export const ACTIONS: readonly ActionDef[] = [
     command: { kind: "new-tab" },
     repeat: false,
     chords: { safe: "Ctrl+Shift+KeyT", browser: "Ctrl+KeyT" },
+  },
+  {
+    id: "tab.mru-next",
+    title: "Next recent tab",
+    category: "Tabs",
+    command: { kind: "mru", delta: 1 },
+    repeat: true,
+    chords: { safe: "Ctrl+Tab", browser: "Ctrl+Tab" },
+  },
+  {
+    id: "tab.mru-prev",
+    title: "Previous recent tab",
+    category: "Tabs",
+    command: { kind: "mru", delta: -1 },
+    repeat: true,
+    chords: { safe: "Ctrl+Shift+Tab", browser: "Ctrl+Shift+Tab" },
   },
   {
     id: "pane.close",

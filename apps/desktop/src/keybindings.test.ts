@@ -65,6 +65,41 @@ describe("the registry", () => {
   });
 });
 
+describe("the recent-tab switcher", () => {
+  it("has a next and a previous action with Ctrl+Tab and Ctrl+Shift+Tab in both presets", () => {
+    for (const preset of PRESETS) {
+      const next = ACTIONS.find((action) => action.id === "tab.mru-next");
+      const prev = ACTIONS.find((action) => action.id === "tab.mru-prev");
+      expect(next?.chords[preset]).toBe("Ctrl+Tab");
+      expect(prev?.chords[preset]).toBe("Ctrl+Shift+Tab");
+      expect(next?.command).toEqual({ kind: "mru", delta: 1 });
+      expect(prev?.command).toEqual({ kind: "mru", delta: -1 });
+      // Holding Tab walks on, like the arrows.
+      expect(next?.repeat).toBe(true);
+      expect(prev?.repeat).toBe(true);
+    }
+  });
+
+  it("resolves the presses to the switcher in the safe and the browser preset", () => {
+    for (const keybindings of [safe, browser]) {
+      expect(commandOf(keybindings, press("Tab", ctrl))).toEqual({ kind: "mru", delta: 1 });
+      expect(commandOf(keybindings, press("Tab", ctrlShift))).toEqual({ kind: "mru", delta: -1 });
+    }
+  });
+
+  it("leaves a Tab with other modifiers to the terminal", () => {
+    expect(commandOf(safe, press("Tab"))).toBeUndefined();
+    expect(commandOf(safe, press("Tab", { shiftKey: true }))).toBeUndefined();
+    expect(commandOf(safe, press("Tab", alt))).toBeUndefined();
+  });
+
+  it("can be moved to another chord by an override", () => {
+    const moved: Keybindings = { preset: "safe", overrides: { "tab.mru-next": "Alt+KeyJ" } };
+    expect(commandOf(moved, press("Tab", ctrl))).toBeUndefined();
+    expect(commandOf(moved, press("KeyJ", alt))).toEqual({ kind: "mru", delta: 1 });
+  });
+});
+
 describe("chordOf", () => {
   it("writes the modifiers in a fixed order before the physical key", () => {
     expect(chordOf(press("KeyT", ctrlShift))).toBe("Ctrl+Shift+KeyT");
@@ -166,9 +201,12 @@ describe("the safe preset (the default)", () => {
     expect(commandOf(safe, press("ArrowLeft", { altKey: true, metaKey: true }))).toBeUndefined();
   });
 
-  it("repeats only the focus and resize actions", () => {
+  it("repeats only the actions that move (focus, resize, walking the recent tabs)", () => {
     for (const action of ACTIONS) {
-      const moves = action.command.kind === "focus" || action.command.kind === "resize";
+      const moves =
+        action.command.kind === "focus" ||
+        action.command.kind === "resize" ||
+        action.command.kind === "mru";
       expect(action.repeat).toBe(moves);
     }
   });

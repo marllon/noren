@@ -1668,3 +1668,86 @@ body {
   font: inherit;
   font-size: 11px;
 }
+
+.mru-backdrop {
+  z-index: 30;
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  box-sizing: border-box;
+  padding-top: 12vh;
+  /* The terminal keeps the keyboard; the overlay is only to look at. */
+  pointer-events: none;
+}
+
+.mru {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+  width: min(560px, 92%);
+  max-height: 70vh;
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid var(--nr-border);
+  border-radius: var(--nr-radius);
+  background: var(--nr-surface);
+  color: var(--nr-text);
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--nr-bg) 70%, transparent);
+}
+
+.mru-row {
+  padding: 6px 8px;
+  border-radius: calc(var(--nr-radius) / 2);
+  font-size: 13px;
+}
+
+.mru-row[data-nr-state="selected"] {
+  background: color-mix(in srgb, var(--nr-text) 12%, transparent);
+}
+
+.mru-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mru-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.mru-title {
+  flex: none;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mru-detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--nr-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mru-preview {
+  margin: 4px 0 0;
+  padding: 4px 6px;
+  overflow: hidden;
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-bg);
+  color: var(--nr-muted);
+  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: pre;
+}

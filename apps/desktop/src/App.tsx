@@ -24,6 +24,7 @@ import { createDeepLinkHandler } from "./deep-link-handler";
 import { startDeepLinkReceiver } from "./deep-link-receiver";
 import { tauriBridge } from "./tauri-backend";
 import { CommandPalette } from "./CommandPalette";
+import { MruSwitcherView } from "./MruSwitcher";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FavoritesGrid } from "./FavoritesGrid";
 import { resolveFavorites } from "./favorites";
@@ -42,6 +43,7 @@ import { updateLayout, useLayout } from "./layout-store";
 import { SidebarResizer } from "./SidebarResizer";
 import { SidebarTree } from "./SidebarTree";
 import { TabBar } from "./TabBar";
+import { useMruSwitcher } from "./use-mru-switcher";
 import { useProjectActions } from "./use-project-actions";
 import { useSidebarReveal } from "./use-sidebar-reveal";
 import type { Editing } from "./SidebarTree";
@@ -203,6 +205,9 @@ function ItemView({ store, space, item, shown, colors, home, onReady }: ItemView
     </div>
   );
 }
+
+/** Keys that are only a modifier: pressing one never ends a switch. */
+const MODIFIER_KEYS: ReadonlySet<string> = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph"]);
 
 /** How long the notice about a refused split stays on screen. */
 const NOTICE_MS = 3500;
@@ -464,6 +469,32 @@ function Shell({ store }: { store: WorkspaceStore }) {
     const action = paneSwapAction(activeId, paneId, otherPaneId);
     if (action) dispatch(action);
   };
+  /**
+   * Shows the space that owns a tab, then the tab (a Favorites tile, the palette and the Ctrl+Tab
+   * switcher use it). The tab is chosen before the space is shown, so the space's old tab never
+   * counts as used.
+   */
+  const showTab = (spaceId: Id, itemId: Id) => {
+    dispatch({ type: "space/set-active-item", spaceId, itemId });
+    dispatch({ type: "space/activate", spaceId });
+  };
+
+  /** Gives the keyboard to the terminal of the tab on screen, after the render that shows it. */
+  const focusTerminal = useCallback(() => {
+    requestAnimationFrame(() => {
+      const state = store.getState();
+      const itemId = activeItemIdOf(state);
+      const item = itemId === undefined ? undefined : activeSpaceOf(state.workspace).items[itemId];
+      const pane = item && focusedPane(item);
+      if (pane) handles.current.get(pane.id)?.focus();
+    });
+  }, [store]);
+
+  const mru = useMruSwitcher({ store, handles, onCommit: showTab, onEnd: focusTerminal });
+  // The key listener below is set up once; it reaches the switcher through this ref.
+  const mruRef = useRef(mru);
+  mruRef.current = mru;
+
   const modalOpen = useRef(false);
   // The one keyboard listener: every Noren shortcut goes through the resolver. Captured on the
   // window, so a key that is a shortcut never reaches the terminal and any other key does.
@@ -471,8 +502,20 @@ function Shell({ store }: { store: WorkspaceStore }) {
     const onKeyDown = (event: KeyboardEvent) => {
       // The shortcuts screen is capturing a chord: the press is its to read, not an action to run.
       if (isRecording()) return;
+      const switcher = mruRef.current;
+      if (switcher.active() && event.code === "Escape") {
+        // Cancels the switcher; the terminal never sees this Escape.
+        event.preventDefault();
+        event.stopPropagation();
+        switcher.cancel();
+        return;
+      }
       const action = currentResolver()(event);
       const target = event.target instanceof HTMLElement ? event.target : null;
+      // Any other key or shortcut during a switch ends it without switching (the key goes on).
+      if (switcher.active() && action?.command.kind !== "mru" && !MODIFIER_KEYS.has(event.key)) {
+        switcher.cancel();
+      }
       if (action === undefined || typesText(target)) return;
       event.preventDefault();
       event.stopPropagation();
@@ -481,6 +524,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
       if (action.command.kind === "palette") {
         // Not over a menu or dialog: they hold the keyboard.
         if (!modalOpen.current) setPaletteOpen(true);
+        return;
+      }
+      if (action.command.kind === "mru") {
+        if (!modalOpen.current || switcher.active()) switcher.step(action.command.delta, event);
         return;
       }
       const refusal = runCommand(store, action.command);
@@ -580,26 +627,13 @@ function Shell({ store }: { store: WorkspaceStore }) {
     handles.current.set(paneId, handle);
   };
 
-  /** Shows the space that owns a tab, then the tab (a Favorites tile and the palette use it). */
-  const showTab = (spaceId: Id, itemId: Id) => {
-    dispatch({ type: "space/activate", spaceId });
-    dispatch({ type: "space/set-active-item", spaceId, itemId });
-  };
-
   const onOpenFavorite = (favorite: ResolvedFavorite) => showTab(favorite.spaceId, favorite.id);
 
   /** Closes the palette and gives the keyboard back to the terminal of the tab on screen. */
   const closePalette = useCallback(() => {
     setPaletteOpen(false);
-    // After the render that hides the palette and shows the tab it may have switched to.
-    requestAnimationFrame(() => {
-      const state = store.getState();
-      const itemId = activeItemIdOf(state);
-      const item = itemId === undefined ? undefined : activeSpaceOf(state.workspace).items[itemId];
-      const pane = item && focusedPane(item);
-      if (pane) handles.current.get(pane.id)?.focus();
-    });
-  }, [store]);
+    focusTerminal();
+  }, [focusTerminal]);
 
   const keybindings = useKeybindings();
   const paletteEntries = useMemo(
@@ -624,7 +658,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
     else if (entry.kind === "profile") newTab({ profileId: entry.profileId });
     else if (entry.kind === "folder") newTab({ cwd: entry.path });
     else if (entry.kind === "theme") setThemeChoice(entry.themeId);
-    else {
+    else if (entry.action.command.kind === "mru") {
+      // No modifier is held in the palette: go straight to the tab the chord would end on.
+      setPaletteOpen(false);
+      mru.jump(entry.action.command.delta);
+      return;
+    } else {
       const refusal = runCommand(store, entry.action.command);
       if (refusal !== undefined) showNotice(refusal);
     }
@@ -885,6 +924,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
       </TreeDnd>
       {overlayNode}
       {confirmNode}
+      {mru.rows !== undefined && <MruSwitcherView rows={mru.rows} />}
       {paletteOpen && (
         <CommandPalette entries={paletteEntries} onRun={runPaletteEntry} onClose={closePalette} />
       )}

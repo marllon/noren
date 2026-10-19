@@ -7,6 +7,8 @@
 // `noren.ui.keybindings`, until the file gets a place for them.
 
 import type { Direction } from "@noren/model";
+import type { LayoutCommand } from "./layout-actions";
+import { WIDTH_STEP_LARGE } from "./layout";
 
 /** Key of the shortcut preferences in the browser storage. */
 export const KEYBINDINGS_KEY = "noren.ui.keybindings";
@@ -24,7 +26,7 @@ export type Preset = "safe" | "browser";
 
 export const PRESETS: readonly Preset[] = ["safe", "browser"];
 
-export type ActionCategory = "General" | "Tabs" | "Panes" | "Spaces" | "Terminal";
+export type ActionCategory = "General" | "Tabs" | "Panes" | "Spaces" | "Terminal" | "Layout";
 
 /** What an action does; the shell turns it into store calls. */
 export type ActionCommand =
@@ -40,6 +42,7 @@ export type ActionCommand =
   | { kind: "mru"; delta: 1 | -1 }
   | { kind: "search-all" }
   | { kind: "settings" }
+  | LayoutCommand
   | { kind: "last-unread" }
   | { kind: "prompt"; direction: "previous" | "next" }
   | { kind: "select-output" }
@@ -64,6 +67,71 @@ const DIRECTIONS: readonly { direction: Direction; label: string; code: string }
 ];
 
 const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+
+const NO_CHORD = { safe: undefined, browser: undefined } as const;
+
+/**
+ * The layout modes. None has a default chord (the settings screen is the place to look; these are
+ * for the palette and for a chord the person records). Each writes its own setting into the file.
+ */
+const LAYOUT_ACTIONS: readonly ActionDef[] = [
+  {
+    id: "layout.sidebar-side",
+    title: "Switch sidebar side",
+    category: "Layout",
+    command: { kind: "layout", toggle: "side" },
+    repeat: false,
+    chords: NO_CHORD,
+  },
+  {
+    id: "layout.sidebar-widen",
+    title: "Widen sidebar",
+    category: "Layout",
+    command: { kind: "layout-width", delta: WIDTH_STEP_LARGE },
+    repeat: false,
+    chords: NO_CHORD,
+  },
+  {
+    id: "layout.sidebar-narrow",
+    title: "Narrow sidebar",
+    category: "Layout",
+    command: { kind: "layout-width", delta: -WIDTH_STEP_LARGE },
+    repeat: false,
+    chords: NO_CHORD,
+  },
+  {
+    id: "layout.density",
+    title: "Switch density",
+    category: "Layout",
+    command: { kind: "layout", toggle: "density" },
+    repeat: false,
+    chords: NO_CHORD,
+  },
+  {
+    id: "layout.compact-mode",
+    title: "Toggle compact mode",
+    category: "Layout",
+    command: { kind: "layout", toggle: "compact" },
+    repeat: false,
+    chords: NO_CHORD,
+  },
+  {
+    id: "layout.keep-sidebar-open",
+    title: "Toggle keep sidebar open",
+    category: "Layout",
+    command: { kind: "layout", toggle: "keepOpen" },
+    repeat: false,
+    chords: NO_CHORD,
+  },
+  {
+    id: "layout.top-tabs",
+    title: "Toggle tabs on top",
+    category: "Layout",
+    command: { kind: "layout", toggle: "tabs" },
+    repeat: false,
+    chords: NO_CHORD,
+  },
+];
 
 /**
  * The registry. Only actions that exist today: later tasks add theirs here. The safe preset keeps
@@ -126,6 +194,7 @@ export const ACTIONS: readonly ActionDef[] = [
     repeat: false,
     chords: { safe: undefined, browser: undefined },
   },
+  ...LAYOUT_ACTIONS,
   {
     id: "terminal.prompt-previous",
     title: "Previous prompt",

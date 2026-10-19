@@ -24,6 +24,8 @@ What you change is a draft until you press **Save** (Enter in a box saves too; *
 
 If the file has a problem of its own (see below), Save is off and the screen says where the problem is: Noren does not edit a file it could not read. Fix the file, or delete it, and the screen saves again. If the disk refuses the write, the screen stays open with the reason and your draft.
 
+The layout modes of the Appearance section can also be switched from the command palette without opening the screen (_Switch sidebar side_, _Widen sidebar_, _Narrow sidebar_, _Switch density_, _Toggle compact mode_, _Toggle keep sidebar open_, _Toggle tabs on top_; see [KEYBINDINGS.md](KEYBINDINGS.md)). Each writes only its own setting, the same way Save does, and shows a notice if it cannot (the file has a problem, or the disk refused).
+
 Dragging the handle on the edge of the sidebar (or pressing the arrow keys on it) saves `appearance.sidebar.width` the same way, when you let go. The handle does nothing while the file has a problem.
 
 ## Reload without a restart

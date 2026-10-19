@@ -40,6 +40,12 @@ The **safe** preset is the default. It does not fight the shell: Ctrl+T, Ctrl+W 
 | Select command output         | none                  | none                  |
 | Copy last command output      | none                  | none                  |
 | Open settings                 | none                  | none                  |
+| Switch sidebar side           | none                  | none                  |
+| Widen / narrow sidebar        | none                  | none                  |
+| Switch density                | none                  | none                  |
+| Toggle compact mode           | none                  | none                  |
+| Toggle keep sidebar open      | none                  | none                  |
+| Toggle tabs on top            | none                  | none                  |
 
 The browser preset is opt-in. It takes Ctrl+T, Ctrl+W and Ctrl+1..9 away from the terminal, so a shell program that uses them (for example a readline "transpose characters" or a "delete word") no longer receives them.
 
@@ -59,7 +65,13 @@ The chosen preset is a setting of `config.jsonc`: `"keybindings": { "preset": "s
 
 The user's own chords (the overrides) are still provisional: they live in the browser storage under `noren.ui.keybindings`, as `{"overrides": {"<action id>": "<chord>" | null}}`, until the file gets a place for them. A value that is missing, not JSON or not an object falls back to no overrides; an override for an unknown action, or with a chord that cannot match, is dropped. Earlier builds kept the preset here too (`{"preset": ..., "overrides": ...}`): it is moved into the file once, at the first start, and removed from this key.
 
-"Open settings" has no key by default; record one for it in the shortcuts screen if you want.
+"Open settings" and the layout actions (category **Layout**, see below) have no key by default; record one for them in the shortcuts screen if you want.
+
+## Layout actions
+
+Every layout mode of the settings screen is also an action of the registry, so the palette (`>layout`) and a recorded chord reach it: _Switch sidebar side_, _Widen sidebar_ and _Narrow sidebar_ (48 px a step, the same as Shift with the arrows on the sidebar handle; a step that would pass 180 or 480 px goes to the end, and at the end the action says so), _Switch density_, _Toggle compact mode_, _Toggle keep sidebar open_ and _Toggle tabs on top_. Each one flips only its own setting and writes it into `config.jsonc` through the same call as the settings screen (`ConfigManager.update`), so every comment of the file stays and the window follows the file with no reload. They do not repeat while the key is held. A width outside 180 to 480 is never written.
+
+When there is nothing to write, or the write cannot be made, the action shows the usual notice and changes nothing: compact mode and keeping the sidebar open are refused with top tabs (the sidebar always hides there), keeping it open is refused while compact mode is off, a file with a problem of its own is not edited (the notice names the line), and a failed write says why. The shortcut listener leaves them alone while a menu or dialog (the settings screen included) is open.
 
 ## The shortcuts screen
 

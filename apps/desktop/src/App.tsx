@@ -51,7 +51,9 @@ import {
 import type { ClickModifiers, Selection } from "./sidebar-tree";
 import { sidebarMode } from "./layout";
 import { NOTHING_UNREAD_NOTICE, shortCwd } from "./pane-info";
-import { useConfigState } from "./config-store";
+import { configManager, useConfigState } from "./config-store";
+import { runLayoutCommand } from "./layout-actions";
+import type { LayoutCommand } from "./layout-actions";
 import { previewSidebarWidth, saveSidebarWidth, useLayout } from "./layout-store";
 import { SettingsDialog } from "./SettingsDialog";
 import { closeSettings, openSettings, useSettingsOpen } from "./settings-ui";
@@ -511,6 +513,15 @@ function Shell({ store }: { store: WorkspaceStore }) {
     setNotice(text);
     noticeTimer.current = setTimeout(() => setNotice(""), NOTICE_MS);
   }, []);
+  /** A layout action writes its setting into the file; a refusal or a failed write is a notice. */
+  const runLayout = useCallback(
+    (command: LayoutCommand) => {
+      void runLayoutCommand(configManager, command).then((problem) => {
+        if (problem !== undefined) showNotice(problem);
+      });
+    },
+    [showNotice],
+  );
   const projectActions = useProjectActions(store, backend, space, showNotice);
   // A `noren://` link: the entry point stays the same while the run function (and so the hook's
   // state) changes on every render, so the handler reads it through a ref.
@@ -708,6 +719,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) openSettings();
         return;
       }
+      if (action.command.kind === "layout" || action.command.kind === "layout-width") {
+        if (!modalOpen.current) runLayout(action.command);
+        return;
+      }
       if (action.command.kind === "mru") {
         if (!modalOpen.current || switcher.active()) switcher.step(action.command.delta, event);
         return;
@@ -720,7 +735,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
       window.removeEventListener("keydown", onKeyDown, true);
       clearTimeout(noticeTimer.current);
     };
-  }, [store, showNotice, openSearch, focusedHandle, terminalAction]);
+  }, [store, showNotice, openSearch, focusedHandle, terminalAction, runLayout]);
 
   // A horizontal wheel (or Shift+wheel) over the sidebar steps to the neighbor space and stops at
   // the ends. The listener is not passive so it can cancel the event, and it does that only when it
@@ -872,6 +887,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
       setPaletteOpen(false);
       openSettings();
       return;
+    } else if (
+      entry.action.command.kind === "layout" ||
+      entry.action.command.kind === "layout-width"
+    ) {
+      runLayout(entry.action.command);
     } else if (entry.action.command.kind === "mru") {
       // No modifier is held in the palette: go straight to the tab the chord would end on.
       setPaletteOpen(false);

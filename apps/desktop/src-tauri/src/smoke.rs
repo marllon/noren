@@ -130,6 +130,7 @@ fn fail(app: &AppHandle, message: &str) -> ! {
 /// also have loaded the shell integration script (its first prompt carries `OSC 133;A`), which
 /// proves the script was found in the resource folder. Always releases the session.
 fn check_session(app: &AppHandle, deadline: Instant) -> Result<(), String> {
+    check_integration_files(app)?;
     let state = app.state::<AppState>();
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     let output = Channel::new(move |body| {
@@ -156,6 +157,32 @@ fn check_session(app: &AppHandle, deadline: Instant) -> Result<(), String> {
             "the {profile} session printed no OSC 133;A: the shell integration script was not loaded (looked in {:?})",
             bridge::integration_dir(app)
         ));
+    }
+    Ok(())
+}
+
+/// Every file of the shell integration that the bundle must carry, relative to the integration
+/// folder. The zsh ones start with a dot, which a resource pattern could leave out.
+const INTEGRATION_FILES: [&str; 6] = [
+    "noren.ps1",
+    "noren.bash",
+    "zsh/.zshenv",
+    "zsh/.zprofile",
+    "zsh/.zshrc",
+    "zsh/noren.zsh",
+];
+
+/// Fails when the resource folder lacks one of [`INTEGRATION_FILES`], which is how a build that
+/// dropped a script (for any shell, not only the one this machine runs) is caught.
+fn check_integration_files(app: &AppHandle) -> Result<(), String> {
+    let dir = bridge::integration_dir(app)
+        .ok_or_else(|| "the shell integration folder is missing from the resources".to_owned())?;
+    for file in INTEGRATION_FILES {
+        if !dir.join(file).is_file() {
+            return Err(format!(
+                "the shell integration file {file} is missing from {dir:?}"
+            ));
+        }
     }
     Ok(())
 }

@@ -6,7 +6,10 @@ pub mod project;
 pub mod pty;
 pub mod store;
 
-pub use integration::{POWERSHELL_SCRIPT, is_powershell, powershell_integration_args};
+pub use integration::{
+    BASH_LOGIN_VAR, BASH_SCRIPT, POWERSHELL_SCRIPT, ZSH_DIR, ZSH_RC, ZSH_USER_DIR_VAR,
+    cmd_integration_prompt, is_bash, is_cmd, is_powershell, is_zsh, powershell_integration_args,
+};
 pub use profiles::{
     Platform, ProbeEnv, Profile, ProfileSet, SystemEnv, detect_profiles, detect_system_profiles,
 };

@@ -46,7 +46,7 @@ Every terminal listens for OSC 7 (`ESC ] 7 ; file://host/path BEL`), which a she
 - at most 200, the oldest leave first;
 - kept in `localStorage` under `noren.ui.recent-folders`; a value that is not a list of text reads as empty. This is provisional until the settings file (NOR-F8-01).
 
-The list is read when the palette opens. Picking a folder only opens a shell there; nothing is run. The folder the sidebar shows for a pane is not changed by OSC 7 yet: the shell scripts and the shared parser come with NOR-F7-01.
+The list is read when the palette opens. Picking a folder only opens a shell there; nothing is run. The folder the sidebar shows for a pane is not changed by OSC 7 yet: the shell scripts and the shared parser come with NOR-F7-01a and NOR-F7-01b, and the interface does not use that parser yet.
 
 ## Themes
 

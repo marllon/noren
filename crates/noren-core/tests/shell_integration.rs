@@ -1,13 +1,16 @@
-//! Runs PowerShell in a real PTY with the integration script and checks the sequences it writes.
-//! No window is involved and nothing touches the network. When no PowerShell is installed the
-//! test prints a warning and returns.
+//! Runs PowerShell, bash and cmd in a real PTY with the integration and checks the sequences they
+//! write. No window is involved and nothing touches the network. When a shell is not installed
+//! its test prints a warning and returns.
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use noren_core::{Profile, SessionEvent, SessionManager, detect_system_profiles, is_powershell};
+use noren_core::{
+    BASH_SCRIPT, Profile, SessionEvent, SessionManager, detect_system_profiles, is_bash, is_cmd,
+    is_powershell,
+};
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(60);
 const STEP_TIMEOUT: Duration = Duration::from_secs(25);
@@ -124,7 +127,7 @@ fn run() {
 }
 
 /// Runs `body` on its own thread and fails the test if it does not finish in `TEST_TIMEOUT`.
-fn with_timeout(body: fn()) {
+fn with_timeout(body: impl FnOnce() + Send + 'static) {
     let (done_tx, done_rx) = mpsc::channel();
     let handle = thread::spawn(move || {
         body();
@@ -181,6 +184,318 @@ fn run_with_user_prompt() {
     let text = String::from_utf8_lossy(&seen).into_owned();
     assert!(text.contains("\x1b]133;D;3\x07"), "{text:?}");
     manager.kill(id).expect("kill the session");
+}
+
+/// A scratch folder, removed on drop.
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new(name: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("noren-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create the scratch folder");
+        Self(dir)
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// The bash this machine has: Git Bash on Windows (never the `bash.exe` of the Windows system
+/// folder, which is the launcher of WSL: `is_bash` leaves it out), `/bin/bash` elsewhere.
+fn bash_profile() -> Option<Profile> {
+    detect_system_profiles()
+        .profiles
+        .into_iter()
+        .find(|profile| is_bash(&profile.program))
+}
+
+/// What a bash session needs: a profile (login or not), a copy of the script in a folder whose
+/// name has a space, and a home folder of its own, so the files of the real user are never read.
+struct BashSetup {
+    profile: Profile,
+    scripts: TempDir,
+    home: TempDir,
+}
+
+impl BashSetup {
+    fn new(name: &str, login: bool) -> Option<Self> {
+        let Some(mut profile) = bash_profile() else {
+            eprintln!("warning: no bash found on this machine, bash integration test skipped");
+            return None;
+        };
+        eprintln!(
+            "bash integration test uses {} (login: {login})",
+            profile.program
+        );
+        profile.args = if login {
+            vec!["--login".to_owned(), "-i".to_owned()]
+        } else {
+            vec!["-i".to_owned()]
+        };
+        let scripts = TempDir::new(&format!("{name} scripts"));
+        std::fs::copy(
+            integration_dir().join(BASH_SCRIPT),
+            scripts.0.join(BASH_SCRIPT),
+        )
+        .expect("copy the script");
+        let home = TempDir::new(&format!("{name}-home"));
+        Some(Self {
+            profile,
+            scripts,
+            home,
+        })
+    }
+
+    /// Writes the file bash reads for this kind of session in the scratch home.
+    fn write_user_file(&self, text: &str) {
+        let name = if self.profile.args.iter().any(|arg| arg == "--login") {
+            ".bash_profile"
+        } else {
+            ".bashrc"
+        };
+        std::fs::write(self.home.0.join(name), text).expect("write the user's file");
+    }
+
+    fn spawn(&self) -> (SessionManager, noren_core::SessionId, Receiver<Vec<u8>>) {
+        let mut spec = self
+            .profile
+            .spawn_spec_with_integration(120, 30, Some(&self.scripts.0));
+        assert!(
+            spec.args.iter().any(|arg| arg == "--rcfile"),
+            "the integration must be injected: {:?}",
+            spec.args
+        );
+        spec.env.push((
+            "HOME".to_owned(),
+            self.home.0.to_string_lossy().into_owned(),
+        ));
+        let manager = SessionManager::new();
+        let (tx, rx) = mpsc::channel();
+        let id = manager
+            .spawn(spec, move |event| {
+                if let SessionEvent::Output(bytes) = event {
+                    let _ = tx.send(bytes.to_vec());
+                }
+            })
+            .expect("spawn bash");
+        (manager, id, rx)
+    }
+}
+
+/// bash with the script reports the folder, the prompt, the command line and the exit code.
+fn bash_run(login: bool) {
+    let Some(setup) = BashSetup::new(if login { "bash-login" } else { "bash-plain" }, login) else {
+        return;
+    };
+    let (manager, id, rx) = setup.spawn();
+    let mut seen = Vec::new();
+
+    // The first prompt: folder, prompt start and prompt end, and no command ended before it.
+    let mut at = wait_for(&rx, &mut seen, "\x1b]133;B\x07", 0);
+    let first = String::from_utf8_lossy(&seen).into_owned();
+    assert!(first.contains("\x1b]7;file://"), "OSC 7 missing: {first:?}");
+    assert!(
+        first.contains("\x1b]133;A\x07"),
+        "OSC 133;A missing: {first:?}"
+    );
+    assert!(
+        !first.contains("\x1b]133;D"),
+        "no command ran yet, so there is no 133;D: {first:?}"
+    );
+
+    // A command that fails with a known code.
+    manager.write(id, b"(exit 3)\r").expect("write the command");
+    at = wait_for(&rx, &mut seen, "\x1b]133;D;3\x07", at);
+    let text = String::from_utf8_lossy(&seen).into_owned();
+    let command_line = text.find("\x1b]633;E;").expect("OSC 633;E missing");
+    let command_start = text.find("\x1b]133;C\x07").expect("OSC 133;C missing");
+    let command_end = text.find("\x1b]133;D;3\x07").expect("OSC 133;D missing");
+    assert!(
+        command_line < command_start && command_start < command_end,
+        "E, C and D must come in this order: {text:?}"
+    );
+    assert!(text.contains("\x1b]633;E;(exit 3)\x07"), "{text:?}");
+    // The next prompt follows the end of the command, with the folder first.
+    at = wait_for(&rx, &mut seen, "\x1b]133;B\x07", at);
+
+    // A command that succeeds ends with code 0, and a line with a ';' is escaped.
+    manager
+        .write(id, b"true; true\r")
+        .expect("write the command");
+    at = wait_for(&rx, &mut seen, "\x1b]133;D;0\x07", at);
+    let text = String::from_utf8_lossy(&seen).into_owned();
+    assert!(text.contains("\x1b]633;E;true\\x3b true\x07"), "{text:?}");
+    at = wait_for(&rx, &mut seen, "\x1b]133;B\x07", at);
+
+    // An empty line is no command: no E, C or D between this prompt and the next.
+    let before = at;
+    manager.write(id, b"\r").expect("write the line");
+    wait_for(&rx, &mut seen, "\x1b]133;B\x07", at);
+    let text = String::from_utf8_lossy(&seen).into_owned();
+    let tail = &text[before..];
+    assert!(
+        !tail.contains("\x1b]133;C") && !tail.contains("\x1b]133;D") && !tail.contains("633;E"),
+        "{tail:?}"
+    );
+
+    manager.kill(id).expect("kill the session");
+    assert_eq!(manager.live_threads(), 0);
+}
+
+/// The prompt and the prompt command of the user, set in the file bash reads, are kept.
+fn bash_user_prompt(login: bool) {
+    let Some(setup) = BashSetup::new(
+        if login {
+            "bash-prompt-login"
+        } else {
+            "bash-prompt-plain"
+        },
+        login,
+    ) else {
+        return;
+    };
+    setup.write_user_file("PS1='MINE> '\nPROMPT_COMMAND='printf \"PCRAN:%s\\n\" \"$?\"'\n");
+    let (manager, id, rx) = setup.spawn();
+    let mut seen = Vec::new();
+
+    let at = wait_for(&rx, &mut seen, "\x1b]133;A\x07MINE> \x1b]133;B\x07", 0);
+    let text = String::from_utf8_lossy(&seen).into_owned();
+    assert!(
+        text.contains("PCRAN:0"),
+        "the user's PROMPT_COMMAND must run: {text:?}"
+    );
+    assert!(
+        text.find("PCRAN:0").unwrap() < text.find("\x1b]133;A\x07").unwrap(),
+        "{text:?}"
+    );
+
+    // The prompt command of the user still sees the status of the command that just ran.
+    manager.write(id, b"(exit 3)\r").expect("write the command");
+    wait_for(&rx, &mut seen, "\x1b]133;A\x07MINE> \x1b]133;B\x07", at);
+    let text = String::from_utf8_lossy(&seen).into_owned();
+    assert!(text.contains("PCRAN:3"), "{text:?}");
+    assert!(text.contains("\x1b]133;D;3\x07"), "{text:?}");
+    manager.kill(id).expect("kill the session");
+}
+
+/// A DEBUG trap of the user stays as it is. The command is then reported when it has ended, with
+/// E, C and D together before the next prompt.
+fn bash_user_debug_trap() {
+    let Some(setup) = BashSetup::new("bash-trap", false) else {
+        return;
+    };
+    setup.write_user_file("PS1='MINE> '\ntrap 'USERTRAP=1' DEBUG\n");
+    let (manager, id, rx) = setup.spawn();
+    let mut seen = Vec::new();
+    let at = wait_for(&rx, &mut seen, "\x1b]133;A\x07MINE> \x1b]133;B\x07", 0);
+    manager.write(id, b"echo hi\r").expect("write the command");
+    wait_for(&rx, &mut seen, "\x1b]133;D;0\x07", at);
+    let text = String::from_utf8_lossy(&seen).into_owned();
+    let command_line = text
+        .find("\x1b]633;E;echo hi\x07")
+        .expect("OSC 633;E missing");
+    let command_start = text.find("\x1b]133;C\x07").expect("OSC 133;C missing");
+    let command_end = text.find("\x1b]133;D;0\x07").expect("OSC 133;D missing");
+    assert!(
+        command_line < command_start && command_start < command_end,
+        "{text:?}"
+    );
+    manager.kill(id).expect("kill the session");
+}
+
+/// cmd gets its folder and prompt marks from a PROMPT variable, ended with ST. It has no exit code,
+/// so there is no `133;D`.
+#[cfg(windows)]
+fn cmd_run() {
+    let Some(profile) = detect_system_profiles()
+        .profiles
+        .into_iter()
+        .find(|profile| is_cmd(&profile.program))
+    else {
+        eprintln!("warning: no cmd found on this machine, cmd integration test skipped");
+        return;
+    };
+    let folder = TempDir::new("cmd-folder");
+    let mut spec = profile.spawn_spec_with_integration(120, 30, None);
+    assert!(
+        spec.env.iter().any(|(key, _)| key == "PROMPT"),
+        "PROMPT must be set: {:?}",
+        spec.env
+    );
+    spec.cwd = Some(folder.0.clone());
+    let manager = SessionManager::new();
+    let (tx, rx) = mpsc::channel();
+    let id = manager
+        .spawn(spec, move |event| {
+            if let SessionEvent::Output(bytes) = event {
+                let _ = tx.send(bytes.to_vec());
+            }
+        })
+        .expect("spawn cmd");
+
+    let mut seen = Vec::new();
+    let at = wait_for(&rx, &mut seen, "\x1b]133;B\x1b\\", 0);
+    let first = String::from_utf8_lossy(&seen).into_owned();
+    assert!(first.contains("\x1b]133;A\x1b\\"), "{first:?}");
+    assert!(
+        first
+            .to_ascii_lowercase()
+            .contains(&format!("\x1b]9;9;{}", folder.0.to_string_lossy()).to_ascii_lowercase()),
+        "OSC 9;9 with the folder missing: {first:?}"
+    );
+
+    // The folder follows `cd`.
+    let other = TempDir::new("cmd-folder-two");
+    manager
+        .write(id, format!("cd /d \"{}\"\r", other.0.display()).as_bytes())
+        .expect("write the command");
+    wait_for(&rx, &mut seen, "\x1b]133;B\x1b\\", at);
+    let text = String::from_utf8_lossy(&seen).into_owned();
+    assert!(
+        text.to_ascii_lowercase()
+            .contains(&format!("\x1b]9;9;{}", other.0.to_string_lossy()).to_ascii_lowercase()),
+        "{text:?}"
+    );
+    assert!(
+        !text.contains("\x1b]133;D"),
+        "cmd cannot report an exit code: {text:?}"
+    );
+    manager.kill(id).expect("kill the session");
+}
+
+#[test]
+fn bash_with_the_script_reports_the_exit_code_in_a_login_shell() {
+    with_timeout(|| bash_run(true));
+}
+
+#[test]
+fn bash_with_the_script_reports_the_exit_code_in_a_plain_shell() {
+    with_timeout(|| bash_run(false));
+}
+
+#[test]
+fn bash_keeps_the_prompt_and_prompt_command_of_the_user_in_a_login_shell() {
+    with_timeout(|| bash_user_prompt(true));
+}
+
+#[test]
+fn bash_keeps_the_prompt_and_prompt_command_of_the_user_in_a_plain_shell() {
+    with_timeout(|| bash_user_prompt(false));
+}
+
+#[test]
+fn bash_leaves_a_debug_trap_of_the_user_alone() {
+    with_timeout(bash_user_debug_trap);
+}
+
+#[cfg(windows)]
+#[test]
+fn cmd_with_the_prompt_reports_the_folder_and_the_marks() {
+    with_timeout(cmd_run);
 }
 
 #[test]

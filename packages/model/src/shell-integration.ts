@@ -4,6 +4,7 @@ import { decodeUtf8, encodeUtf8 } from "./utf8";
 // sequences (`ESC ] <payload> BEL`, or `ESC \` as terminator instead of BEL):
 //
 //   OSC 7 ; file://host/path        the folder the shell is in
+//   OSC 9 ; 9 ; path                the folder, as cmd reports it (other OSC 9 are not ours)
 //   OSC 133 ; A                     the prompt starts
 //   OSC 133 ; B                     the prompt ended, the user types
 //   OSC 133 ; C                     the command starts running
@@ -184,6 +185,13 @@ export function parseOsc(payload: string): ShellEvent | undefined {
       const path = pathFromFileUri(rest);
       return path === undefined ? undefined : { kind: "cwd", path };
     }
+    case "9": {
+      // OSC 9 is also the notification sequence (and 9;4 a progress bar): only `9;9;path`, the
+      // folder reported by cmd, is read here. Everything else after `9;` is left alone.
+      if (!rest.startsWith("9;")) return undefined;
+      const path = pathFromPlainPath(rest.slice(2));
+      return path === undefined ? undefined : { kind: "cwd", path };
+    }
     case "133":
       return parseMark(rest);
     case "633":
@@ -227,6 +235,21 @@ export function unescapeCommandLine(escaped: string): string {
   return escaped.replace(/\\(?:\\|x([0-9a-fA-F]{2}))/g, (_whole, hex: string | undefined) =>
     hex === undefined ? "\\" : String.fromCharCode(parseInt(hex, 16)),
   );
+}
+
+/**
+ * The folder named by the data of an `OSC 9;9` sequence (`C:\Users\me`, as cmd writes it with
+ * `$P`, optionally in double quotes), or `undefined` when it is not an absolute path. Backslashes
+ * become `/`, so the result looks like the one from OSC 7: `C:/Users/me`, `//server/share/dir`.
+ */
+export function pathFromPlainPath(data: string): string | undefined {
+  let text = data.trim();
+  if (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) text = text.slice(1, -1);
+  // eslint-disable-next-line no-control-regex
+  if (text === "" || text.length > MAX_PATH || /[\u0000-\u001f\u007f]/.test(text)) return undefined;
+  const path = text.replaceAll("\\", "/");
+  // A drive letter, or a root (a Unix path, or `//server/share`): nothing else is a folder here.
+  return /^[A-Za-z]:(\/|$)/.test(path) || path.startsWith("/") ? path : undefined;
 }
 
 /**

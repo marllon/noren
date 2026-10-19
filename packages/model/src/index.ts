@@ -81,6 +81,7 @@ export {
   ShellIntegrationParser,
   parseOsc,
   pathFromFileUri,
+  pathFromPlainPath,
   unescapeCommandLine,
 } from "./shell-integration";
 export type {

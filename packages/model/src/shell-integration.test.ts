@@ -6,6 +6,7 @@ import {
   encodeUtf8,
   parseOsc,
   pathFromFileUri,
+  pathFromPlainPath,
   unescapeCommandLine,
 } from "./index";
 import type { ShellEvent } from "./index";
@@ -49,6 +50,40 @@ describe("each kind of sequence", () => {
     expect(parseAll(osc("7;file:///a%00b"))).toEqual([]);
     expect(parseAll(osc("7;file:///%E0%A4%A"))).toEqual([]);
     expect(parseAll(osc("7"))).toEqual([]);
+  });
+
+  it("OSC 9;9 gives the folder, as cmd writes it (ST or BEL, with or without quotes)", () => {
+    expect(parseAll(osc("9;9;C:\\Users\\me", ST))).toEqual([{ kind: "cwd", path: "C:/Users/me" }]);
+    expect(parseAll(osc("9;9;C:\\Users\\me"))).toEqual([{ kind: "cwd", path: "C:/Users/me" }]);
+    expect(parseAll(osc('9;9;"D:\\My Projects\\x"', ST))).toEqual([
+      { kind: "cwd", path: "D:/My Projects/x" },
+    ]);
+    expect(parseAll(osc("9;9;C:\\", ST))).toEqual([{ kind: "cwd", path: "C:/" }]);
+    expect(parseAll(osc("9;9;\\\\srv\\share\\dir", ST))).toEqual([
+      { kind: "cwd", path: "//srv/share/dir" },
+    ]);
+    expect(parseAll(osc("9;9;/home/me/dir"))).toEqual([{ kind: "cwd", path: "/home/me/dir" }]);
+  });
+
+  it("OSC 9;9 with something that is not a folder gives nothing", () => {
+    expect(parseAll(osc("9;9"))).toEqual([]);
+    expect(parseAll(osc("9;9;"))).toEqual([]);
+    expect(parseAll(osc("9;9;relative\\dir"))).toEqual([]);
+    expect(parseAll(osc("9;9;C:\\a\u0001b"))).toEqual([]);
+    expect(parseAll(osc(`9;9;C:\\${"a".repeat(5000)}`))).toEqual([]);
+  });
+
+  it("other OSC 9 sequences are not read as a folder (notifications and progress stay free)", () => {
+    expect(parseAll(osc("9;Build finished"))).toEqual([]);
+    expect(parseAll(osc("9;C:\\Users\\me"))).toEqual([]);
+    expect(parseAll(osc("9;4;1;50"))).toEqual([]);
+    expect(parseAll(osc("9;99;C:\\x"))).toEqual([]);
+    expect(parseAll(osc("9"))).toEqual([]);
+    expect(parseAll(osc("99;9;C:\\x"))).toEqual([]);
+    // A folder between two of them is still found, and the others do not hide it.
+    expect(
+      parseAll(`${osc("9;Done")}${osc("9;9;C:\\w", ST)}${osc("9;4;0;0")}${osc("133;A")}`),
+    ).toEqual([{ kind: "cwd", path: "C:/w" }, { kind: "prompt-start" }]);
   });
 
   it("OSC 133 marks the prompt and the command", () => {
@@ -186,7 +221,7 @@ describe("a stream", () => {
 describe("a sequence split between chunks", () => {
   const stream =
     `lead${osc("133;D;3")}${osc("7;file://pc/C:/my%20dir", ST)}${osc("133;A")}` +
-    `${osc("633;E;echo ✓ \\x3b x")}${osc("133;C")}tail`;
+    `${osc("633;E;echo ✓ \\x3b x")}${osc("133;C")}${osc("9;Note")}${osc("9;9;E:\\ünï\\d", ST)}tail`;
   const bytes = encodeUtf8(stream);
   const whole = parseAll(stream);
 
@@ -197,6 +232,7 @@ describe("a sequence split between chunks", () => {
       { kind: "prompt-start" },
       { kind: "command-line", text: "echo ✓ ; x" },
       { kind: "command-start" },
+      { kind: "cwd", path: "E:/ünï/d" },
     ]);
   });
 
@@ -282,6 +318,18 @@ describe("helpers", () => {
     expect(pathFromFileUri("")).toBeUndefined();
   });
 
+  it("pathFromPlainPath reads an absolute path and nothing else", () => {
+    expect(pathFromPlainPath("C:\\a\\b")).toBe("C:/a/b");
+    expect(pathFromPlainPath("  c:/a  ")).toBe("c:/a");
+    expect(pathFromPlainPath('"C:\\a b"')).toBe("C:/a b");
+    expect(pathFromPlainPath("C:")).toBe("C:");
+    expect(pathFromPlainPath("/usr/x")).toBe("/usr/x");
+    expect(pathFromPlainPath("a\\b")).toBeUndefined();
+    expect(pathFromPlainPath("C:x")).toBeUndefined();
+    expect(pathFromPlainPath("")).toBeUndefined();
+    expect(pathFromPlainPath('""')).toBeUndefined();
+  });
+
   it("parseOsc takes the payload alone", () => {
     expect(parseOsc("133;A")).toEqual({ kind: "prompt-start" });
     expect(parseOsc("0;title")).toBeUndefined();
@@ -317,6 +365,9 @@ describe("property: any chunking gives the same events", () => {
       .map((p) => osc(`7;file://pc/${encodeURIComponent(p)}`, ST)),
     fc.string({ unit: "grapheme", maxLength: 40 }).map((c) => osc(`633;E;${escapeLine(c)}`)),
     fc.string({ unit: "grapheme", maxLength: 12 }).map((p) => osc(`9;${withoutControl(p)}`)),
+    fc
+      .string({ unit: "grapheme", maxLength: 12 })
+      .map((p) => osc(`9;9;C:\\${withoutControl(p)}`, ST)),
     fc.constant(`${ESC}[31m`),
     fc.constant(`${ESC}]133;A${ESC}[0m`),
     fc.constant(`${ESC}]633;E;cut${ESC}`),

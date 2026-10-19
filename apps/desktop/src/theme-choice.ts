@@ -9,6 +9,8 @@ import type { Config, ConfigChange, ConfigManager } from "@noren/model";
 
 /** The id of a known theme, or `null` to follow the system. */
 export type ThemeChoice = string | null;
+// The global theme is `appearance.theme` of the file. A space can have a theme of its own
+// (`themeId` in `state.json`, set by `space/set-theme`); it wins while the space is active.
 
 /** Where the choice is in the file. */
 export const THEME_PATH: readonly string[] = ["appearance", "theme"];
@@ -20,6 +22,28 @@ export const THEME_PATH: readonly string[] = ["appearance", "theme"];
 export function themeChoiceOf(config: Config): ThemeChoice {
   const id = config.appearance?.theme;
   return id !== undefined && findTheme(id) !== undefined ? id : null;
+}
+
+/** What decides the theme the window shows (see `effectiveThemeChoice`). */
+export interface ThemeSources {
+  /** The theme highlighted in a list right now, unsaved (`choice` null: the system's theme). */
+  preview?: { choice: ThemeChoice } | undefined;
+  /** The `themeId` of the active space, if it has one of its own. */
+  spaceThemeId?: string | undefined;
+  /** The settings in force (their `appearance.theme` is the global theme). */
+  config: Config;
+}
+
+/**
+ * The theme the window shows, as an id (`null`: follow the system). In order: the preview, then the
+ * theme of the active space when it is one this build has, then the global theme of the settings.
+ * A theme id the build does not have, in the space or in the settings, never gets in the way: it
+ * falls to the next one in the list.
+ */
+export function effectiveThemeChoice({ preview, spaceThemeId, config }: ThemeSources): ThemeChoice {
+  if (preview !== undefined) return preview.choice;
+  if (spaceThemeId !== undefined && findTheme(spaceThemeId) !== undefined) return spaceThemeId;
+  return themeChoiceOf(config);
 }
 
 /** The answer: the changes to write (none when the file already says it), or why it is refused. */

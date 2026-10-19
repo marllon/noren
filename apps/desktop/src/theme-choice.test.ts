@@ -1,6 +1,11 @@
 import { ConfigManager, FakeBackend } from "@noren/model";
 import { describe, expect, it } from "vitest";
-import { planThemeChoice, runThemeChoice, themeChoiceOf } from "./theme-choice";
+import {
+  effectiveThemeChoice,
+  planThemeChoice,
+  runThemeChoice,
+  themeChoiceOf,
+} from "./theme-choice";
 
 async function started(text: string | null) {
   const backend = new FakeBackend({ config: text });
@@ -114,5 +119,51 @@ describe("runThemeChoice", () => {
     const { backend, manager } = await started(null);
     expect(await runThemeChoice(manager, "nope")).toBe('There is no theme "nope".');
     expect(backend.callsTo("saveConfig")).toHaveLength(0);
+  });
+});
+
+describe("effectiveThemeChoice", () => {
+  const global = { appearance: { theme: "noren-fjord" } };
+
+  it("is the theme of the active space when it has one", () => {
+    expect(effectiveThemeChoice({ spaceThemeId: "noren-paper", config: global })).toBe(
+      "noren-paper",
+    );
+  });
+
+  it("is the global theme when the space has none", () => {
+    expect(effectiveThemeChoice({ config: global })).toBe("noren-fjord");
+    expect(effectiveThemeChoice({ spaceThemeId: undefined, config: global })).toBe("noren-fjord");
+  });
+
+  it("falls to the global theme when the space names a theme this build does not have", () => {
+    expect(effectiveThemeChoice({ spaceThemeId: "from-a-later-build", config: global })).toBe(
+      "noren-fjord",
+    );
+  });
+
+  it("follows the system when there is no space theme and no global one, or the global one is unknown", () => {
+    expect(effectiveThemeChoice({ config: {} })).toBeNull();
+    expect(
+      effectiveThemeChoice({ spaceThemeId: "nope", config: { appearance: { theme: "x" } } }),
+    ).toBeNull();
+    expect(effectiveThemeChoice({ config: { appearance: { theme: "system" } } })).toBeNull();
+  });
+
+  it("puts the preview above the space and the global theme, system included", () => {
+    expect(
+      effectiveThemeChoice({
+        preview: { choice: "noren-oat" },
+        spaceThemeId: "noren-paper",
+        config: global,
+      }),
+    ).toBe("noren-oat");
+    expect(
+      effectiveThemeChoice({
+        preview: { choice: null },
+        spaceThemeId: "noren-paper",
+        config: global,
+      }),
+    ).toBeNull();
   });
 });

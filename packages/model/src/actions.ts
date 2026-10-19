@@ -55,6 +55,13 @@ export type Action =
   | { type: "space/rename"; spaceId: Id; name: string }
   | { type: "space/set-color"; spaceId: Id; color: string }
   | { type: "space/set-icon"; spaceId: Id; icon: string }
+  /**
+   * Gives the space its own theme, which shows while the space is active, or (`themeId` null) takes
+   * it back so the space follows the global theme. The id is kept as given (trimmed): whether the
+   * build has such a theme is for the interface to say, so a theme from a later build or an
+   * importer is not lost. A blank id changes nothing.
+   */
+  | { type: "space/set-theme"; spaceId: Id; themeId: string | null }
   | { type: "space/move"; spaceId: Id; index: number }
   | { type: "space/activate"; spaceId: Id }
   /**

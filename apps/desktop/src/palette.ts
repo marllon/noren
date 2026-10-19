@@ -9,6 +9,7 @@ import { ACTIONS } from "./keybindings";
 import type { ActionDef, ChordMap } from "./keybindings";
 import { shortCwd, summarizeItem } from "./pane-info";
 import { formatChord } from "./shortcuts-screen";
+import type { SpaceThemeOption } from "./space-theme";
 import type { Theme } from "./theme";
 import { spaceItemIds } from "./workspace-store";
 
@@ -67,8 +68,18 @@ export interface ThemeEntry extends EntryBase {
   current: boolean;
 }
 
+/**
+ * A theme for the active space (`themeId` null: use the global theme again). Only listed in the
+ * palette opened by "Set theme for this space", never in the general list.
+ */
+export interface SpaceThemeEntry extends EntryBase {
+  kind: "space-theme";
+  themeId: string | null;
+  current: boolean;
+}
+
 export type PaletteEntry =
-  TabEntry | SpaceEntry | ActionEntry | ProfileEntry | FolderEntry | ThemeEntry;
+  TabEntry | SpaceEntry | ActionEntry | ProfileEntry | FolderEntry | ThemeEntry | SpaceThemeEntry;
 export type EntryKind = PaletteEntry["kind"];
 
 /**
@@ -81,7 +92,7 @@ export type Scope = "all" | "tab" | "space" | "action";
 const SCOPE_KINDS: Readonly<Record<Exclude<Scope, "all">, readonly EntryKind[]>> = {
   tab: ["tab"],
   space: ["space"],
-  action: ["action", "profile", "folder", "theme"],
+  action: ["action", "profile", "folder", "theme", "space-theme"],
 };
 
 export const PREFIXES: Readonly<Record<string, Exclude<Scope, "all">>> = {
@@ -116,6 +127,26 @@ export interface EntrySources {
   folders?: readonly string[];
   /** The themes on offer and the id in force, `null` while the theme follows the system. */
   themes?: { list: readonly Theme[]; choice: string | null };
+}
+
+/** The list of "Set theme for this space": one entry per option, `Use global theme` last. */
+export function buildSpaceThemeEntries(
+  spaceName: string,
+  options: readonly SpaceThemeOption[],
+): SpaceThemeEntry[] {
+  return options.map((option) => ({
+    kind: "space-theme",
+    id: option.themeId === null ? "space-theme:global" : `space-theme:${option.themeId}`,
+    title: option.label,
+    detail: option.current
+      ? `In use in ${spaceName}`
+      : option.themeId === null
+        ? "Follow the global theme"
+        : `For ${spaceName}`,
+    keywords: [spaceName, "theme", "space"],
+    themeId: option.themeId,
+    current: option.current,
+  }));
 }
 
 function plural(count: number, one: string): string {
@@ -280,7 +311,15 @@ export function entryScore(entry: PaletteEntry, term: string): number | undefine
   return total / words.length;
 }
 
-const KIND_ORDER: readonly EntryKind[] = ["tab", "space", "action", "profile", "folder", "theme"];
+const KIND_ORDER: readonly EntryKind[] = [
+  "tab",
+  "space",
+  "action",
+  "profile",
+  "folder",
+  "theme",
+  "space-theme",
+];
 
 /**
  * The entries the query asks for. A prefix limits the kinds (`>` lists everything that is not a tab
@@ -315,4 +354,5 @@ export const KIND_HEADINGS: Readonly<Record<EntryKind, string>> = {
   profile: "Profiles",
   folder: "Recent folders",
   theme: "Themes",
+  "space-theme": "Theme for this space",
 };

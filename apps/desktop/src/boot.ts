@@ -6,6 +6,7 @@ import { loadHome } from "./home";
 import { migrateLegacySettings } from "./legacy-settings";
 import type { LegacyStorageArea } from "./legacy-settings";
 import { notificationSettings } from "./notification-settings";
+import { followActiveSpaceTheme } from "./use-theme";
 import { createWorkspaceStore } from "./workspace-store";
 import type { WorkspaceStore } from "./workspace-store";
 
@@ -58,6 +59,8 @@ export async function bootWorkspace(
       // A failed notification (the system refused) is not worth an error on screen.
       notifier: new SystemNotifier({ backend: target, settings: notificationSettings }),
     });
+    // The window shows the theme of the active space, if it has one, from the first frame.
+    followActiveSpaceTheme(store);
     const flush = () => {
       store
         .getState()

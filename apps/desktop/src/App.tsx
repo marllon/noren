@@ -69,6 +69,7 @@ import type { SpaceFormValues } from "./SpaceDialog";
 import { SpaceMenu } from "./SpaceMenu";
 import type { MenuPoint } from "./SpaceMenu";
 import { SpaceSwitcher } from "./SpaceSwitcher";
+import { spaceThemeOptions } from "./space-theme";
 import { SplitLayout } from "./SplitLayout";
 import type { SplitLayoutContext } from "./SplitLayout";
 import { joinedPaneCount, paneDropAction, paneLimitNotice, paneSwapAction } from "./sidebar-drop";
@@ -77,7 +78,7 @@ import { keyboardResize } from "./split-layout";
 import { currentResolver, isRecording, useKeybindings } from "./keybindings-store";
 import { resolveBindings } from "./keybindings";
 import type { ActionCommand } from "./keybindings";
-import { buildEntries } from "./palette";
+import { buildEntries, buildSpaceThemeEntries } from "./palette";
 import type { PaletteEntry } from "./palette";
 import { typesText } from "./split-keys";
 import { DropZones, TreeDnd } from "./TreeDnd";
@@ -402,12 +403,19 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const [selection, setSelection] = useState<SpaceSelection>({ spaceId: "", ids: [] });
   const [editing, setEditing] = useState<Editing | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // What the open palette lists: everything, or only the themes the active space can take.
+  const [paletteMode, setPaletteMode] = useState<"all" | "space-theme">("all");
   // The search over all tabs: the text of every tab, read when it opened (null while it is closed).
   const [searchText, setSearchText] = useState<SearchTab[] | null>(null);
   const handles = useRef(new Map<Id, TerminalHandle>());
   const theme = useTheme();
   const themeChoice = useThemeChoice();
   const colors = useMemo(() => terminalTheme(theme), [theme]);
+  // The global theme, for the callbacks below that must not change with it.
+  const themeChoiceRef = useRef(themeChoice);
+  useEffect(() => {
+    themeChoiceRef.current = themeChoice;
+  }, [themeChoice]);
   const layout = useLayout();
   // A file with a problem of its own cannot be edited, so the handle cannot save a width either.
   const settingsFileBroken = useConfigState().errors.length > 0;
@@ -713,6 +721,15 @@ function Shell({ store }: { store: WorkspaceStore }) {
         // Not over a menu or dialog: they hold the keyboard.
         if (!modalOpen.current) {
           setSearchText(null);
+          setPaletteMode("all");
+          setPaletteOpen(true);
+        }
+        return;
+      }
+      if (action.command.kind === "space-theme") {
+        if (!modalOpen.current) {
+          setSearchText(null);
+          setPaletteMode("space-theme");
           setPaletteOpen(true);
         }
         return;
@@ -868,23 +885,28 @@ function Shell({ store }: { store: WorkspaceStore }) {
   }, [paletteOpen]);
   const onPaletteHighlight = useCallback((entry: PaletteEntry | undefined) => {
     if (entry?.kind === "theme") previewTheme(entry.themeId);
-    else clearThemePreview();
+    else if (entry?.kind === "space-theme") {
+      // "Use global theme" previews what the window shows with no theme of the space.
+      previewTheme(entry.themeId ?? themeChoiceRef.current);
+    } else clearThemePreview();
   }, []);
 
   const keybindings = useKeybindings();
   const paletteEntries = useMemo(
     () =>
-      paletteOpen
-        ? buildEntries({
-            workspace,
-            chords: resolveBindings(keybindings).chords,
-            home,
-            profiles,
-            folders: recentFolders(),
-            themes: { list: THEMES, choice: themeChoice },
-          })
-        : [],
-    [paletteOpen, workspace, keybindings, home, profiles, themeChoice],
+      !paletteOpen
+        ? []
+        : paletteMode === "space-theme"
+          ? buildSpaceThemeEntries(space.name, spaceThemeOptions(space.themeId, THEMES))
+          : buildEntries({
+              workspace,
+              chords: resolveBindings(keybindings).chords,
+              home,
+              profiles,
+              folders: recentFolders(),
+              themes: { list: THEMES, choice: themeChoice },
+            }),
+    [paletteOpen, paletteMode, space, workspace, keybindings, home, profiles, themeChoice],
   );
 
   /** An entry of the palette: the same calls a click or a shortcut makes. */
@@ -893,7 +915,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
     else if (entry.kind === "space") activateSpace(entry.spaceId);
     else if (entry.kind === "profile") newTab({ profileId: entry.profileId });
     else if (entry.kind === "folder") newTab({ cwd: entry.path });
-    else if (entry.kind === "theme") {
+    else if (entry.kind === "space-theme") {
+      // Enter gives the theme to the active space (state.json); null takes it back.
+      dispatch({ type: "space/set-theme", spaceId: space.id, themeId: entry.themeId });
+    } else if (entry.kind === "theme") {
       // Enter saves the theme highlighted; `chooseTheme` keeps it on screen until the file has it.
       void chooseTheme(entry.themeId).then((problem) => {
         if (problem !== undefined) showNotice(problem);
@@ -901,6 +926,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
     } else if (entry.action.command.kind === "search-all") {
       // The search takes the keyboard itself; the palette must not hand it to the terminal.
       openSearch();
+      return;
+    } else if (entry.action.command.kind === "space-theme") {
+      // The same palette goes on, now listing the themes of the space; the preview starts at the
+      // first one the arrows reach.
+      setPaletteMode("space-theme");
       return;
     } else if (entry.action.command.kind === "settings") {
       // The settings screen takes the keyboard itself, and hands it back to the terminal on close.
@@ -1055,7 +1085,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
         space={overlaySpace}
         index={workspace.spaces.indexOf(overlaySpace)}
         count={workspace.spaces.length}
+        themes={spaceThemeOptions(overlaySpace.themeId, THEMES)}
         point={overlay.point}
+        onTheme={(themeId) => {
+          dispatch({ type: "space/set-theme", spaceId: overlaySpace.id, themeId });
+          close();
+        }}
         onEdit={() => setOverlay({ kind: "edit", spaceId: overlaySpace.id })}
         onMove={(delta) => {
           moveSpace(overlaySpace.id, workspace.spaces.indexOf(overlaySpace) + delta);
@@ -1223,7 +1258,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
       )}
       {paletteOpen && (
         <CommandPalette
+          key={paletteMode}
           entries={paletteEntries}
+          {...(paletteMode === "space-theme"
+            ? { placeholder: `Theme for ${space.name}  (Enter to keep, Esc to cancel)` }
+            : {})}
           onRun={runPaletteEntry}
           onClose={closePalette}
           onHighlight={onPaletteHighlight}

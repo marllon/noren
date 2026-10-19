@@ -1515,6 +1515,30 @@ body {
   box-shadow: 0 6px 20px color-mix(in srgb, var(--nr-bg) 70%, transparent);
 }
 
+/* The space menu has a list of themes under its own actions: it scrolls rather than leave the window. */
+.space-menu {
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+}
+
+.space-menu .menu-heading {
+  margin-top: 4px;
+  padding: 6px 10px 2px;
+  border-top: 1px solid var(--nr-border);
+  color: var(--nr-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.space-menu button[aria-checked="true"]::before {
+  content: "✓ ";
+}
+
+.space-menu button[aria-checked="false"]::before {
+  content: "\2003 ";
+}
+
 .context-menu button.separated {
   margin-top: 4px;
   border-top: 1px solid var(--nr-border);

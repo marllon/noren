@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent } from "react";
 import type { Space } from "@noren/model";
+import type { SpaceThemeOption } from "./space-theme";
 
 /** Where the menu opens: the pointer, or the corner of the button that asked for it. */
 export interface MenuPoint {
@@ -13,7 +14,11 @@ interface SpaceMenuProps {
   /** Zero-based position of the space in the switcher and how many spaces there are. */
   index: number;
   count: number;
+  /** The themes the space can take, and "Use global theme" (see `spaceThemeOptions`). */
+  themes: readonly SpaceThemeOption[];
   point: MenuPoint;
+  /** The user picked a theme for the space, or (`null`) the global theme again. */
+  onTheme(themeId: string | null): void;
   onEdit(): void;
   onMove(delta: -1 | 1): void;
   onDelete(): void;
@@ -25,7 +30,9 @@ export function SpaceMenu({
   space,
   index,
   count,
+  themes,
   point,
+  onTheme,
   onEdit,
   onMove,
   onDelete,
@@ -87,6 +94,20 @@ export function SpaceMenu({
         {item("Move left", () => onMove(-1), index === 0)}
         {item("Move right", () => onMove(1), index === count - 1)}
         {count > 1 && item("Delete space…", onDelete)}
+        <div className="menu-heading" role="presentation">
+          Theme
+        </div>
+        {themes.map((option) => (
+          <button
+            key={option.themeId ?? "global"}
+            type="button"
+            role="menuitemradio"
+            aria-checked={option.current}
+            onClick={() => onTheme(option.themeId)}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
     </div>
   );

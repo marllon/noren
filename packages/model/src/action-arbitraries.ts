@@ -26,6 +26,12 @@ const arbName = fc.oneof(
 );
 const arbColor = fc.constantFrom("#6b8afd", "#e06c75", "teal", "red");
 const arbIcon = fc.constantFrom("terminal", "rocket", "folder");
+/** A theme id, `null` (back to the global theme) or a blank one now and then. */
+const arbThemeId = fc.oneof(
+  { weight: 6, arbitrary: fc.constantFrom("noren-dusk", "noren-paper", "from-a-later-build") },
+  { weight: 2, arbitrary: fc.constant(null) },
+  { weight: 1, arbitrary: fc.constantFrom("", "  ") },
+);
 const arbProfile = fc.constantFrom("pwsh", "bash", "wsl:Ubuntu");
 const arbProfileOrBlank = fc.oneof(
   { weight: 3, arbitrary: arbProfile },
@@ -191,6 +197,7 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
     weighted(1, fc.record({ type: tag("space/rename"), spaceId, name: arbName })),
     weighted(1, fc.record({ type: tag("space/set-color"), spaceId, color: arbColor })),
     weighted(1, fc.record({ type: tag("space/set-icon"), spaceId, icon: arbIcon })),
+    weighted(1, fc.record({ type: tag("space/set-theme"), spaceId, themeId: arbThemeId })),
     weighted(1, fc.record({ type: tag("space/move"), spaceId, index: arbIndex })),
     weighted(2, fc.record({ type: tag("space/activate"), spaceId })),
     weighted(

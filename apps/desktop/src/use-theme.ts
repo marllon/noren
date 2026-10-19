@@ -2,8 +2,10 @@ import { useSyncExternalStore } from "react";
 import { configManager, useConfigState } from "./config-store";
 import { THEMES, themeForScheme } from "./theme";
 import type { Theme } from "./theme";
-import { runThemeChoice, themeChoiceOf } from "./theme-choice";
+import { effectiveThemeChoice, runThemeChoice, themeChoiceOf } from "./theme-choice";
 import type { ThemeChoice } from "./theme-choice";
+import { activeSpaceOf } from "./workspace-store";
+import type { WorkspaceStore } from "./workspace-store";
 
 const DARK_QUERY = "(prefers-color-scheme: dark)";
 
@@ -25,6 +27,9 @@ interface Preview {
 
 const listeners = new Set<() => void>();
 let preview: Preview | undefined;
+/** The `themeId` of the active space (`undefined`: it has none). */
+let spaceThemeId: string | undefined;
+let stopFollowing: (() => void) | undefined;
 /** How many choices are being written; the preview stays until the file has them. */
 let writing = 0;
 
@@ -35,6 +40,32 @@ function notify(): void {
 function subscribePreview(onChange: () => void): () => void {
   listeners.add(onChange);
   return () => listeners.delete(onChange);
+}
+
+/**
+ * Follows the theme of the active space in `store`: the window shows it while that space is
+ * active, so switching space switches the theme (and the terminals) at once. Follows one store at
+ * a time; a second call replaces the first.
+ */
+export function followActiveSpaceTheme(
+  store: Pick<WorkspaceStore, "getState" | "subscribe">,
+): void {
+  stopFollowing?.();
+  const read = () => {
+    const next = activeSpaceOf(store.getState().workspace).themeId;
+    if (next === spaceThemeId) return;
+    spaceThemeId = next;
+    notify();
+  };
+  read();
+  stopFollowing = store.subscribe(read);
+}
+
+/** Stops following the store and forgets the theme of the space, so a test starts from nothing. */
+export function resetSpaceTheme(): void {
+  stopFollowing?.();
+  stopFollowing = undefined;
+  spaceThemeId = undefined;
 }
 
 /** Shows `choice` (`null`: the system's theme) as the theme of the window, without saving it. */
@@ -77,19 +108,20 @@ export function resetThemePreview(): void {
   writing = 0;
 }
 
-/** The id of the theme saved in the settings, or `null` while the theme follows the system. */
+/** The id of the global theme saved in the settings, or `null` while it follows the system. */
 export function useThemeChoice(): ThemeChoice {
   return themeChoiceOf(useConfigState().config);
 }
 
 /**
- * The active theme: the one being previewed, else the one the settings file names, else the one
- * the operating system's color scheme gives (live).
+ * The active theme: the one being previewed, else the one of the active space, else the one the
+ * settings file names, else the one the operating system's color scheme gives (live).
  */
 export function useTheme(): Theme {
   const dark = useSyncExternalStore(subscribeScheme, prefersDark);
-  const saved = useThemeChoice();
+  const config = useConfigState().config;
   const previewed = useSyncExternalStore(subscribePreview, () => preview);
-  const id = previewed !== undefined ? previewed.choice : saved;
+  const ownId = useSyncExternalStore(subscribePreview, () => spaceThemeId);
+  const id = effectiveThemeChoice({ preview: previewed, spaceThemeId: ownId, config });
   return THEMES.find((theme) => theme.id === id) ?? themeForScheme(dark);
 }

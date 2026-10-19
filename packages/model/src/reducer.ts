@@ -105,6 +105,21 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
         space.icon === icon ? undefined : { ...space, icon },
       );
     }
+    case "space/set-theme": {
+      if (action.themeId === null) {
+        return updateSpace(ws, action.spaceId, (space) => {
+          if (space.themeId === undefined) return undefined;
+          const next = { ...space };
+          delete next.themeId;
+          return next;
+        });
+      }
+      const themeId = clean(action.themeId);
+      if (themeId === undefined) return ws;
+      return updateSpace(ws, action.spaceId, (space) =>
+        space.themeId === themeId ? undefined : { ...space, themeId },
+      );
+    }
     case "space/set-defaults":
       return setSpaceDefaults(ws, action);
     case "space/move":

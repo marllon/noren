@@ -17,6 +17,7 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "space/rename": true,
   "space/set-color": true,
   "space/set-icon": true,
+  "space/set-theme": true,
   "space/set-defaults": true,
   "space/move": true,
   "space/activate": true,
@@ -137,6 +138,7 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "space/rename":
     case "space/set-color":
     case "space/set-icon":
+    case "space/set-theme":
     case "space/set-defaults":
     case "space/move":
     case "space/activate":

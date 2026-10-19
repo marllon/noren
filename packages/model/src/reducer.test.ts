@@ -222,6 +222,57 @@ describe("space/set-color and space/set-icon", () => {
   });
 });
 
+describe("space/set-theme", () => {
+  it("gives the space its own theme and takes it back with null", () => {
+    const set = applyChecked(fixture(), {
+      type: "space/set-theme",
+      spaceId: "s1",
+      themeId: " noren-paper ",
+    });
+    expect(spaceOf(set, "s1").themeId).toBe("noren-paper");
+    const cleared = applyChecked(set, { type: "space/set-theme", spaceId: "s1", themeId: null });
+    expect("themeId" in spaceOf(cleared, "s1")).toBe(false);
+  });
+
+  it("changes only the space it names", () => {
+    const ws = fixture();
+    const next = applyChecked(ws, {
+      type: "space/set-theme",
+      spaceId: "s1",
+      themeId: "noren-dusk",
+    });
+    expect(next.spaces.filter((space) => space.themeId !== undefined).map((s) => s.id)).toEqual([
+      "s1",
+    ]);
+  });
+
+  it("keeps an id the build may not have, so a later build can read it", () => {
+    const next = applyChecked(fixture(), {
+      type: "space/set-theme",
+      spaceId: "s1",
+      themeId: "imported-theme",
+    });
+    expect(spaceOf(next, "s1").themeId).toBe("imported-theme");
+  });
+
+  it("returns the same workspace for a blank, unchanged or unknown input", () => {
+    const set = applyChecked(fixture(), {
+      type: "space/set-theme",
+      spaceId: "s1",
+      themeId: "noren-dusk",
+    });
+    expect(applyChecked(set, { type: "space/set-theme", spaceId: "s1", themeId: " " })).toBe(set);
+    expect(
+      applyChecked(set, { type: "space/set-theme", spaceId: "s1", themeId: "noren-dusk" }),
+    ).toBe(set);
+    expect(
+      applyChecked(set, { type: "space/set-theme", spaceId: "nope", themeId: "noren-paper" }),
+    ).toBe(set);
+    const ws = fixture();
+    expect(applyChecked(ws, { type: "space/set-theme", spaceId: "s1", themeId: null })).toBe(ws);
+  });
+});
+
 describe("space/create with env and space/set-defaults", () => {
   it("creates a space with its own copy of the environment", () => {
     const env = { EDITOR: "vim", NOREN_MODE: "work" };

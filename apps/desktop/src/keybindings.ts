@@ -42,6 +42,7 @@ export type ActionCommand =
   | { kind: "mru"; delta: 1 | -1 }
   | { kind: "search-all" }
   | { kind: "settings" }
+  | { kind: "space-theme" }
   | LayoutCommand
   | { kind: "last-unread" }
   | { kind: "prompt"; direction: "previous" | "next" }
@@ -191,6 +192,14 @@ export const ACTIONS: readonly ActionDef[] = [
     title: "Open settings",
     category: "General",
     command: { kind: "settings" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
+  },
+  {
+    id: "space.set-theme",
+    title: "Set theme for this space",
+    category: "Spaces",
+    command: { kind: "space-theme" },
     repeat: false,
     chords: { safe: undefined, browser: undefined },
   },

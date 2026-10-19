@@ -15,6 +15,8 @@ interface CommandPaletteProps {
    * highlighted (`undefined`). A theme entry shows its theme at once, unsaved.
    */
   onHighlight?(entry: PaletteEntry | undefined): void;
+  /** Replaces the hint in the search box (the list of "Set theme for this space" has its own). */
+  placeholder?: string;
 }
 
 /** The entries of one kind, in the order `searchEntries` gave them. */
@@ -22,7 +24,15 @@ function ofKind(entries: readonly PaletteEntry[], kind: EntryKind): PaletteEntry
   return entries.filter((entry) => entry.kind === kind);
 }
 
-const KINDS: readonly EntryKind[] = ["tab", "space", "action", "profile", "folder", "theme"];
+const KINDS: readonly EntryKind[] = [
+  "tab",
+  "space",
+  "action",
+  "profile",
+  "folder",
+  "theme",
+  "space-theme",
+];
 
 /**
  * The command palette: a search box over the tabs of every space, the spaces, the actions, the shell
@@ -31,7 +41,13 @@ const KINDS: readonly EntryKind[] = ["tab", "space", "action", "profile", "folde
  * not filter on its own). The prefixes `>`, `@` and `#` limit the list to commands (the actions,
  * profiles, folders and themes), tabs or spaces.
  */
-export function CommandPalette({ entries, onRun, onClose, onHighlight }: CommandPaletteProps) {
+export function CommandPalette({
+  entries,
+  onRun,
+  onClose,
+  onHighlight,
+  placeholder,
+}: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   // The highlighted entry is controlled: `cmdk` only reports a change of it when it is.
   const [highlighted, setHighlighted] = useState("");
@@ -81,7 +97,9 @@ export function CommandPalette({ entries, onRun, onClose, onHighlight }: Command
             autoFocus
             value={query}
             onValueChange={setQuery}
-            placeholder="Search tabs, spaces and commands  (> commands, @ tabs, # spaces)"
+            placeholder={
+              placeholder ?? "Search tabs, spaces and commands  (> commands, @ tabs, # spaces)"
+            }
           />
           <Command.List>
             <Command.Empty>No results</Command.Empty>

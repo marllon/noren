@@ -50,6 +50,8 @@ export interface FakeBackendOptions {
   commandExitCode?: number;
   /** Fake git repositories, by the folder that holds each one (`{ "/proj": { branch: "main", detached: false } }`). */
   gitRepos?: Record<string, GitInfo>;
+  /** Initial text of `config.jsonc`. Defaults to `null` (no such file). */
+  config?: string | null;
 }
 
 /** One notification given to `notify`, for assertions. */
@@ -394,6 +396,8 @@ class FakeSession {
  *   repository of the nearest folder above it (or itself) that has one
  * - `notify` only records the notification (`notifications`) and `isWindowFocused` answers what
  *   `setWindowFocused` said (focused at first): no notification is ever shown
+ * - `config.jsonc` lives in memory: `loadConfig` answers its text and `setConfig` replaces it, as
+ *   an edit made by another program would, and tells whoever called `watchConfig`
  *
  * Everything is synchronous: effects of `write` have been delivered when its promise resolves.
  */
@@ -411,6 +415,8 @@ export class FakeBackend implements Backend {
   readonly #commands: FakeCommandRun[] = [];
   readonly #gitRepos = new Map<string, GitInfo>();
   readonly #notifications: FakeNotification[] = [];
+  readonly #configListeners = new Set<(text: string | null) => void>();
+  #config: string | null;
   #windowFocused = true;
   #notifyFailure: Error | undefined;
   #commandExitCode: number;
@@ -420,6 +426,7 @@ export class FakeBackend implements Backend {
 
   constructor(options: FakeBackendOptions = {}) {
     this.#state = options.state ?? null;
+    this.#config = options.config ?? null;
     this.#commandExitCode = options.commandExitCode ?? 0;
     for (const [cwd, text] of Object.entries(options.actionsFiles ?? {})) {
       this.#actionsFiles.set(cwd, text);
@@ -605,6 +612,35 @@ export class FakeBackend implements Backend {
     if (this.#state === null) throw new Error("there is no state file to quarantine");
     this.#quarantined.push(this.#state);
     return `state.broken-${this.#quarantined.length}.json`;
+  }
+
+  async loadConfig(): Promise<string | null> {
+    this.#record("loadConfig");
+    return this.#config;
+  }
+
+  watchConfig(callback: (text: string | null) => void): Unsubscribe {
+    this.#record("watchConfig");
+    this.#configListeners.add(callback);
+    return () => {
+      this.#configListeners.delete(callback);
+    };
+  }
+
+  /**
+   * Replaces the text of `config.jsonc` (`null` removes the file), as if another program had
+   * saved it, and tells everyone watching. A text equal to the current one tells nobody. Not a
+   * `Backend` call, so it is not recorded.
+   */
+  setConfig(text: string | null): void {
+    if (text === this.#config) return;
+    this.#config = text;
+    for (const listener of [...this.#configListeners]) listener(text);
+  }
+
+  /** Current text of the in-memory `config.jsonc`, `null` when there is none. */
+  get configContent(): string | null {
+    return this.#config;
   }
 
   async readActionsFile(cwd: string): Promise<string | null> {

@@ -68,7 +68,8 @@ pnpm verify
 (Prettier) and `pnpm test` (Vitest). Later tasks add the Rust checks to it.
 
 Other scripts: `pnpm format` rewrites files with Prettier; `pnpm lint` and `pnpm typecheck` can be
-run alone.
+run alone; `pnpm --filter @noren/model config:schema` regenerates `docs/config.schema.json` after the settings schema in
+`packages/model/src/config.ts` changes (a test fails until you do).
 
 Tips:
 

@@ -1,6 +1,7 @@
 import { SystemNotifier, restoreWorkspace } from "@noren/model";
 import type { Backend } from "@noren/model";
 import { createBackend } from "./backend";
+import { configManager } from "./config-store";
 import { loadHome } from "./home";
 import { notificationSettings } from "./notification-settings";
 import { createWorkspaceStore } from "./workspace-store";
@@ -34,6 +35,9 @@ export async function bootWorkspace(
     } catch {
       // Storage may be blocked; the leftover key is harmless.
     }
+    // The settings first, so the first frame already has the side of the sidebar. A file that is
+    // missing, unreadable or invalid never stops the app: the defaults and an error notice stand in.
+    await configManager.start(target);
     const profiles = await target.listProfiles();
     if (profiles.length === 0) return { ok: false, error: "No shell was found on this machine." };
     const restored = await restoreWorkspace(target, { defaults: { newId, clock } });

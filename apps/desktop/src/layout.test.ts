@@ -5,6 +5,7 @@ import {
   MAX_SIDEBAR_WIDTH,
   MIN_SIDEBAR_WIDTH,
   clampWidth,
+  layoutFromConfig,
   loadLayout,
   parseLayout,
   saveLayout,
@@ -27,6 +28,33 @@ function memoryStorage(initial: Record<string, string> = {}): LayoutStorage & {
     },
   };
 }
+
+describe("layoutFromConfig", () => {
+  it("sets nothing for a file that says nothing about the layout", () => {
+    expect(layoutFromConfig({})).toEqual({});
+    expect(layoutFromConfig({ appearance: {} })).toEqual({});
+    expect(
+      layoutFromConfig({ appearance: { sidebar: {} }, notifications: { enabled: false } }),
+    ).toEqual({});
+  });
+
+  it("maps each setting to its preference, and only the ones the file mentions", () => {
+    expect(layoutFromConfig({ appearance: { sidebar: { position: "right" } } })).toEqual({
+      side: "right",
+    });
+    expect(layoutFromConfig({ appearance: { sidebar: { width: 300 } } })).toEqual({ width: 300 });
+    expect(
+      layoutFromConfig({ appearance: { sidebar: { compact: false, keepOpen: true } } }),
+    ).toEqual({ compact: false, keepOpen: true });
+    expect(layoutFromConfig({ appearance: { density: "compact" } })).toEqual({
+      density: "compact",
+    });
+    expect(layoutFromConfig({ appearance: { tabs: "top", paneHeaders: true } })).toEqual({
+      tabs: "top",
+      paneHeaders: true,
+    });
+  });
+});
 
 describe("clampWidth", () => {
   it("keeps a width in range and rounds it", () => {

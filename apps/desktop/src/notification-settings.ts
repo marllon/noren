@@ -1,10 +1,11 @@
-// The settings of the system notifications. Provisional, like the layout: the browser's
-// `localStorage` under `noren.ui.notifications`, until the settings file of NOR-F8-01 owns them.
-// There is no screen for them yet; the value is JSON such as `{"enabled":false}` or
-// `{"longCommandSeconds":60}`.
+// The settings of the system notifications. The settings file (`notifications` in config.jsonc)
+// decides every setting it mentions. The rest stays with the provisional storage, as before: the
+// browser's `localStorage` under `noren.ui.notifications`, with JSON such as `{"enabled":false}` or
+// `{"longCommandSeconds":60}`, until the settings screen of NOR-F8-01b replaces it.
 
 import { DEFAULT_NOTIFICATION_SETTINGS } from "@noren/model";
-import type { NotificationSettings } from "@noren/model";
+import type { Config, NotificationSettings } from "@noren/model";
+import { configManager } from "./config-store";
 
 /** Key of the notification settings in the browser storage. */
 export const NOTIFICATION_SETTINGS_KEY = "noren.ui.notifications";
@@ -35,11 +36,30 @@ export function parseNotificationSettings(raw: string | null): NotificationSetti
   return settings;
 }
 
-/** The settings now. Read at every event, so a change applies at once. */
+/** `settings` with what the settings file says about the notifications put over it. */
+export function applyConfigNotifications(
+  settings: NotificationSettings,
+  config: Config,
+): NotificationSettings {
+  const section = config.notifications;
+  if (section === undefined) return settings;
+  const { enabled, longCommandSeconds } = section;
+  return {
+    enabled: enabled ?? settings.enabled,
+    longCommandMs:
+      longCommandSeconds !== undefined
+        ? Math.round(longCommandSeconds * 1000)
+        : settings.longCommandMs,
+  };
+}
+
+/** The settings now. Read at every event, so a change of the file or of the storage applies at once. */
 export function notificationSettings(): NotificationSettings {
+  let stored: NotificationSettings;
   try {
-    return parseNotificationSettings(window.localStorage.getItem(NOTIFICATION_SETTINGS_KEY));
+    stored = parseNotificationSettings(window.localStorage.getItem(NOTIFICATION_SETTINGS_KEY));
   } catch {
-    return { ...DEFAULT_NOTIFICATION_SETTINGS };
+    stored = { ...DEFAULT_NOTIFICATION_SETTINGS };
   }
+  return applyConfigNotifications(stored, configManager.state.config);
 }

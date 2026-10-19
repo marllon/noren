@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "description": "Where the JSON Schema of this file is, for the editor.",
+      "type": "string"
+    },
+    "appearance": {
+      "type": "object",
+      "properties": {
+        "sidebar": {
+          "type": "object",
+          "properties": {
+            "position": {
+              "description": "Which side of the window the sidebar is on.",
+              "default": "left",
+              "type": "string",
+              "enum": ["left", "right"]
+            },
+            "width": {
+              "description": "Width of the sidebar in pixels.",
+              "default": 200,
+              "type": "integer",
+              "minimum": 180,
+              "maximum": 480
+            },
+            "compact": {
+              "description": "Compact mode: the sidebar leaves the layout and shows over it when the pointer touches the edge of the window.",
+              "default": false,
+              "type": "boolean"
+            },
+            "keepOpen": {
+              "description": "In compact mode, keeps the sidebar open instead of hiding it.",
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "description": "The sidebar."
+        },
+        "density": {
+          "description": "How much room the rows of the sidebar take.",
+          "default": "comfortable",
+          "type": "string",
+          "enum": ["comfortable", "compact"]
+        },
+        "tabs": {
+          "description": "Where the tabs are: the tree in the sidebar, or a bar above the terminal.",
+          "default": "sidebar",
+          "type": "string",
+          "enum": ["sidebar", "top"]
+        },
+        "paneHeaders": {
+          "description": "Shows a header with the title and the buttons on every pane of a tab.",
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "description": "How the window looks and is laid out."
+    },
+    "notifications": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Off: Noren never asks the system to show a notification.",
+          "default": true,
+          "type": "boolean"
+        },
+        "longCommandSeconds": {
+          "description": "A command that runs longer than this many seconds notifies when it ends out of sight.",
+          "default": 30,
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "description": "System notifications."
+    }
+  },
+  "additionalProperties": false,
+  "title": "Noren settings",
+  "description": "The settings file of Noren (config.jsonc). Every setting is optional."
+}

@@ -1,5 +1,6 @@
 //! Noren core library. Kept free of Tauri so it can be tested on its own.
 
+pub mod config;
 pub mod git;
 pub mod integration;
 pub mod profiles;
@@ -7,6 +8,7 @@ pub mod project;
 pub mod pty;
 pub mod store;
 
+pub use config::{CONFIG_FILE_NAME, ConfigError, ConfigStore, ConfigWatcher};
 pub use git::{GitHead, read_head};
 pub use integration::{
     BASH_LOGIN_VAR, BASH_SCRIPT, POWERSHELL_SCRIPT, ZSH_DIR, ZSH_RC, ZSH_USER_DIR_VAR,

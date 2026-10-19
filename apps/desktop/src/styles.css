@@ -356,6 +356,15 @@ body {
   outline: none;
 }
 
+/* The width is set in config.jsonc: the handle shows where the edge is and does nothing. */
+.sidebar-resize[aria-disabled="true"] {
+  cursor: default;
+}
+
+.sidebar-resize[aria-disabled="true"]:hover {
+  background: transparent;
+}
+
 /* Compact density: tighter rows in the sidebar. */
 .app-body[data-nr-density="compact"] .tab-list,
 .app-body[data-nr-density="compact"] .pinned-list {
@@ -930,6 +939,59 @@ body {
 
 .pane-notice[data-nr-state="empty"] {
   opacity: 0;
+}
+
+/* A problem with config.jsonc: floats over the content, takes no room and never blocks the terminal. */
+.config-notice {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  box-sizing: border-box;
+  max-width: min(480px, calc(100% - 24px));
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--nr-accent);
+  border-radius: var(--nr-radius);
+  background: var(--nr-surface);
+  color: var(--nr-text);
+  font-size: 12px;
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--nr-bg) 70%, transparent);
+}
+
+.config-notice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.config-notice-more {
+  color: var(--nr-muted);
+}
+
+.config-notice-close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: calc(var(--nr-radius) / 2);
+  background: transparent;
+  color: var(--nr-muted);
+  cursor: pointer;
+}
+
+.config-notice-close:hover,
+.config-notice-close:focus-visible {
+  background: color-mix(in srgb, var(--nr-text) 12%, transparent);
+  color: var(--nr-text);
 }
 
 .pane-slot {

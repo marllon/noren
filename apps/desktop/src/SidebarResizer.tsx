@@ -7,18 +7,20 @@ interface SidebarResizerProps {
   side: SidebarSide;
   width: number;
   onResize(width: number): void;
+  /** The width is set elsewhere (the settings file): the handle does nothing. */
+  disabled?: boolean;
 }
 
 /**
  * The handle on the inner edge of the sidebar. Dragging it with the pointer or pressing the arrows
  * (Shift for a larger step, Home and End for the limits) changes the width of the sidebar.
  */
-export function SidebarResizer({ side, width, onResize }: SidebarResizerProps) {
+export function SidebarResizer({ side, width, onResize, disabled = false }: SidebarResizerProps) {
   const drag = useRef<{ startX: number; startWidth: number } | null>(null);
   const [dragging, setDragging] = useState(false);
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
+    if (disabled || event.button !== 0) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     event.currentTarget.focus();
@@ -37,6 +39,7 @@ export function SidebarResizer({ side, width, onResize }: SidebarResizerProps) {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (disabled) return;
     const next = widthAfterKey(width, event.key, side, event.shiftKey);
     if (next === undefined) return;
     event.preventDefault();
@@ -54,7 +57,9 @@ export function SidebarResizer({ side, width, onResize }: SidebarResizerProps) {
       aria-valuemin={MIN_SIDEBAR_WIDTH}
       aria-valuemax={MAX_SIDEBAR_WIDTH}
       aria-valuenow={width}
-      tabIndex={0}
+      aria-disabled={disabled ? true : undefined}
+      title={disabled ? "The width is set in config.jsonc" : undefined}
+      tabIndex={disabled ? -1 : 0}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={stop}

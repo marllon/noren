@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { decodeUtf8 } from "@noren/model";
 import type { SessionExit } from "@noren/model";
 import { TauriBackend } from "./tauri-backend";
@@ -15,14 +15,18 @@ function fakeBridge(answers: Record<string, unknown> = {}) {
   const channels: ChannelLike<ArrayBuffer>[] = [];
   const handlers = new Map<string, (event: { payload: unknown }) => void>();
   const failing = new Set<string>();
+  /** Every `listen` and `invoke`, in order, to tell which came first. */
+  const log: string[] = [];
   let unlistened = 0;
   const bridge: TauriBridge = {
     invoke: <T>(command: string, args?: Record<string, unknown>) => {
+      log.push(`invoke ${command}`);
       invocations.push({ command, args });
       if (failing.has(command)) return Promise.reject(new Error(`${command} failed`));
       return Promise.resolve(answers[command] as T);
     },
     listen: (event, handler) => {
+      log.push(`listen ${event}`);
       handlers.set(event, handler as (event: { payload: unknown }) => void);
       return Promise.resolve(() => {
         unlistened++;
@@ -39,8 +43,10 @@ function fakeBridge(answers: Record<string, unknown> = {}) {
     invocations,
     channels,
     failing,
+    log,
     unlistened: () => unlistened,
     emitExit: (payload: unknown) => handlers.get("session-exit")?.({ payload }),
+    emitConfig: (payload: unknown) => handlers.get("config-changed")?.({ payload }),
     callsTo: (command: string) => invocations.filter((i) => i.command === command),
   };
 }
@@ -320,6 +326,73 @@ describe("TauriBackend", () => {
     fake.failing.add("project_actions_read").add("project_command_run");
     await expect(backend.readActionsFile("x")).rejects.toThrow("project_actions_read failed");
     await expect(backend.runCommand("x", "y")).rejects.toThrow("project_command_run failed");
+  });
+
+  it("loads the settings through config_load, as text or null", async () => {
+    const text = '// mine\n{ "appearance": { "tabs": "top" } }';
+    const fake = fakeBridge({ config_load: text });
+    await expect(new TauriBackend(fake.bridge).loadConfig()).resolves.toBe(text);
+    expect(fake.invocations).toEqual([{ command: "config_load", args: undefined }]);
+    const none = fakeBridge({ config_load: null });
+    await expect(new TauriBackend(none.bridge).loadConfig()).resolves.toBeNull();
+  });
+
+  it("lets a config_load failure reach the caller", async () => {
+    const fake = fakeBridge();
+    fake.failing.add("config_load");
+    await expect(new TauriBackend(fake.bridge).loadConfig()).rejects.toThrow("config_load failed");
+  });
+
+  it("hears config-changed before it asks for the watching, once however many callbacks", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    const first: (string | null)[] = [];
+    const second: (string | null)[] = [];
+    backend.watchConfig((text) => first.push(text));
+    backend.watchConfig((text) => second.push(text));
+    await vi.waitFor(() => expect(fake.callsTo("config_watch")).toHaveLength(1));
+
+    expect(fake.log).toEqual(["listen config-changed", "invoke config_watch"]);
+    fake.emitConfig('{ "a": 1 }');
+    fake.emitConfig(null);
+    expect(first).toEqual(['{ "a": 1 }', null]);
+    expect(second).toEqual(['{ "a": 1 }', null]);
+  });
+
+  it("stops delivering to a callback that unsubscribed", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    const heard: (string | null)[] = [];
+    const stop = backend.watchConfig((text) => heard.push(text));
+    await vi.waitFor(() => expect(fake.callsTo("config_watch")).toHaveLength(1));
+    fake.emitConfig("{}");
+    stop();
+    fake.emitConfig("{ }");
+    expect(heard).toEqual(["{}"]);
+  });
+
+  it("does not break when the watching cannot start, and tries again for the next callback", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    fake.failing.add("config_watch");
+    backend.watchConfig(() => undefined);
+    await vi.waitFor(() => expect(fake.unlistened()).toBe(1));
+
+    fake.failing.delete("config_watch");
+    const heard: (string | null)[] = [];
+    backend.watchConfig((text) => heard.push(text));
+    await vi.waitFor(() => expect(fake.callsTo("config_watch")).toHaveLength(2));
+    fake.emitConfig("{}");
+    expect(heard).toEqual(["{}"]);
+  });
+
+  it("stops listening to config-changed on dispose", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    backend.watchConfig(() => undefined);
+    await vi.waitFor(() => expect(fake.callsTo("config_watch")).toHaveLength(1));
+    await backend.dispose();
+    expect(fake.unlistened()).toBe(1);
   });
 
   it("gives onOutput of an unknown session a harmless unsubscribe", () => {

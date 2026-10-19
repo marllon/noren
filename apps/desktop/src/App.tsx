@@ -32,6 +32,7 @@ import { createDeepLinkHandler } from "./deep-link-handler";
 import { startDeepLinkReceiver } from "./deep-link-receiver";
 import { tauriBridge } from "./tauri-backend";
 import { CommandPalette } from "./CommandPalette";
+import { ConfigErrorNotice } from "./ConfigErrorNotice";
 import { MruSwitcherView } from "./MruSwitcher";
 import { TabSearch } from "./TabSearch";
 import { collectSearchTabs } from "./tab-search";
@@ -50,7 +51,7 @@ import {
 import type { ClickModifiers, Selection } from "./sidebar-tree";
 import { sidebarMode } from "./layout";
 import { NOTHING_UNREAD_NOTICE, shortCwd } from "./pane-info";
-import { updateLayout, useLayout } from "./layout-store";
+import { updateLayout, useLayout, useLayoutLocks } from "./layout-store";
 import { SidebarResizer } from "./SidebarResizer";
 import { SidebarTree } from "./SidebarTree";
 import { TabBar } from "./TabBar";
@@ -152,6 +153,11 @@ export interface NorenTestHook {
   advanceClock(ms: number): void;
   /** Hands a raw `noren://` link to the same entry point the desktop app uses; resolves when applied. */
   openUrl(url: string): Promise<void>;
+  /**
+   * Replaces the text of `config.jsonc` (`null` removes the file), as an edit made by another
+   * program would. The web build keeps it in the browser storage, so a reload finds it.
+   */
+  setConfig(text: string | null): void;
 }
 
 declare global {
@@ -388,6 +394,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const themeChoice = useThemeChoice();
   const colors = useMemo(() => terminalTheme(theme), [theme]);
   const layout = useLayout();
+  const layoutLocks = useLayoutLocks();
   const reveal = useSidebarReveal(sidebarMode(layout) === "auto-hide");
 
   const space = activeSpaceOf(workspace);
@@ -786,6 +793,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
           if (fake.clock instanceof ManualClock) fake.clock.advance(ms);
         },
         openUrl: (url) => handleDeepLink(url),
+        setConfig: (text) => fake.setConfig(text),
         killedSessions: () => fake.callsTo("kill").map((call) => Number(call.args[0])),
         sessionStarts: () =>
           fake.callsTo("createSession").map((call) => {
@@ -1084,6 +1092,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
             side={layout.side}
             width={layout.width}
             onResize={(width) => updateLayout({ width })}
+            disabled={layoutLocks.has("width")}
           />
           {favorites.length > 0 && (
             <FavoritesGrid
@@ -1173,6 +1182,7 @@ export function App() {
   return (
     <main className="app">
       <TitleBar />
+      <ConfigErrorNotice />
       <Suspense fallback={null}>
         <Booted />
       </Suspense>

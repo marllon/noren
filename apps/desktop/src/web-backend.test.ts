@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   WEB_ACTIONS_KEY,
+  WEB_CONFIG_KEY,
   WEB_GIT_KEY,
   WEB_PROFILES_KEY,
   WEB_STATE_KEY,
@@ -15,8 +16,19 @@ function memoryStorage(): StateStorage & { keys(): string[] } {
     setItem: (key, value) => {
       values.set(key, value);
     },
+    removeItem: (key) => {
+      values.delete(key);
+    },
     keys: () => [...values.keys()],
   };
+}
+
+/** A storage that refuses everything, as a browser with storage turned off does. */
+function blockedStorage(): StateStorage {
+  const refuse = (): never => {
+    throw new Error("blocked");
+  };
+  return { getItem: refuse, setItem: refuse, removeItem: refuse };
 }
 
 describe("WebBackend", () => {
@@ -45,15 +57,7 @@ describe("WebBackend", () => {
   });
 
   it("blocked storage falls back to memory", async () => {
-    const blocked: StateStorage = {
-      getItem: () => {
-        throw new Error("blocked");
-      },
-      setItem: () => {
-        throw new Error("blocked");
-      },
-    };
-    const backend = new WebBackend(blocked);
+    const backend = new WebBackend(blockedStorage());
     await backend.saveState("kept");
     expect(await backend.loadState()).toBe("kept");
   });
@@ -140,5 +144,48 @@ describe("WebBackend", () => {
       storage.setItem(WEB_GIT_KEY, seed);
       expect(await backend.gitInfo("/e"), seed).toEqual({ branch: "ok", detached: false });
     }
+  });
+
+  describe("config.jsonc", () => {
+    it("is empty when the key is not seeded, and is the seeded text when it is", async () => {
+      expect(await new WebBackend(memoryStorage()).loadConfig()).toBeNull();
+      const storage = memoryStorage();
+      storage.setItem(WEB_CONFIG_KEY, "// mine\n{}");
+      expect(await new WebBackend(storage).loadConfig()).toBe("// mine\n{}");
+    });
+
+    it("keeps a change under the key, so a new backend over the same storage finds it", async () => {
+      const storage = memoryStorage();
+      const backend = new WebBackend(storage);
+      backend.setConfig('{ "appearance": { "tabs": "top" } }');
+      expect(storage.getItem(WEB_CONFIG_KEY)).toBe('{ "appearance": { "tabs": "top" } }');
+      expect(await new WebBackend(storage).loadConfig()).toBe(
+        '{ "appearance": { "tabs": "top" } }',
+      );
+    });
+
+    it("tells the watchers of a change, and removing the file clears the key", async () => {
+      const storage = memoryStorage();
+      storage.setItem(WEB_CONFIG_KEY, "{}");
+      const backend = new WebBackend(storage);
+      const heard: (string | null)[] = [];
+      backend.watchConfig((text) => heard.push(text));
+
+      backend.setConfig("{}");
+      backend.setConfig("// edited\n{}");
+      backend.setConfig(null);
+      expect(heard).toEqual(["// edited\n{}", null]);
+      expect(storage.getItem(WEB_CONFIG_KEY)).toBeNull();
+    });
+
+    it("still works in memory when the storage is blocked", async () => {
+      const backend = new WebBackend(blockedStorage());
+      expect(await backend.loadConfig()).toBeNull();
+      const heard: (string | null)[] = [];
+      backend.watchConfig((text) => heard.push(text));
+      backend.setConfig("{}");
+      expect(heard).toEqual(["{}"]);
+      expect(await backend.loadConfig()).toBe("{}");
+    });
   });
 });

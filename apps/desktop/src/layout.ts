@@ -1,14 +1,18 @@
+import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "@noren/model";
+import type { Config } from "@noren/model";
+
 // How the window is laid out: which side the sidebar is on, how wide it is, how dense the rows are
 // and whether it hides. Pure: the interface applies what this returns and `layout-store.ts` keeps it.
 //
-// Provisional storage: the browser's `localStorage` under `noren.ui.layout`, until the settings file
-// of NOR-F8-01 takes over these preferences.
+// The settings file (`appearance` in config.jsonc, see `layoutFromConfig`) decides every preference
+// it mentions. The others stay with the provisional storage: the browser's `localStorage` under
+// `noren.ui.layout`, until the settings screen of NOR-F8-01b replaces its controls.
 
 /** Key of the layout preferences in the browser storage. */
 export const LAYOUT_KEY = "noren.ui.layout";
 
-export const MIN_SIDEBAR_WIDTH = 180;
-export const MAX_SIDEBAR_WIDTH = 480;
+export const MIN_SIDEBAR_WIDTH = SIDEBAR_MIN_WIDTH;
+export const MAX_SIDEBAR_WIDTH = SIDEBAR_MAX_WIDTH;
 export const DEFAULT_SIDEBAR_WIDTH = 200;
 
 /** Pixels one arrow press moves the sidebar edge; Shift moves it by the large step. */
@@ -87,6 +91,24 @@ export function parseLayout(raw: string | null): Layout {
     // Preferences saved before pane headers existed have no such field: the headers stay off.
     paneHeaders: typeof paneHeaders === "boolean" ? paneHeaders : DEFAULT_LAYOUT.paneHeaders,
   };
+}
+
+/**
+ * The preferences the settings file sets, and only those: a setting the file does not mention is
+ * not in the result, so it keeps whatever the person chose with the provisional controls.
+ */
+export function layoutFromConfig(config: Config): Partial<Layout> {
+  const { appearance } = config;
+  const sidebar = appearance?.sidebar;
+  const set: Partial<Layout> = {};
+  if (sidebar?.position !== undefined) set.side = sidebar.position;
+  if (sidebar?.width !== undefined) set.width = clampWidth(sidebar.width);
+  if (sidebar?.compact !== undefined) set.compact = sidebar.compact;
+  if (sidebar?.keepOpen !== undefined) set.keepOpen = sidebar.keepOpen;
+  if (appearance?.density !== undefined) set.density = appearance.density;
+  if (appearance?.tabs !== undefined) set.tabs = appearance.tabs;
+  if (appearance?.paneHeaders !== undefined) set.paneHeaders = appearance.paneHeaders;
+  return set;
 }
 
 export function serializeLayout(layout: Layout): string {

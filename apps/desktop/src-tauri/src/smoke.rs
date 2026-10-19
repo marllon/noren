@@ -10,7 +10,7 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use noren_core::{SessionId, StateStore, is_powershell};
+use noren_core::{CONFIG_FILE_NAME, ConfigStore, SessionId, StateStore, is_powershell};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Listener, Manager};
 
@@ -328,6 +328,12 @@ pub fn deeplink_state_store(target: &DeepLinkTarget) -> StateStore {
     StateStore::new(target.state_dir.join(STATE_FILE_NAME))
 }
 
+/// The settings file of the deep-link run: in the same folder, so the user's real `config.jsonc`
+/// is neither read nor watched.
+pub fn deeplink_config_store(target: &DeepLinkTarget) -> ConfigStore {
+    ConfigStore::new(target.state_dir.join(CONFIG_FILE_NAME))
+}
+
 /// Compares the folder the interface reports for the active space with the one in the link, by
 /// the same rules the interface uses to pick a space for a link.
 fn check_reported_folder(expected: &str, reported: Option<&str>) -> Result<(), String> {
@@ -445,6 +451,9 @@ mod tests {
         assert_ne!(first.state_dir, second.state_dir);
         let store = deeplink_state_store(&first);
         assert_eq!(store.path(), first.state_dir.join("state.json"));
+        // The settings file is kept apart too, so the user's real one is neither read nor watched.
+        let config = deeplink_config_store(&first);
+        assert_eq!(config.path(), first.state_dir.join("config.jsonc"));
     }
 
     #[test]

@@ -41,6 +41,9 @@ interface SessionExitPayload {
 
 const SESSION_EXIT_EVENT = "session-exit";
 
+/** Event emitted by the Rust side when `config.jsonc` changes; the payload is the new text or `null`. */
+const CONFIG_CHANGED_EVENT = "config-changed";
+
 /** `Backend` over the Tauri commands in `src-tauri/src/bridge.rs`. */
 export class TauriBackend implements Backend {
   readonly #bridge: TauriBridge;
@@ -50,7 +53,9 @@ export class TauriBackend implements Backend {
   readonly #released = new Set<SessionId>();
   /** Exits that arrived before `session_create` returned the id. */
   readonly #earlyExits = new Map<SessionId, SessionExit>();
+  readonly #configListeners = new Set<(text: string | null) => void>();
   #exitSubscription: Promise<() => void> | undefined;
+  #configSubscription: Promise<() => void> | undefined;
 
   constructor(bridge: TauriBridge = tauriBridge()) {
     this.#bridge = bridge;
@@ -127,6 +132,18 @@ export class TauriBackend implements Backend {
     return this.#bridge.invoke<string>("state_quarantine");
   }
 
+  loadConfig(): Promise<string | null> {
+    return this.#bridge.invoke<string | null>("config_load");
+  }
+
+  watchConfig(callback: (text: string | null) => void): Unsubscribe {
+    this.#configListeners.add(callback);
+    this.#startWatchingConfig();
+    return () => {
+      this.#configListeners.delete(callback);
+    };
+  }
+
   readActionsFile(cwd: string): Promise<string | null> {
     return this.#bridge.invoke<string | null>("project_actions_read", { cwd });
   }
@@ -148,11 +165,41 @@ export class TauriBackend implements Backend {
     return this.#bridge.invoke<boolean>("window_is_focused");
   }
 
-  /** Stops listening to `session-exit`. Sessions still running will keep their ids until killed. */
+  /** Stops listening to `session-exit` and `config-changed`. Sessions still running will keep their ids until killed. */
   async dispose(): Promise<void> {
     const subscription = this.#exitSubscription;
     this.#exitSubscription = undefined;
     if (subscription) (await subscription)();
+    const config = this.#configSubscription;
+    this.#configSubscription = undefined;
+    this.#configListeners.clear();
+    if (config) (await config.catch(() => undefined))?.();
+  }
+
+  /**
+   * Hears `config-changed` first and only then asks the Rust side to start watching, so no change
+   * is missed. Done once; if it fails the settings still load, they only stop following the file,
+   * and the next `watchConfig` tries again.
+   */
+  #startWatchingConfig(): void {
+    if (this.#configSubscription) return;
+    const subscription = this.#bridge
+      .listen<string | null>(CONFIG_CHANGED_EVENT, (event) => {
+        for (const listener of [...this.#configListeners]) listener(event.payload);
+      })
+      .then(async (unlisten) => {
+        try {
+          await this.#bridge.invoke("config_watch");
+        } catch (error) {
+          unlisten();
+          throw error;
+        }
+        return unlisten;
+      });
+    this.#configSubscription = subscription;
+    subscription.catch(() => {
+      if (this.#configSubscription === subscription) this.#configSubscription = undefined;
+    });
   }
 
   #listenForExits(): Promise<() => void> {

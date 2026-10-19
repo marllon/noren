@@ -7,4 +7,8 @@ license.workspace = true
 publish = false
 
 [dependencies]
+# Watches the folder of config.jsonc so an edit made outside the app (an editor, a script) reaches
+# the interface without a restart: the OS notification APIs (ReadDirectoryChangesW, inotify,
+# FSEvents) instead of polling the file. 8.2.0, CC0-1.0.
+notify = "8.2.0"
 portable-pty = "0.9.0"

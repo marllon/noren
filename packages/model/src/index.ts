@@ -27,6 +27,17 @@ export type {
   ProjectActionsOptions,
   RunResult,
 } from "./project-actions";
+export {
+  ConfigSchema,
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  configJsonSchema,
+  describeConfigError,
+  parseConfigText,
+} from "./config";
+export type { Config, ConfigError, ParseConfigResult } from "./config";
+export { ConfigManager } from "./config-manager";
+export type { ConfigSource, ConfigState } from "./config-manager";
 export { ManualClock } from "./clock";
 export type { Clock } from "./clock";
 export { createDefaultWorkspace } from "./default-workspace";

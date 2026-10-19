@@ -46,7 +46,7 @@ impl fmt::Display for StoreError {
         match self {
             Self::Io { action, source } => write!(f, "could not {action}: {source}"),
             Self::InvalidPath(path) => {
-                write!(f, "'{}' is not a valid state file path", path.display())
+                write!(f, "'{}' is not a valid file path", path.display())
             }
             Self::NothingToQuarantine => write!(f, "there is no state file to quarantine"),
         }
@@ -124,13 +124,13 @@ pub fn read_file(path: &Path) -> Result<Option<Vec<u8>>, StoreError> {
         Ok(bytes) => Ok(Some(bytes)),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(StoreError::Io {
-            action: "read the state file",
+            action: "read the file",
             source: e,
         }),
     }
 }
 
-fn parent_and_name(path: &Path) -> Result<(PathBuf, &std::ffi::OsStr), StoreError> {
+pub(crate) fn parent_and_name(path: &Path) -> Result<(PathBuf, &std::ffi::OsStr), StoreError> {
     let name = path
         .file_name()
         .ok_or_else(|| StoreError::InvalidPath(path.to_owned()))?;
@@ -150,10 +150,10 @@ pub fn write_atomic(path: &Path, content: &[u8]) -> Result<(), StoreError> {
     let result = temp
         .write_all(content)
         .and_then(|()| temp.sync_all())
-        .map_err(io_error("write the temporary state file"))
+        .map_err(io_error("write the temporary file"))
         .and_then(|()| {
             drop(temp);
-            rename_over(&temp_path, path).map_err(io_error("replace the state file"))
+            rename_over(&temp_path, path).map_err(io_error("replace the file"))
         });
     if result.is_err() {
         // Only this write's own temporary file is removed.
@@ -176,7 +176,7 @@ fn create_temp(parent: &Path, name: &std::ffi::OsStr) -> Result<(PathBuf, File),
         {
             Ok(file) => return Ok((temp_path, file)),
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(e) => return Err(io_error("create the temporary state file")(e)),
+            Err(e) => return Err(io_error("create the temporary file")(e)),
         }
     }
 }

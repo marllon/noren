@@ -10,8 +10,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use noren_core::{
-    ACTIONS_FILE_PATH, GitHead, ProfileSet, SessionEvent, SessionId, SessionManager, SpawnSpec,
-    StateStore, detect_system_profiles, read_head, read_project_file, run_short,
+    ACTIONS_FILE_PATH, CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, GitHead, ProfileSet,
+    SessionEvent, SessionId, SessionManager, SpawnSpec, StateStore, detect_system_profiles,
+    read_head, read_project_file, run_short,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -267,6 +268,74 @@ pub async fn state_quarantine(store: State<'_, StateStore>) -> Result<String, St
         .map_err(|e| e.to_string())
 }
 
+/// Name of the event emitted when `config.jsonc` changes. The payload is the new text of the file,
+/// or `null` when the file was removed.
+pub const CONFIG_CHANGED_EVENT: &str = "config-changed";
+
+/// The settings file, and the watching of it, which starts when the interface asks for it.
+pub struct ConfigState {
+    pub store: ConfigStore,
+    watcher: Mutex<Option<ConfigWatcher>>,
+    watching_allowed: bool,
+}
+
+impl ConfigState {
+    pub fn new(store: ConfigStore) -> Self {
+        Self {
+            store,
+            watcher: Mutex::new(None),
+            watching_allowed: true,
+        }
+    }
+
+    /// The same, but `watch` does nothing. Watching creates the config folder when it is missing,
+    /// and the smoke run must leave the folders of the user as they are.
+    pub fn without_watching(mut self) -> Self {
+        self.watching_allowed = false;
+        self
+    }
+
+    /// Starts calling `on_change` when the file changes, unless the file is already watched (the
+    /// page reloaded and asked again): then the first watching goes on and `on_change` is dropped.
+    pub fn watch(&self, on_change: impl Fn(Option<String>) + Send + 'static) -> Result<(), String> {
+        if !self.watching_allowed {
+            return Ok(());
+        }
+        let mut watcher = self.watcher.lock().unwrap_or_else(|e| e.into_inner());
+        if watcher.is_none() {
+            *watcher = Some(self.store.watch(on_change).map_err(|e| e.to_string())?);
+        }
+        Ok(())
+    }
+}
+
+/// Builds the store for `config.jsonc` inside the app config folder. Only resolves the path: the
+/// folder is created when the file is first saved or watched.
+pub fn config_store(app: &AppHandle) -> Result<ConfigStore, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("could not find the app config folder: {e}"))?;
+    Ok(ConfigStore::new(dir.join(CONFIG_FILE_NAME)))
+}
+
+/// Reads `config.jsonc` as text; `None` when there is no file yet. Parsing and validation belong
+/// to the interface.
+#[tauri::command]
+pub async fn config_load(state: State<'_, ConfigState>) -> Result<Option<String>, String> {
+    state.store.load().map_err(|e| e.to_string())
+}
+
+/// Starts telling the interface, with the `config-changed` event, every time `config.jsonc`
+/// changes. Asking again changes nothing.
+#[tauri::command]
+pub async fn config_watch(app: AppHandle, state: State<'_, ConfigState>) -> Result<(), String> {
+    state.watch(move |text| {
+        // A failed emit means the interface is gone; the next change tries again.
+        let _ = app.emit(CONFIG_CHANGED_EVENT, text);
+    })
+}
+
 /// Longest a project command (the `stop` of an action) may run before it is killed.
 pub const PROJECT_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -479,6 +548,91 @@ mod tests {
         // Relative paths are never looked up, whatever folder the app runs in.
         let found = tauri::async_runtime::block_on(git_info("relative/folder".to_owned()));
         assert_eq!(found, Ok(None));
+    }
+
+    /// A folder in the temp dir that no other test or run uses, removed when dropped.
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(label: &str) -> Self {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos());
+            let path = std::env::temp_dir().join(format!(
+                "noren-bridge-{label}-{}-{nanos}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&path).expect("create the test folder");
+            Self(path)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn config_state_loads_and_saves_through_its_store() {
+        let dir = TempDir::new("config-load");
+        let state = ConfigState::new(ConfigStore::new(dir.0.join(CONFIG_FILE_NAME)));
+        assert_eq!(state.store.load().expect("no file"), None);
+        state.store.save("// mine\n{}").expect("save");
+        assert_eq!(
+            state.store.load().expect("load"),
+            Some("// mine\n{}".to_owned())
+        );
+    }
+
+    #[test]
+    fn config_watching_starts_once_and_reports_changes() {
+        let dir = TempDir::new("config-watch");
+        let state = ConfigState::new(ConfigStore::new(dir.0.join(CONFIG_FILE_NAME)));
+        let (first, first_heard) = std::sync::mpsc::channel();
+        let (second, second_heard) = std::sync::mpsc::channel();
+        state
+            .watch(move |text| {
+                let _ = first.send(text);
+            })
+            .expect("watch");
+        // The page reloaded and asked again: the first watching goes on, this callback is dropped.
+        state
+            .watch(move |text| {
+                let _ = second.send(text);
+            })
+            .expect("watch again");
+
+        state.store.save("{ \"a\": 1 }").expect("save");
+        assert_eq!(
+            first_heard.recv_timeout(Duration::from_secs(15)),
+            Ok(Some("{ \"a\": 1 }".to_owned()))
+        );
+        assert_eq!(
+            second_heard.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Disconnected)
+        );
+    }
+
+    #[test]
+    fn config_state_without_watching_leaves_the_folder_alone() {
+        let dir = TempDir::new("config-no-watch");
+        let folder = dir.0.join("not-yet");
+        let state =
+            ConfigState::new(ConfigStore::new(folder.join(CONFIG_FILE_NAME))).without_watching();
+        let (heard, never) = std::sync::mpsc::channel();
+        state
+            .watch(move |text| {
+                let _ = heard.send(text);
+            })
+            .expect("watch");
+        assert!(!folder.exists(), "the config folder was created");
+        assert_eq!(
+            never.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Disconnected)
+        );
+        // Reading still works, and finds no file.
+        assert_eq!(state.store.load().expect("load"), None);
     }
 
     #[test]

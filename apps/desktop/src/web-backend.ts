@@ -25,7 +25,23 @@ export const WEB_PROFILES_KEY = "noren.web.profiles";
  */
 export const WEB_GIT_KEY = "noren.web.git";
 
-export type StateStorage = Pick<Storage, "getItem" | "setItem">;
+/**
+ * Key of the text of `config.jsonc` in web mode. The e2e tests seed it before the page loads, and
+ * the `setConfig` hook rewrites it, as an edit of the file by another program would.
+ */
+export const WEB_CONFIG_KEY = "noren.web.config";
+
+/** What web mode needs of the browser storage. */
+export type StateStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+/** The text seeded under `WEB_CONFIG_KEY`, or `null` when there is none or the storage is blocked. */
+export function seededConfig(storage: Pick<Storage, "getItem">): string | null {
+  try {
+    return storage.getItem(WEB_CONFIG_KEY);
+  } catch {
+    return null;
+  }
+}
 
 /** The repositories seeded under `WEB_GIT_KEY`, or `undefined` when there is no usable seed. */
 export function seededGitRepos(
@@ -82,8 +98,19 @@ export class WebBackend extends FakeBackend {
 
   constructor(storage: StateStorage) {
     const profiles = seededProfiles(storage);
-    super(profiles !== undefined ? { profiles } : {});
+    super({ ...(profiles !== undefined ? { profiles } : {}), config: seededConfig(storage) });
     this.#storage = storage;
+  }
+
+  /** Like the fake one, and kept under `WEB_CONFIG_KEY` so a reload finds the same file. */
+  override setConfig(text: string | null): void {
+    try {
+      if (text === null) this.#storage.removeItem(WEB_CONFIG_KEY);
+      else this.#storage.setItem(WEB_CONFIG_KEY, text);
+    } catch {
+      // Storage is blocked or full: the memory copy still serves this page load.
+    }
+    super.setConfig(text);
   }
 
   override async loadState(): Promise<string | null> {

@@ -1,8 +1,7 @@
 /**
  * Terminal side of the backend contract. It never imports DOM or Tauri.
  *
- * Config and AI methods (`loadConfig`, `watchConfig`, `ai.*`) join this interface in the tasks of
- * their own phases.
+ * The AI methods (`ai.*`) join this interface in the tasks of their own phase.
  */
 
 /** Function returned by every subscription: calling it stops the delivery. */
@@ -65,6 +64,18 @@ export interface Backend {
   saveState(content: string): Promise<void>;
   /** Keeps a copy of the current `state.json` as `state.broken-<date>.json` and returns its path. */
   quarantineState(): Promise<string>;
+  /**
+   * Text of the settings file `config.jsonc`, or `null` when there is none yet. Parsing and
+   * validation are the caller's job (`parseConfigText`). Rejects when the file cannot be read.
+   */
+  loadConfig(): Promise<string | null>;
+  /**
+   * Calls `callback` with the new text of `config.jsonc` (`null` when the file was removed) every
+   * time it changes, whether the app or another program changed it. The text the file has when
+   * the watching starts is not delivered; `loadConfig` has it. A change that leaves the text as it
+   * was is not delivered. Stops when the returned function is called.
+   */
+  watchConfig(callback: (text: string | null) => void): Unsubscribe;
   /**
    * Text of `.noren/actions.json` inside the folder `cwd`, or `null` when the folder has no such
    * file. Rejects for any other failure (a folder where the file should be, no permission).

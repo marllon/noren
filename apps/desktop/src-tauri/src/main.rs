@@ -9,7 +9,7 @@ mod smoke;
 use tauri::{Manager, RunEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 
-use bridge::AppState;
+use bridge::{AppState, ConfigState};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -58,6 +58,8 @@ fn main() {
             bridge::project_actions_read,
             bridge::project_command_run,
             bridge::git_info,
+            bridge::config_load,
+            bridge::config_watch,
             notify::notify_show,
             notify::window_is_focused,
             deeplink::deep_link_take_waiting,
@@ -68,10 +70,19 @@ fn main() {
                 // The deep-link check never touches the user's state: it runs on an empty folder.
                 Some(target) => {
                     app.manage(smoke::deeplink_state_store(target));
+                    app.manage(ConfigState::new(smoke::deeplink_config_store(target)));
                     app.manage(target.clone());
                 }
                 None => {
                     app.manage(bridge::state_store(app.handle())?);
+                    let config = ConfigState::new(bridge::config_store(app.handle())?);
+                    // The smoke run reads the settings but does not watch them: watching would
+                    // create the config folder of the user.
+                    app.manage(if smoke {
+                        config.without_watching()
+                    } else {
+                        config
+                    });
                 }
             }
             // The window is created hidden (tauri.conf.json); only a normal start shows it.

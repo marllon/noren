@@ -20,6 +20,7 @@ import {
 } from "./sidebar-tree";
 import type { ClickModifiers, Selection } from "./sidebar-tree";
 import { sidebarMode } from "./layout";
+import { shortCwd } from "./pane-info";
 import { updateLayout, useLayout } from "./layout-store";
 import { SidebarResizer } from "./SidebarResizer";
 import { SidebarTree } from "./SidebarTree";
@@ -118,15 +119,25 @@ interface ItemViewProps {
   /** True when this is the tab on screen; the others stay mounted, hidden. */
   shown: boolean;
   colors: ITheme;
+  /** The home folder, for the short form of the folder in a pane header (once known). */
+  home: string | undefined;
   onReady(paneId: Id, handle: TerminalHandle): void;
 }
 
 /** The layout of one tab: its panes as nested resizable panels, a terminal in each. */
-function ItemView({ store, space, item, shown, colors, onReady }: ItemViewProps) {
+function ItemView({ store, space, item, shown, colors, home, onReady }: ItemViewProps) {
   const dispatch = useStore(store, (state) => state.dispatch);
+  const { paneHeaders } = useLayout();
   const context: SplitLayoutContext = {
     focusedPaneId: item.focusedPaneId,
     framed: item.layout.kind === "split",
+    zoomedPaneId: item.zoomedPaneId,
+    headers: paneHeaders,
+    paneTitle: (pane) => {
+      const cwd = pane.cwd ?? space.defaults.cwd;
+      const short = cwd !== undefined ? shortCwd(cwd, home) : "";
+      return short !== "" ? short : "Terminal";
+    },
     renderPane: (pane) => (
       <PaneTerminal
         key={pane.id}
@@ -139,10 +150,17 @@ function ItemView({ store, space, item, shown, colors, onReady }: ItemViewProps)
       />
     ),
     onFocusPane: (paneId) => dispatch({ type: "pane/focus", itemId: item.id, paneId }),
+    onZoomPane: (paneId) => dispatch({ type: "pane/zoom", itemId: item.id, paneId }),
+    onClosePane: (paneId) => dispatch({ type: "pane/close", itemId: item.id, paneId }),
     onResize: (path, sizes) => dispatch({ type: "pane/resize", itemId: item.id, path, sizes }),
   };
   return (
-    <div className="pane-slot" data-nr-part="item-layout" hidden={!shown}>
+    <div
+      className="pane-slot"
+      data-nr-part="item-layout"
+      data-nr-zoomed={item.zoomedPaneId !== undefined ? "true" : undefined}
+      hidden={!shown}
+    >
       <SplitLayout layout={item.layout} context={context} />
     </div>
   );
@@ -575,6 +593,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
                   item={item}
                   shown={s.id === space.id && item.id === activeId}
                   colors={colors}
+                  home={home}
                   onReady={recordHandle}
                 />
               ))}

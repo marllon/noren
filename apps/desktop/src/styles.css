@@ -764,6 +764,76 @@ body {
   pointer-events: none;
 }
 
+/* Optional header of a pane: its title and the zoom and close buttons. */
+.pane-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  padding: 0 4px 0 8px;
+  border-bottom: 1px solid var(--nr-border);
+  background: var(--nr-surface);
+  color: var(--nr-muted);
+  font-size: 11px;
+}
+
+.pane-header-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pane-header-button {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--nr-radius);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.pane-header-button:hover {
+  background: var(--nr-border);
+  color: var(--nr-text);
+}
+
+/*
+ * Zoom: the zoomed pane covers the whole item and the others are hidden. Nothing moves in the
+ * component tree, so no terminal unmounts; the panels keep their sizes, which is what comes back
+ * when the zoom ends. The chain of panels up to the item is made static so the zoomed pane
+ * is placed against the item and not against its panel.
+ */
+.pane-slot[data-nr-zoomed] .split-group,
+.pane-slot[data-nr-zoomed] .split-panel {
+  position: static;
+}
+
+.pane-slot[data-nr-zoomed] .split-separator {
+  visibility: hidden;
+}
+
+.pane-frame[data-nr-zoom="hidden"] {
+  display: none;
+}
+
+.pane-frame[data-nr-zoom="zoomed"] {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: auto;
+  height: auto;
+  background: var(--nr-bg);
+}
+
 .split-group {
   flex: 1;
   min-width: 0;

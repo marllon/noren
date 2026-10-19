@@ -1,4 +1,5 @@
 import type { Id, LayoutNode, Pane, SplitNode } from "@noren/model";
+import { Maximize2, Minimize2, X } from "lucide-react";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { Group, Panel, Separator, useGroupRef } from "react-resizable-panels";
@@ -17,8 +18,16 @@ export interface SplitLayoutContext {
   focusedPaneId: Id;
   /** True when the item has more than one pane: only then does the focused pane get a frame. */
   framed: boolean;
+  /** The pane that fills the item while the others stay hidden (mounted), if any. */
+  zoomedPaneId: Id | undefined;
+  /** Every pane shows a header with its title and the zoom and close buttons. */
+  headers: boolean;
+  /** The text of a pane's header. */
+  paneTitle(pane: Pane): string;
   renderPane(pane: Pane): ReactNode;
   onFocusPane(paneId: Id): void;
+  onZoomPane(paneId: Id): void;
+  onClosePane(paneId: Id): void;
   /** The user dragged a separator: the split at `path` now has these sizes. */
   onResize(path: number[], sizes: number[]): void;
 }
@@ -79,6 +88,48 @@ function SplitGroup({ node, path, context }: SplitGroupProps) {
   );
 }
 
+interface PaneHeaderProps {
+  pane: Pane;
+  zoomed: boolean;
+  /** False for an item with one pane: there is nothing to zoom, and closing it closes the tab. */
+  actions: boolean;
+  context: SplitLayoutContext;
+}
+
+/** Title of a pane with the buttons that zoom it and close it. */
+function PaneHeader({ pane, zoomed, actions, context }: PaneHeaderProps) {
+  const title = context.paneTitle(pane);
+  const ZoomIcon = zoomed ? Minimize2 : Maximize2;
+  return (
+    <div className="pane-header" data-nr-part="pane-header">
+      <span className="pane-header-title" title={title}>
+        {title}
+      </span>
+      {actions && (
+        <>
+          <button
+            type="button"
+            className="pane-header-button"
+            aria-label={zoomed ? "Restore pane" : "Zoom pane"}
+            aria-pressed={zoomed}
+            onClick={() => context.onZoomPane(pane.id)}
+          >
+            <ZoomIcon size={12} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="pane-header-button"
+            aria-label="Close pane"
+            onClick={() => context.onClosePane(pane.id)}
+          >
+            <X size={12} aria-hidden="true" />
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 interface LayoutNodeViewProps {
   node: LayoutNode;
   path: number[];
@@ -89,17 +140,30 @@ function LayoutNodeView({ node, path, context }: LayoutNodeViewProps) {
   if (node.kind === "split") return <SplitGroup node={node} path={path} context={context} />;
   const { pane } = node;
   const focused = pane.id === context.focusedPaneId;
+  const zoom = context.zoomedPaneId;
+  // The zoom is only a style: the other panes stay where they are in the tree, hidden, so no
+  // terminal is unmounted or moved (a moved terminal remounts and loses its screen).
+  const zoomState = zoom === undefined ? undefined : zoom === pane.id ? "zoomed" : "hidden";
   return (
     <div
       className="pane-frame"
       data-nr-part="pane"
       data-pane-id={pane.id}
-      data-nr-focused={context.framed ? String(focused) : undefined}
+      data-nr-focused={context.framed && zoom === undefined ? String(focused) : undefined}
+      data-nr-zoom={zoomState}
       // Capture: the terminal handles its own mouse events, and the click must still count.
       onMouseDownCapture={() => {
         if (!focused) context.onFocusPane(pane.id);
       }}
     >
+      {context.headers ? (
+        <PaneHeader
+          pane={pane}
+          zoomed={zoom === pane.id}
+          actions={context.framed}
+          context={context}
+        />
+      ) : null}
       {context.renderPane(pane)}
     </div>
   );

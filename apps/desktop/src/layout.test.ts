@@ -66,6 +66,7 @@ describe("parseLayout", () => {
       compact: "yes",
       keepOpen: null,
       tabs: "bottom",
+      paneHeaders: "yes",
     });
     expect(parseLayout(raw)).toEqual(DEFAULT_LAYOUT);
     expect(parseLayout(JSON.stringify({ side: "right", width: "x" }))).toEqual({
@@ -88,6 +89,7 @@ describe("parseLayout", () => {
       compact: true,
       keepOpen: true,
       tabs: "top",
+      paneHeaders: true,
     };
     expect(parseLayout(serializeLayout(layout))).toEqual(layout);
   });
@@ -116,7 +118,21 @@ describe("parseLayout", () => {
       compact: true,
       keepOpen: false,
       tabs: "sidebar",
+      paneHeaders: false,
     });
+  });
+
+  it("keeps the pane headers off by default and when the saved value is invalid", () => {
+    expect(DEFAULT_LAYOUT.paneHeaders).toBe(false);
+    for (const paneHeaders of [1, 0, null, "true", "", ["on"], {}]) {
+      expect(parseLayout(JSON.stringify({ paneHeaders })).paneHeaders).toBe(false);
+    }
+  });
+
+  it("reads the pane headers preference, and a layout saved before the field existed has them off", () => {
+    expect(parseLayout(JSON.stringify({ paneHeaders: true })).paneHeaders).toBe(true);
+    expect(parseLayout(JSON.stringify({ paneHeaders: false })).paneHeaders).toBe(false);
+    expect(parseLayout(JSON.stringify({ side: "right", tabs: "top" })).paneHeaders).toBe(false);
   });
 });
 

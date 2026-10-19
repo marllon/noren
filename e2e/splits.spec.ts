@@ -202,3 +202,146 @@ test("the panes and their proportions stay when another tab shows", async ({ pag
   const after = await sizesOf(page);
   expect(Math.abs(at(after, 0).w - at(before, 0).w)).toBeLessThan(2);
 });
+
+const headers = (page: Page) => page.locator('[data-nr-part="pane-header"]');
+const itemLayout = (page: Page) => page.locator('[data-nr-part="item-layout"]:visible');
+
+/** Turns the "Pane headers" preference on or off in the Layout control and closes the control. */
+async function setPaneHeaders(page: Page, on: boolean): Promise<void> {
+  await page.getByRole("button", { name: "Layout", exact: true }).click();
+  const box = page.getByRole("checkbox", { name: "Pane headers", exact: true });
+  await expect(box).toBeVisible();
+  await box.setChecked(on);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("group", { name: "Layout", exact: true })).toHaveCount(0);
+}
+
+/** Each pane's box as a fraction of the item's box: x, y, width and height, in layout order. */
+async function fractionsOf(page: Page): Promise<number[][]> {
+  const item = await itemLayout(page).boundingBox();
+  if (!item) throw new Error("the item has no box");
+  return panes(page).evaluateAll(
+    (els, area) =>
+      els.map((el) => {
+        const box = el.getBoundingClientRect();
+        return [
+          (box.x - area.x) / area.width,
+          (box.y - area.y) / area.height,
+          box.width / area.width,
+          box.height / area.height,
+        ];
+      }),
+    item,
+  );
+}
+
+test("pane headers: off by default, on from the Layout control, kept after a reload", async ({
+  page,
+}) => {
+  const first = await openFirstTab(page);
+  const second = await split(page, "row");
+  const third = await split(page, "column", second);
+  await expect(panes(page)).toHaveCount(3);
+  await expect(headers(page)).toHaveCount(0);
+
+  await setPaneHeaders(page, true);
+  await expect(headers(page)).toHaveCount(3);
+  for (const id of [first, second, third]) {
+    const header = frame(page, id).locator('[data-nr-part="pane-header"]');
+    await expect(header).toBeVisible();
+    await expect(header.getByRole("button", { name: "Zoom pane", exact: true })).toBeVisible();
+    await expect(header.getByRole("button", { name: "Close pane", exact: true })).toBeVisible();
+  }
+
+  await page.reload();
+  await expect(panes(page)).toHaveCount(3);
+  await expect(headers(page)).toHaveCount(3);
+
+  await setPaneHeaders(page, false);
+  await expect(headers(page)).toHaveCount(0);
+  await page.reload();
+  await expect(panes(page)).toHaveCount(3);
+  await expect(headers(page)).toHaveCount(0);
+});
+
+test("zoom hides the other panes, fills the item and comes back with the same proportions", async ({
+  page,
+}) => {
+  const first = await openFirstTab(page);
+  const second = await split(page, "row");
+  const third = await split(page, "column", second);
+  const ids = [first, second, third];
+  await setPaneHeaders(page, true);
+
+  for (const [index, id] of ids.entries()) {
+    await frame(page, id).click();
+    await page.keyboard.type(`echo word${index}`);
+    await page.keyboard.press("Enter");
+    await expect.poll(async () => (await paneLines(page, id)).includes(`word${index}`)).toBe(true);
+  }
+  // Proportions other than the 50/50 the splits start with.
+  await dragSeparator(page, 0, 120, 0);
+  await dragSeparator(page, 1, 0, -90);
+  const before = await fractionsOf(page);
+  expect(before).toHaveLength(3);
+
+  const zoomButton = (id: string) =>
+    frame(page, id).getByRole("button", { name: "Zoom pane", exact: true });
+  await zoomButton(second).click();
+
+  await expect(panes(page)).toHaveCount(1);
+  await expect(frame(page, second)).toBeVisible();
+  await expect(frame(page, first)).toBeHidden();
+  await expect(frame(page, third)).toBeHidden();
+  const area = await itemLayout(page).boundingBox();
+  const zoomed = await frame(page, second).boundingBox();
+  if (!area || !zoomed) throw new Error("no box to measure");
+  expect(Math.abs(zoomed.width - area.width)).toBeLessThan(3);
+  expect(Math.abs(zoomed.height - area.height)).toBeLessThan(3);
+  expect(Math.abs(zoomed.x - area.x)).toBeLessThan(3);
+  expect(Math.abs(zoomed.y - area.y)).toBeLessThan(3);
+  // The echo that was in the zoomed pane is still there, and the hidden ones kept theirs: their
+  // terminals were never unmounted.
+  for (const [index, id] of ids.entries()) {
+    expect(await paneLines(page, id), `pane ${index} while zoomed`).toContain(`word${index}`);
+  }
+  // Still three terminals in the page (hidden ones are out of the accessibility tree).
+  await expect(page.locator('[data-nr-part="pane"] textarea')).toHaveCount(3);
+
+  await frame(page, second).getByRole("button", { name: "Restore pane", exact: true }).click();
+  await expect(panes(page)).toHaveCount(3);
+  const after = await fractionsOf(page);
+  for (const [index, box] of before.entries()) {
+    for (const [part, value] of box.entries()) {
+      // Within one percentage point of the item.
+      expect(
+        Math.abs(value - at(after[index] ?? [], part)),
+        `pane ${index}, part ${part}`,
+      ).toBeLessThan(0.01);
+    }
+  }
+  for (const [index, id] of ids.entries()) {
+    expect(await paneLines(page, id), `pane ${index} after the zoom`).toContain(`word${index}`);
+  }
+});
+
+test("Close pane closes only that pane", async ({ page }) => {
+  const first = await openFirstTab(page);
+  const second = await split(page, "row");
+  const third = await split(page, "column", second);
+  await setPaneHeaders(page, true);
+  await expect(panes(page)).toHaveCount(3);
+
+  await frame(page, third).getByRole("button", { name: "Close pane", exact: true }).click();
+  await expect(panes(page)).toHaveCount(2);
+  expect(await paneIds(page)).toEqual([first, second]);
+  await expect(headers(page)).toHaveCount(2);
+
+  // A tab with one pane has a header with the title and nothing to zoom or close from it.
+  await frame(page, second).getByRole("button", { name: "Close pane", exact: true }).click();
+  await expect(panes(page)).toHaveCount(1);
+  expect(await paneIds(page)).toEqual([first]);
+  await expect(headers(page)).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Close pane", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Zoom pane", exact: true })).toHaveCount(0);
+});

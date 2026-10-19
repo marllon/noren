@@ -130,6 +130,14 @@ export function LayoutControl() {
             />
             <span>Keep sidebar open</span>
           </label>
+          <label className="layout-option">
+            <input
+              type="checkbox"
+              checked={layout.paneHeaders}
+              onChange={(event) => updateLayout({ paneHeaders: event.target.checked })}
+            />
+            <span>Pane headers</span>
+          </label>
         </div>
       )}
     </div>

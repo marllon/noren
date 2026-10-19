@@ -31,6 +31,8 @@ export interface Layout {
   keepOpen: boolean;
   /** Top tabs mode: the tabs move to a bar above the terminal and the sidebar leaves the layout. */
   tabs: TabsPlacement;
+  /** Every pane of a tab shows a header with its title and the zoom and close buttons. */
+  paneHeaders: boolean;
 }
 
 export const DEFAULT_LAYOUT: Layout = {
@@ -40,6 +42,7 @@ export const DEFAULT_LAYOUT: Layout = {
   compact: false,
   keepOpen: false,
   tabs: "sidebar",
+  paneHeaders: false,
 };
 
 /** A width forced into the allowed range and rounded to whole pixels. */
@@ -69,6 +72,7 @@ export function parseLayout(raw: string | null): Layout {
   const compact = saved["compact"];
   const keepOpen = saved["keepOpen"];
   const tabs = saved["tabs"];
+  const paneHeaders = saved["paneHeaders"];
   return {
     side: side === "left" || side === "right" ? side : DEFAULT_LAYOUT.side,
     width:
@@ -80,6 +84,8 @@ export function parseLayout(raw: string | null): Layout {
     keepOpen: typeof keepOpen === "boolean" ? keepOpen : DEFAULT_LAYOUT.keepOpen,
     // Preferences saved before top tabs existed have no such field: they keep the sidebar.
     tabs: tabs === "sidebar" || tabs === "top" ? tabs : DEFAULT_LAYOUT.tabs,
+    // Preferences saved before pane headers existed have no such field: the headers stay off.
+    paneHeaders: typeof paneHeaders === "boolean" ? paneHeaders : DEFAULT_LAYOUT.paneHeaders,
   };
 }
 

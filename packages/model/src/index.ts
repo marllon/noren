@@ -26,6 +26,34 @@ export {
   wrapModCss,
 } from "./mods";
 export type { AppliedMod, ModPlan, WrapModResult } from "./mods";
+export {
+  BACKGROUND_EXTENSIONS,
+  DEFAULT_BACKGROUND_BLUR,
+  DEFAULT_BACKGROUND_OPACITY,
+  MAX_BACKGROUND_BLUR,
+  MAX_BACKGROUND_BYTES,
+  MAX_BACKGROUND_PATH,
+  backgroundImageProblem,
+  resolveBackground,
+  sniffImageMime,
+} from "./background";
+export type { BackgroundImageFile, BackgroundLayer, ResolvedBackground } from "./background";
+export {
+  DEFAULT_WINDOW_EFFECT,
+  MIN_WINDOW_OPACITY,
+  WINDOW_EFFECTS,
+  WINDOW_EFFECT_LABELS,
+  clampNumber,
+  interfaceOpacity,
+  isWindowEffect,
+  isWindowScheme,
+} from "./window-effect";
+export type {
+  OpacitySources,
+  WindowEffect,
+  WindowEffectReport,
+  WindowScheme,
+} from "./window-effect";
 export type { Action, ActionType, Placement, ReducerContext, SpaceItemsFate } from "./actions";
 export { ACTIONS_FILE_PATH, parseActionsFile } from "./actions-file";
 export type { ParseActionsResult, ProjectAction } from "./actions-file";
@@ -143,6 +171,7 @@ export type {
   PaneLeaf,
   RunningCommand,
   Space,
+  SpaceBackground,
   SpaceDefaults,
   SplitNode,
   Workspace,

@@ -1,5 +1,6 @@
 import { FakeBackend } from "@noren/model";
-import type { GitInfo, ShellProfile } from "@noren/model";
+import { WINDOW_EFFECT_LABELS, isWindowEffect } from "@noren/model";
+import type { GitInfo, ShellProfile, WindowEffect } from "@noren/model";
 
 /** Key of `state.json` in the browser's storage (web mode only). */
 export const WEB_STATE_KEY = "noren.web.state";
@@ -45,6 +46,21 @@ export const WEB_THEMES_KEY = "noren.web.themes";
  */
 export const WEB_MODS_KEY = "noren.web.mods";
 
+/**
+ * Key of the window effects this page pretends the system can paint, in web mode: a JSON list of
+ * effect names (`["mica"]`). A browser paints none, so without it every effect falls back to an
+ * opaque window with a reason, as the desktop app does on a system without the effect. The e2e
+ * tests seed it before the page loads, to see what a window with an effect looks like.
+ */
+export const WEB_WINDOW_EFFECTS_KEY = "noren.web.window-effects";
+
+/**
+ * Key of the picture files in web mode (the files a background path can name in the desktop app):
+ * a JSON object from the path to the base64 of the file. The e2e tests seed it before the page
+ * loads, with a fixture picture; a file placed with the `setImage` hook is kept here too.
+ */
+export const WEB_IMAGES_KEY = "noren.web.images";
+
 /** What web mode needs of the browser storage. */
 export type StateStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -77,6 +93,58 @@ export function seededUserThemes(
     const files: Record<string, string> = {};
     for (const [id, text] of Object.entries(value)) {
       if (typeof text === "string") files[id] = text;
+    }
+    return files;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The window effects seeded under `WEB_WINDOW_EFFECTS_KEY`; none when there is no usable seed. */
+export function seededWindowEffects(storage: Pick<Storage, "getItem">): WindowEffect[] {
+  try {
+    const raw = storage.getItem(WEB_WINDOW_EFFECTS_KEY);
+    if (raw === null) return [];
+    const value: unknown = JSON.parse(raw);
+    return Array.isArray(value) ? (value as unknown[]).filter(isWindowEffect) : [];
+  } catch {
+    return [];
+  }
+}
+
+function bytesOfBase64(text: string): Uint8Array {
+  const binary = atob(text);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function base64OfBytes(bytes: Uint8Array): string {
+  let binary = "";
+  const step = 0x8000;
+  for (let i = 0; i < bytes.length; i += step) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + step));
+  }
+  return btoa(binary);
+}
+
+/** The picture files seeded under `WEB_IMAGES_KEY` (path to bytes), or `undefined` when there is no usable seed. */
+export function seededImages(
+  storage: Pick<Storage, "getItem">,
+): Record<string, Uint8Array> | undefined {
+  try {
+    const raw = storage.getItem(WEB_IMAGES_KEY);
+    if (raw === null) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    const files: Record<string, Uint8Array> = {};
+    for (const [path, text] of Object.entries(value)) {
+      if (typeof text !== "string") continue;
+      try {
+        files[path] = bytesOfBase64(text);
+      } catch {
+        // Not base64: that file is left out.
+      }
     }
     return files;
   } catch {
@@ -150,13 +218,40 @@ export class WebBackend extends FakeBackend {
     const profiles = seededProfiles(storage);
     const userThemes = seededUserThemes(storage);
     const mods = seededMods(storage);
+    const images = seededImages(storage);
     super({
       ...(profiles !== undefined ? { profiles } : {}),
       ...(userThemes !== undefined ? { userThemes } : {}),
       ...(mods !== undefined ? { mods } : {}),
+      ...(images !== undefined ? { images } : {}),
+      windowEffects: seededWindowEffects(storage),
       config: seededConfig(storage),
     });
     this.#storage = storage;
+  }
+
+  /** A browser window has no effect of its own to paint; the desktop app does. */
+  protected override windowEffectReason(effect: WindowEffect): string {
+    return `${WINDOW_EFFECT_LABELS[effect]} needs the desktop app: a browser window has no window effects.`;
+  }
+
+  /** Like the fake one, and kept under `WEB_IMAGES_KEY` so a reload finds the same files. */
+  protected override putImage(path: string, bytes: Uint8Array | null): void {
+    try {
+      const others = Object.entries(seededImages(this.#storage) ?? {}).filter(
+        ([known]) => known !== path,
+      );
+      const files = Object.fromEntries(
+        [...others, ...(bytes === null ? [] : [[path, bytes] as const])].map(([name, data]) => [
+          name,
+          base64OfBytes(data),
+        ]),
+      );
+      this.#storage.setItem(WEB_IMAGES_KEY, JSON.stringify(files));
+    } catch {
+      // Storage is blocked or full: the memory copy still serves this page load.
+    }
+    super.putImage(path, bytes);
   }
 
   /** Like the fake one, and kept under `WEB_THEMES_KEY` so a reload finds the same files. */

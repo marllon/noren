@@ -46,8 +46,23 @@ export function applySpaceColor(root: StyleTarget, theme: Theme, spaceColor?: st
   root.style.setProperty("--nr-space-color", spaceColor ?? theme.ui.accent);
 }
 
-/** The colors xterm.js draws with. */
-export function terminalTheme(theme: Theme): ITheme {
+/** `#rrggbb` with an alpha for `opacity` (1 stays `#rrggbb`, so a solid terminal is as it was). */
+function withAlpha(color: string, opacity: number): string {
+  if (opacity >= 1) return color;
+  const alpha = Math.round(Math.min(1, Math.max(0, opacity)) * 255);
+  return `${color}${alpha.toString(16).padStart(2, "0")}`;
+}
+
+/** Whether an xterm.js color is see-through (`#rrggbbaa` with an alpha below ff). */
+export function isTranslucent(color: string | undefined): boolean {
+  return color !== undefined && /^#[0-9a-f]{6}(?!ff)[0-9a-f]{2}$/i.test(color);
+}
+
+/**
+ * The colors xterm.js draws with. `opacity` is how opaque the background of the terminal is (1,
+ * solid, by default; 0 lets a picture behind the terminal show through); the text is never faded.
+ */
+export function terminalTheme(theme: Theme, opacity = 1): ITheme {
   const { terminal } = theme;
   const [
     black,
@@ -69,7 +84,7 @@ export function terminalTheme(theme: Theme): ITheme {
   ] = terminal.ansi;
   return {
     foreground: terminal.foreground,
-    background: terminal.background,
+    background: withAlpha(terminal.background, opacity),
     cursor: terminal.cursor,
     selectionBackground: terminal.selection,
     // The ruler of command marks beside the scrollbar has no line of its own: it shows marks only.

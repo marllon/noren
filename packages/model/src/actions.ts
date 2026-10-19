@@ -1,6 +1,6 @@
 import type { Clock } from "./clock";
 import type { IdGenerator } from "./ids";
-import type { Id, Pane } from "./types";
+import type { Id, Pane, SpaceBackground } from "./types";
 
 /**
  * Where an item lands in a space. `index` is the final position in the target list (after the item
@@ -62,6 +62,13 @@ export type Action =
    * importer is not lost. A blank id changes nothing.
    */
   | { type: "space/set-theme"; spaceId: Id; themeId: string | null }
+  /**
+   * Gives the space a picture behind its terminals, or (`background` null) takes it back so the
+   * space follows the settings file and the theme. The path is checked (`backgroundImageProblem`;
+   * a web address, a network path or something that is not a picture changes nothing), `opacity`
+   * and `blur` are held to their range and left out when they are not numbers.
+   */
+  | { type: "space/set-background"; spaceId: Id; background: SpaceBackground | null }
   /**
    * Sets the mods the space turns on, as the names of their files in the mods folder, in the order
    * they apply (the one applied last wins; the space's mods come after the global ones). The names

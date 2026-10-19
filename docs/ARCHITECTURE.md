@@ -27,7 +27,7 @@ noren/
 
 - **pnpm workspaces** (`apps/*`, `packages/*`) and a **Cargo workspace** (`crates/*`, `apps/desktop/src-tauri`) at the root.
 - **`noren-core` does not depend on Tauri.** It is tested quickly with `cargo test -p noren-core` and is designed to later become a standalone daemon.
-- **`Backend` interface** (in `packages/model`): `listProfiles`, `setUserProfiles`, `createSession`, `write`, `resize`, `kill`, `onOutput`, `onExit`, `loadState`, `saveState`, `quarantineState`, `loadConfig`, `saveConfig`, `watchConfig`, `listUserThemes`, `saveUserTheme`, `listMods`, `watchMods`, `gitInfo`, `ai.*`. There are two implementations: `TauriBackend` (the app) and `FakeBackend` (tests, end-to-end runs and the web demo). The interface never imports anything from the DOM or from Tauri.
+- **`Backend` interface** (in `packages/model`): `listProfiles`, `setUserProfiles`, `createSession`, `write`, `resize`, `kill`, `onOutput`, `onExit`, `loadState`, `saveState`, `quarantineState`, `loadConfig`, `saveConfig`, `watchConfig`, `listUserThemes`, `saveUserTheme`, `listMods`, `watchMods`, `setWindowEffect`, `readBackgroundImage`, `gitInfo`, `ai.*`. There are two implementations: `TauriBackend` (the app) and `FakeBackend` (tests, end-to-end runs and the web demo). The interface never imports anything from the DOM or from Tauri.
 - **Terminal output flow.** A PTY reader thread in Rust gathers bytes into batches (up to 64 KB or 8 ms) and sends them through a `tauri::ipc::Channel` with a binary payload (`ArrayBuffer`). The interface writes the `Uint8Array` straight into xterm. Input goes the other way: xterm's `onData` becomes `invoke('session_write')`.
 - **Interface state.** Zustand wraps the pure reducer from `packages/model`; the operations do not know React exists.
 - **Interface libraries.** `@xterm/xterm` and its addons (webgl, fit, search, web-links, unicode11, serialize), `cmdk` (command palette), `@dnd-kit` (drag and drop), `react-resizable-panels` (splits), `lucide-react` (icons). All are MIT or ISC.
@@ -57,6 +57,7 @@ interface Space {
   icon: string;
   color: string;
   themeId?: string;
+  background?: { image: string; opacity?: number; blur?: number }; // a picture file on this computer
   modIds: string[];
   defaults: {
     profileId?: string;
@@ -172,6 +173,7 @@ Invariants (checked with property-based tests): every pane belongs to exactly on
 ```
 
 - **Theme API for mods.** CSS variables `--nr-bg`, `--nr-surface`, `--nr-text`, `--nr-muted`, `--nr-accent`, `--nr-border`, `--nr-radius`, `--nr-space-color`, and attributes `data-nr-part` (the part: `sidebar`, `space-switcher`, `item`, `group`, `favorites`, `pane`, `pane-header`, `palette`, ...) and `data-nr-state` (its state: `active`, `expanded`/`collapsed`, ...). The tables of what exists today are in [THEMING.md](THEMING.md#the-theme-api), and a test holds them to the source. Renaming any of these is a breaking API change and must be noted in the release notes.
+- **The window.** The main window is created transparent (`tauri.conf.json`), so an effect can show through the page; the page paints it opaque unless the opacity says otherwise. `Backend.setWindowEffect(effect, scheme)` asks the system for Mica, Acrylic or vibrancy, painted dark or light like the theme that was chosen (`system` while the theme follows the system), and answers what the window has: a system that cannot paint it answers `none` with the reason and the window stays opaque (the rule is `apply_effect` in `noren-core`, the native calls are `window-vibrancy` in `apps/desktop/src-tauri/src/window_effect.rs`). `appearance.window.opacity` reaches the page as `--nr-opacity`. A background picture comes from the theme, the settings or the space; `Backend.readBackgroundImage(path)` reads a local picture file (the path, the size and the first bytes are checked in `noren-core`, nothing is fetched) and the page shows the bytes from memory. See [THEMING.md](THEMING.md#the-window-effect-opacity-and-background).
 - **Mods.** CSS files of the user in the `mods/` folder next to `config.jsonc`, turned on for every space (`mods` in `config.jsonc`) or for one (`modIds` of the space in `state.json`, the `space/set-mods` action). The interface reads the folder through `Backend.listMods` and follows it with `Backend.watchMods` (`noren-core` watches the folder with `notify`), and puts each mod in a `<style data-nr-mod>` wrapped in `@layer mods`. The stylesheet of the app is in the layers `vendor` and `base` (`app.css`), declared before `mods`, so a mod wins over the style of the app with a plain selector. See [THEMING.md](THEMING.md#mods-your-own-css).
 
 ## Quality and tests
@@ -183,6 +185,6 @@ Invariants (checked with property-based tests): every pane belongs to exactly on
 | Functional e2e  | Playwright in web mode with `FakeBackend`               | Flows: create a space, a group, a split, drag, palette, restore, archive, themes                                                                      |
 | Visual e2e      | Playwright `toHaveScreenshot` (Windows only, `@visual`) | Key interface states in light, dark and compact themes                                                                                                |
 | Rust            | `cargo test`                                            | PTY (spawn, write, read, resize, exit), profiles with a fake environment, config, atomic persistence, git, AI client against a local test HTTP server |
-| Desktop         | `noren --smoke`                                         | The real app opens, creates a session of the default shell, runs `echo noren-smoke-ok`, checks the output and exits with 0                            |
+| Desktop         | `noren --smoke`                                         | The real app opens, runs `echo noren-smoke-ok` in the default shell, gives the hidden window Mica, exits with 0                                       |
 
 Rules: no test reaches the external network; AI is always tested with a fake provider; a green `pnpm verify` is required for every code change.

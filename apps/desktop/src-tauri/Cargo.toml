@@ -30,3 +30,14 @@ tauri-plugin-single-instance = "2"
 # JavaScript package is not added and the plugin's own commands get no capability, so the page
 # cannot call them. 2.7.0, MIT OR Apache-2.0.
 tauri-plugin-notification = "2"
+# Paints Mica, Acrylic or macOS vibrancy behind the main window. Tauri uses the crate too
+# (`WebviewWindow::set_effects`), but that call drops the result, and the log and the settings
+# screen have to say whether the system painted the effect or the window fell back to opaque, so
+# the calls are made here. Already in the lockfile through Tauri; 0.8.1, Apache-2.0 OR MIT.
+window-vibrancy = "0.8"
+
+[dev-dependencies]
+# The mock runtime of `tauri::test`, so the tests can call a command through the same path the
+# page uses (the name of the command and of its arguments, the raw answer). A feature of the crate
+# above, no new crate.
+tauri = { version = "2", features = ["test"] }

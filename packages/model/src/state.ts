@@ -236,6 +236,12 @@ function checkSpace(value: unknown, path: string): void {
   const space = obj(value, path);
   for (const key of ["id", "name", "icon", "color"]) str(space[key], `${path}.${key}`);
   optional(space, "themeId", path, str);
+  optional(space, "background", path, (v, p) => {
+    const background = obj(v, p);
+    str(background["image"], `${p}.image`);
+    optional(background, "opacity", p, num);
+    optional(background, "blur", p, num);
+  });
   list(space["modIds"], `${path}.modIds`, str);
   bool(space["aiEnabled"], `${path}.aiEnabled`);
   bool(space["saveScrollback"], `${path}.saveScrollback`);

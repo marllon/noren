@@ -7,8 +7,13 @@ body,
   margin: 0;
 }
 
+/*
+ * The window, the title bar, the sidebar and the tab bar are painted with --nr-bg-glass and
+ * --nr-surface-glass: the colors of the theme at the opacity of the interface (--nr-opacity, set by
+ * the app; 1 is solid). Menus, dialogs and the palette keep the solid colors so they stay legible.
+ */
 body {
-  background: var(--nr-bg);
+  background: var(--nr-bg-glass, var(--nr-bg));
   color: var(--nr-text);
   font-family: system-ui, sans-serif;
 }
@@ -17,6 +22,23 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+
+/*
+ * The picture behind the terminals (WindowBackground.tsx). It is under everything (a negative
+ * layer of the root), takes no click, and its edges reach past the window by twice the blur so the
+ * blur does not fade them. Address, opacity and blur are the --nr-background-* variables.
+ */
+.window-background {
+  position: fixed;
+  inset: calc(var(--nr-background-blur, 0px) * -2);
+  z-index: -1;
+  background-image: var(--nr-background-image, none);
+  background-position: center;
+  background-size: cover;
+  opacity: var(--nr-background-opacity, 0.15);
+  filter: blur(var(--nr-background-blur, 0px));
+  pointer-events: none;
 }
 
 .titlebar {
@@ -28,7 +50,7 @@ body {
   height: 34px;
   padding-left: 12px;
   border-bottom: 1px solid var(--nr-border);
-  background: var(--nr-surface);
+  background: var(--nr-surface-glass, var(--nr-surface));
   color: var(--nr-muted);
   font-size: 12px;
   user-select: none;
@@ -206,7 +228,7 @@ body {
   width: 200px;
   padding: 8px;
   border-right: 1px solid var(--nr-border);
-  background: var(--nr-surface);
+  background: var(--nr-surface-glass, var(--nr-surface));
 }
 
 .app-body[data-nr-side="right"] {
@@ -1093,7 +1115,12 @@ body {
   z-index: 2;
   width: auto;
   height: auto;
-  background: var(--nr-bg);
+  background: var(--nr-bg-glass, var(--nr-bg));
+}
+
+/* The zoomed pane has no background of its own while a picture shows behind the terminals. */
+.app[data-nr-picture="shown"] .pane-frame[data-nr-zoom="zoomed"] {
+  background: transparent;
 }
 
 .split-group {
@@ -1670,7 +1697,7 @@ body {
   box-sizing: border-box;
   padding: 4px 8px;
   border-bottom: 1px solid var(--nr-border);
-  background: var(--nr-surface);
+  background: var(--nr-surface-glass, var(--nr-surface));
 }
 
 .bar-list {

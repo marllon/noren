@@ -192,7 +192,8 @@ test("the only space has no delete option; with two, deleting the first activate
   await expect(menuItem(page, "Move left")).toBeDisabled();
   await expect(menuItem(page, "Move right")).toBeDisabled();
   await expect(page.getByRole("menuitem", { name: "Delete space…", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("menuitem")).toHaveCount(3);
+  // Edit, the two moves, and the background image of the space.
+  await expect(page.getByRole("menuitem")).toHaveCount(4);
   await page.keyboard.press("Escape");
   await expect(menu(page, "Main")).toBeHidden();
 

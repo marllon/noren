@@ -196,19 +196,30 @@ test("the marks are saved with the workspace", async ({ page }) => {
 });
 
 test("the palette and the shortcuts screen list the action on Ctrl+Shift+U", async ({ page }) => {
-  await page.keyboard.press("Control+Shift+P");
-  await page.keyboard.type(">last unread");
-  const options = page.locator('[data-nr-part="palette"]').getByRole("option");
-  await expect(options).toHaveCount(1);
+  const palette = page.locator('[data-nr-part="palette"]');
+  const options = palette.getByRole("option");
+  // The page gets the keyboard from a click on the pane, and the palette takes it a moment after
+  // the shortcut: typing before that goes to the wrong place, and so does Enter before the list is
+  // filtered.
+  const search = async (): Promise<void> => {
+    await page.locator('[data-nr-part="pane"]:visible').first().click();
+    await page.keyboard.press("Control+Shift+P");
+    await expect(palette).toBeVisible();
+    await expect(palette.getByRole("combobox")).toBeFocused();
+    await page.keyboard.type(">last unread");
+    await expect(options).toHaveCount(1);
+  };
+
+  await search();
   await expect(options.first()).toContainText("Go to last unread tab");
   await expect(options.first().locator("kbd")).toHaveText("Ctrl+Shift+U");
 
   // Running it from the palette goes to the unread tab.
   await page.keyboard.press("Escape");
+  await expect(palette).toBeHidden();
   await send(page, "p3", osc("9;ready"));
   await expect(mark(tab(page, "build"), "unread")).toHaveCount(1);
-  await page.keyboard.press("Control+Shift+P");
-  await page.keyboard.type(">last unread");
+  await search();
   await page.keyboard.press("Enter");
   await expect(shown(page)).toHaveText("build");
   await expect(page.locator("[data-nr-indicator]")).toHaveCount(0);

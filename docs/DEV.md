@@ -112,7 +112,9 @@ Where data lives (identifier `io.github.marllon.noren`):
 and the uninstaller removes it; a debug or `target/` build registers nothing (see
 [DEEP_LINKS.md](DEEP_LINKS.md)). `pnpm smoke` runs `noren --smoke` and then
 `noren --smoke-deeplink <link>`, both with a hidden window; the second keeps its state in a temp
-folder, never in the real `state.json`.
+folder, never in the real `state.json`. The first also gives the hidden window Mica (vibrancy on
+macOS) and prints what the system answered, `SMOKE window effect mica applied` or the opaque
+fallback with its reason; a system that cannot paint it still passes.
 
 Both paths were checked on disk: the WebView folder after an install, and `state.json` after a
 release build saved a state (the folder does not exist until the first save). Deleting both folders

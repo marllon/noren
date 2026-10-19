@@ -24,6 +24,12 @@ interface SpaceMenuProps {
   onTheme(themeId: string | null): void;
   /** The user turned a mod on or off for this space; the menu stays open for the next one. */
   onMod(name: string, on: boolean): void;
+  /** The space has a picture of its own behind its terminals. */
+  hasBackground: boolean;
+  /** The user wants to choose the picture of the space (the dialog opens). */
+  onBackground(): void;
+  /** The user took the picture of the space away. */
+  onClearBackground(): void;
   onEdit(): void;
   onMove(delta: -1 | 1): void;
   onDelete(): void;
@@ -40,6 +46,9 @@ export function SpaceMenu({
   point,
   onTheme,
   onMod,
+  hasBackground,
+  onBackground,
+  onClearBackground,
   onEdit,
   onMove,
   onDelete,
@@ -115,6 +124,11 @@ export function SpaceMenu({
             {option.label}
           </button>
         ))}
+        <div className="menu-heading" role="presentation">
+          Background
+        </div>
+        {item("Background image…", onBackground)}
+        {hasBackground && item("Remove background image", onClearBackground)}
         {/* Nothing is drawn for a folder with no mods, so the menu stays as it was. */}
         {mods.length > 0 && (
           <div className="menu-heading" role="presentation">

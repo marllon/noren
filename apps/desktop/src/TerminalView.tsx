@@ -13,6 +13,7 @@ import { attachCommandMarks, markColors } from "./command-marks-view";
 import type { CommandMarkInfo, CommandOutput, TerminalCommandMarks } from "./command-marks-view";
 import { parseOsc7 } from "./osc7";
 import { decidePaste } from "./paste";
+import { isTranslucent } from "./theme";
 
 /** What a right click does: copy the selection or paste, always paste, or leave the native menu. */
 export type RightClickAction = "copy-or-paste" | "paste" | "menu";
@@ -139,7 +140,10 @@ export function TerminalView({
 
   // A new theme repaints the terminal that is already running.
   useEffect(() => {
-    if (termRef.current) termRef.current.options.theme = theme;
+    if (termRef.current) {
+      termRef.current.options.allowTransparency = isTranslucent(theme.background);
+      termRef.current.options.theme = theme;
+    }
     marksRef.current?.setColors(markColors(theme));
   }, [theme]);
 
@@ -161,6 +165,9 @@ export function TerminalView({
       // The ruler beside the scrollbar shows the commands that failed. 14 is the scrollbar width
       // xterm.js uses without a ruler, so the terminal keeps the columns it had.
       overviewRuler: { width: 14 },
+      // A background with an alpha (the interface is see-through, or a picture shows behind the
+      // terminal) needs this to be drawn as such; a solid one is drawn as it always was.
+      allowTransparency: isTranslucent(themeRef.current.background),
       theme: themeRef.current,
     });
     termRef.current = term;

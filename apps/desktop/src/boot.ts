@@ -1,6 +1,7 @@
 import { SystemNotifier, restoreWorkspace } from "@noren/model";
 import type { Backend } from "@noren/model";
 import { createBackend } from "./backend";
+import { startBackgroundImages } from "./background-image-store";
 import { configManager } from "./config-store";
 import { loadHome } from "./home";
 import { migrateLegacySettings } from "./legacy-settings";
@@ -10,6 +11,7 @@ import { notificationSettings } from "./notification-settings";
 import { getProfiles, startProfiles } from "./profiles-store";
 import { followActiveSpaceMods } from "./use-mods";
 import { followActiveSpaceTheme } from "./use-theme";
+import { followActiveSpaceBackground } from "./use-window";
 import { loadUserThemes } from "./user-themes-store";
 import { createWorkspaceStore } from "./workspace-store";
 import type { WorkspaceStore } from "./workspace-store";
@@ -45,6 +47,8 @@ export async function bootWorkspace(
     // The settings first, so the first frame already has the side of the sidebar. A file that is
     // missing, unreadable or invalid never stops the app: the defaults and an error notice stand in.
     await configManager.start(target);
+    // The pictures of a background are read through the backend.
+    startBackgroundImages(target);
     // What earlier builds kept in the browser storage (layout, notifications, shortcut preset)
     // moves into the file once, before the first frame. It never stops the app: a file it cannot
     // edit leaves the old keys for the next start.
@@ -78,6 +82,8 @@ export async function bootWorkspace(
     followActiveSpaceTheme(store);
     // And the mods of the active space.
     followActiveSpaceMods(store);
+    // And its picture.
+    followActiveSpaceBackground(store);
     const flush = () => {
       store
         .getState()

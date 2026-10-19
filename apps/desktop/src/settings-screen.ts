@@ -1,10 +1,14 @@
 import {
   DEFAULT_NOTIFICATION_SETTINGS,
+  DEFAULT_WINDOW_EFFECT,
+  MAX_BACKGROUND_BLUR,
+  MIN_WINDOW_OPACITY,
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
+  backgroundImageProblem,
   sameModList,
 } from "@noren/model";
-import type { Config, ConfigChange } from "@noren/model";
+import type { Config, ConfigChange, WindowEffect } from "@noren/model";
 import type { Preset } from "./keybindings";
 import { DEFAULT_LAYOUT, layoutFromConfig } from "./layout";
 import type { Layout } from "./layout";
@@ -21,6 +25,8 @@ export interface SettingsValues extends Layout {
   notifications: boolean;
   /** A command that runs longer than this many seconds notifies when it ends out of sight. */
   longCommandSeconds: number;
+  /** The effect the system paints behind the window. */
+  windowEffect: WindowEffect;
 }
 
 export type SettingKey = keyof SettingsValues;
@@ -37,6 +43,7 @@ export const SETTING_PATHS: Readonly<Record<SettingKey, readonly string[]>> = {
   preset: ["keybindings", "preset"],
   notifications: ["notifications", "enabled"],
   longCommandSeconds: ["notifications", "longCommandSeconds"],
+  windowEffect: ["appearance", "window", "effect"],
 };
 
 const KEYS = Object.keys(SETTING_PATHS) as SettingKey[];
@@ -46,6 +53,7 @@ export const DEFAULT_SETTINGS: SettingsValues = {
   preset: "safe",
   notifications: DEFAULT_NOTIFICATION_SETTINGS.enabled,
   longCommandSeconds: DEFAULT_NOTIFICATION_SETTINGS.longCommandMs / 1000,
+  windowEffect: DEFAULT_WINDOW_EFFECT,
 };
 
 /** The settings in force: what the file says, and the default for what it does not say. */
@@ -60,6 +68,9 @@ export function settingsOf(config: Config): SettingsValues {
     ...(config.notifications?.longCommandSeconds !== undefined
       ? { longCommandSeconds: config.notifications.longCommandSeconds }
       : {}),
+    ...(config.appearance?.window?.effect !== undefined
+      ? { windowEffect: config.appearance.window.effect }
+      : {}),
   };
 }
 
@@ -69,6 +80,7 @@ export function settingsSetBy(config: Config): ReadonlySet<SettingKey> {
   if (config.keybindings?.preset !== undefined) set.add("preset");
   if (config.notifications?.enabled !== undefined) set.add("notifications");
   if (config.notifications?.longCommandSeconds !== undefined) set.add("longCommandSeconds");
+  if (config.appearance?.window?.effect !== undefined) set.add("windowEffect");
   return set;
 }
 
@@ -82,7 +94,38 @@ export type SettingsDraft = Partial<Omit<SettingsValues, "width" | "longCommandS
   longCommandSeconds?: string;
   /** The mods that are on for every space, in the order they apply (the file names). */
   mods?: readonly string[];
+} & Partial<Record<OptionalKey, string>>;
+
+/**
+ * The settings that may be left unset, typed in a box (an empty box is "not set"): how opaque the
+ * interface is, and the picture behind the terminals with how much of it shows and how blurred it is.
+ */
+export type OptionalKey =
+  "windowOpacity" | "backgroundImage" | "backgroundOpacity" | "backgroundBlur";
+
+/** The place of each optional setting in `config.jsonc`, in the order of the file. */
+export const OPTIONAL_PATHS: Readonly<Record<OptionalKey, readonly string[]>> = {
+  windowOpacity: ["appearance", "window", "opacity"],
+  backgroundImage: ["appearance", "background", "image"],
+  backgroundOpacity: ["appearance", "background", "opacity"],
+  backgroundBlur: ["appearance", "background", "blur"],
 };
+
+const OPTIONAL_KEYS = Object.keys(OPTIONAL_PATHS) as OptionalKey[];
+
+/** What the file holds for an optional setting (`null` for one that is not set). */
+function optionalValueOf(config: Config, key: OptionalKey): string | number | null {
+  const { window, background } = config.appearance ?? {};
+  const value =
+    key === "windowOpacity"
+      ? window?.opacity
+      : key === "backgroundImage"
+        ? background?.image
+        : key === "backgroundOpacity"
+          ? background?.opacity
+          : background?.blur;
+  return value ?? null;
+}
 
 /** The place of the list of global mods in `config.jsonc`. */
 export const MODS_PATH: readonly string[] = ["mods"];
@@ -91,7 +134,8 @@ export const MODS_PATH: readonly string[] = ["mods"];
 export type NumberKey = "width" | "longCommandSeconds";
 
 /** What the boxes and buttons of the screen show: the draft over the settings in force. */
-export interface ShownSettings extends Omit<SettingsValues, NumberKey> {
+export interface ShownSettings
+  extends Omit<SettingsValues, NumberKey>, Record<OptionalKey, string> {
   width: string;
   longCommandSeconds: string;
   mods: readonly string[];
@@ -105,7 +149,10 @@ export function shownSettings(config: Config, draft: SettingsDraft): ShownSettin
     width: draft.width ?? String(now.width),
     longCommandSeconds: draft.longCommandSeconds ?? String(now.longCommandSeconds),
     mods: draft.mods ?? config.mods ?? [],
-  };
+    ...Object.fromEntries(
+      OPTIONAL_KEYS.map((key) => [key, draft[key] ?? String(optionalValueOf(config, key) ?? "")]),
+    ),
+  } as ShownSettings;
 }
 
 /** Whether the compact-mode box can be used: with top tabs the sidebar always hides. */
@@ -120,6 +167,10 @@ export function keepOpenAvailable(shown: Pick<ShownSettings, "tabs" | "compact">
 
 export const WIDTH_PROBLEM = `Whole pixels, from ${SIDEBAR_MIN_WIDTH} to ${SIDEBAR_MAX_WIDTH}.`;
 export const SECONDS_PROBLEM = "A number of seconds, zero or more.";
+export const WINDOW_OPACITY_PROBLEM = `A number from ${MIN_WINDOW_OPACITY} to 1, or nothing to let the theme decide.`;
+export const BACKGROUND_OPACITY_PROBLEM =
+  "A number from 0 to 1, or nothing to let the theme decide.";
+export const BACKGROUND_BLUR_PROBLEM = `A number of pixels from 0 to ${MAX_BACKGROUND_BLUR}, or nothing to let the theme decide.`;
 
 /** The width a box holds, or `undefined` when it is not whole pixels in range. */
 export function parseWidth(text: string): number | undefined {
@@ -135,10 +186,58 @@ export function parseSeconds(text: string): number | undefined {
   return Number.isFinite(seconds) ? seconds : undefined;
 }
 
+/** A decimal number in a box, with blanks around: `0.5`, `.5`, `1`. */
+function parseDecimal(text: string): number | undefined {
+  if (!/^\s*(\d+(\.\d+)?|\.\d+)\s*$/.test(text)) return undefined;
+  const value = Number(text);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+/** The opacity of the interface a box holds, from the lowest allowed to 1; `undefined` when it is not one. */
+export function parseWindowOpacity(text: string): number | undefined {
+  const value = parseDecimal(text);
+  return value !== undefined && value >= MIN_WINDOW_OPACITY && value <= 1 ? value : undefined;
+}
+
+/** The opacity of the picture a box holds, from 0 to 1; `undefined` when it is not one. */
+export function parseBackgroundOpacity(text: string): number | undefined {
+  const value = parseDecimal(text);
+  return value !== undefined && value <= 1 ? value : undefined;
+}
+
+/** The blur of the picture a box holds, in pixels from 0 to the widest; `undefined` when it is not one. */
+export function parseBackgroundBlur(text: string): number | undefined {
+  const value = parseDecimal(text);
+  return value !== undefined && value <= MAX_BACKGROUND_BLUR ? value : undefined;
+}
+
+/**
+ * What a box of an optional setting holds as a value to write: `null` for an empty box (not set),
+ * or the value; `{ problem }` for text that cannot be one.
+ */
+function optionalFromText(
+  key: OptionalKey,
+  text: string,
+): string | number | null | { problem: string } {
+  if (text.trim() === "") return null;
+  switch (key) {
+    case "windowOpacity":
+      return parseWindowOpacity(text) ?? { problem: WINDOW_OPACITY_PROBLEM };
+    case "backgroundOpacity":
+      return parseBackgroundOpacity(text) ?? { problem: BACKGROUND_OPACITY_PROBLEM };
+    case "backgroundBlur":
+      return parseBackgroundBlur(text) ?? { problem: BACKGROUND_BLUR_PROBLEM };
+    case "backgroundImage": {
+      const problem = backgroundImageProblem(text);
+      return problem === undefined ? text : { problem };
+    }
+  }
+}
+
 /** What Save would do: the settings to write, and the boxes whose text is not a usable value. */
 export interface SavePlan {
   changes: ConfigChange[];
-  problems: Partial<Record<NumberKey, string>>;
+  problems: Partial<Record<NumberKey | OptionalKey, string>>;
 }
 
 /**
@@ -170,6 +269,17 @@ export function planSave(config: Config, draft: SettingsDraft): SavePlan {
     const value = wanted[key];
     if (value === undefined || value === now[key]) continue;
     changes.push({ path: SETTING_PATHS[key], value });
+  }
+  // The optional settings: an empty box is "not set", written as null only where the file has a value.
+  for (const key of OPTIONAL_KEYS) {
+    const text = draft[key];
+    if (text === undefined) continue;
+    const wanted = optionalFromText(key, text);
+    if (typeof wanted === "object" && wanted !== null) {
+      problems[key] = wanted.problem;
+    } else if (wanted !== optionalValueOf(config, key)) {
+      changes.push({ path: OPTIONAL_PATHS[key], value: wanted });
+    }
   }
   // The list of mods is written whole, and only when it is not the one in force.
   if (draft.mods !== undefined && !sameModList(draft.mods, config.mods ?? [])) {

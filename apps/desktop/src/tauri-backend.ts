@@ -1,8 +1,9 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { OutputStream } from "@noren/model";
+import { OutputStream, sniffImageMime } from "@noren/model";
 import type {
   Backend,
+  BackgroundImageFile,
   CreateSessionOptions,
   GitInfo,
   ModFile,
@@ -11,6 +12,9 @@ import type {
   ShellProfile,
   Unsubscribe,
   UserProfile,
+  WindowEffect,
+  WindowEffectReport,
+  WindowScheme,
 } from "@noren/model";
 
 /** The part of a Tauri `Channel` this backend uses. */
@@ -178,6 +182,30 @@ export class TauriBackend implements Backend {
     return () => {
       this.#configListeners.delete(callback);
     };
+  }
+
+  async setWindowEffect(effect: WindowEffect, scheme: WindowScheme): Promise<WindowEffectReport> {
+    const report = await this.#bridge.invoke<WindowEffectReport>("window_effect_set", {
+      effect,
+      scheme,
+    });
+    return {
+      requested: report.requested,
+      applied: report.applied,
+      ...(report.reason !== undefined && report.reason !== null ? { reason: report.reason } : {}),
+    };
+  }
+
+  async readBackgroundImage(path: string): Promise<BackgroundImageFile> {
+    // A raw response arrives as an ArrayBuffer; a plain list of numbers is read too, for a bridge
+    // that has no binary channel.
+    const answer = await this.#bridge.invoke<ArrayBuffer | number[]>("background_image_read", {
+      path,
+    });
+    const bytes = answer instanceof ArrayBuffer ? new Uint8Array(answer) : Uint8Array.from(answer);
+    const mime = sniffImageMime(bytes);
+    if (mime === undefined) throw new Error(`${path} is not a picture Noren can show.`);
+    return { mime, bytes };
   }
 
   readActionsFile(cwd: string): Promise<string | null> {

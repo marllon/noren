@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_BACKGROUND_BLUR, MAX_BACKGROUND_PATH, backgroundImageProblem } from "./background";
 
 // The format of a theme (spec section 8, `themes/*.json`) as a zod schema; the `Theme` type comes
 // from it. A theme is data: the tokens of the interface, the colors of the terminal, the font and
@@ -65,8 +66,23 @@ export const ThemeSchema = z.strictObject({
     ligatures: z.boolean(),
   }),
   background: z.strictObject({
-    image: z.string().min(1).nullable(),
+    /**
+     * A picture file on this computer (see `backgroundImageProblem`), or null for none. A path that
+     * is a web address, a network path or not a picture makes the whole theme invalid.
+     */
+    image: z
+      .string()
+      .min(1)
+      .max(MAX_BACKGROUND_PATH)
+      .superRefine((path, context) => {
+        const problem = backgroundImageProblem(path);
+        if (problem !== undefined) context.addIssue({ code: "custom", message: problem });
+      })
+      .nullable(),
+    /** How much of the picture shows, from 0 to 1. */
     opacity: unit,
+    /** How blurred the picture is, in pixels; none when the theme does not say. */
+    blur: z.number().min(0).max(MAX_BACKGROUND_BLUR).optional(),
   }),
 });
 

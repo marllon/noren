@@ -1,8 +1,11 @@
 // Real-app smoke test: debug build without bundle, then `noren --smoke` and `noren --smoke-deeplink`.
 // Exits with the app's exit code. The first run must print "SMOKE OK" and "noren-smoke-ok" (printed
-// after a real shell session echoed it) and "SMOKE window hidden" (the main window stayed hidden);
-// the second must print "SMOKE DEEPLINK OK" (a noren://open link reached the interface and the
-// space on screen has the folder of the link) and "SMOKE window hidden".
+// after a real shell session echoed it), "SMOKE window effect ..." (the line of the effect the
+// hidden window was given, Mica on Windows and vibrancy on macOS: the effect applied, or the opaque
+// fallback with the reason, since a system that cannot paint it still passes) and "SMOKE window
+// hidden" (the main window stayed hidden); the second must print "SMOKE DEEPLINK OK" (a
+// noren://open link reached the interface and the space on screen has the folder of the link) and
+// "SMOKE window hidden".
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -59,7 +62,12 @@ function runSmoke(args, required) {
   }
 }
 
-runSmoke(["--smoke"], ["SMOKE window hidden", "SMOKE OK", "noren-smoke-ok"]);
+// The effect asked for is the one of the system the run is on (see smoke_effect in smoke.rs).
+const effect = isWindows ? "mica" : process.platform === "darwin" ? "vibrancy" : "none";
+runSmoke(
+  ["--smoke"],
+  ["SMOKE window hidden", "SMOKE OK", "noren-smoke-ok", `SMOKE window effect ${effect}`],
+);
 
 // The deep-link run: a folder made here (its name has a space) goes in a noren://open link, and the
 // app must end up showing a space that has that folder. It keeps its state in a folder of its own.

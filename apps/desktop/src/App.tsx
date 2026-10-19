@@ -66,6 +66,7 @@ import { useMruSwitcher } from "./use-mru-switcher";
 import { useProjectActions } from "./use-project-actions";
 import { useSidebarReveal } from "./use-sidebar-reveal";
 import type { Editing } from "./SidebarTree";
+import { SpaceBackgroundDialog } from "./SpaceBackgroundDialog";
 import { SpaceDialog } from "./SpaceDialog";
 import type { SpaceFormValues } from "./SpaceDialog";
 import { SpaceMenu } from "./SpaceMenu";
@@ -93,6 +94,7 @@ import {
   planCopy,
 } from "./command-output";
 import type { CommandMarkInfo } from "./command-marks-view";
+import { pictureUrl, showBackgroundImage, usePicture } from "./background-image-store";
 import { applySpaceColor, applyTheme, terminalTheme } from "./theme";
 import { TitleBar } from "./TitleBar";
 import {
@@ -108,8 +110,13 @@ import {
   previewTheme,
   useTheme,
   useThemeChoice,
+  useWindowScheme,
 } from "./use-theme";
 import { addUserThemes, getUserThemes, useAllThemes } from "./user-themes-store";
+import { useWindowAppearance } from "./use-window";
+import { applyWindowVariables, terminalOpacity, windowVariables } from "./window-appearance";
+import { requestWindowEffect, requestedWindowEffect } from "./window-effect-store";
+import { BackgroundNotice, WindowBackground } from "./WindowBackground";
 import { spaceModOptions } from "./mod-options";
 import { ModStyles } from "./ModStyles";
 import { useModFiles } from "./mods-store";
@@ -193,6 +200,8 @@ export interface NorenTestHook {
   failConfigSaves(message: string | null): void;
   /** Number of times the app was asked to write `config.jsonc`. */
   configSaves(): number;
+  /** The effects the app asked the window for, in order, with the scheme each was painted for. */
+  windowEffectCalls(): { effect: string; scheme: string }[];
 }
 
 declare global {
@@ -389,6 +398,7 @@ type Overlay =
   | { kind: "menu"; spaceId: Id; point: MenuPoint }
   | { kind: "new" }
   | { kind: "edit"; spaceId: Id }
+  | { kind: "background"; spaceId: Id }
   | { kind: "delete"; spaceId: Id };
 
 /** What the new-space dialog hands the store: no folder and no environment when left blank. */
@@ -431,7 +441,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const themeChoice = useThemeChoice();
   // The built-in themes and the ones the user imported or placed in the themes folder.
   const themes = useAllThemes();
-  const colors = useMemo(() => terminalTheme(theme), [theme]);
+  // The terminal is see-through while the interface is, and has no background at all while a
+  // picture shows behind it.
+  const appearance = useWindowAppearance();
+  const pictureShown = pictureUrl(usePicture()) !== null;
+  const terminalAlpha = terminalOpacity(appearance, pictureShown);
+  const colors = useMemo(() => terminalTheme(theme, terminalAlpha), [theme, terminalAlpha]);
   // The global theme, for the callbacks below that must not change with it.
   const themeChoiceRef = useRef(themeChoice);
   useEffect(() => {
@@ -890,6 +905,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
         failConfigSaves: (message) =>
           fake.setConfigSaveFailure(message === null ? undefined : new Error(message)),
         configSaves: () => fake.callsTo("saveConfig").length,
+        windowEffectCalls: () =>
+          fake.callsTo("setWindowEffect").map((call) => ({
+            effect: String(call.args[0]),
+            scheme: String(call.args[1]),
+          })),
         killedSessions: () => fake.callsTo("kill").map((call) => Number(call.args[0])),
         userProfileSessions: () => {
           const started = fake.callsTo("createSession").length;
@@ -1046,7 +1066,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
 
   const close = () => setOverlay(null);
   const overlaySpace =
-    overlay?.kind === "menu" || overlay?.kind === "edit" || overlay?.kind === "delete"
+    overlay?.kind === "menu" ||
+    overlay?.kind === "edit" ||
+    overlay?.kind === "background" ||
+    overlay?.kind === "delete"
       ? workspace.spaces.find((s) => s.id === overlay.spaceId)
       : undefined;
   const overlayGroup =
@@ -1162,6 +1185,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
             modIds: withMod(overlaySpace.modIds, name, on),
           });
         }}
+        hasBackground={overlaySpace.background !== undefined}
+        onBackground={() => setOverlay({ kind: "background", spaceId: overlaySpace.id })}
+        onClearBackground={() => {
+          dispatch({ type: "space/set-background", spaceId: overlaySpace.id, background: null });
+          close();
+        }}
         onEdit={() => setOverlay({ kind: "edit", spaceId: overlaySpace.id })}
         onMove={(delta) => {
           moveSpace(overlaySpace.id, workspace.spaces.indexOf(overlaySpace) + delta);
@@ -1178,6 +1207,21 @@ function Shell({ store }: { store: WorkspaceStore }) {
         onCancel={close}
         onSubmit={(values) => {
           editSpace(overlaySpace.id, values);
+          close();
+        }}
+      />
+    );
+  } else if (overlaySpace !== undefined && overlay?.kind === "background") {
+    overlayNode = (
+      <SpaceBackgroundDialog
+        space={overlaySpace}
+        onCancel={close}
+        onSubmit={(background) => {
+          dispatch({ type: "space/set-background", spaceId: overlaySpace.id, background });
+          close();
+        }}
+        onClear={() => {
+          dispatch({ type: "space/set-background", spaceId: overlaySpace.id, background: null });
           close();
         }}
       />
@@ -1370,15 +1414,41 @@ function Booted() {
 
 export function App() {
   const theme = useTheme();
+  const appearance = useWindowAppearance();
+  const picture = usePicture();
+  const pictureAddress = pictureUrl(picture);
+  const effect = requestedWindowEffect(useConfigState().config);
+  const scheme = useWindowScheme();
+  // The effect the settings name is asked of the system, painted dark or light like the theme. A
+  // system that cannot paint it keeps the window opaque (`appearance.effect` is what the window has).
+  useEffect(() => {
+    requestWindowEffect(backend, effect, scheme);
+  }, [effect, scheme]);
   // Before paint, so the first frame already has the colors.
   useLayoutEffect(() => {
     applyTheme(document.documentElement, theme);
   }, [theme]);
+  // The picture is read when the window wants a new one; until it is on screen the variable is none.
+  useLayoutEffect(() => {
+    showBackgroundImage(appearance.background.image);
+  }, [appearance.background.image]);
+  useLayoutEffect(() => {
+    applyWindowVariables(
+      document.documentElement,
+      windowVariables(appearance, theme, pictureAddress),
+    );
+  }, [appearance, theme, pictureAddress]);
 
   return (
-    <main className="app">
+    <main
+      className="app"
+      data-nr-window-effect={appearance.effect}
+      data-nr-picture={pictureAddress !== null ? "shown" : undefined}
+    >
+      <WindowBackground picture={picture} />
       <TitleBar />
       <ConfigErrorNotice />
+      <BackgroundNotice picture={picture} />
       <ModStyles />
       <Suspense fallback={null}>
         <Booted />

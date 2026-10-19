@@ -1,5 +1,6 @@
 //! Noren core library. Kept free of Tauri so it can be tested on its own.
 
+pub mod background;
 pub mod config;
 pub mod git;
 pub mod integration;
@@ -9,7 +10,9 @@ pub mod project;
 pub mod pty;
 pub mod store;
 pub mod themes;
+pub mod window;
 
+pub use background::{BackgroundError, BackgroundStore, MAX_BACKGROUND_BYTES, sniff_image};
 pub use config::{CONFIG_FILE_NAME, ConfigError, ConfigStore, ConfigWatcher};
 pub use git::{GitHead, read_head};
 pub use integration::{
@@ -28,6 +31,7 @@ pub use project::{ACTIONS_FILE_PATH, ShortRunError, read_project_file, run_short
 pub use pty::{ExitInfo, PtyError, SessionEvent, SessionId, SessionManager, SpawnSpec};
 pub use store::{StateStore, StoreError};
 pub use themes::{THEMES_DIR_NAME, ThemeError, ThemeStore, is_valid_theme_id};
+pub use window::{EffectOutcome, WindowEffect, WindowPainter, apply_effect};
 
 /// Returns the product name.
 pub fn name() -> &'static str {

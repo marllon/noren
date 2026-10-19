@@ -11,14 +11,15 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use noren_core::{
-    CONFIG_FILE_NAME, ConfigStore, MODS_DIR_NAME, ModStore, SessionId, StateStore, THEMES_DIR_NAME,
-    ThemeStore, is_powershell,
+    BackgroundStore, CONFIG_FILE_NAME, ConfigStore, MODS_DIR_NAME, ModStore, SessionId, StateStore,
+    THEMES_DIR_NAME, ThemeStore, WindowEffect, is_powershell,
 };
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Listener, Manager};
 
 use crate::bridge::{self, AppState, STATE_FILE_NAME};
 use crate::deeplink::{self, Links};
+use crate::window_effect;
 
 pub const SMOKE_FLAG: &str = "--smoke";
 /// Text the smoke session must print on a line of its own.
@@ -40,6 +41,31 @@ fn check_window_hidden(app: &AppHandle) -> Result<(), String> {
         .ok_or_else(|| "the main window does not exist".to_string())?;
     let visible = window.is_visible().map_err(|e| e.to_string())?;
     window_hidden_result(visible)
+}
+
+/// The effect the smoke run asks the hidden window for: Mica on Windows, vibrancy on macOS, and
+/// none where the system has no effect to ask for.
+pub fn smoke_effect() -> WindowEffect {
+    if cfg!(windows) {
+        WindowEffect::Mica
+    } else if cfg!(target_os = "macos") {
+        WindowEffect::Vibrancy
+    } else {
+        WindowEffect::None
+    }
+}
+
+/// Gives the hidden main window [`smoke_effect`] and prints what it has afterwards: the effect
+/// applied, or the opaque fallback with the reason. A system that cannot paint the effect is not a
+/// failure (the window stays opaque); the check fails only when the window cannot be reached.
+fn check_window_effect(app: &AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "the main window does not exist".to_string())?;
+    // No scheme: the smoke run leaves the mode of the window as the system has it.
+    let outcome = window_effect::apply_on_main_thread(&window, smoke_effect(), None)?;
+    print_line(&format!("SMOKE {}", outcome.log_line()));
+    Ok(())
 }
 
 fn window_hidden_result(visible: bool) -> Result<(), String> {
@@ -253,7 +279,9 @@ pub fn arm(app: &tauri::App) {
         print_line("SMOKE app-ready received");
         let handle = handle.clone();
         thread::spawn(move || {
+            // The effect goes on the hidden window, and the check that it stayed hidden comes after.
             let result = check_session(&handle, started + SMOKE_TIMEOUT)
+                .and_then(|()| check_window_effect(&handle))
                 .and_then(|()| check_window_hidden(&handle));
             match result {
                 Ok(()) => {
@@ -346,6 +374,12 @@ pub fn deeplink_theme_store(target: &DeepLinkTarget) -> ThemeStore {
 /// read nor watched.
 pub fn deeplink_mod_store(target: &DeepLinkTarget) -> ModStore {
     ModStore::new(target.state_dir.join(MODS_DIR_NAME))
+}
+
+/// The pictures of the deep-link run: relative paths are inside its own folder, so nothing of the
+/// user is read.
+pub fn deeplink_background_store(target: &DeepLinkTarget) -> BackgroundStore {
+    BackgroundStore::new(target.state_dir.clone())
 }
 
 /// Compares the folder the interface reports for the active space with the one in the link, by

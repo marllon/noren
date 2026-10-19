@@ -2249,6 +2249,7 @@ dependencies = [
  "tauri-plugin-deep-link",
  "tauri-plugin-notification",
  "tauri-plugin-single-instance",
+ "window-vibrancy",
 ]
 
 [[package]]

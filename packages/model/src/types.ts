@@ -20,12 +20,27 @@ export interface SpaceDefaults {
   gitIdentity?: { name: string; email: string };
 }
 
+/**
+ * The picture a space shows behind its terminals while it is active. `image` is a file on this
+ * computer (`backgroundImageProblem`); `opacity` and `blur` are left out to take the ones of the
+ * settings file or of the theme.
+ */
+export interface SpaceBackground {
+  image: string;
+  /** From 0 to 1. */
+  opacity?: number;
+  /** In pixels. */
+  blur?: number;
+}
+
 export interface Space {
   id: Id;
   name: string;
   icon: string;
   color: string;
   themeId?: string;
+  /** The picture behind the terminals of this space; without it the space follows the settings and the theme. */
+  background?: SpaceBackground;
   modIds: string[];
   defaults: SpaceDefaults;
   aiEnabled: boolean;

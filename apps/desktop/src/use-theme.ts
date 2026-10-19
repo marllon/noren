@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import type { WindowScheme } from "@noren/model";
 import { configManager, useConfigState } from "./config-store";
 import { themeForScheme } from "./theme";
 import type { Theme } from "./theme";
@@ -120,11 +121,29 @@ export function useThemeChoice(): ThemeChoice {
  * may be a built-in theme or one of the user's.
  */
 export function useTheme(): Theme {
+  return useThemeInForce().theme;
+}
+
+/** The theme in force, and whether it is the one the color scheme of the system gives. */
+function useThemeInForce(): { theme: Theme; followsSystem: boolean } {
   const dark = useSyncExternalStore(subscribeScheme, prefersDark);
   const config = useConfigState().config;
   const previewed = useSyncExternalStore(subscribePreview, () => preview);
   const ownId = useSyncExternalStore(subscribePreview, () => spaceThemeId);
   const themes = useAllThemes();
   const id = effectiveThemeChoice({ preview: previewed, spaceThemeId: ownId, config, themes });
-  return themes.find((theme) => theme.id === id) ?? themeForScheme(dark);
+  const chosen = themes.find((theme) => theme.id === id);
+  return chosen !== undefined
+    ? { theme: chosen, followsSystem: false }
+    : { theme: themeForScheme(dark), followsSystem: true };
+}
+
+/**
+ * The look an effect behind the window is painted in: the kind of the theme in force when it was
+ * chosen (a global theme, the theme of a space, a preview), and `system` while the theme follows the
+ * color scheme of the system, so the window follows it too.
+ */
+export function useWindowScheme(): WindowScheme {
+  const { theme, followsSystem } = useThemeInForce();
+  return followsSystem ? "system" : theme.kind;
 }

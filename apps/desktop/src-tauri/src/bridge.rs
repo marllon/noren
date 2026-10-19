@@ -10,10 +10,10 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use noren_core::{
-    ACTIONS_FILE_PATH, CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, GitHead, MODS_DIR_NAME,
-    ModFile, ModStore, ModWatcher, Profile, ProfileSet, SessionEvent, SessionId, SessionManager,
-    SpawnSpec, StateStore, THEMES_DIR_NAME, ThemeStore, UserProfile, detect_system_profiles,
-    read_head, read_project_file, run_short,
+    ACTIONS_FILE_PATH, BackgroundStore, CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, GitHead,
+    MODS_DIR_NAME, ModFile, ModStore, ModWatcher, Profile, ProfileSet, SessionEvent, SessionId,
+    SessionManager, SpawnSpec, StateStore, THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect,
+    detect_system_profiles, read_head, read_project_file, run_short,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -500,6 +500,60 @@ pub async fn theme_save(
     content: String,
 ) -> Result<(), String> {
     state.save(&id, &content)
+}
+
+/// The pictures a background can be, read from an absolute path or from inside the config folder.
+pub struct BackgroundState {
+    pub store: BackgroundStore,
+}
+
+impl BackgroundState {
+    pub fn new(store: BackgroundStore) -> Self {
+        Self { store }
+    }
+}
+
+/// Builds the reader of background pictures: a relative path is a path inside the app config
+/// folder. Only resolves the path; nothing is created.
+pub fn background_store(app: &AppHandle) -> Result<BackgroundStore, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("could not find the app config folder: {e}"))?;
+    Ok(BackgroundStore::new(dir))
+}
+
+/// The bytes of the picture at `path`, as a raw response (not JSON, since a picture is megabytes).
+/// The path and the file are checked by [`BackgroundStore::read`]: only a picture file of a
+/// bounded size is ever returned, and nothing is fetched from the network.
+#[tauri::command]
+pub async fn background_image_read(
+    state: State<'_, BackgroundState>,
+    path: String,
+) -> Result<tauri::ipc::Response, String> {
+    state
+        .store
+        .read(&path)
+        .map(tauri::ipc::Response::new)
+        .map_err(|e| e.to_string())
+}
+
+/// Gives the window the effect named `effect` (`none`, `mica`, `acrylic` or `vibrancy`), painted in
+/// the look `scheme` names (`dark` or `light`: the kind of a theme that was chosen; `system`: the
+/// mode of the system), and answers what it has: a system that cannot paint it keeps the window
+/// opaque and the answer says why. The outcome goes to the log.
+#[tauri::command]
+pub async fn window_effect_set<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    effect: String,
+    scheme: String,
+) -> Result<crate::window_effect::EffectReportDto, String> {
+    let requested =
+        WindowEffect::parse(&effect).ok_or_else(|| format!("'{effect}' is not a window effect"))?;
+    let look = crate::window_effect::parse_scheme(&scheme)?;
+    let outcome = crate::window_effect::apply_on_main_thread(&window, requested, look)?;
+    eprintln!("noren: {}", outcome.log_line());
+    Ok(outcome.into())
 }
 
 /// Name of the event emitted when a file of the `mods` folder is added, changed or removed. The
@@ -1349,6 +1403,132 @@ mod tests {
         );
         // Reading still works, and finds no files.
         assert_eq!(state.list(), Ok(Vec::new()));
+    }
+
+    /// Calls `cmd` the way the page does, in the mock runtime of Tauri, with the state a run has.
+    fn call_command(
+        cmd: &str,
+        args: serde_json::Value,
+        pictures: &Path,
+    ) -> Result<InvokeResponseBody, serde_json::Value> {
+        use tauri::ipc::{CallbackFn, InvokeBody};
+        use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
+        use tauri::webview::InvokeRequest;
+
+        let app = mock_builder()
+            .manage(BackgroundState::new(BackgroundStore::new(pictures)))
+            .invoke_handler(tauri::generate_handler![
+                background_image_read,
+                window_effect_set
+            ])
+            .build(mock_context(noop_assets()))
+            .expect("build the mock app");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("build the mock window");
+        let url = if cfg!(windows) {
+            "http://tauri.localhost"
+        } else {
+            "tauri://localhost"
+        };
+        get_ipc_response(
+            &webview,
+            InvokeRequest {
+                cmd: cmd.into(),
+                callback: CallbackFn(0),
+                error: CallbackFn(1),
+                url: url.parse().expect("url"),
+                body: InvokeBody::Json(args),
+                headers: Default::default(),
+                invoke_key: INVOKE_KEY.to_string(),
+            },
+        )
+    }
+
+    const PNG_BYTES: [u8; 12] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4];
+
+    #[test]
+    fn the_page_reads_a_picture_through_the_command_as_raw_bytes() {
+        let dir = TempDir::new("picture-command");
+        std::fs::create_dir_all(dir.0.join("backgrounds")).expect("folder");
+        std::fs::write(dir.0.join("backgrounds").join("sky.png"), PNG_BYTES).expect("write");
+        // A path inside the config folder, and an absolute one.
+        for path in [
+            "backgrounds/sky.png".to_owned(),
+            dir.0
+                .join("backgrounds")
+                .join("sky.png")
+                .display()
+                .to_string(),
+        ] {
+            let answer = call_command(
+                "background_image_read",
+                serde_json::json!({ "path": path }),
+                &dir.0,
+            )
+            .expect("the picture");
+            match answer {
+                InvokeResponseBody::Raw(bytes) => assert_eq!(bytes, PNG_BYTES, "{path}"),
+                InvokeResponseBody::Json(json) => panic!("a JSON answer for a picture: {json}"),
+            }
+        }
+    }
+
+    #[test]
+    fn the_picture_command_refuses_what_is_not_a_local_picture_with_a_sentence() {
+        let dir = TempDir::new("picture-refused");
+        std::fs::write(dir.0.join("notes.png"), b"not a picture").expect("write");
+        for (path, words) in [
+            ("https://example.com/sky.png", "web addresses"),
+            ("\\\\server\\share\\sky.png", "network paths"),
+            ("../sky.png", "climb out"),
+            ("sky.txt", "png, jpg"),
+            ("missing.png", "was not found"),
+            ("notes.png", "not a picture"),
+        ] {
+            let refusal = call_command(
+                "background_image_read",
+                serde_json::json!({ "path": path }),
+                &dir.0,
+            )
+            .expect_err(path);
+            let text = refusal.as_str().unwrap_or_default();
+            assert!(text.contains(words), "{path}: {refusal}");
+        }
+    }
+
+    #[test]
+    fn an_effect_that_is_not_one_is_an_error_and_nothing_is_painted() {
+        let dir = TempDir::new("effect-unknown");
+        for effect in ["blur", "Mica", "", "tabbed"] {
+            let refusal = call_command(
+                "window_effect_set",
+                serde_json::json!({ "effect": effect, "scheme": "dark" }),
+                &dir.0,
+            )
+            .expect_err(effect);
+            assert_eq!(
+                refusal.as_str(),
+                Some(format!("'{effect}' is not a window effect").as_str())
+            );
+        }
+    }
+
+    #[test]
+    fn a_scheme_that_is_not_one_is_an_error_too() {
+        let dir = TempDir::new("effect-scheme");
+        for scheme in ["Dark", "auto", "", "true"] {
+            let refusal = call_command(
+                "window_effect_set",
+                serde_json::json!({ "effect": "mica", "scheme": scheme }),
+                &dir.0,
+            )
+            .expect_err(scheme);
+            assert_eq!(
+                refusal.as_str(),
+                Some(format!("'{scheme}' is not a window scheme").as_str())
+            );
+        }
     }
 
     #[test]

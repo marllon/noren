@@ -13,8 +13,8 @@ import { ConfigSchema } from "./config";
 // would move the comment at the end of the previous line onto the new setting and open up an
 // object the person wrote on one line.
 
-/** A value a setting can hold. */
-export type ConfigValue = string | number | boolean;
+/** A value a setting can hold (`null` is a setting that says "not set", such as no picture). */
+export type ConfigValue = string | number | boolean | null;
 
 /**
  * One setting to set, by its path in the file (`["appearance", "sidebar", "width"]`). A value that
@@ -28,7 +28,7 @@ export interface ConfigChange {
 
 /** What a list in the file holds: JSON, with `undefined` standing for a key that is left out. */
 export type ConfigJson =
-  ConfigValue | null | readonly ConfigJson[] | { readonly [name: string]: ConfigJson | undefined };
+  ConfigValue | readonly ConfigJson[] | { readonly [name: string]: ConfigJson | undefined };
 
 /**
  * Items to add to the end of a list setting (`["profiles"]`), by its path in the file. The items

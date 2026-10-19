@@ -1,9 +1,11 @@
 import { findNodeAtLocation, getNodeValue, parseTree, printParseErrorCode } from "jsonc-parser";
 import type { Node as JsonNode, ParseError } from "jsonc-parser";
 import { z } from "zod";
+import { MAX_BACKGROUND_BLUR, MAX_BACKGROUND_PATH, backgroundImageProblem } from "./background";
 import { MAX_MODS, MOD_FILE_NAME_PATTERN, isReservedModName } from "./mods";
 import { THEME_ID_PATTERN } from "./theme";
 import { MAX_USER_PROFILES, RESERVED_PROFILE_IDS, UserProfileSchema } from "./user-profile-schema";
+import { DEFAULT_WINDOW_EFFECT, MIN_WINDOW_OPACITY, WINDOW_EFFECTS } from "./window-effect";
 
 // The settings file `config.jsonc`: its schema, and reading its text. The file is JSON with
 // comments and trailing commas (the person edits it by hand); everything is optional, so a file
@@ -49,6 +51,52 @@ const sidebarSchema = z
 /** The value of `appearance.theme` that follows the color scheme of the system, as a missing one does. */
 export const SYSTEM_THEME = "system";
 
+const windowSchema = z
+  .strictObject({
+    effect: setting(
+      z.enum(WINDOW_EFFECTS),
+      'What the system paints behind the window: "mica" or "acrylic" on Windows 11, "vibrancy" on macOS, "none" for a plain opaque window. A system that cannot paint the effect keeps the window opaque.',
+      DEFAULT_WINDOW_EFFECT,
+    ),
+    opacity: setting(
+      z.number().min(MIN_WINDOW_OPACITY).max(1).nullable(),
+      "How opaque the interface is, from 0.3 (it lets most of what is behind the window through) to 1 (solid). Without a value (or null) the window is solid, and with an effect on it takes the opacity of the theme.",
+      null,
+    ),
+  })
+  .meta({
+    description: "The window itself: the effect behind it and how opaque the interface is.",
+  });
+
+/** A path to a picture, or `null` for none. */
+const imagePathSchema = z
+  .string()
+  .max(MAX_BACKGROUND_PATH)
+  .superRefine((path, context) => {
+    const problem = backgroundImageProblem(path);
+    if (problem !== undefined) context.addIssue({ code: "custom", message: problem });
+  });
+
+const backgroundSchema = z
+  .strictObject({
+    image: setting(
+      imagePathSchema.nullable(),
+      "A picture file on this computer shown behind the terminals: an absolute path, or a path inside the config folder of the app (such as backgrounds/sky.jpg). A web address is refused. null shows no picture, even where the theme has one. The picture of a space wins over this one.",
+      null,
+    ),
+    opacity: setting(
+      z.number().min(0).max(1).nullable(),
+      "How much of the picture shows, from 0 (none) to 1 (solid). Without a value (or null) the theme says.",
+      null,
+    ),
+    blur: setting(
+      z.number().min(0).max(MAX_BACKGROUND_BLUR).nullable(),
+      "How much the picture is blurred, in pixels. Without a value (or null) the theme says (none).",
+      null,
+    ),
+  })
+  .meta({ description: "The picture behind the terminals." });
+
 const appearanceSchema = z
   .strictObject({
     theme: setting(
@@ -56,6 +104,8 @@ const appearanceSchema = z
       'The id of the theme, such as "noren-dusk". "system", or no value, follows the light or dark scheme of the system. An id Noren does not have also follows the system.',
       SYSTEM_THEME,
     ),
+    window: windowSchema.optional(),
+    background: backgroundSchema.optional(),
     sidebar: sidebarSchema.optional(),
     density: setting(
       z.enum(["comfortable", "compact"]),

@@ -17,6 +17,7 @@ import {
   splitAt,
   swapPanes,
 } from "./layout";
+import { MAX_BACKGROUND_BLUR, backgroundImageProblem } from "./background";
 import { MAX_MODS, isValidModFileName, sameModList } from "./mods";
 import { layoutPanes, withoutSessions } from "./sessions";
 import { isMarked, isPaneVisible, mapPanes, shownItem, visiblePanes, withoutMarks } from "./unread";
@@ -50,6 +51,7 @@ import {
   type Node,
   type Pane,
   type Space,
+  type SpaceBackground,
   type Workspace,
 } from "./types";
 
@@ -125,6 +127,21 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       const modIds = cleanModIds(action.modIds);
       return updateSpace(ws, action.spaceId, (space) =>
         sameModList(space.modIds, modIds) ? undefined : { ...space, modIds },
+      );
+    }
+    case "space/set-background": {
+      if (action.background === null) {
+        return updateSpace(ws, action.spaceId, (space) => {
+          if (space.background === undefined) return undefined;
+          const next = { ...space };
+          delete next.background;
+          return next;
+        });
+      }
+      const background = cleanBackground(action.background);
+      if (background === undefined) return ws;
+      return updateSpace(ws, action.spaceId, (space) =>
+        sameBackground(space.background, background) ? undefined : { ...space, background },
       );
     }
     case "space/set-defaults":
@@ -260,6 +277,31 @@ function assertNever(_action: never, ws: Workspace): Workspace {
 function clean(text: string): string | undefined {
   const trimmed = text.trim();
   return trimmed === "" ? undefined : trimmed;
+}
+
+/**
+ * The background as it is kept: the path trimmed and checked, `opacity` and `blur` held to their
+ * range and left out when they are not numbers. `undefined` when the path cannot be a background.
+ */
+function cleanBackground(background: SpaceBackground): SpaceBackground | undefined {
+  if (typeof background !== "object" || typeof background.image !== "string") return undefined;
+  const image = background.image.trim();
+  if (backgroundImageProblem(image) !== undefined) return undefined;
+  const number = (value: unknown, max: number): number | undefined =>
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.min(max, Math.max(0, value))
+      : undefined;
+  const opacity = number(background.opacity, 1);
+  const blur = number(background.blur, MAX_BACKGROUND_BLUR);
+  return {
+    image,
+    ...(opacity !== undefined ? { opacity } : {}),
+    ...(blur !== undefined ? { blur } : {}),
+  };
+}
+
+function sameBackground(a: SpaceBackground | undefined, b: SpaceBackground): boolean {
+  return a !== undefined && a.image === b.image && a.opacity === b.opacity && a.blur === b.blur;
 }
 
 /** The mod names of a list, in order, once each; what is not a mod name is dropped. */

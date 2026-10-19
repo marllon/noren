@@ -8,6 +8,8 @@ import type {
   ShellProfile,
   Unsubscribe,
 } from "./backend";
+import { MAX_BACKGROUND_BYTES, backgroundImageProblem, sniffImageMime } from "./background";
+import type { BackgroundImageFile } from "./background";
 import { ManualClock } from "./clock";
 import type { Clock } from "./clock";
 import { sameFolder } from "./deep-link";
@@ -17,6 +19,8 @@ import { THEME_ID_PATTERN } from "./theme";
 import { profilesProblem } from "./user-profile-schema";
 import type { UserProfile } from "./user-profile-schema";
 import { decodeUtf8, encodeUtf8 } from "./utf8";
+import { WINDOW_EFFECT_LABELS } from "./window-effect";
+import type { WindowEffect, WindowEffectReport, WindowScheme } from "./window-effect";
 
 const ESC = "\x1b";
 const BEL = "\x07";
@@ -61,6 +65,10 @@ export interface FakeBackendOptions {
   userThemes?: Record<string, string>;
   /** Initial mod files of the user, by file name (the text of `mods/<name>.css`). */
   mods?: Record<string, string>;
+  /** The window effects this fake system can paint. Defaults to none: every effect falls back to opaque. */
+  windowEffects?: readonly WindowEffect[];
+  /** Picture files by path (as `readBackgroundImage` is asked for them). */
+  images?: Record<string, Uint8Array>;
 }
 
 /** One notification given to `notify`, for assertions. */
@@ -444,6 +452,9 @@ export class FakeBackend implements Backend {
   readonly #userThemes = new Map<string, string>();
   readonly #mods = new Map<string, string>();
   readonly #modListeners = new Set<(files: ModFile[]) => void>();
+  readonly #windowEffects: Set<WindowEffect>;
+  #appliedEffect: WindowEffect = "none";
+  readonly #images = new Map<string, Uint8Array>();
   #modListFailure: Error | undefined;
   #userThemeSaveFailure: Error | undefined;
   #config: string | null;
@@ -463,6 +474,10 @@ export class FakeBackend implements Backend {
     }
     for (const [name, text] of Object.entries(options.mods ?? {})) {
       this.#mods.set(name, text);
+    }
+    this.#windowEffects = new Set(options.windowEffects ?? []);
+    for (const [path, bytes] of Object.entries(options.images ?? {})) {
+      this.#images.set(path, bytes);
     }
     this.#commandExitCode = options.commandExitCode ?? 0;
     for (const [cwd, text] of Object.entries(options.actionsFiles ?? {})) {
@@ -819,6 +834,52 @@ export class FakeBackend implements Backend {
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .slice(0, MAX_MODS)
       .map(([name, text]) => ({ name, text }));
+  }
+
+  async setWindowEffect(effect: WindowEffect, scheme: WindowScheme): Promise<WindowEffectReport> {
+    this.#record("setWindowEffect", effect, scheme);
+    if (effect === "none" || this.#windowEffects.has(effect)) {
+      this.#appliedEffect = effect;
+      return { requested: effect, applied: effect };
+    }
+    this.#appliedEffect = "none";
+    return { requested: effect, applied: "none", reason: this.windowEffectReason(effect) };
+  }
+
+  /** Why this backend cannot paint `effect`; the web one says it is a browser. */
+  protected windowEffectReason(effect: WindowEffect): string {
+    return `${WINDOW_EFFECT_LABELS[effect]} is not available on this system.`;
+  }
+
+  /** The effect the window has now (`none` until `setWindowEffect` got one this system can paint). */
+  get appliedWindowEffect(): WindowEffect {
+    return this.#appliedEffect;
+  }
+
+  async readBackgroundImage(path: string): Promise<BackgroundImageFile> {
+    this.#record("readBackgroundImage", path);
+    const problem = backgroundImageProblem(path);
+    if (problem !== undefined) throw new Error(problem);
+    const bytes = this.#images.get(path);
+    if (bytes === undefined) throw new Error(`The image ${path} was not found.`);
+    if (bytes.length > MAX_BACKGROUND_BYTES) throw new Error("The image file is too large.");
+    const mime = sniffImageMime(bytes);
+    if (mime === undefined) throw new Error(`${path} is not a picture Noren can show.`);
+    return { mime, bytes: bytes.slice() };
+  }
+
+  /**
+   * Puts the picture file `path` in place with `bytes` (`null` removes it), as a person copying a
+   * file would. Not a `Backend` call, so it is not recorded. A backend that keeps the files
+   * somewhere else (the web one) overrides `putImage` to keep them there.
+   */
+  setImage(path: string, bytes: Uint8Array | null): void {
+    this.putImage(path, bytes);
+  }
+
+  protected putImage(path: string, bytes: Uint8Array | null): void {
+    if (bytes === null) this.#images.delete(path);
+    else this.#images.set(path, bytes);
   }
 
   async readActionsFile(cwd: string): Promise<string | null> {

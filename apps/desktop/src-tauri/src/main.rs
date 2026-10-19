@@ -5,11 +5,12 @@ mod bridge;
 mod deeplink;
 mod notify;
 mod smoke;
+mod window_effect;
 
 use tauri::{Manager, RunEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 
-use bridge::{AppState, ConfigState, ModState, ThemeState};
+use bridge::{AppState, BackgroundState, ConfigState, ModState, ThemeState};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -66,6 +67,8 @@ fn main() {
             bridge::theme_save,
             bridge::mod_list,
             bridge::mod_watch,
+            bridge::window_effect_set,
+            bridge::background_image_read,
             notify::notify_show,
             notify::window_is_focused,
             deeplink::deep_link_take_waiting,
@@ -79,6 +82,9 @@ fn main() {
                     app.manage(ConfigState::new(smoke::deeplink_config_store(target)));
                     app.manage(ThemeState::new(smoke::deeplink_theme_store(target)));
                     app.manage(ModState::new(smoke::deeplink_mod_store(target)).without_watching());
+                    app.manage(BackgroundState::new(smoke::deeplink_background_store(
+                        target,
+                    )));
                     app.manage(target.clone());
                 }
                 None => {
@@ -102,6 +108,10 @@ fn main() {
                     // folder: watching would create it.
                     let mods = ModState::new(bridge::mod_store(app.handle())?);
                     app.manage(if smoke { mods.without_watching() } else { mods });
+                    // The pictures of a background are only read.
+                    app.manage(BackgroundState::new(bridge::background_store(
+                        app.handle(),
+                    )?));
                 }
             }
             // The window is created hidden (tauri.conf.json); only a normal start shows it.

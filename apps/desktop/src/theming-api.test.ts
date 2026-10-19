@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { MOD_LAYER_ORDER, NOREN_DUSK, wrapModCss } from "@noren/model";
 import { themeVariables } from "./theme";
+import { windowAppearance, windowVariables } from "./window-appearance";
 
 // docs/THEMING.md promises names to the people who write mods. These tests hold the promise to the
 // code: every variable the theme sets is documented and the other way round, and every part, state
@@ -55,8 +56,13 @@ const filesWithPart = (name: string): string[] =>
 describe("the variables in docs/THEMING.md", () => {
   const documented = tableUnder("#### Variables").map(([name]) => code(name)[0] ?? "");
 
-  it("are exactly the ones the theme sets", () => {
-    expect([...documented].sort()).toEqual(Object.keys(themeVariables(NOREN_DUSK)).sort());
+  it("are exactly the ones the theme and the window set", () => {
+    const window = windowAppearance({ config: {}, theme: NOREN_DUSK, applied: "none" });
+    const set = [
+      ...Object.keys(themeVariables(NOREN_DUSK)),
+      ...Object.keys(windowVariables(window, NOREN_DUSK, null)),
+    ];
+    expect([...documented].sort()).toEqual(set.sort());
   });
 
   it("are all named --nr-", () => {

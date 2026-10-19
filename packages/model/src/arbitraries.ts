@@ -57,6 +57,7 @@ interface SpaceShape {
   icon: string;
   color: string;
   themeId: Maybe<string>;
+  background: Maybe<{ image: string; opacity: Maybe<number>; blur: Maybe<number> }>;
   modIds: string[];
   defaults: {
     profileId: Maybe<string>;
@@ -187,6 +188,13 @@ const arbSpaceShape = (maxPanes: number): fc.Arbitrary<SpaceShape> =>
     icon: fc.constantFrom("terminal", "rocket", "🚀", "folder"),
     color: arbColor,
     themeId: optional(fc.constantFrom("dark", "light")),
+    background: optional(
+      fc.record({
+        image: fc.constantFrom("C:\\Pictures\\sky.png", "/home/me/sky.jpg", "backgrounds/sky.webp"),
+        opacity: optional(fc.double({ min: 0, max: 1, noNaN: true })),
+        blur: optional(fc.double({ min: 0, max: 100, noNaN: true })),
+      }),
+    ),
     modIds: fc.uniqueArray(fc.constantFrom("mod-a", "mod-b", "mod-c"), { maxLength: 3 }),
     defaults: fc.record({
       profileId: optional(arbProfile),
@@ -350,6 +358,17 @@ class Builder {
       icon: shape.icon,
       color: shape.color,
       ...(shape.themeId !== undefined ? { themeId: shape.themeId } : {}),
+      ...(shape.background !== undefined
+        ? {
+            background: {
+              image: shape.background.image,
+              ...(shape.background.opacity !== undefined
+                ? { opacity: shape.background.opacity }
+                : {}),
+              ...(shape.background.blur !== undefined ? { blur: shape.background.blur } : {}),
+            },
+          }
+        : {}),
       modIds: shape.modIds,
       defaults,
       aiEnabled: shape.aiEnabled,

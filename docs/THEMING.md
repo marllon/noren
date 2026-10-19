@@ -97,6 +97,68 @@ What each profile becomes (an entry of `profiles` in `config.jsonc`, see [CONFIG
 
 The profiles go to the end of `profiles` in the file, keeping the comments and the layout of the file as every write from the settings screen does. If the file has a problem of its own, or the disk refuses the write, the preview stays open with the reason and nothing is written. A file over 1,000,000 bytes is not read.
 
+## The window: effect, opacity and background
+
+Three things change how the window itself looks, beyond the colors of a theme. All three are settings of `config.jsonc` (the **Window** and **Background** sections of the settings screen write them; see [CONFIG.md](CONFIG.md)).
+
+### The effect behind the window
+
+`appearance.window.effect` asks the system to paint something behind the window, which shows through wherever the interface is see-through:
+
+| Value      | What it is                                                | Where it works                       |
+| ---------- | --------------------------------------------------------- | ------------------------------------ |
+| `none`     | A plain opaque window. The default.                       | Everywhere                           |
+| `mica`     | The soft backdrop of Windows 11, tinted by the wallpaper. | Windows 11                           |
+| `acrylic`  | A translucent, blurred backdrop.                          | Windows 11, and Windows 10 from 1809 |
+| `vibrancy` | The translucent material of macOS windows.                | macOS                                |
+
+- **A system that cannot paint the effect keeps the window opaque, with no error.** Mica before Windows 11, vibrancy on Windows or Linux, and any effect on Linux or in a browser answer "not applied". The file is still valid; the **Window** section of the settings screen says what was not applied and why, and the app writes one line to its log, such as `window effect mica applied` or `window effect mica not applied, opaque window kept: <reason>`. While the window has no effect the interface does not use the see-through opacity of the theme (below), so nothing is left half transparent over a window that cannot show anything behind it.
+- **The effect is painted dark or light like the theme you chose**, not like the mode of the system: a dark theme gets a dark Mica even when the system is in light mode, because text in a dark theme on a light backdrop would not be readable. The window is given that look as its own, which also makes the page report it as its preferred color scheme; that only matters to a theme that follows the system, and one that does is never given a look: while the theme follows the system (`appearance.theme` is `system` or missing, and the space has no theme of its own) the window follows the system too, so the two agree, and **Follow system theme** keeps following it.
+- The window is created see-through (that is what lets an effect show), and the page paints it opaque unless the opacity says otherwise, so a window with no effect looks as it always did.
+- The effect is applied as soon as the setting is read, and again when it changes or when the theme changes from dark to light (the palette preview too). The smoke run (`pnpm smoke`) gives the hidden window Mica on Windows (vibrancy on macOS) and prints the answer, for example `SMOKE window effect mica applied`; a system that cannot paint it prints the fallback with its reason and still passes.
+
+### The opacity of the interface
+
+`appearance.window.opacity` is a number from 0.3 to 1. It is how opaque the **backgrounds** of the window, the title bar, the sidebar, the tab bar and the terminals are; text, borders and the accent are never faded, and menus, dialogs and the command palette stay solid so they are always readable.
+
+- With a value in the file, that value, with or without an effect. Below 1, what is behind the window shows through (the effect, or the desktop).
+- Without a value (or with `null`): solid, except while the window has an effect, when it is the `ui.opacity` of the theme (0.92 for the built-in themes).
+- It is applied by the variable `--nr-opacity` (and `--nr-bg-glass`, `--nr-surface-glass`; see the table of variables below), which a mod can use.
+- Why 0.3 is the lowest: a test holds every built-in theme to a contrast of 4.5:1 for its text and 3:1 for its muted text, in the interface and in the terminal, at the lowest opacity over the extreme backdrop of its own kind (black for a dark theme, white for a light one). What shows behind the window decides the rest; a backdrop of the other kind cannot be made readable by any opacity, which is why the effect follows the theme.
+
+### The background picture
+
+A picture can sit behind the terminals. It comes from the first of these that has one, and each part (the file, how much of it shows, how blurred it is) is taken from the last layer that says it:
+
+1. the **theme**: `background.image`, `background.opacity` and `background.blur` in the theme file (the built-in themes have no picture);
+2. the **settings file**: `appearance.background` (`image`, `opacity`, `blur`), where `"image": null` says no picture even if the theme has one;
+3. the **space**: the picture of the space, chosen in its menu (**Background image...**), kept in `state.json`. **Remove background image** in the same menu gives the space back to the layers above.
+
+| Part      | Range                  | When nothing says                                      |
+| --------- | ---------------------- | ------------------------------------------------------ |
+| `image`   | a file path, see below | no picture                                             |
+| `opacity` | 0 (not seen) to 1      | 0.15 (the `background.opacity` of the built-in themes) |
+| `blur`    | pixels, 0 to 100       | 0                                                      |
+
+**Only a local file.** The path is an absolute path, or a path inside the config folder (`backgrounds/sky.jpg`, next to `config.jsonc`). Noren refuses, when it reads the file and again in the part that opens it:
+
+- a web address or any other scheme (`http:`, `https:`, `file:`, `data:`, `blob:`), and a network path (`\\server\share\sky.png`): nothing is ever fetched, and nothing reaches the network;
+- a path inside the config folder with `..` in it, so it cannot climb out of the folder;
+- a name that does not end in `png`, `jpg`, `jpeg`, `webp`, `gif` or `bmp`;
+- a file larger than 32 MiB, a folder, or a file whose first bytes are not those of one of those pictures (the name is not trusted: a text file called `sky.png` is refused, and so is a `.svg`).
+
+In a theme file or in `config.jsonc` a refused path makes the theme or the file invalid, with the reason (and the line, for the file). In a space, or when the file cannot be read (it was moved, it is not a picture), the picture is left out and a notice says why; the rest of the window is not affected.
+
+The picture is read by the app (the page is never given a path or an address to fetch: it gets the bytes and shows them from memory), so the file is read again only when the path changes. The picture is drawn under everything, covering the window; the **terminals have no background of their own while a picture shows**, so it shows through them at the opacity you set, and the sidebar, the title bar and the tab bar keep their color at the opacity of the interface (lower it to let the picture through them too).
+
+### Variables and attributes
+
+`--nr-opacity`, `--nr-bg-glass`, `--nr-surface-glass` and the three `--nr-background-*` variables are in the table of variables below; `data-nr-window-effect` on the root of the window says which effect the window has (not the one that was asked for), `data-nr-picture="shown"` is there while a picture is on screen, and the picture itself is the part `background`.
+
+### Not verified in a real window
+
+How Mica, Acrylic and vibrancy look, that the window with no effect looks the same now that it is created see-through (its corners, its shadow and the first frame before the page paints), and that the picture and the see-through terminals look right in the webview of the app, have not been seen in a window: they were checked by tests of the pure parts, by the computed styles in a browser, and by reading the code. What was run on the real app is `pnpm smoke`, which gives the hidden window its effect and prints what the system answered.
+
 ## Mods: your own CSS
 
 A mod is a CSS file in the `mods` folder, next to `config.jsonc`. Noren reads the file, puts its rules in a cascade layer that comes after its own style, and applies it to the window: you can move things, change spacing, colors and shapes, and hide what you do not use. A mod only restyles; it runs no code, and nothing in Noren fetches anything for it.
@@ -147,49 +209,58 @@ These names are the contract between Noren and your mods. They are set by the ap
 
 #### Variables
 
-Set on the root element of the page by the active theme (and the active space, for the last one), so a mod can use them in any rule and they follow a change of theme at once.
+Set on the root element of the page by the active theme (and the active space, for `--nr-space-color` and the picture), so a mod can use them in any rule and they follow a change of theme at once.
 
-| Variable           | What it holds                                                                     |
-| ------------------ | --------------------------------------------------------------------------------- |
-| `--nr-bg`          | Background of the window.                                                         |
-| `--nr-surface`     | Background of the surfaces on top of it: the sidebar, the title bar, the dialogs. |
-| `--nr-text`        | Text.                                                                             |
-| `--nr-muted`       | Secondary text.                                                                   |
-| `--nr-accent`      | The accent of the theme.                                                          |
-| `--nr-border`      | Lines and borders.                                                                |
-| `--nr-radius`      | The corner radius, with its unit (`10px`).                                        |
-| `--nr-space-color` | The color of the active space, or the accent when it has none.                    |
+| Variable                  | What it holds                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `--nr-bg`                 | Background of the window.                                                                               |
+| `--nr-surface`            | Background of the surfaces on top of it: the sidebar, the title bar, the dialogs.                       |
+| `--nr-text`               | Text.                                                                                                   |
+| `--nr-muted`              | Secondary text.                                                                                         |
+| `--nr-accent`             | The accent of the theme.                                                                                |
+| `--nr-border`             | Lines and borders.                                                                                      |
+| `--nr-radius`             | The corner radius, with its unit (`10px`).                                                              |
+| `--nr-space-color`        | The color of the active space, or the accent when it has none.                                          |
+| `--nr-opacity`            | How opaque the interface is, a number from 0.3 to 1 (see [the opacity](#the-opacity-of-the-interface)). |
+| `--nr-bg-glass`           | `--nr-bg` at that opacity: what the window itself is painted with.                                      |
+| `--nr-surface-glass`      | `--nr-surface` at that opacity: what the title bar, the sidebar and the tab bar are painted with.       |
+| `--nr-background-image`   | The picture behind the terminals as `url(...)`, or `none`.                                              |
+| `--nr-background-opacity` | How much of the picture shows, a number from 0 to 1.                                                    |
+| `--nr-background-blur`    | How blurred the picture is, with its unit (`6px`).                                                      |
 
 #### Parts
 
 `data-nr-part` names what an element is. `data-nr-state` (where the table gives values) says what state it is in, and is absent when the element is in none.
 
-| `data-nr-part`   | What it is                                        | `data-nr-state`                                   |
-| ---------------- | ------------------------------------------------- | ------------------------------------------------- |
-| `sidebar`        | The sidebar.                                      | `revealed` or `hidden`, only with compact mode on |
-| `space-switcher` | The row of spaces at the foot of the sidebar.     |                                                   |
-| `item`           | A tab, in the sidebar or in the bar on top.       | `active`                                          |
-| `item-title`     | The title inside a tab.                           |                                                   |
-| `group`          | A group of tabs.                                  | `expanded` or `collapsed`                         |
-| `pinned-list`    | The list of pinned tabs.                          | `over` while a tab is dragged over it             |
-| `favorites`      | The grid of favorites.                            | `over` while a tab is dragged over it             |
-| `favorite`       | One favorite.                                     | `active`                                          |
-| `tabbar`         | The bar of tabs on top, when the tabs are on top. |                                                   |
-| `pane`           | One terminal pane.                                |                                                   |
-| `pane-header`    | The header of a pane, when pane headers are on.   |                                                   |
-| `palette`        | The command palette.                              |                                                   |
-| `settings`       | The settings screen.                              |                                                   |
+| `data-nr-part`   | What it is                                                     | `data-nr-state`                                   |
+| ---------------- | -------------------------------------------------------------- | ------------------------------------------------- |
+| `sidebar`        | The sidebar.                                                   | `revealed` or `hidden`, only with compact mode on |
+| `space-switcher` | The row of spaces at the foot of the sidebar.                  |                                                   |
+| `item`           | A tab, in the sidebar or in the bar on top.                    | `active`                                          |
+| `item-title`     | The title inside a tab.                                        |                                                   |
+| `group`          | A group of tabs.                                               | `expanded` or `collapsed`                         |
+| `pinned-list`    | The list of pinned tabs.                                       | `over` while a tab is dragged over it             |
+| `favorites`      | The grid of favorites.                                         | `over` while a tab is dragged over it             |
+| `favorite`       | One favorite.                                                  | `active`                                          |
+| `tabbar`         | The bar of tabs on top, when the tabs are on top.              |                                                   |
+| `pane`           | One terminal pane.                                             |                                                   |
+| `pane-header`    | The header of a pane, when pane headers are on.                |                                                   |
+| `palette`        | The command palette.                                           |                                                   |
+| `settings`       | The settings screen.                                           |                                                   |
+| `background`     | The picture behind the terminals, only while one is on screen. |                                                   |
 
 #### Other attributes
 
-| Attribute           | On                                              | Values                                                    |
-| ------------------- | ----------------------------------------------- | --------------------------------------------------------- |
-| `data-nr-focused`   | `pane`                                          | `true` or `false`, only in a tab that is split into panes |
-| `data-nr-selected`  | `item`                                          | `true` while the tab is part of a selection               |
-| `data-nr-pinned`    | `item`                                          | `true` for a pinned tab                                   |
-| `data-nr-indicator` | the marks on a tab                              | `running`, `failed`, `unread` or `bell`                   |
-| `data-nr-side`      | the area that holds the sidebar and the content | `left` or `right`: the side of the sidebar                |
-| `data-nr-density`   | the area that holds the sidebar and the content | `comfortable` or `compact`                                |
+| Attribute               | On                                              | Values                                                             |
+| ----------------------- | ----------------------------------------------- | ------------------------------------------------------------------ |
+| `data-nr-focused`       | `pane`                                          | `true` or `false`, only in a tab that is split into panes          |
+| `data-nr-selected`      | `item`                                          | `true` while the tab is part of a selection                        |
+| `data-nr-pinned`        | `item`                                          | `true` for a pinned tab                                            |
+| `data-nr-indicator`     | the marks on a tab                              | `running`, `failed`, `unread` or `bell`                            |
+| `data-nr-side`          | the area that holds the sidebar and the content | `left` or `right`: the side of the sidebar                         |
+| `data-nr-density`       | the area that holds the sidebar and the content | `comfortable` or `compact`                                         |
+| `data-nr-window-effect` | the root of the window                          | `none`, `mica`, `acrylic` or `vibrancy`: the effect the window has |
+| `data-nr-picture`       | the root of the window                          | `shown` while a picture is on screen; absent otherwise             |
 
 #### Reading the page
 
@@ -224,4 +295,7 @@ The reload, the layer order and the computed styles are checked in a browser by 
 - In the web build the theme files live in the browser storage under `noren.web.themes` (a JSON object from id to text); `FakeBackend.setUserTheme(id, text)` places a file as if by hand and `setUserThemeSaveFailure(error)` makes saves fail.
 - In the interface, `user-themes-store.ts` holds the list (built-in first, then yours), loaded before the first frame; `scheme-import.ts` is what the action runs for a picked file; `theme-choice.ts` and `use-theme.ts` look themes up in that whole list, while `findTheme` of `@noren/model` stays the built-in themes alone.
 - Profiles: `user-profiles.ts` has `splitCommandLine` (the rules above), `userProfilesFromImported` (the ids and the schema check, never throws) and `commandLineOf` (the line shown in the preview); `user-profile-schema.ts` is the schema of one entry of `profiles`, shared with the schema of `config.jsonc`. In the interface, `profile-import.ts` reads the file into a plan (`readProfileFile`) and writes it (`commitProfileImport`, through `ConfigManager.update` with an append to `profiles`), `ProfileImportDialog.tsx` is the preview and `profiles-store.ts` hands the profiles of the file to the backend and keeps the joined list.
+- **The window and the background.** The pure parts are in `packages/model/src`: `window-effect.ts` (the effects, `interfaceOpacity`, the lowest opacity) and `background.ts` (`backgroundImageProblem`, `sniffImageMime`, `resolveBackground`). The space's picture is `Space.background` (`space/set-background`, checked and clamped by the reducer, read back by `state.json`). `Backend.setWindowEffect(effect, scheme)` and `Backend.readBackgroundImage(path)` are the two calls; `FakeBackend` takes `windowEffects` (what its system can paint) and `images` (files by path; `setImage` places one), and in the web build they are seeded under `noren.web.window-effects` (a list of effect names) and `noren.web.images` (path to base64), which is how the end-to-end tests give the page a system with Mica and a picture (`e2e/fixtures/background.png`).
+- In `noren-core`, `window.rs` has the effects, the rule that falls back to an opaque window (`apply_effect` over a `WindowPainter`, tested with a fake painter) and the line for the log; `background.rs` has `path_problem` (the same cases as the TypeScript one), `sniff_image` and `BackgroundStore` (reads a picture: the path, the size and the first bytes are checked before a byte is returned). In the app, `window_effect.rs` paints with the `window-vibrancy` crate, called directly because the Tauri call drops the answer; the commands are `window_effect_set` (also sets the window theme to the scheme asked for) and `background_image_read` (a raw response, not JSON). The main window is `transparent` in `tauri.conf.json` (and `tauri.macos.conf.json`).
+- In the interface: `window-effect-store.ts` (asks the backend for the effect and holds the answer), `background-image-store.ts` (reads the picture through the backend into a `blob:` address and keeps a few), `window-appearance.ts` (the pure merge of settings, theme and space into `windowVariables`), `use-window.ts` (follows the picture of the active space) and `WindowBackground.tsx` (the layer and the notice). `terminalTheme(theme, opacity)` gives the terminal its alpha.
 - The fixtures of the tests (a scheme in each format, settings files with hidden profiles and profiles to import, files that are not valid) are in `packages/model/src/import-fixtures.ts`, also used by the end-to-end tests.

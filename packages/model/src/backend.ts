@@ -4,7 +4,9 @@
  * The AI methods (`ai.*`) join this interface in the tasks of their own phase.
  */
 
+import type { BackgroundImageFile } from "./background";
 import type { UserProfile } from "./user-profile-schema";
+import type { WindowEffect, WindowEffectReport, WindowScheme } from "./window-effect";
 
 /** Function returned by every subscription: calling it stops the delivery. */
 export type Unsubscribe = () => void;
@@ -133,6 +135,26 @@ export interface Backend {
    * leaves the list as it was is not delivered. Stops when the returned function is called.
    */
   watchMods(callback: (files: ModFile[]) => void): Unsubscribe;
+  /**
+   * Asks the system to paint `effect` behind the window (`none` takes any effect away), and tells
+   * what the window has afterwards. It never rejects because the system cannot paint the effect:
+   * Mica before Windows 11, vibrancy outside macOS or a plain browser answer `applied: "none"` with
+   * the `reason`, and the window stays opaque. Rejects only when the request itself cannot be made.
+   * `scheme` is the look the effect is painted in: `dark` or `light` when the theme in force was
+   * chosen (so the effect matches the theme, not the mode of the system), `system` when the theme
+   * follows the system, which leaves the window following it too. Calling it again with the effect
+   * and the scheme the window has changes nothing.
+   */
+  setWindowEffect(effect: WindowEffect, scheme: WindowScheme): Promise<WindowEffectReport>;
+  /**
+   * The picture file of a background: `path` is an absolute path or a path inside the config folder
+   * of the app (`backgroundImageProblem` tells what is refused: web addresses, network paths, `..`,
+   * anything that is not a picture extension). The bytes must really be a png, jpeg, webp, gif or
+   * bmp picture and at most `MAX_BACKGROUND_BYTES` long. Rejects, with a sentence for a person,
+   * when the path is refused, the file is not there or cannot be read, or is not a picture. It
+   * never reaches for the network.
+   */
+  readBackgroundImage(path: string): Promise<BackgroundImageFile>;
   /**
    * Text of `.noren/actions.json` inside the folder `cwd`, or `null` when the folder has no such
    * file. Rejects for any other failure (a folder where the file should be, no permission).

@@ -1,8 +1,14 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, KeyboardEvent } from "react";
-import { describeConfigError, movedMod, withMod } from "@noren/model";
-import type { Backend } from "@noren/model";
+import {
+  WINDOW_EFFECTS,
+  WINDOW_EFFECT_LABELS,
+  describeConfigError,
+  movedMod,
+  withMod,
+} from "@noren/model";
+import type { Backend, WindowEffect } from "@noren/model";
 import { useConfigState, configManager } from "./config-store";
 import type { Preset } from "./keybindings";
 import type { Density, SidebarSide, TabsPlacement } from "./layout";
@@ -17,6 +23,7 @@ import { ShortcutsDialog } from "./ShortcutsDialog";
 import { addUserThemes, getUserThemes } from "./user-themes-store";
 import { compactAvailable, keepOpenAvailable, planSave, shownSettings } from "./settings-screen";
 import type { SettingsDraft } from "./settings-screen";
+import { useWindowEffectReport, windowEffectNote } from "./window-effect-store";
 
 interface ChoiceProps<T extends string> {
   legend: string;
@@ -70,10 +77,12 @@ interface NumberBoxProps {
   label: string;
   value: string;
   problem: string | undefined;
+  /** A box for a path or other text rather than a number. */
+  text?: boolean;
   onChange(text: string): void;
 }
 
-function NumberBox({ label, value, problem, onChange }: NumberBoxProps) {
+function NumberBox({ label, value, problem, text = false, onChange }: NumberBoxProps) {
   const hintId = useId();
   return (
     <div className="settings-number">
@@ -81,7 +90,9 @@ function NumberBox({ label, value, problem, onChange }: NumberBoxProps) {
         <span>{label}</span>
         <input
           type="text"
-          inputMode="decimal"
+          inputMode={text ? "text" : "decimal"}
+          spellCheck={text ? false : undefined}
+          autoComplete={text ? "off" : undefined}
           value={value}
           aria-invalid={problem !== undefined ? true : undefined}
           aria-describedby={problem !== undefined ? hintId : undefined}
@@ -111,6 +122,10 @@ const DENSITIES: readonly { value: Density; label: string }[] = [
   { value: "comfortable", label: "Comfortable" },
   { value: "compact", label: "Compact" },
 ];
+
+const WINDOW_EFFECT_OPTIONS: readonly { value: WindowEffect; label: string }[] = WINDOW_EFFECTS.map(
+  (value) => ({ value, label: WINDOW_EFFECT_LABELS[value] }),
+);
 
 const KEY_PRESETS: readonly { value: Preset; label: string }[] = [
   { value: "safe", label: "Safe" },
@@ -145,6 +160,8 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
   const profilesInputRef = useRef<HTMLInputElement>(null);
   const profilesButtonRef = useRef<HTMLButtonElement>(null);
   const profiles = useProfiles();
+  // What the system did with the effect that is saved (not with the one in the draft).
+  const effectNote = windowEffectNote(useWindowEffectReport());
   const [importStatus, setImportStatus] = useState("");
   const [importPlan, setImportPlan] = useState<ProfileImportPlan>();
 
@@ -288,6 +305,73 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                   checked={shown.paneHeaders}
                   onChange={(paneHeaders) => change({ paneHeaders })}
                 />
+              </section>
+              <section
+                className="settings-section"
+                aria-label="Window"
+                data-nr-part="settings-window"
+              >
+                <h3>Window</h3>
+                <Choice
+                  legend="Window effect"
+                  name="settings-window-effect"
+                  value={shown.windowEffect}
+                  options={WINDOW_EFFECT_OPTIONS}
+                  onChange={(windowEffect) => change({ windowEffect })}
+                />
+                <p className="settings-hint">
+                  Mica and Acrylic are for Windows, vibrancy for macOS. Where the system cannot
+                  paint the effect, the window stays opaque.
+                </p>
+                {effectNote !== "" && (
+                  <p
+                    role="status"
+                    className="settings-hint"
+                    data-nr-part="settings-window-effect-note"
+                  >
+                    {effectNote}
+                  </p>
+                )}
+                <NumberBox
+                  label="Interface opacity (0.3 to 1)"
+                  value={shown.windowOpacity}
+                  problem={plan.problems.windowOpacity}
+                  onChange={(windowOpacity) => change({ windowOpacity })}
+                />
+                <p className="settings-hint">
+                  Empty: solid, and the opacity of the theme while there is an effect.
+                </p>
+              </section>
+              <section
+                className="settings-section"
+                aria-label="Background"
+                data-nr-part="settings-background"
+              >
+                <h3>Background</h3>
+                <NumberBox
+                  label="Background image (file)"
+                  value={shown.backgroundImage}
+                  problem={plan.problems.backgroundImage}
+                  text
+                  onChange={(backgroundImage) => change({ backgroundImage })}
+                />
+                <NumberBox
+                  label="Image opacity (0 to 1)"
+                  value={shown.backgroundOpacity}
+                  problem={plan.problems.backgroundOpacity}
+                  onChange={(backgroundOpacity) => change({ backgroundOpacity })}
+                />
+                <NumberBox
+                  label="Image blur (px)"
+                  value={shown.backgroundBlur}
+                  problem={plan.problems.backgroundBlur}
+                  onChange={(backgroundBlur) => change({ backgroundBlur })}
+                />
+                <p className="settings-hint">
+                  A picture file on this computer: a full path, or a path inside the config folder
+                  (backgrounds/sky.jpg). Web addresses are not accepted. Empty opacity and blur let
+                  the theme decide. A space can have a picture of its own, in its menu.
+                </p>
               </section>
               <section className="settings-section" aria-label="Shortcuts">
                 <h3>Shortcuts</h3>

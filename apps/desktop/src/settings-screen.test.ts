@@ -2,14 +2,21 @@ import { describe, expect, it } from "vitest";
 import type { Config } from "@noren/model";
 import { DEFAULT_LAYOUT } from "./layout";
 import {
+  BACKGROUND_BLUR_PROBLEM,
+  BACKGROUND_OPACITY_PROBLEM,
   DEFAULT_SETTINGS,
+  OPTIONAL_PATHS,
   SECONDS_PROBLEM,
   SETTING_PATHS,
   WIDTH_PROBLEM,
+  WINDOW_OPACITY_PROBLEM,
   compactAvailable,
   keepOpenAvailable,
+  parseBackgroundBlur,
+  parseBackgroundOpacity,
   parseSeconds,
   parseWidth,
+  parseWindowOpacity,
   planSave,
   settingsOf,
   settingsSetBy,
@@ -23,6 +30,8 @@ const EVERYTHING: Config = {
     density: "compact",
     tabs: "top",
     paneHeaders: true,
+    window: { effect: "mica", opacity: 0.8 },
+    background: { image: "backgrounds/sky.png", opacity: 0.4, blur: 6 },
   },
   keybindings: { preset: "browser" },
   notifications: { enabled: false, longCommandSeconds: 90 },
@@ -36,6 +45,7 @@ describe("settingsOf", () => {
       preset: "safe",
       notifications: true,
       longCommandSeconds: 30,
+      windowEffect: "none",
     });
   });
 
@@ -51,6 +61,7 @@ describe("settingsOf", () => {
       preset: "browser",
       notifications: false,
       longCommandSeconds: 90,
+      windowEffect: "mica",
     });
     expect(settingsOf({ keybindings: { preset: "browser" } })).toEqual({
       ...DEFAULT_SETTINGS,
@@ -73,6 +84,9 @@ describe("settingsSetBy", () => {
     );
     expect([...settingsSetBy({ appearance: { sidebar: { width: 250 } } })]).toEqual(["width"]);
     expect([...settingsSetBy({ notifications: { enabled: true } })]).toEqual(["notifications"]);
+    expect([...settingsSetBy({ appearance: { window: { effect: "none" } } })]).toEqual([
+      "windowEffect",
+    ]);
   });
 });
 
@@ -83,6 +97,20 @@ describe("SETTING_PATHS", () => {
     expect(places).toContain("appearance.sidebar.position");
     expect(places).toContain("keybindings.preset");
     expect(places).toContain("notifications.longCommandSeconds");
+    expect(places).toContain("appearance.window.effect");
+  });
+
+  it("does not repeat a place of the optional settings either", () => {
+    const places = [...Object.values(SETTING_PATHS), ...Object.values(OPTIONAL_PATHS)].map((path) =>
+      path.join("."),
+    );
+    expect(new Set(places).size).toBe(places.length);
+    expect(Object.values(OPTIONAL_PATHS).map((path) => path.join("."))).toEqual([
+      "appearance.window.opacity",
+      "appearance.background.image",
+      "appearance.background.opacity",
+      "appearance.background.blur",
+    ]);
   });
 });
 
@@ -221,5 +249,127 @@ describe("planSave", () => {
       { path: ["notifications", "enabled"], value: false },
       { path: ["notifications", "longCommandSeconds"], value: 0 },
     ]);
+  });
+});
+
+describe("the window and the background in the settings screen", () => {
+  it("shows the boxes empty for a file that says nothing, and the file's text otherwise", () => {
+    expect(shownSettings({}, {})).toMatchObject({
+      windowEffect: "none",
+      windowOpacity: "",
+      backgroundImage: "",
+      backgroundOpacity: "",
+      backgroundBlur: "",
+    });
+    expect(shownSettings(EVERYTHING, {})).toMatchObject({
+      windowEffect: "mica",
+      windowOpacity: "0.8",
+      backgroundImage: "backgrounds/sky.png",
+      backgroundOpacity: "0.4",
+      backgroundBlur: "6",
+    });
+    // A null in the file is a setting that is not set: the box is empty.
+    expect(
+      shownSettings({ appearance: { window: { opacity: null }, background: { image: null } } }, {}),
+    ).toMatchObject({ windowOpacity: "", backgroundImage: "" });
+  });
+
+  it("shows the draft over the file", () => {
+    expect(shownSettings(EVERYTHING, { windowOpacity: "0.5", backgroundImage: "" })).toMatchObject({
+      windowOpacity: "0.5",
+      backgroundImage: "",
+      backgroundBlur: "6",
+    });
+  });
+
+  it("writes the effect like any other choice, only when it differs", () => {
+    expect(planSave({}, { windowEffect: "acrylic" }).changes).toEqual([
+      { path: ["appearance", "window", "effect"], value: "acrylic" },
+    ]);
+    expect(planSave({}, { windowEffect: "none" }).changes).toEqual([]);
+    expect(planSave(EVERYTHING, { windowEffect: "mica" }).changes).toEqual([]);
+  });
+
+  it("writes the numbers and the path from their text, in the order of the file", () => {
+    const plan = planSave(
+      {},
+      {
+        backgroundBlur: "4",
+        backgroundOpacity: ".5",
+        backgroundImage: "C:\\Pictures\\sky.png",
+        windowOpacity: " 0.9 ",
+      },
+    );
+    expect(plan.problems).toEqual({});
+    expect(plan.changes).toEqual([
+      { path: ["appearance", "window", "opacity"], value: 0.9 },
+      { path: ["appearance", "background", "image"], value: "C:\\Pictures\\sky.png" },
+      { path: ["appearance", "background", "opacity"], value: 0.5 },
+      { path: ["appearance", "background", "blur"], value: 4 },
+    ]);
+  });
+
+  it("writes null for a box emptied where the file has a value, and nothing where it has none", () => {
+    expect(
+      planSave(EVERYTHING, {
+        windowOpacity: "",
+        backgroundImage: "  ",
+        backgroundOpacity: "",
+        backgroundBlur: "",
+      }).changes,
+    ).toEqual([
+      { path: ["appearance", "window", "opacity"], value: null },
+      { path: ["appearance", "background", "image"], value: null },
+      { path: ["appearance", "background", "opacity"], value: null },
+      { path: ["appearance", "background", "blur"], value: null },
+    ]);
+    expect(
+      planSave({}, { windowOpacity: "", backgroundImage: "", backgroundOpacity: "" }).changes,
+    ).toEqual([]);
+    // A null already in the file is the same as an empty box.
+    expect(
+      planSave({ appearance: { background: { image: null } } }, { backgroundImage: "" }).changes,
+    ).toEqual([]);
+  });
+
+  it("does not write a value put back where it was", () => {
+    expect(
+      planSave(EVERYTHING, { windowOpacity: "0.8", backgroundOpacity: "0.40", backgroundBlur: "6" })
+        .changes,
+    ).toEqual([]);
+  });
+
+  it("reports a box that cannot be used, and writes nothing for it", () => {
+    const plan = planSave(
+      {},
+      {
+        windowOpacity: "0.1",
+        backgroundOpacity: "1.5",
+        backgroundBlur: "400",
+        backgroundImage: "https://example.com/sky.png",
+        windowEffect: "vibrancy",
+      },
+    );
+    expect(plan.problems.windowOpacity).toBe(WINDOW_OPACITY_PROBLEM);
+    expect(plan.problems.backgroundOpacity).toBe(BACKGROUND_OPACITY_PROBLEM);
+    expect(plan.problems.backgroundBlur).toBe(BACKGROUND_BLUR_PROBLEM);
+    expect(plan.problems.backgroundImage).toMatch(/web addresses/);
+    expect(plan.changes).toEqual([{ path: ["appearance", "window", "effect"], value: "vibrancy" }]);
+  });
+
+  it("reads each number box within its range", () => {
+    expect(parseWindowOpacity("0.3")).toBe(0.3);
+    expect(parseWindowOpacity("1")).toBe(1);
+    for (const bad of ["", "0.29", "1.01", "-1", "abc", "1e0", "0,5", "NaN", "Infinity"]) {
+      expect(parseWindowOpacity(bad), bad).toBeUndefined();
+    }
+    expect(parseBackgroundOpacity("0")).toBe(0);
+    expect(parseBackgroundOpacity(".25")).toBe(0.25);
+    for (const bad of ["", "1.1", "-0.1", "x"])
+      expect(parseBackgroundOpacity(bad), bad).toBeUndefined();
+    expect(parseBackgroundBlur("100")).toBe(100);
+    expect(parseBackgroundBlur("0")).toBe(0);
+    for (const bad of ["", "100.5", "-1", "x"])
+      expect(parseBackgroundBlur(bad), bad).toBeUndefined();
   });
 });

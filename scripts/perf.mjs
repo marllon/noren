@@ -199,7 +199,13 @@ async function runApp(binary, tabs) {
       workingSetMb: summarize(workingSetMb).median,
       workingSetMbSamples: workingSetMb,
       privateWorkingSetMb: med(samples, (s) => s.privateWorkingSetMb),
-      roles: { noren: role("noren"), webview: role("webview"), shells: role("shells") },
+      ownedPrivateWorkingSetMb: med(samples, (s) => s.ownedPrivateWorkingSetMb),
+      roles: {
+        noren: role("noren"),
+        webview: role("webview"),
+        consoles: role("consoles"),
+        shells: role("shells"),
+      },
       processes: samples.at(-1).processes,
       kinds: samples.at(-1).kinds,
     };
@@ -255,35 +261,48 @@ async function measureApp() {
     Object.assign(summary, {
       "first prompt, 30 tabs (ms from process creation)": pick(thirty, "firstPromptMs"),
       "last of 30 prompts (ms from process creation)": pick(thirty, "lastPromptMs"),
-      "memory, 30 tabs, working set sum (MB)": pick(thirty, "workingSetMb"),
-      "memory, 30 tabs, private working set sum (MB)": pick(thirty, "privateWorkingSetMb"),
+      "memory, 30 tabs, TOTAL by the spec: private working set of Noren + web view + consoles (MB)":
+        pick(thirty, "ownedPrivateWorkingSetMb"),
+      "memory, 30 tabs, working set sum, whole tree (MB)": pick(thirty, "workingSetMb"),
+      "memory, 30 tabs, private working set sum, whole tree (MB)": pick(
+        thirty,
+        "privateWorkingSetMb",
+      ),
       "memory, 30 tabs, Noren process, working set (MB)": rolePick(thirty, "noren", "workingSetMb"),
       "memory, 30 tabs, web view processes, working set (MB)": rolePick(
         thirty,
         "webview",
         "workingSetMb",
       ),
-      "memory, 30 tabs, shells and consoles, working set (MB)": rolePick(
+      "memory, 30 tabs, console hosts, working set (MB)": rolePick(
         thirty,
-        "shells",
+        "consoles",
         "workingSetMb",
       ),
+      "memory, 30 tabs, shells, working set (MB)": rolePick(thirty, "shells", "workingSetMb"),
       "memory, 30 tabs, web view processes, private (MB)": rolePick(
         thirty,
         "webview",
         "privateWorkingSetMb",
       ),
-      "memory, 30 tabs, shells and consoles, private (MB)": rolePick(
+      "memory, 30 tabs, console hosts, private (MB)": rolePick(
         thirty,
-        "shells",
+        "consoles",
+        "privateWorkingSetMb",
+      ),
+      "memory, 30 tabs, shells, private (MB)": rolePick(thirty, "shells", "privateWorkingSetMb"),
+      "memory, 30 tabs, Noren process, private (MB)": rolePick(
+        thirty,
+        "noren",
         "privateWorkingSetMb",
       ),
       "processes, 30 tabs": pick(thirty, "processes"),
     });
   }
   Object.assign(summary, {
-    "memory, 1 tab, working set sum (MB)": pick(first, "workingSetMb"),
-    "memory, 1 tab, private working set sum (MB)": pick(first, "privateWorkingSetMb"),
+    "memory, 1 tab, working set sum, whole tree (MB)": pick(first, "workingSetMb"),
+    "memory, 1 tab, private working set sum, whole tree (MB)": pick(first, "privateWorkingSetMb"),
+    "memory, 1 tab, TOTAL by the spec (MB)": pick(first, "ownedPrivateWorkingSetMb"),
   });
   // Where the time goes: each mark of the 1-tab runs, median over the repetitions (NOR-F11-01d).
   const markNames = [...new Set(first.flatMap((entry) => Object.keys(entry.marks)))];

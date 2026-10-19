@@ -32,25 +32,34 @@ export function processTree(rootPid, processes) {
 
 const MB = 1024 * 1024;
 
-/** Which part of the app a process is: Noren itself, its web view, or a shell (and its console host). */
+/**
+ * Which part of the app a process is: Noren itself, its web view, the console host made for a tab
+ * (`openconsole.exe` or `conhost.exe`: Noren opens one pseudo console per tab), or anything else
+ * in the tree, which is a shell and whatever the shell started (the user's own programs).
+ */
 export function roleOf(name) {
   const lower = name.toLowerCase();
   if (lower === "noren.exe") return "noren";
   if (lower === "msedgewebview2.exe") return "webview";
+  if (lower === "openconsole.exe" || lower === "conhost.exe") return "consoles";
   return "shells";
 }
 
 /**
- * What the memory of a tree adds up to, in MB (1 MB = 1,048,576 bytes): the working set of every
- * process summed (the figure of the target; pages that processes share count once per process, so
- * it leans high), the private working set summed (each page once, what is not shared), both split
- * by role (`noren`, `webview`, `shells`), and how many processes there are of each kind.
+ * What the memory of a tree adds up to, in MB (1 MB = 1,048,576 bytes), by the definition of the
+ * spec (section 11): `ownedPrivateWorkingSetMb`, the private working set summed over Noren, its
+ * web view processes and the console hosts of the tabs; the shells and what they start do not
+ * count. Beside it, the working set summed over the whole tree (pages that processes share count
+ * once per process, so it leans high) and the private working set summed over the whole tree,
+ * both split by role (`noren`, `webview`, `consoles`, `shells`), and how many processes there are
+ * of each kind.
  */
 export function sumMemory(tree) {
   const kinds = {};
   const roles = {
     noren: { workingSetMb: 0, privateWorkingSetMb: 0 },
     webview: { workingSetMb: 0, privateWorkingSetMb: 0 },
+    consoles: { workingSetMb: 0, privateWorkingSetMb: 0 },
     shells: { workingSetMb: 0, privateWorkingSetMb: 0 },
   };
   let ws = 0;
@@ -64,7 +73,9 @@ export function sumMemory(tree) {
     const name = process.name.toLowerCase();
     kinds[name] = (kinds[name] ?? 0) + 1;
   }
+  const owned = roles.noren.privateWorkingSetMb + roles.webview.privateWorkingSetMb;
   return {
+    ownedPrivateWorkingSetMb: owned + roles.consoles.privateWorkingSetMb,
     workingSetMb: ws / MB,
     privateWorkingSetMb: wsPrivate / MB,
     roles,

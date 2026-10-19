@@ -1,20 +1,21 @@
 # Performance
 
-The targets of the product, how each one is measured, and what was measured. Four tasks fill this
+The targets of the product, how each one is measured, and what was measured. Five tasks fill this
 page: NOR-F11-01a (the measurements that need no window, rows 1 to 4 of "Results"), NOR-F11-01b
 (the ones that need the real app in a release build: the first prompt and the memory of 30 tabs,
-rows 5 and 6), NOR-F11-01c (why the first switch of space was sometimes slow, and the fix, row 4) and
-NOR-F11-01d (where the time to the first prompt went, and the cuts, row 5).
+rows 5 and 6), NOR-F11-01c (why the first switch of space was sometimes slow, and the fix, row 4),
+NOR-F11-01d (where the time to the first prompt went, and the cuts, row 5) and NOR-F11-01e (what
+"total memory" counts, and the verdict of row 6).
 
 ## Targets
 
-| #   | Target (spec, section 11)                                                  | Measured in | Status                                                                                                                          |
-| --- | -------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Opening the app to the first prompt: under 800 ms (release, Windows)       | NOR-F11-01d | **met**: 621 ms median (583 to 677) after NOR-F11-01d, 958 ms before (01b)                                                      |
-| 2   | `cat` of 50 MB does not freeze the interface: the sidebar answers < 100 ms | NOR-F11-01a | **met** (13 ms)                                                                                                                 |
-| 3   | 30 tabs open: total memory under 500 MB                                    | NOR-F11-01b | **not met**: 3,651 MB of working set summed over the tree (private working set 1,384 MB), 30 shells are 83 % of it; NOR-F11-01e |
-| 4   | Changing space: under 100 ms                                               | NOR-F11-01a | **met** (16 ms), also the first switch of a page (43.7 ms median, worst 49.8 of 25) after NOR-F11-01c                           |
-|     | Terminal throughput (no number in the spec)                                | NOR-F11-01a | measured, see below                                                                                                             |
+| #   | Target (spec, section 11)                                                  | Measured in | Status                                                                                                                         |
+| --- | -------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Opening the app to the first prompt: under 800 ms (release, Windows)       | NOR-F11-01d | **met**: 621 ms median (583 to 677) after NOR-F11-01d, 958 ms before (01b)                                                     |
+| 2   | `cat` of 50 MB does not freeze the interface: the sidebar answers < 100 ms | NOR-F11-01a | **met** (13 ms)                                                                                                                |
+| 3   | 30 tabs open: total memory under 500 MB                                    | NOR-F11-01e | **met**: 270.1 MB median (269.5 to 272.4), private working set of Noren, web view and console hosts; whole tree 3,555 MB of WS |
+| 4   | Changing space: under 100 ms                                               | NOR-F11-01a | **met** (16 ms), also the first switch of a page (43.7 ms median, worst 49.8 of 25) after NOR-F11-01c                          |
+|     | Terminal throughput (no number in the spec)                                | NOR-F11-01a | measured, see below                                                                                                            |
 
 ## Machine
 
@@ -71,12 +72,19 @@ One machine, left alone while the numbers were taken (no other build or test run
   start of `main` in the app (it leaves out the loader of Windows, a lower bound). Since NOR-F11-01d
   the app and the page also stamp the steps in between (`perf::mark`, `perfMark`; only the hidden
   perf mode keeps them), and the script prints each one as ms from the creation of the process.
-- **Memory** is the sum of the working set of every process in the tree under `noren.exe` (the web
-  view processes, the shells and their console hosts), read from the process list after the 30
+- **Memory** ("total memory", defined in NOR-F11-01e and in the spec, section 11) is the **private
+  working set summed over `noren.exe`, its web view processes (`msedgewebview2.exe`) and the console
+  hosts made for the tabs (`openconsole.exe`, `conhost.exe`)**. The shells (`powershell.exe`, `pwsh`,
+  `bash`, ...) and whatever they start are not counted. It is read from the process list after the 30
   prompts are in and the app has been left alone for 3 seconds; three readings, 1 second apart, and
-  the median of the three is the figure of the repetition. A working set counts the pages that
-  processes share once per process, so the sum leans high; the private working set (each page once,
-  what is not shared) is quoted beside it. Both are split by who owns the process.
+  the median of the three is the figure of the repetition. Why this definition: the shell is the
+  user's own program, chosen and configured by them (profile, plugins, prompt themes), and it costs
+  the same in any terminal, so the memory of a shell says nothing about this application; the
+  private working set counts each page once, where the working set counts the pages that processes
+  share once per process (the web view processes share a lot), so its sum does not lean high. The
+  working set summed over the whole tree (shells included) and the private working set of the whole
+  tree stay in the tables beside it, so nobody has to take the choice on trust. Both are split by
+  who owns the process.
 - Nothing here opens a window or sends a key to the desktop.
 
 ## How to run
@@ -421,7 +429,53 @@ later, nothing differs.
 
 `noren --smoke-perf --perf-tabs 30`: 30 tabs in one space, one Windows PowerShell each, all 30
 prompts on screen, 3 seconds of rest, then the process list. 5 repetitions, in MB (1 MB = 1,048,576
-bytes), each the median of three readings:
+bytes), each the median of three readings.
+
+#### The definition and the verdict (NOR-F11-01e)
+
+**Total memory = the private working set summed over `noren.exe`, its web view processes and the
+console hosts made for the tabs.** The shells and whatever they start are not counted (see "Method"
+for why: they are the user's programs and cost the same in any terminal). The planner took the
+decision on 19 October 2026 and wrote it in the spec, section 11. The script splits the console
+hosts (`openconsole.exe`) from the shells for it (`roleOf` in `scripts/perf-app-lib.mjs`, tested by
+`scripts/perf-app-lib.test.mjs`). The build is the release build of the commit before this task
+(`8acc1d9`; this task changed no code of the app), `node scripts/perf.mjs --only-app`, the 30-tab
+runs between the 1-tab runs as before, the same 3 seconds of rest and the median of three readings
+per run. The first prompt of the same run (1 tab) was 589 ms median, still under its target.
+
+Private working set by who owns the process, in MB, 5 repetitions (68 processes in every run: 1
+`noren.exe`, 7 `msedgewebview2.exe`, 30 `openconsole.exe`, 30 `powershell.exe`):
+
+| Repetition                                         | 1       | 2       | 3       | 4       | 5       | Median      | Min / max         |
+| -------------------------------------------------- | ------- | ------- | ------- | ------- | ------- | ----------- | ----------------- |
+| `noren.exe`                                        | 13.0    | 13.3    | 13.1    | 13.3    | 13.3    | 13.3        | 13.0 / 13.3       |
+| Web view (7 processes)                             | 205.3   | 205.7   | 208.1   | 205.5   | 206.0   | 205.7       | 205.3 / 208.1     |
+| Console hosts (30 processes)                       | 51.1    | 51.1    | 51.2    | 51.0    | 51.2    | 51.1        | 51.0 / 51.2       |
+| **Total memory (the sum of the three rows above)** | 269.5   | 270.1   | 272.4   | 269.9   | 270.4   | **270.1**   | 269.5 / 272.4     |
+| _Not counted:_ 30 shells (private working set)     | 1,085.8 | 1,081.3 | 1,084.9 | 1,089.1 | 1,085.2 | 1,085.2     | 1,081.3 / 1,089.1 |
+| _Beside it:_ private working set, whole tree       | 1,355.3 | 1,351.5 | 1,357.3 | 1,359.0 | 1,355.6 | 1,355.6     | 1,351.5 / 1,359.0 |
+| _Beside it:_ **working set summed over the tree**  | 3,553.9 | 3,550.6 | 3,556.0 | 3,564.5 | 3,555.4 | **3,555.4** | 3,550.6 / 3,564.5 |
+
+The working set of the whole tree by owner (median of the 5): `noren.exe` 38.2, web view 502.3,
+console hosts 378.0, 30 shells 2,636.7 MB. The log of the run is in the round's evidence folder
+(`app.jsonl` has every field of every run).
+
+**Target: 30 tabs open, total memory under 500 MB. Verdict: met** by the definition above: 270.1 MB
+median, 269.5 to 272.4 in the 5 repetitions (46 % under the target, the spread under 1.1 %). With one
+tab open the same total is 139.8 MB (138.5 to 142.6), so a tab costs about 4.5 MB of Noren's own
+(the console host, 1.7 MB, and the terminal of the page); the rest is the fixed part, the web view.
+No cut was needed, so nothing about the behavior of the app changed in this task. What the figure
+leaves out, being the user's: the 30 shells, 1,085 MB of private working set here (Windows
+PowerShell 5.1 with the user's own profile). Counted the other way, the whole tree is 3,555 MB of
+working set and 1,356 MB of private working set, which no terminal that runs 30 of these shells can
+get under 500 MB. Not verified (D19): the memory with the window shown (the web view of a window
+that is on screen may keep GPU surfaces that a hidden one releases, see "Limits"), so the real
+figure may be higher by an amount not measured; the margin to the target is 230 MB.
+
+#### The first measurement, before the definition (NOR-F11-01b)
+
+The same run in the form of NOR-F11-01b, where the shells and the console hosts were one row and the
+figure of the target was the working set summed over the tree. In MB:
 
 | Repetition                               | 1       | 2       | 3       | 4       | 5       | Median      | Min / max         |
 | ---------------------------------------- | ------- | ------- | ------- | ------- | ------- | ----------- | ----------------- |
@@ -441,20 +495,19 @@ open the whole tree is 583.8 MB of working set (580.1 to 584.4) and 177.6 MB pri
 the web view is the fixed part, the 30 tabs add the rest. The spread over the 5 repetitions is
 under 0.3 %, so the figure is steady.
 
-**Target: 30 tabs open, total memory under 500 MB. Verdict: not met** by the measure this task
-defines (working set summed over the tree): 3,650.7 MB, 7.3 times the target. By the private
-working set it is 1,383.7 MB, still 2.8 times over. Noren and its web view alone (leaving the
-shells out) are about 619 MB of working set and about 241 MB private, so the target is met only
-if the shells are not counted and the private measure is the one that counts; the spec does not say
-which. The 30 shells are 83 % of the working set, and the shell of this machine is Windows
-PowerShell 5.1 with the user's own profile, so the figure moves with the shell and the profile.
-Task NOR-F11-01e was opened for it; its first step is to decide what "total memory" counts.
+By that measure (working set summed over the tree) the verdict was **not met**: 3,650.7 MB, 7.3
+times the target; by the private working set 1,383.7 MB, still 2.8 times over. Noren and its web view
+alone (leaving the shells out) were about 619 MB of working set and about 241 MB private, so the
+target was met only if the shells were not counted and the private measure was the one that counted;
+the spec did not say which. The 30 shells are 83 % of the working set, and the shell of this machine
+is Windows PowerShell 5.1 with the user's own profile, so the figure moves with the shell and the
+profile. Task NOR-F11-01e was opened for it, and the definition above is its answer.
 
 Re-measured in the run of NOR-F11-01d (5 repetitions, the same script), with the quick window
 made 1.5 s after the page is up: 3,556.1 MB of working set (3,551.1 to 3,590.9), 1,355.8 MB private (1,352.1
 to 1,391.5), 501.4 MB in the web view processes, 68 processes. That is about 95 MB under 01b; the cause was not
-isolated (the repetitions agree within 0.2 %, but it is one day against another), the verdict is the
-same and NOR-F11-01e starts from the figures above.
+isolated (the repetitions agree within 0.2 %, but it is one day against another); the run of
+NOR-F11-01e (3,555.4 MB, above) agrees with this one.
 
 ## Limits of these numbers
 

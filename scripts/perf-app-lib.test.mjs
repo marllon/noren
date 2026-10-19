@@ -53,8 +53,28 @@ test("the memory adds up the working sets and counts the processes by name", () 
   assert.deepEqual(sum.roles.noren, { workingSetMb: 40, privateWorkingSetMb: 20 });
   assert.deepEqual(sum.roles.webview, { workingSetMb: 150, privateWorkingSetMb: 90 });
   assert.deepEqual(sum.roles.shells, { workingSetMb: 0, privateWorkingSetMb: 0 });
+  assert.deepEqual(sum.roles.consoles, { workingSetMb: 0, privateWorkingSetMb: 0 });
   const withShells = sumMemory([proc(1, 0, "noren.exe"), proc(2, 1, "pwsh.exe", 3 * MB, MB)]);
   assert.deepEqual(withShells.roles.shells, { workingSetMb: 3, privateWorkingSetMb: 1 });
+});
+
+test("the total of the spec is the private working set of Noren, web view and console hosts only", () => {
+  const sum = sumMemory([
+    proc(1, 0, "noren.exe", 40 * MB, 20 * MB),
+    proc(2, 1, "msedgewebview2.exe", 100 * MB, 60 * MB),
+    proc(3, 1, "OpenConsole.exe", 12 * MB, 6 * MB),
+    proc(4, 1, "conhost.exe", 8 * MB, 4 * MB),
+    proc(5, 3, "powershell.exe", 90 * MB, 35 * MB),
+    proc(6, 5, "node.exe", 70 * MB, 50 * MB),
+  ]);
+  // 20 + 60 + 6 + 4: the shell (35) and what it started (50) are the user's programs.
+  assert.equal(sum.ownedPrivateWorkingSetMb, 90);
+  assert.deepEqual(sum.roles.consoles, { workingSetMb: 20, privateWorkingSetMb: 10 });
+  assert.deepEqual(sum.roles.shells, { workingSetMb: 160, privateWorkingSetMb: 85 });
+  // The whole tree is still reported beside it.
+  assert.equal(sum.workingSetMb, 320);
+  assert.equal(sum.privateWorkingSetMb, 175);
+  assert.equal(sum.processes, 6);
 });
 
 test("the time to a moment is read on the clock of the system", () => {

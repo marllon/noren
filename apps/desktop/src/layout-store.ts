@@ -1,48 +1,37 @@
 import { useSyncExternalStore } from "react";
 import type { Config } from "@noren/model";
 import { configManager } from "./config-store";
-import { clampWidth, layoutFromConfig, loadLayout, saveLayout } from "./layout";
+import { clampWidth, layoutOf } from "./layout";
 import type { Layout } from "./layout";
+import { SETTING_PATHS } from "./settings-screen";
 
-// The layout preferences, shared by the title bar control and the shell. What the settings file
-// (`appearance` in config.jsonc) sets rules; the rest comes from the provisional controls, which
-// save every change to the browser storage right away, until the settings screen (NOR-F8-01b)
-// replaces them. A preference the file sets cannot be changed from the controls: it would be undone
-// at the next read of the file.
+// The layout preferences, shared by the shell and the sidebar handle. They are settings of the
+// file (`appearance` in config.jsonc): this store only reads them from the settings in force, so a
+// change of the file by the settings screen, by the handle or by another program shows at once.
+// The one thing it adds is the width while the handle is dragged: shown right away, written to the
+// file when the move ends, so a drag does not save the file at every pixel.
 
 const listeners = new Set<() => void>();
 
-/** What the person chose with the provisional controls. */
-let stored: Layout | undefined;
+/** The width the handle is asking for and the file does not have yet. */
+let previewWidth: number | undefined;
 
-interface LayoutView {
-  layout: Layout;
-  /** The preferences the settings file sets. */
-  locked: ReadonlySet<keyof Layout>;
-}
-
-/** The layout in force, rebuilt when the stored choice or the settings change. */
-let view: LayoutView | undefined;
+/** The layout in force, rebuilt when the settings or the preview change. */
+let view: Layout | undefined;
 let viewConfig: Config | undefined;
+let viewPreview: number | undefined;
 
-function storage(): Storage | undefined {
-  try {
-    return window.localStorage;
-  } catch {
-    return undefined;
-  }
+function notify(): void {
+  for (const listener of [...listeners]) listener();
 }
 
-function current(): LayoutView {
+function current(): Layout {
   const config = configManager.state.config;
-  if (view === undefined || viewConfig !== config) {
-    stored ??= loadLayout(storage());
-    const fromConfig = layoutFromConfig(config);
-    view = {
-      layout: { ...stored, ...fromConfig },
-      locked: new Set(Object.keys(fromConfig) as (keyof Layout)[]),
-    };
+  if (view === undefined || viewConfig !== config || viewPreview !== previewWidth) {
+    const layout = layoutOf(config);
+    view = previewWidth === undefined ? layout : { ...layout, width: previewWidth };
     viewConfig = config;
+    viewPreview = previewWidth;
   }
   return view;
 }
@@ -56,32 +45,32 @@ function subscribe(onChange: () => void): () => void {
   };
 }
 
-/** The layout in force: the settings file over the stored choice. */
+/** The layout in force: the settings file over the defaults, and the width being dragged. */
 export function getLayout(): Layout {
-  return current().layout;
+  return current();
 }
 
-/** The preferences the settings file sets, which the provisional controls cannot change. */
-export function layoutLocks(): ReadonlySet<keyof Layout> {
-  return current().locked;
+/** Shows `width` (kept in range) as the width of the sidebar, without writing the file. */
+export function previewSidebarWidth(width: number): void {
+  previewWidth = clampWidth(width);
+  notify();
 }
 
 /**
- * Changes some preferences, keeps the width in range, saves and tells the listeners. A preference
- * the settings file sets is left as it is.
+ * Writes `width` (kept in range) as `appearance.sidebar.width` in the file. It shows at once; when
+ * the file cannot take it (it has a problem, the disk refuses) the width goes back to the one the
+ * file has. Never rejects.
  */
-export function updateLayout(patch: Partial<Layout>): void {
-  const { locked } = current();
-  const allowed = Object.fromEntries(
-    Object.entries(patch).filter(([key]) => !locked.has(key as keyof Layout)),
-  ) as Partial<Layout>;
-  if (Object.keys(allowed).length === 0) return;
-  const next: Layout = { ...(stored ?? loadLayout(storage())), ...allowed };
-  next.width = clampWidth(next.width);
-  stored = next;
-  view = undefined;
-  saveLayout(storage(), next);
-  for (const listener of listeners) listener();
+export async function saveSidebarWidth(width: number): Promise<void> {
+  const target = clampWidth(width);
+  previewWidth = target;
+  notify();
+  await configManager.update([{ path: SETTING_PATHS.width, value: target }]);
+  // A newer move may be on its way; its own save ends the preview.
+  if (previewWidth === target) {
+    previewWidth = undefined;
+    notify();
+  }
 }
 
 /** The layout preferences; the component renders again when any of them changes. */
@@ -89,14 +78,10 @@ export function useLayout(): Layout {
   return useSyncExternalStore(subscribe, getLayout);
 }
 
-/** The preferences the settings file sets; the component renders again when they change. */
-export function useLayoutLocks(): ReadonlySet<keyof Layout> {
-  return useSyncExternalStore(subscribe, layoutLocks);
-}
-
-/** Forgets what was read, so a test starts from the storage again. */
+/** Forgets what was read, so a test starts from nothing. */
 export function resetLayoutStore(): void {
-  stored = undefined;
+  previewWidth = undefined;
   view = undefined;
   viewConfig = undefined;
+  viewPreview = undefined;
 }

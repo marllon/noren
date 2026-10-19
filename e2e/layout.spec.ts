@@ -1,17 +1,19 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { seedSidebarState } from "./sidebar-fixture";
+import { changeSettings, openSettings, saveSettings, settingsScreen } from "./settings-fixture";
 
-// The layout preferences (side, width, density, compact mode) are kept in the browser storage under
-// `noren.ui.layout`; a new test context starts with none saved.
+// The layout preferences (side, width, density, compact mode) are settings of `config.jsonc`,
+// chosen in the settings screen; a new test context starts with no file, which is every default.
 
 const sidebar = (page: Page) => page.locator('[data-nr-part="sidebar"]');
 const content = (page: Page) => page.getByRole("region", { name: "Content", exact: true });
 const handle = (page: Page) => page.getByRole("separator", { name: "Resize sidebar", exact: true });
 const tab = (page: Page, name: string) =>
   page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button", { name, exact: true });
-const radio = (page: Page, name: string) => page.getByRole("radio", { name, exact: true });
-const checkbox = (page: Page, name: string) => page.getByRole("checkbox", { name, exact: true });
+const radio = (screen: Locator, name: string) => screen.getByRole("radio", { name, exact: true });
+const checkbox = (screen: Locator, name: string) =>
+  screen.getByRole("checkbox", { name, exact: true });
 
 /** Box of an element on screen; fails the test when it is not rendered. */
 async function box(locator: ReturnType<typeof sidebar>) {
@@ -20,19 +22,8 @@ async function box(locator: ReturnType<typeof sidebar>) {
   return found;
 }
 
-/** Opens the Layout panel of the title bar. */
-async function openLayout(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Layout", exact: true }).click();
-  await expect(page.getByRole("group", { name: "Layout", exact: true })).toBeVisible();
-}
-
-/**
- * Closes the Layout panel (it stays open until Escape or a press outside) and waits for the sidebar
- * to stop moving, since a change of mode or side slides it.
- */
-async function closeLayout(page: Page): Promise<void> {
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("group", { name: "Layout", exact: true })).toBeHidden();
+/** Waits for the sidebar to stop moving, since a change of mode or side slides it. */
+async function settled(page: Page): Promise<void> {
   await expect
     .poll(async () => {
       const before = await box(sidebar(page));
@@ -41,6 +32,12 @@ async function closeLayout(page: Page): Promise<void> {
       return before.x === after.x && before.width === after.width;
     })
     .toBe(true);
+}
+
+/** Changes settings in the screen, saves them and waits for the sidebar to settle. */
+async function change(page: Page, edit: (screen: Locator) => Promise<void>): Promise<void> {
+  await changeSettings(page, edit);
+  await settled(page);
 }
 
 /** Drags the resize handle by `dx` pixels with the mouse. */
@@ -78,10 +75,10 @@ test("the sidebar starts on the left, 200 px wide, and the handle describes it",
 test("moving the sidebar to the right puts it right of the terminal, and it stays after a reload", async ({
   page,
 }) => {
-  await openLayout(page);
-  await radio(page, "Right").check();
-  await expect(radio(page, "Right")).toBeChecked();
-  await closeLayout(page);
+  await change(page, async (screen) => {
+    await radio(screen, "Right").check();
+    await expect(radio(screen, "Right")).toBeChecked();
+  });
 
   const check = async () => {
     const side = await box(sidebar(page));
@@ -94,12 +91,29 @@ test("moving the sidebar to the right puts it right of the terminal, and it stay
   await page.reload();
   await expect(tab(page, "api")).toBeVisible();
   await check();
-  await openLayout(page);
-  await expect(radio(page, "Right")).toBeChecked();
+  const screen = await openSettings(page);
+  await expect(radio(screen, "Right")).toBeChecked();
 
-  await radio(page, "Left").check();
-  await closeLayout(page);
+  await radio(screen, "Left").check();
+  await saveSettings(page);
+  await settled(page);
   expect((await box(sidebar(page))).x).toBe(0);
+});
+
+test("a change in the settings screen is a draft until Save, and Cancel drops it", async ({
+  page,
+}) => {
+  const screen = await openSettings(page);
+  await radio(screen, "Right").check();
+  // Nothing moved yet: the interface follows the file, not the draft.
+  expect((await box(sidebar(page))).x).toBe(0);
+  await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(settingsScreen(page)).toHaveCount(0);
+  expect((await box(sidebar(page))).x).toBe(0);
+
+  const again = await openSettings(page);
+  await expect(radio(again, "Left")).toBeChecked();
+  await expect(again.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
 });
 
 test("dragging the handle changes the width within 180 to 480 and it stays after a reload", async ({
@@ -126,9 +140,7 @@ test("dragging the handle changes the width within 180 to 480 and it stays after
 });
 
 test("dragging the handle of a right sidebar to the left widens it", async ({ page }) => {
-  await openLayout(page);
-  await radio(page, "Right").check();
-  await closeLayout(page);
+  await change(page, (screen) => radio(screen, "Right").check());
   await dragHandle(page, -80);
   expect((await box(sidebar(page))).width).toBe(280);
 });
@@ -155,9 +167,7 @@ test("the arrows on the handle change the width", async ({ page }) => {
 });
 
 test("on a right sidebar the arrow pointing away from it widens it", async ({ page }) => {
-  await openLayout(page);
-  await radio(page, "Right").check();
-  await closeLayout(page);
+  await change(page, (screen) => radio(screen, "Right").check());
   await handle(page).focus();
   await page.keyboard.press("ArrowLeft");
   await expect(handle(page)).toHaveAttribute("aria-valuenow", "216");
@@ -170,18 +180,14 @@ test("compact density makes the tab rows shorter, and it stays after a reload", 
   page,
 }) => {
   const comfortable = (await box(tab(page, "api"))).height;
-  await openLayout(page);
-  await radio(page, "Compact").check();
-  await closeLayout(page);
+  await change(page, (screen) => radio(screen, "Compact").check());
   const compact = (await box(tab(page, "api"))).height;
   expect(compact).toBeLessThan(comfortable);
 
   await page.reload();
   await expect(tab(page, "api")).toBeVisible();
   expect((await box(tab(page, "api"))).height).toBe(compact);
-  await openLayout(page);
-  await radio(page, "Comfortable").check();
-  await closeLayout(page);
+  await change(page, (screen) => radio(screen, "Comfortable").check());
   expect((await box(tab(page, "api"))).height).toBe(comfortable);
 });
 
@@ -191,9 +197,7 @@ test.describe("compact mode", () => {
   }) => {
     const viewport = page.viewportSize();
     if (!viewport) throw new Error("no viewport");
-    await openLayout(page);
-    await checkbox(page, "Compact mode").check();
-    await closeLayout(page);
+    await change(page, (screen) => checkbox(screen, "Compact mode").check());
 
     // Out of the layout: the terminal takes the whole width.
     await expect(sidebar(page)).toHaveAttribute("data-nr-state", "hidden");
@@ -236,9 +240,7 @@ test.describe("compact mode", () => {
   });
 
   test("a brush of the edge shorter than 150 ms does not show the sidebar", async ({ page }) => {
-    await openLayout(page);
-    await checkbox(page, "Compact mode").check();
-    await closeLayout(page);
+    await change(page, (screen) => checkbox(screen, "Compact mode").check());
     await page.mouse.move(2, 400);
     await page.mouse.move(700, 400);
     // Longer than the wait, so a timer that was not cancelled would have shown it by now.
@@ -249,10 +251,10 @@ test.describe("compact mode", () => {
   test("on the right, the right edge shows the sidebar", async ({ page }) => {
     const viewport = page.viewportSize();
     if (!viewport) throw new Error("no viewport");
-    await openLayout(page);
-    await radio(page, "Right").check();
-    await checkbox(page, "Compact mode").check();
-    await closeLayout(page);
+    await change(page, async (screen) => {
+      await radio(screen, "Right").check();
+      await checkbox(screen, "Compact mode").check();
+    });
     await expect(sidebar(page)).toHaveAttribute("data-nr-state", "hidden");
 
     // The left edge does nothing.
@@ -273,11 +275,11 @@ test.describe("compact mode", () => {
   });
 
   test("keeping it open docks the sidebar again", async ({ page }) => {
-    await openLayout(page);
-    await checkbox(page, "Compact mode").check();
-    await expect(checkbox(page, "Keep sidebar open")).toBeEnabled();
-    await checkbox(page, "Keep sidebar open").check();
-    await closeLayout(page);
+    await change(page, async (screen) => {
+      await checkbox(screen, "Compact mode").check();
+      await expect(checkbox(screen, "Keep sidebar open")).toBeEnabled();
+      await checkbox(screen, "Keep sidebar open").check();
+    });
 
     await page.mouse.move(700, 400);
     await page.waitForTimeout(300);
@@ -289,15 +291,14 @@ test.describe("compact mode", () => {
     await expect(tab(page, "api")).toBeInViewport();
 
     // Without compact mode there is nothing to keep open.
-    await openLayout(page);
-    await checkbox(page, "Compact mode").uncheck();
-    await expect(checkbox(page, "Keep sidebar open")).toBeDisabled();
+    const screen = await openSettings(page);
+    await expect(checkbox(screen, "Keep sidebar open")).toBeEnabled();
+    await checkbox(screen, "Compact mode").uncheck();
+    await expect(checkbox(screen, "Keep sidebar open")).toBeDisabled();
   });
 
   test("stays after a reload, and the keyboard reaches the hidden sidebar", async ({ page }) => {
-    await openLayout(page);
-    await checkbox(page, "Compact mode").check();
-    await closeLayout(page);
+    await change(page, (screen) => checkbox(screen, "Compact mode").check());
     await page.reload();
     await expect(sidebar(page)).toHaveAttribute("data-nr-state", "hidden");
 
@@ -305,14 +306,12 @@ test.describe("compact mode", () => {
     await page.keyboard.press("Tab");
     await tab(page, "api").focus();
     await expect(sidebar(page)).toHaveAttribute("data-nr-state", "revealed");
-    await page.getByRole("button", { name: "Layout", exact: true }).focus();
+    await page.getByRole("button", { name: "Settings", exact: true }).focus();
     await expect(sidebar(page)).toHaveAttribute("data-nr-state", "hidden");
   });
 
   test("a menu opened in the revealed sidebar keeps it shown", async ({ page }) => {
-    await openLayout(page);
-    await checkbox(page, "Compact mode").check();
-    await closeLayout(page);
+    await change(page, (screen) => checkbox(screen, "Compact mode").check());
     await page.mouse.move(2, 400);
     await expect(sidebar(page)).toHaveAttribute("data-nr-state", "revealed");
     await tab(page, "api").click({ button: "right" });

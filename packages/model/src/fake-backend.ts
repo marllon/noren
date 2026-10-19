@@ -396,8 +396,9 @@ class FakeSession {
  *   repository of the nearest folder above it (or itself) that has one
  * - `notify` only records the notification (`notifications`) and `isWindowFocused` answers what
  *   `setWindowFocused` said (focused at first): no notification is ever shown
- * - `config.jsonc` lives in memory: `loadConfig` answers its text and `setConfig` replaces it, as
- *   an edit made by another program would, and tells whoever called `watchConfig`
+ * - `config.jsonc` lives in memory: `loadConfig` answers its text, `saveConfig` replaces it as the
+ *   app does and `setConfig` as an edit made by another program would; both tell whoever called
+ *   `watchConfig`
  *
  * Everything is synchronous: effects of `write` have been delivered when its promise resolves.
  */
@@ -417,6 +418,7 @@ export class FakeBackend implements Backend {
   readonly #notifications: FakeNotification[] = [];
   readonly #configListeners = new Set<(text: string | null) => void>();
   #config: string | null;
+  #configSaveFailure: Error | undefined;
   #windowFocused = true;
   #notifyFailure: Error | undefined;
   #commandExitCode: number;
@@ -636,6 +638,22 @@ export class FakeBackend implements Backend {
     if (text === this.#config) return;
     this.#config = text;
     for (const listener of [...this.#configListeners]) listener(text);
+  }
+
+  /**
+   * Writes the text of `config.jsonc` the way the app does, and tells everyone watching (the file
+   * of the app is watched too, so its own save comes back as a change). Goes through `setConfig`,
+   * so a backend that keeps the file somewhere else (the web one) keeps it there.
+   */
+  async saveConfig(text: string): Promise<void> {
+    this.#record("saveConfig", text);
+    if (this.#configSaveFailure) throw this.#configSaveFailure;
+    this.setConfig(text);
+  }
+
+  /** Makes `saveConfig` reject with `error` (the disk refused); `undefined` undoes it. */
+  setConfigSaveFailure(error: Error | undefined): void {
+    this.#configSaveFailure = error;
   }
 
   /** Current text of the in-memory `config.jsonc`, `null` when there is none. */

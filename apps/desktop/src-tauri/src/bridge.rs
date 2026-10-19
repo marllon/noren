@@ -277,6 +277,7 @@ pub struct ConfigState {
     pub store: ConfigStore,
     watcher: Mutex<Option<ConfigWatcher>>,
     watching_allowed: bool,
+    writing_allowed: bool,
 }
 
 impl ConfigState {
@@ -285,14 +286,28 @@ impl ConfigState {
             store,
             watcher: Mutex::new(None),
             watching_allowed: true,
+            writing_allowed: true,
         }
     }
 
-    /// The same, but `watch` does nothing. Watching creates the config folder when it is missing,
-    /// and the smoke run must leave the folders of the user as they are.
+    /// The same, but `watch` does nothing and `save` refuses. Watching creates the config folder
+    /// when it is missing, and saving writes the file, and the smoke run must leave the folders and
+    /// the files of the user as they are (a choice kept by an earlier build in the window storage
+    /// would otherwise be moved into the real file by the check).
     pub fn without_watching(mut self) -> Self {
         self.watching_allowed = false;
+        self.writing_allowed = false;
         self
+    }
+
+    /// Replaces the file with `text`, exactly as given, creating the file and its folder when there
+    /// are none. The interface edits the text (it keeps the comments of the file); this only
+    /// writes it, atomically.
+    pub fn save(&self, text: &str) -> Result<(), String> {
+        if !self.writing_allowed {
+            return Err("this run does not write the settings file".to_owned());
+        }
+        self.store.save(text).map_err(|e| e.to_string())
     }
 
     /// Starts calling `on_change` when the file changes, unless the file is already watched (the
@@ -324,6 +339,13 @@ pub fn config_store(app: &AppHandle) -> Result<ConfigStore, String> {
 #[tauri::command]
 pub async fn config_load(state: State<'_, ConfigState>) -> Result<Option<String>, String> {
     state.store.load().map_err(|e| e.to_string())
+}
+
+/// Replaces `config.jsonc` atomically with `content`, creating the file when there is none. The
+/// watching, when it is on, reports this save like any other change.
+#[tauri::command]
+pub async fn config_save(state: State<'_, ConfigState>, content: String) -> Result<(), String> {
+    state.save(&content)
 }
 
 /// Starts telling the interface, with the `config-changed` event, every time `config.jsonc`
@@ -586,6 +608,53 @@ mod tests {
     }
 
     #[test]
+    fn config_save_writes_the_text_as_given_and_creates_the_folder() {
+        let dir = TempDir::new("config-save");
+        let file = dir.0.join("not-yet").join(CONFIG_FILE_NAME);
+        let state = ConfigState::new(ConfigStore::new(&file));
+        let text = "// kept\n{\n  \"appearance\": { \"tabs\": \"top\", }, /* trailing */\n}\n";
+        state.save(text).expect("save");
+        assert_eq!(std::fs::read_to_string(&file).expect("read"), text);
+        // The next load, and so the next start of the app, finds the same text.
+        assert_eq!(state.store.load().expect("load"), Some(text.to_owned()));
+    }
+
+    #[test]
+    fn config_save_failure_is_a_message_for_the_interface() {
+        let dir = TempDir::new("config-save-fails");
+        // A folder named like the file: the text cannot go there.
+        let in_the_way = dir.0.join(CONFIG_FILE_NAME);
+        std::fs::create_dir(&in_the_way).expect("create the folder");
+        let state = ConfigState::new(ConfigStore::new(&in_the_way));
+        let message = state.save("{}").expect_err("the save fails");
+        assert!(!message.is_empty());
+        assert!(in_the_way.is_dir());
+    }
+
+    #[test]
+    fn config_save_comes_back_through_the_watching_as_one_change() {
+        let dir = TempDir::new("config-save-watched");
+        let state = ConfigState::new(ConfigStore::new(dir.0.join(CONFIG_FILE_NAME)));
+        let (reports, heard) = std::sync::mpsc::channel();
+        state
+            .watch(move |text| {
+                let _ = reports.send(text);
+            })
+            .expect("watch");
+        state.save("{ \"a\": 1 }").expect("save");
+        assert_eq!(
+            heard.recv_timeout(Duration::from_secs(15)),
+            Ok(Some("{ \"a\": 1 }".to_owned()))
+        );
+        // The same text again is not a change.
+        state.save("{ \"a\": 1 }").expect("save again");
+        assert_eq!(
+            heard.recv_timeout(Duration::from_millis(800)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        );
+    }
+
+    #[test]
     fn config_watching_starts_once_and_reports_changes() {
         let dir = TempDir::new("config-watch");
         let state = ConfigState::new(ConfigStore::new(dir.0.join(CONFIG_FILE_NAME)));
@@ -633,6 +702,18 @@ mod tests {
         );
         // Reading still works, and finds no file.
         assert_eq!(state.store.load().expect("load"), None);
+    }
+
+    #[test]
+    fn config_state_without_watching_does_not_write_either() {
+        // The smoke run: saving would make the folder and the file of the user.
+        let dir = TempDir::new("config-no-write");
+        let folder = dir.0.join("not-yet");
+        let state =
+            ConfigState::new(ConfigStore::new(folder.join(CONFIG_FILE_NAME))).without_watching();
+        let message = state.save("{}").expect_err("the save is refused");
+        assert!(message.contains("does not write"));
+        assert!(!folder.exists(), "the config folder was created");
     }
 
     #[test]

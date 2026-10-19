@@ -4,11 +4,11 @@ import type { Config } from "@noren/model";
 // How the window is laid out: which side the sidebar is on, how wide it is, how dense the rows are
 // and whether it hides. Pure: the interface applies what this returns and `layout-store.ts` keeps it.
 //
-// The settings file (`appearance` in config.jsonc, see `layoutFromConfig`) decides every preference
-// it mentions. The others stay with the provisional storage: the browser's `localStorage` under
-// `noren.ui.layout`, until the settings screen of NOR-F8-01b replaces its controls.
+// The preferences are settings of `config.jsonc` (`appearance`, see `layoutOf`), which the settings
+// screen writes. The browser storage (`noren.ui.layout`) was their home before that; `parseLayout`
+// still reads what it held, for the one-time move into the file (`legacy-settings.ts`).
 
-/** Key of the layout preferences in the browser storage. */
+/** Key the layout preferences had in the browser storage, before they moved into the file. */
 export const LAYOUT_KEY = "noren.ui.layout";
 
 export const MIN_SIDEBAR_WIDTH = SIDEBAR_MIN_WIDTH;
@@ -55,8 +55,9 @@ export function clampWidth(width: number): number {
 }
 
 /**
- * Reads the saved layout. Whatever is missing or invalid (no text, broken JSON, a field of the wrong
- * type) falls back to the default for that field; a width out of range is brought into range.
+ * Reads the layout the browser storage held in earlier builds. Whatever is missing or invalid (no
+ * text, broken JSON, a field of the wrong type) falls back to the default for that field; a width
+ * out of range is brought into range.
  */
 export function parseLayout(raw: string | null): Layout {
   if (raw === null) return { ...DEFAULT_LAYOUT };
@@ -95,7 +96,7 @@ export function parseLayout(raw: string | null): Layout {
 
 /**
  * The preferences the settings file sets, and only those: a setting the file does not mention is
- * not in the result, so it keeps whatever the person chose with the provisional controls.
+ * not in the result.
  */
 export function layoutFromConfig(config: Config): Partial<Layout> {
   const { appearance } = config;
@@ -111,32 +112,9 @@ export function layoutFromConfig(config: Config): Partial<Layout> {
   return set;
 }
 
-export function serializeLayout(layout: Layout): string {
-  return JSON.stringify(layout);
-}
-
-/** The part of the browser storage the layout needs (so tests can hand in a plain object). */
-export interface LayoutStorage {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
-
-/** The saved layout, or the default when there is none, the storage is missing or it throws. */
-export function loadLayout(storage: LayoutStorage | undefined): Layout {
-  try {
-    return parseLayout(storage?.getItem(LAYOUT_KEY) ?? null);
-  } catch {
-    return { ...DEFAULT_LAYOUT };
-  }
-}
-
-/** Saves the layout; a storage that refuses (full, blocked) is ignored, the layout still applies. */
-export function saveLayout(storage: LayoutStorage | undefined, layout: Layout): void {
-  try {
-    storage?.setItem(LAYOUT_KEY, serializeLayout(layout));
-  } catch {
-    // The preference only lasts until the page closes.
-  }
+/** The layout in force: what the settings file says, and the default for what it does not say. */
+export function layoutOf(config: Config): Layout {
+  return { ...DEFAULT_LAYOUT, ...layoutFromConfig(config) };
 }
 
 /**

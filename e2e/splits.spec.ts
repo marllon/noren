@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { setPaneHeaders } from "./settings-fixture";
 
 type Hook = {
   lines(): string[];
@@ -207,16 +208,6 @@ test("the panes and their proportions stay when another tab shows", async ({ pag
 const headers = (page: Page) => page.locator('[data-nr-part="pane-header"]');
 const itemLayout = (page: Page) => page.locator('[data-nr-part="item-view"]:visible');
 
-/** Turns the "Pane headers" preference on or off in the Layout control and closes the control. */
-async function setPaneHeaders(page: Page, on: boolean): Promise<void> {
-  await page.getByRole("button", { name: "Layout", exact: true }).click();
-  const box = page.getByRole("checkbox", { name: "Pane headers", exact: true });
-  await expect(box).toBeVisible();
-  await box.setChecked(on);
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("group", { name: "Layout", exact: true })).toHaveCount(0);
-}
-
 /** Each pane's box as a fraction of the item's box: x, y, width and height, in layout order. */
 async function fractionsOf(page: Page): Promise<number[][]> {
   const item = await itemLayout(page).boundingBox();
@@ -236,7 +227,7 @@ async function fractionsOf(page: Page): Promise<number[][]> {
   );
 }
 
-test("pane headers: off by default, on from the Layout control, kept after a reload", async ({
+test("pane headers: off by default, on from the settings screen, kept after a reload", async ({
   page,
 }) => {
   const first = await openFirstTab(page);

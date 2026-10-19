@@ -1,9 +1,12 @@
 import { useSyncExternalStore } from "react";
+import { configManager } from "./config-store";
 import { createResolver, loadKeybindings, resolveBindings, saveKeybindings } from "./keybindings";
 import type { Keybindings, Resolver, ResolvedBindings } from "./keybindings";
 
-// The shortcut preferences, shared by the layout panel and the keyboard listener. Provisional until
-// the settings file (NOR-F8-01) owns them: every change is saved to the browser storage right away.
+// The shortcut preferences, shared by the settings screen, the shortcuts screen and the keyboard
+// listener. The preset is a setting of the file (`keybindings.preset` in config.jsonc); the user's
+// own chords are still provisional and every change of them is saved to the browser storage right
+// away.
 
 interface State {
   keybindings: Keybindings;
@@ -13,6 +16,8 @@ interface State {
 
 const listeners = new Set<() => void>();
 let current: State | undefined;
+/** The user's own chords, read from the storage the first time they are needed. */
+let overrides: Keybindings["overrides"] | undefined;
 
 function storage(): Storage | undefined {
   try {
@@ -28,21 +33,35 @@ function build(keybindings: Keybindings): State {
 }
 
 function snapshot(): State {
-  current ??= build(loadKeybindings(storage()));
+  const config = configManager.state.config;
+  overrides ??= loadKeybindings(storage()).overrides;
+  const preset = config.keybindings?.preset ?? "safe";
+  if (
+    current === undefined ||
+    current.keybindings.preset !== preset ||
+    current.keybindings.overrides !== overrides
+  ) {
+    current = build({ preset, overrides });
+  }
   return current;
 }
 
 function subscribe(onChange: () => void): () => void {
   listeners.add(onChange);
-  return () => listeners.delete(onChange);
+  const stopFollowingConfig = configManager.subscribe(onChange);
+  return () => {
+    listeners.delete(onChange);
+    stopFollowingConfig();
+  };
 }
 
-/** Changes some preferences, saves and tells the listeners. */
-export function updateKeybindings(patch: Partial<Keybindings>): void {
-  const next = build({ ...snapshot().keybindings, ...patch });
-  current = next;
-  saveKeybindings(storage(), next.keybindings);
-  for (const listener of listeners) listener();
+/** Changes the user's own chords, saves them and tells the listeners. */
+export function updateKeybindings(patch: Pick<Keybindings, "overrides">): void {
+  const { preset } = snapshot().keybindings;
+  overrides = patch.overrides;
+  current = build({ preset, overrides });
+  saveKeybindings(storage(), current.keybindings);
+  for (const listener of [...listeners]) listener();
 }
 
 let recording = false;
@@ -67,4 +86,10 @@ export function currentResolver(): Resolver {
 /** The shortcut preferences; the component renders again when any of them changes. */
 export function useKeybindings(): Keybindings {
   return useSyncExternalStore(subscribe, () => snapshot().keybindings);
+}
+
+/** Forgets what was read, so a test starts from the storage again. */
+export function resetKeybindingsStore(): void {
+  current = undefined;
+  overrides = undefined;
 }

@@ -178,9 +178,23 @@ describe("WebBackend", () => {
       expect(storage.getItem(WEB_CONFIG_KEY)).toBeNull();
     });
 
+    it("saves the text of the app under the key too, and tells the watchers", async () => {
+      const storage = memoryStorage();
+      const backend = new WebBackend(storage);
+      const heard: (string | null)[] = [];
+      backend.watchConfig((text) => heard.push(text));
+      await backend.saveConfig("// saved by the app\n{}");
+      expect(storage.getItem(WEB_CONFIG_KEY)).toBe("// saved by the app\n{}");
+      expect(heard).toEqual(["// saved by the app\n{}"]);
+      expect(await new WebBackend(storage).loadConfig()).toBe("// saved by the app\n{}");
+    });
+
     it("still works in memory when the storage is blocked", async () => {
       const backend = new WebBackend(blockedStorage());
       expect(await backend.loadConfig()).toBeNull();
+      await backend.saveConfig("{ }");
+      expect(await backend.loadConfig()).toBe("{ }");
+      backend.setConfig(null);
       const heard: (string | null)[] = [];
       backend.watchConfig((text) => heard.push(text));
       backend.setConfig("{}");

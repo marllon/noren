@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { seedConfig } from "./settings-fixture";
 import { seedSidebarState } from "./sidebar-fixture";
 
 // Baselines are per operating system (Windows only, D7): `pnpm e2e:visual`.
@@ -11,12 +12,15 @@ for (const scheme of ["dark", "light"] as const) {
       page,
     }) => {
       await seedSidebarState(page);
-      await page.addInitScript(() => {
-        window.localStorage.setItem(
-          "noren.ui.layout",
-          JSON.stringify({ compact: true, width: 240, density: "comfortable", side: "left" }),
-        );
-      });
+      await seedConfig(
+        page,
+        JSON.stringify({
+          appearance: {
+            sidebar: { compact: true, width: 240, position: "left" },
+            density: "comfortable",
+          },
+        }),
+      );
       await page.goto("/");
 
       const sidebar = page.locator('[data-nr-part="sidebar"]');

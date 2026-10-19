@@ -3,6 +3,8 @@ import type { Backend } from "@noren/model";
 import { createBackend } from "./backend";
 import { configManager } from "./config-store";
 import { loadHome } from "./home";
+import { migrateLegacySettings } from "./legacy-settings";
+import type { LegacyStorageArea } from "./legacy-settings";
 import { notificationSettings } from "./notification-settings";
 import { createWorkspaceStore } from "./workspace-store";
 import type { WorkspaceStore } from "./workspace-store";
@@ -27,7 +29,7 @@ export const LEGACY_ACTIVE_ITEMS_KEY = "noren.ui.activeItems";
 export async function bootWorkspace(
   target: Backend,
   events: Pick<Window, "addEventListener">,
-  storage: Pick<Storage, "removeItem"> | undefined,
+  storage: LegacyStorageArea | undefined,
 ): Promise<BootResult> {
   try {
     try {
@@ -38,6 +40,10 @@ export async function bootWorkspace(
     // The settings first, so the first frame already has the side of the sidebar. A file that is
     // missing, unreadable or invalid never stops the app: the defaults and an error notice stand in.
     await configManager.start(target);
+    // What earlier builds kept in the browser storage (layout, notifications, shortcut preset)
+    // moves into the file once, before the first frame. It never stops the app: a file it cannot
+    // edit leaves the old keys for the next start.
+    await migrateLegacySettings(storage, configManager).catch(() => undefined);
     const profiles = await target.listProfiles();
     if (profiles.length === 0) return { ok: false, error: "No shell was found on this machine." };
     const restored = await restoreWorkspace(target, { defaults: { newId, clock } });

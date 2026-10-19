@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { setPaneHeaders } from "./settings-fixture";
 
 // Dragging a pane's header onto the middle of another pane swaps them; the header also detaches
 // a pane into a tab of its own.
@@ -31,14 +32,9 @@ async function box(locator: Locator) {
   return found;
 }
 
-/** Turns the "Pane headers" preference on and closes the Layout control. */
+/** Turns the "Pane headers" preference on, in the settings screen. */
 async function showHeaders(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Layout", exact: true }).click();
-  const check = page.getByRole("checkbox", { name: "Pane headers", exact: true });
-  await expect(check).toBeVisible();
-  await check.setChecked(true);
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("group", { name: "Layout", exact: true })).toHaveCount(0);
+  await setPaneHeaders(page, true);
 }
 
 /** One tab with the headers on; returns its only pane. */

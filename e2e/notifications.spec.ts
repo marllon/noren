@@ -20,22 +20,27 @@ const BEL = "\x07";
 const osc = (body: string): string => `\x1b]${body}${BEL}`;
 
 // Key of `state.json` in the browser storage of web mode (apps/desktop/src/web-backend.ts) and of
-// the provisional notification settings (apps/desktop/src/notification-settings.ts).
+// the text of the settings file, whose `notifications` group holds the notification settings.
 const WEB_STATE_KEY = "noren.web.state";
-const SETTINGS_KEY = "noren.ui.notifications";
+const WEB_CONFIG_KEY = "noren.web.config";
 
-/** The sidebar workspace: tab api (p2) is on screen; build (p3) and logs (p4) are in the background. */
+/**
+ * The sidebar workspace: tab api (p2) is on screen; build (p3) and logs (p4) are in the
+ * background. `settings` is the `notifications` group of the settings file, there from the start.
+ */
 async function seed(page: Page, settings?: unknown): Promise<void> {
   await page.addInitScript(
-    ({ key, text, settingsKey, settingsText }) => {
+    ({ key, text, configKey, configText }) => {
       if (window.localStorage.getItem(key) === null) window.localStorage.setItem(key, text);
-      if (settingsText !== undefined) window.localStorage.setItem(settingsKey, settingsText);
+      if (configText !== undefined && window.localStorage.getItem(configKey) === null) {
+        window.localStorage.setItem(configKey, configText);
+      }
     },
     {
       key: WEB_STATE_KEY,
       text: sidebarState(),
-      settingsKey: SETTINGS_KEY,
-      settingsText: settings === undefined ? undefined : JSON.stringify(settings),
+      configKey: WEB_CONFIG_KEY,
+      configText: settings === undefined ? undefined : JSON.stringify({ notifications: settings }),
     },
   );
 }

@@ -34,67 +34,9 @@ body {
   user-select: none;
 }
 
-/* The layout control: a title bar button with a panel of choices under it. */
-.layout-control {
-  position: relative;
-  display: flex;
+/* The settings button sits next to the window buttons, in the title bar. */
+.settings-button {
   align-self: stretch;
-}
-
-.layout-panel {
-  z-index: 40;
-  position: absolute;
-  top: 100%;
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  box-sizing: border-box;
-  width: 200px;
-  padding: 10px 12px;
-  border: 1px solid var(--nr-border);
-  border-radius: var(--nr-radius);
-  background: var(--nr-surface);
-  color: var(--nr-text);
-  box-shadow: 0 6px 20px color-mix(in srgb, var(--nr-bg) 70%, transparent);
-}
-
-.layout-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.layout-field legend {
-  margin-bottom: 4px;
-  padding: 0;
-  color: var(--nr-muted);
-}
-
-.layout-option {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-}
-
-.layout-option:has(input:disabled) {
-  color: var(--nr-muted);
-  cursor: default;
-}
-
-.layout-link {
-  padding: 4px 8px;
-  border: 1px solid var(--nr-border);
-  border-radius: calc(var(--nr-radius) / 2);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
 }
 
 /* The macOS overlay title bar leaves the native buttons on the left. */
@@ -1340,6 +1282,119 @@ body {
 
 .swatch input:focus-visible + span {
   outline: 2px solid var(--nr-accent);
+}
+
+/* The settings screen: a dialog of sections side by side, one form, Save and Cancel under it. */
+.space-dialog.settings-dialog {
+  gap: 8px;
+  width: min(720px, 92%);
+  max-height: 84vh;
+  overflow: auto;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px 20px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.settings-section h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.settings-field legend {
+  margin-bottom: 4px;
+  padding: 0;
+  color: var(--nr-muted);
+}
+
+.settings-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.settings-option:has(input:disabled) {
+  color: var(--nr-muted);
+  cursor: default;
+}
+
+.settings-number {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-number input[type="text"] {
+  width: 5em;
+  padding: 3px 6px;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-bg);
+  color: inherit;
+  font: inherit;
+}
+
+.settings-number input[aria-invalid="true"] {
+  border-color: var(--nr-accent);
+}
+
+.settings-hint {
+  color: var(--nr-muted);
+  font-size: 12px;
+}
+
+.settings-link {
+  padding: 4px 8px;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-feedback p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.settings-feedback .settings-warning {
+  padding: 4px 8px;
+  border-left: 3px solid var(--nr-accent);
+  background: color-mix(in srgb, var(--nr-accent) 12%, transparent);
+}
+
+.dialog-actions button:disabled {
+  color: var(--nr-muted);
+  cursor: default;
 }
 
 .space-dialog.shortcuts-dialog {

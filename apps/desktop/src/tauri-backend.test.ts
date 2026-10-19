@@ -337,6 +337,21 @@ describe("TauriBackend", () => {
     await expect(new TauriBackend(none.bridge).loadConfig()).resolves.toBeNull();
   });
 
+  it("saves the settings through config_save with the text untouched", async () => {
+    const text = '﻿// mine, with ação\r\n{ "appearance": { "tabs": "top", }, }\r\n';
+    const fake = fakeBridge();
+    await expect(new TauriBackend(fake.bridge).saveConfig(text)).resolves.toBeUndefined();
+    expect(fake.invocations).toEqual([{ command: "config_save", args: { content: text } }]);
+  });
+
+  it("lets a config_save failure reach the caller", async () => {
+    const fake = fakeBridge();
+    fake.failing.add("config_save");
+    await expect(new TauriBackend(fake.bridge).saveConfig("{}")).rejects.toThrow(
+      "config_save failed",
+    );
+  });
+
   it("lets a config_load failure reach the caller", async () => {
     const fake = fakeBridge();
     fake.failing.add("config_load");

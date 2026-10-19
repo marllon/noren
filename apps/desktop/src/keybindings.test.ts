@@ -518,12 +518,16 @@ describe("parseKeybindings", () => {
     expect(parseKeybindings('{"overrides":"x"}')).toEqual(DEFAULT_KEYBINDINGS);
   });
 
-  it("round-trips through the storage", () => {
+  it("round-trips the user's own chords through the storage, and leaves the preset to the file", () => {
     const storage = memoryStorage();
     const own: Keybindings = { preset: "browser", overrides: { "pane.zoom": null } };
     saveKeybindings(storage, own);
     expect(Object.keys(storage.data)).toEqual([KEYBINDINGS_KEY]);
-    expect(loadKeybindings(storage)).toEqual(own);
+    // The preset is a setting of config.jsonc: it never goes into the storage again.
+    expect(JSON.parse(storage.data[KEYBINDINGS_KEY] ?? "null")).toEqual({
+      overrides: { "pane.zoom": null },
+    });
+    expect(loadKeybindings(storage)).toEqual({ preset: "safe", overrides: { "pane.zoom": null } });
   });
 });
 

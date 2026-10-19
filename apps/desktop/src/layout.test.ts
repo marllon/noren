@@ -6,28 +6,13 @@ import {
   MIN_SIDEBAR_WIDTH,
   clampWidth,
   layoutFromConfig,
-  loadLayout,
+  layoutOf,
   parseLayout,
-  saveLayout,
-  serializeLayout,
   sidebarMode,
   widthAfterDrag,
   widthAfterKey,
 } from "./layout";
-import type { Layout, LayoutStorage } from "./layout";
-
-function memoryStorage(initial: Record<string, string> = {}): LayoutStorage & {
-  data: Record<string, string>;
-} {
-  const data = { ...initial };
-  return {
-    data,
-    getItem: (key) => data[key] ?? null,
-    setItem: (key, value) => {
-      data[key] = value;
-    },
-  };
-}
+import type { Layout } from "./layout";
 
 describe("layoutFromConfig", () => {
   it("sets nothing for a file that says nothing about the layout", () => {
@@ -53,6 +38,28 @@ describe("layoutFromConfig", () => {
       tabs: "top",
       paneHeaders: true,
     });
+  });
+});
+
+describe("layoutOf", () => {
+  it("is the default layout for a file that says nothing", () => {
+    expect(layoutOf({})).toEqual(DEFAULT_LAYOUT);
+    expect(layoutOf({})).not.toBe(DEFAULT_LAYOUT);
+  });
+
+  it("puts what the file says over the default, a preference at a time", () => {
+    expect(
+      layoutOf({
+        appearance: { sidebar: { position: "right", width: 260 }, tabs: "top" },
+        notifications: { enabled: false },
+      }),
+    ).toEqual({ ...DEFAULT_LAYOUT, side: "right", width: 260, tabs: "top" });
+  });
+
+  it("keeps a preference that is off: false is a choice, not a gap", () => {
+    expect(layoutOf({ appearance: { sidebar: { compact: false }, paneHeaders: false } })).toEqual(
+      DEFAULT_LAYOUT,
+    );
   });
 });
 
@@ -109,7 +116,7 @@ describe("parseLayout", () => {
     expect(parseLayout('{"width":1e999}').width).toBe(DEFAULT_LAYOUT.width);
   });
 
-  it("round-trips a layout", () => {
+  it("reads every field of a layout as earlier builds saved it", () => {
     const layout: Layout = {
       side: "right",
       width: 333,
@@ -119,7 +126,7 @@ describe("parseLayout", () => {
       tabs: "top",
       paneHeaders: true,
     };
-    expect(parseLayout(serializeLayout(layout))).toEqual(layout);
+    expect(parseLayout(JSON.stringify(layout))).toEqual(layout);
   });
 
   it("keeps the tabs in the sidebar by default and when the saved value is invalid", () => {
@@ -164,32 +171,10 @@ describe("parseLayout", () => {
   });
 });
 
-describe("loadLayout and saveLayout", () => {
-  it("saves under noren.ui.layout and reads it back", () => {
-    const storage = memoryStorage();
-    const layout: Layout = { ...DEFAULT_LAYOUT, side: "right", width: 260 };
-    saveLayout(storage, layout);
-    expect(Object.keys(storage.data)).toEqual([LAYOUT_KEY]);
-    expect(loadLayout(storage)).toEqual(layout);
-  });
-
-  it("falls back to the default without storage or when it throws", () => {
-    expect(loadLayout(undefined)).toEqual(DEFAULT_LAYOUT);
-    const broken: LayoutStorage = {
-      getItem: () => {
-        throw new Error("blocked");
-      },
-      setItem: () => {
-        throw new Error("full");
-      },
-    };
-    expect(loadLayout(broken)).toEqual(DEFAULT_LAYOUT);
-    expect(() => saveLayout(broken, DEFAULT_LAYOUT)).not.toThrow();
-    expect(() => saveLayout(undefined, DEFAULT_LAYOUT)).not.toThrow();
-  });
-
-  it("falls back to the default for a saved value that is invalid", () => {
-    expect(loadLayout(memoryStorage({ [LAYOUT_KEY]: "garbage" }))).toEqual(DEFAULT_LAYOUT);
+describe("the old browser-storage key", () => {
+  it("is still named, for the move into the file", () => {
+    expect(LAYOUT_KEY).toBe("noren.ui.layout");
+    expect(parseLayout("garbage")).toEqual(DEFAULT_LAYOUT);
   });
 });
 

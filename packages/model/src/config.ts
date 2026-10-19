@@ -75,6 +75,16 @@ const notificationsSchema = z
   })
   .meta({ description: "System notifications." });
 
+const keybindingsSchema = z
+  .strictObject({
+    preset: setting(
+      z.enum(["safe", "browser"]),
+      "Which set of shortcuts is in force: safe keeps the keys a shell uses, browser takes the keys of a web browser.",
+      "safe",
+    ),
+  })
+  .meta({ description: "Keyboard shortcuts." });
+
 export const ConfigSchema = z
   .strictObject({
     $schema: z
@@ -82,6 +92,7 @@ export const ConfigSchema = z
       .optional()
       .meta({ description: "Where the JSON Schema of this file is, for the editor." }),
     appearance: appearanceSchema.optional(),
+    keybindings: keybindingsSchema.optional(),
     notifications: notificationsSchema.optional(),
   })
   .meta({

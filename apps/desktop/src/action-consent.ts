@@ -2,8 +2,8 @@
 // answer is remembered per space. What is remembered is the text that was confirmed, so a file that
 // changes the command (or the stop command) asks again.
 //
-// Provisional storage, like the layout: the browser's `localStorage` under `noren.ui.actionConsent`,
-// until the settings file of NOR-F8-01 takes over these preferences.
+// Provisional storage: the browser's `localStorage` under `noren.ui.actionConsent`, until the
+// settings file gets a place for these preferences.
 
 import type { Id, ProjectAction } from "@noren/model";
 

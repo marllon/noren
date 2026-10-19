@@ -2,8 +2,9 @@
 // says which action (if any) a key press stands for. A key with no action is not ours: the caller
 // leaves it alone and it reaches the terminal.
 //
-// Provisional storage: the browser's `localStorage` under `noren.ui.keybindings`, until the settings
-// file of NOR-F8-01 takes over the preset choice and the user's overrides.
+// The choice of preset is a setting of `config.jsonc` (`keybindings.preset`, see `settings-screen.ts`).
+// The user's own chords (the overrides) are still provisional: the browser's `localStorage` under
+// `noren.ui.keybindings`, until the file gets a place for them.
 
 import type { Direction } from "@noren/model";
 
@@ -38,6 +39,7 @@ export type ActionCommand =
   | { kind: "tab"; index: number }
   | { kind: "mru"; delta: 1 | -1 }
   | { kind: "search-all" }
+  | { kind: "settings" }
   | { kind: "last-unread" }
   | { kind: "prompt"; direction: "previous" | "next" }
   | { kind: "select-output" }
@@ -115,6 +117,14 @@ export const ACTIONS: readonly ActionDef[] = [
     command: { kind: "search-all" },
     repeat: false,
     chords: { safe: "Ctrl+Alt+Shift+KeyF", browser: "Ctrl+Alt+Shift+KeyF" },
+  },
+  {
+    id: "settings.open",
+    title: "Open settings",
+    category: "General",
+    command: { kind: "settings" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
   },
   {
     id: "terminal.prompt-previous",
@@ -277,7 +287,8 @@ const KNOWN_IDS: ReadonlySet<string> = new Set(ACTIONS.map((action) => action.id
 /**
  * Reads the saved preferences. Whatever is missing or invalid (no text, broken JSON, an unknown
  * preset, an override for an unknown action or with a chord that cannot match) falls back to the
- * default for that part.
+ * default for that part. The preset is only there for text written by earlier builds, which kept
+ * it with the overrides: it is moved into the settings file once (`legacy-settings.ts`).
  */
 export function parseKeybindings(raw: string | null): Keybindings {
   if (raw === null) return { ...DEFAULT_KEYBINDINGS };
@@ -303,8 +314,9 @@ export function parseKeybindings(raw: string | null): Keybindings {
   return { preset: preset === "safe" || preset === "browser" ? preset : "safe", overrides };
 }
 
+/** The text kept in the browser storage: the user's own chords. The preset lives in the file. */
 export function serializeKeybindings(keybindings: Keybindings): string {
-  return JSON.stringify(keybindings);
+  return JSON.stringify({ overrides: keybindings.overrides });
 }
 
 /** The part of the browser storage the shortcuts need (so tests can hand in a plain object). */

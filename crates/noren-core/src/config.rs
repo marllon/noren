@@ -283,6 +283,48 @@ mod tests {
     }
 
     #[test]
+    fn a_save_keeps_the_bytes_of_the_text_it_is_given() {
+        // What the settings screen hands over after editing the file: a byte order mark, comments
+        // in two languages, and the line breaks the person's editor chose, none of it normalized.
+        let dir = TempDir::new("verbatim");
+        let store = ConfigStore::new(dir.file(CONFIG_FILE_NAME));
+        let text = "\u{feff}// configuração — não mexa\n{\r\n\t\"notifications\": { \"enabled\": false }, // sem aviso\n}";
+        store.save(text).expect("save");
+        assert_eq!(
+            fs::read(store.path()).expect("read"),
+            text.as_bytes(),
+            "the file holds the text as given"
+        );
+        assert_eq!(store.load().expect("load"), Some(text.to_owned()));
+    }
+
+    #[test]
+    fn a_save_can_empty_the_file_and_make_it_again() {
+        let dir = TempDir::new("empty");
+        let store = ConfigStore::new(dir.file(CONFIG_FILE_NAME));
+        store.save("{ }").expect("save");
+        store.save("").expect("save empty");
+        assert_eq!(store.load().expect("load"), Some(String::new()));
+        store
+            .save("{\n  \"keybindings\": { \"preset\": \"browser\" }\n}\n")
+            .expect("save again");
+        assert_eq!(dir.names(), [CONFIG_FILE_NAME]);
+    }
+
+    #[test]
+    fn a_save_does_not_follow_a_folder_where_the_file_should_be() {
+        // A folder named like the file cannot be replaced by a text: the save says so and the
+        // folder is left alone.
+        let dir = TempDir::new("folder-in-the-way");
+        let in_the_way = dir.file(CONFIG_FILE_NAME);
+        fs::create_dir(&in_the_way).expect("create the folder");
+        let store = ConfigStore::new(&in_the_way);
+        assert!(matches!(store.save("{}"), Err(ConfigError::Write(_))));
+        assert!(in_the_way.is_dir());
+        assert_eq!(dir.names(), [CONFIG_FILE_NAME]);
+    }
+
+    #[test]
     fn save_creates_the_missing_folder() {
         let dir = TempDir::new("mkdir");
         let store = ConfigStore::new(dir.file("a").join("b").join(CONFIG_FILE_NAME));

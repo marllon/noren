@@ -59,6 +59,7 @@ fn main() {
             bridge::project_command_run,
             bridge::git_info,
             bridge::config_load,
+            bridge::config_save,
             bridge::config_watch,
             notify::notify_show,
             notify::window_is_focused,

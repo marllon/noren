@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { openShortcutsScreen } from "./settings-fixture";
 import { sidebarState } from "./sidebar-fixture";
 
 // A program in a tab that is not on screen rings the bell or sends a notification (OSC 9, OSC 777):
@@ -212,9 +213,7 @@ test("the palette and the shortcuts screen list the action on Ctrl+Shift+U", asy
   await expect(shown(page)).toHaveText("build");
   await expect(page.locator("[data-nr-indicator]")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Layout", exact: true }).click();
-  await page.getByRole("button", { name: "Keyboard shortcuts", exact: true }).click();
-  const screen = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
+  const screen = await openShortcutsScreen(page);
   await expect(screen.getByLabel("Shortcut for Go to last unread tab", { exact: true })).toHaveText(
     "Ctrl+Shift+U",
   );

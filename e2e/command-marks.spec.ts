@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { openShortcutsScreen, setPaneHeaders } from "./settings-fixture";
 
 // The shell of a pane reports where each prompt starts and how each command ended (OSC 133 A, C and
 // D). The terminal marks every command at its prompt, draws a red mark in the ruler beside the
@@ -346,9 +347,7 @@ test("select command output acts on the prompt stepped to", async ({ page }) => 
 
 test("the pane menu in the header selects or copies the output of a command", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Layout", exact: true }).click();
-  await page.getByRole("checkbox", { name: "Pane headers", exact: true }).setChecked(true);
-  await page.keyboard.press("Escape");
+  await setPaneHeaders(page, true);
   await runAll(page, ["echo one", "echo hello world"]);
 
   await page.getByRole("button", { name: "Pane menu", exact: true }).click();
@@ -438,10 +437,7 @@ test("each pane of a split has its own marks and keeps its own output", async ({
 
 test("the new actions are in the shortcuts screen with their keys", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Layout", exact: true }).click();
-  await page.getByRole("button", { name: "Keyboard shortcuts", exact: true }).click();
-  const screen = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
-  await expect(screen).toBeVisible();
+  const screen = await openShortcutsScreen(page);
   await expect(screen.getByLabel("Shortcut for Previous prompt", { exact: true })).toHaveText(
     "Ctrl+Up",
   );

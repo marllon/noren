@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { sidebarState } from "./sidebar-fixture";
+import {
+  cancelSettings,
+  changeSettings,
+  configText,
+  openSettings,
+  saveSettings,
+} from "./settings-fixture";
 
 // The settings file `config.jsonc`. The web build has no file system: its backend keeps the text
 // of the file under `noren.web.config` in the browser storage, and the test hook `setConfig`
@@ -95,12 +102,7 @@ async function expectSide(page: Page, side: "left" | "right"): Promise<void> {
     .toBe(0);
 }
 
-async function openLayout(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Layout", exact: true }).click();
-  await expect(page.getByRole("group", { name: "Layout", exact: true })).toBeVisible();
-}
-
-const radio = (page: Page, name: string) => page.getByRole("radio", { name, exact: true });
+const radio = (screen: Locator, name: string) => screen.getByRole("radio", { name, exact: true });
 
 test.describe("a change of the file applies without a restart", () => {
   test("appearance.sidebar.position moves the sidebar, and moves it back", async ({ page }) => {
@@ -276,51 +278,72 @@ test.describe("what the file decides", () => {
     expect((await box(sidebar(page))).width).toBe(300);
   });
 
-  test("a preference the file sets cannot be changed from the provisional controls, the others can", async ({
+  test("the settings screen shows what the file says, and a handle drag writes the width into it", async ({
     page,
   }) => {
     await open(page, '{ "appearance": { "sidebar": { "position": "right", "width": 240 } } }');
-    await openLayout(page);
+    const screen = await openSettings(page);
+    await expect(radio(screen, "Right")).toBeChecked();
+    await expect(screen.getByRole("textbox", { name: "Sidebar width (px)" })).toHaveValue("240");
+    // Density is not in the file: the screen shows the default.
+    await expect(radio(screen, "Comfortable")).toBeChecked();
+    await cancelSettings(page);
 
-    await expect(radio(page, "Left")).toBeDisabled();
-    await expect(radio(page, "Right")).toBeDisabled();
-    await expect(radio(page, "Right")).toBeChecked();
-    // Density is not in the file, so it still answers.
-    await expect(radio(page, "Compact")).toBeEnabled();
-    await radio(page, "Compact").check();
-    await expect(body(page)).toHaveAttribute("data-nr-density", "compact");
-
-    // The width is the file's too: the handle shows it and does nothing.
-    await expect(handle(page)).toHaveAttribute("aria-disabled", "true");
+    // Nothing in the file is out of reach of the handle now: it saves the width where it is.
+    await expect(handle(page)).not.toHaveAttribute("aria-disabled", "true");
     const at = await box(handle(page));
     await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2);
     await page.mouse.down();
-    await page.mouse.move(at.x - 80, at.y + at.height / 2, { steps: 5 });
+    await page.mouse.move(at.x + at.width / 2 - 80, at.y + at.height / 2, { steps: 5 });
     await page.mouse.up();
-    expect((await box(sidebar(page))).width).toBe(240);
-    await expect(handle(page)).toHaveAttribute("aria-valuenow", "240");
+    expect((await box(sidebar(page))).width).toBe(320);
+    await expect(handle(page)).toHaveAttribute("aria-valuenow", "320");
+    await expect.poll(() => configText(page)).toContain('"width": 320');
+    expect(await configText(page)).toContain('"position": "right"');
   });
 
-  test("the controls answer again once the file stops setting the preference", async ({ page }) => {
-    await open(page, RIGHT);
-    await openLayout(page);
-    await expect(radio(page, "Left")).toBeDisabled();
-    await setConfig(page, "{}");
-    await expect(radio(page, "Left")).toBeEnabled();
-    await radio(page, "Left").check();
-    await expectSide(page, "left");
-  });
-
-  test("the choice made with the controls is the fallback when the file leaves the setting out", async ({
+  test("the screen follows the file for what was not touched, and keeps what was", async ({
     page,
   }) => {
+    await open(page, RIGHT);
+    const screen = await openSettings(page);
+    await expect(radio(screen, "Right")).toBeChecked();
+    await radio(screen, "Compact").check();
+
+    // Another program edits the file while the screen is open.
+    await setConfig(page, '{ "appearance": { "sidebar": { "position": "left" } } }');
+    await expectSide(page, "left");
+    await expect(radio(screen, "Left")).toBeChecked();
+    // The draft is still the person's.
+    await expect(radio(screen, "Compact")).toBeChecked();
+    await saveSettings(page);
+    await expect(body(page)).toHaveAttribute("data-nr-density", "compact");
+    expect(await configText(page)).toContain('"position": "left"');
+  });
+
+  test("a setting the file leaves out is the default, not an earlier choice", async ({ page }) => {
     await open(page);
-    await openLayout(page);
-    await radio(page, "Compact").check();
+    await changeSettings(page, (screen) => radio(screen, "Compact").check());
+    await expect(body(page)).toHaveAttribute("data-nr-density", "compact");
     await setConfig(page, RIGHT);
     await expectSide(page, "right");
-    // The file says nothing about density, so the person's choice stands.
-    await expect(body(page)).toHaveAttribute("data-nr-density", "compact");
+    // The file says nothing about density now, so it is the default again.
+    await expect(body(page)).toHaveAttribute("data-nr-density", "comfortable");
+  });
+
+  test("the handle waits while the file has a mistake, and the screen will not save over it", async ({
+    page,
+  }) => {
+    await open(page, MISTAKE);
+    await expect(handle(page)).toHaveAttribute("aria-disabled", "true");
+    const screen = await openSettings(page);
+    await expect(screen.locator('[data-nr-part="settings-file-problem"]')).toContainText("line 3");
+    await radio(screen, "Right").check();
+    await expect(screen.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+    await cancelSettings(page);
+    // Fixed from outside, everything answers again.
+    await setConfig(page, "{}");
+    await expect(handle(page)).not.toHaveAttribute("aria-disabled", "true");
   });
 });
 
@@ -379,16 +402,25 @@ test.describe("notifications from the file", () => {
     expect(await notifications(page)).toEqual([{ title: "logs", body: "Third" }]);
   });
 
-  test("the file rules over the provisional key of the browser storage", async ({ page }) => {
+  test("the file rules over the old key of the browser storage, and the key is dropped", async ({
+    page,
+  }) => {
     // The storage says 300 s; the file says 5 s, and the file wins.
     await open(page, '{ "notifications": { "longCommandSeconds": 5 } }', {
       longCommandSeconds: 300,
     });
     await longCommand(page, 6);
     await expect.poll(() => notifications(page)).toHaveLength(1);
+    expect(JSON.parse((await configText(page)) ?? "null")).toEqual({
+      notifications: { longCommandSeconds: 5 },
+    });
+    expect(
+      await page.evaluate((key) => window.localStorage.getItem(key), NOTIFICATIONS_KEY),
+    ).toBeNull();
 
-    // Without the setting in the file the storage answers again: 6 s is under its 300 s. The
-    // bell of a window out of focus comes after, as the barrier that shows the command was handled.
+    // Without the setting in the file the default answers: 6 s is under its 30 s, the old 300 s is
+    // gone. The bell of a window out of focus comes after, as the barrier that shows the command
+    // was handled.
     await setConfig(page, "{}");
     await longCommand(page, 6);
     await unfocus(page);
@@ -398,5 +430,46 @@ test.describe("notifications from the file", () => {
       "make finished after 6s",
       "barrier",
     ]);
+  });
+
+  test("a choice kept in the browser storage before the file existed moves into the file", async ({
+    page,
+  }) => {
+    await open(page, undefined, { enabled: false, longCommandSeconds: 90 });
+    expect(JSON.parse((await configText(page)) ?? "null")).toEqual({
+      notifications: { enabled: false, longCommandSeconds: 90 },
+    });
+    expect(
+      await page.evaluate((key) => window.localStorage.getItem(key), NOTIFICATIONS_KEY),
+    ).toBeNull();
+    // And it is in force: off, so the bell of a window out of focus says nothing.
+    await unfocus(page);
+    await send(page, "p3", BEL);
+    await send(page, "p4", osc("9;barrier"));
+    expect(await notifications(page)).toEqual([]);
+  });
+
+  test("the screen turns them off and changes the limit, and the file keeps its comments", async ({
+    page,
+  }) => {
+    await open(
+      page,
+      '// my notifications\n{\n  "notifications": { "longCommandSeconds": 90 }, // slow\n}\n',
+    );
+    await changeSettings(page, async (screen) => {
+      await screen.getByRole("checkbox", { name: "System notifications", exact: true }).uncheck();
+      await screen
+        .getByRole("textbox", { name: "Long command limit (seconds)", exact: true })
+        .fill("12.5");
+    });
+    const text = (await configText(page)) ?? "";
+    expect(text).toContain("// my notifications");
+    expect(text).toContain("// slow");
+    expect(text).toContain('"longCommandSeconds": 12.5');
+    expect(text).toContain('"enabled": false');
+    await unfocus(page);
+    await send(page, "p3", BEL);
+    await send(page, "p4", osc("9;barrier"));
+    expect(await notifications(page)).toEqual([]);
   });
 });

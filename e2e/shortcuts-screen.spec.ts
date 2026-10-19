@@ -1,8 +1,15 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import {
+  changeSettings,
+  closeShortcutsScreen,
+  openShortcutsScreen,
+  shortcutsScreen,
+} from "./settings-fixture";
 
-// The shortcuts screen: search the registry, record a chord for an action, refuse a chord another
-// action holds. The overrides live in the browser storage under `noren.ui.keybindings`.
+// The shortcuts screen, opened from the settings screen: search the registry, record a chord for an
+// action, refuse a chord another action holds. The overrides live in the browser storage under
+// `noren.ui.keybindings`; the preset is a setting of `config.jsonc`.
 
 type TestHook = { paneIds(): string[] };
 type TestWindow = Window & { __norenTest?: TestHook };
@@ -23,22 +30,19 @@ async function openTerminal(page: Page): Promise<void> {
   await page.locator('[data-nr-part="pane"]:visible').click();
 }
 
-const screen = (page: Page): Locator =>
-  page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
+const screen = shortcutsScreen;
 
 /** The chord text shown for an action. */
 const chordOf = (page: Page, title: string): Locator =>
   screen(page).getByLabel(`Shortcut for ${title}`, { exact: true });
 
 async function openScreen(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Layout", exact: true }).click();
-  await page.getByRole("button", { name: "Keyboard shortcuts", exact: true }).click();
-  await expect(screen(page)).toBeVisible();
+  await openShortcutsScreen(page);
 }
 
+/** Closes the shortcuts screen, and the settings screen it was opened from. */
 async function closeScreen(page: Page): Promise<void> {
-  await screen(page).getByRole("button", { name: "Close", exact: true }).click();
-  await expect(screen(page)).toBeHidden();
+  await closeShortcutsScreen(page);
 }
 
 async function record(page: Page, title: string, keys: string): Promise<void> {
@@ -55,7 +59,7 @@ test("search, record a chord for New tab, and it works at once while the old cho
   await openScreen(page);
   await expect(
     screen(page).getByRole("list", { name: "Shortcuts" }).getByRole("listitem"),
-  ).toHaveCount(40);
+  ).toHaveCount(41);
 
   await screen(page).getByRole("textbox", { name: "Search shortcuts" }).fill("new tab");
   await expect(
@@ -197,9 +201,10 @@ test("the screen lists the shell keys the browser preset stops delivering", asyn
   );
   await closeScreen(page);
 
-  await page.getByRole("button", { name: "Layout", exact: true }).click();
-  await page.getByRole("radio", { name: "Browser", exact: true }).check();
-  await page.getByRole("button", { name: "Keyboard shortcuts", exact: true }).click();
+  await changeSettings(page, (settings) =>
+    settings.getByRole("radio", { name: "Browser", exact: true }).check(),
+  );
+  await openScreen(page);
   await expect(screen(page)).toContainText(
     "The browser preset is on: Ctrl+T, Ctrl+W, Ctrl+1..9 no longer reach the terminal",
   );

@@ -71,6 +71,7 @@ describe("parseConfigText accepts", () => {
         tabs: "sidebar",
         paneHeaders: true,
       },
+      keybindings: { preset: "browser" },
       notifications: { enabled: true, longCommandSeconds: 0 },
     });
     expect(parseConfigText(text).ok).toBe(true);
@@ -132,6 +133,13 @@ describe("parseConfigText refuses, with the line", () => {
     }
     const seconds = errorsOf('{ "notifications": { "longCommandSeconds": -5 } }');
     expect(seconds[0]).toMatchObject({ path: "notifications.longCommandSeconds" });
+  });
+
+  it("a shortcut preset that does not exist, at the line of the value", () => {
+    const errors = errorsOf('{\n  "keybindings": { "preset": "vim" }\n}');
+    expect(errors[0]).toMatchObject({ path: "keybindings.preset", line: 2 });
+    expect(errors[0]?.message).toMatch(/safe/);
+    expect(errors[0]?.message).toMatch(/browser/);
   });
 
   it("a boolean written as text", () => {
@@ -239,6 +247,7 @@ describe("parseConfigText properties", () => {
         },
         { requiredKeys: [] },
       ),
+      keybindings: fc.record({ preset: fc.constantFrom("safe", "browser") }, { requiredKeys: [] }),
       notifications: fc.record(
         { enabled: fc.boolean(), longCommandSeconds: fc.integer({ min: 0, max: 100000 }) },
         { requiredKeys: [] },

@@ -1,9 +1,16 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { seedSidebarState } from "./sidebar-fixture";
+import {
+  changeSettings,
+  configText,
+  openSettings,
+  saveSettings,
+  seedConfig,
+} from "./settings-fixture";
 
-// Top tabs: the tabs of the active space as a bar above the terminal, switched on in the Layout
-// control and kept in the browser storage (`noren.ui.layout`).
+// Top tabs: the tabs of the active space as a bar above the terminal, switched on in the settings
+// screen and kept in `config.jsonc` (`appearance.tabs`).
 
 const LAYOUT_KEY = "noren.ui.layout";
 
@@ -14,7 +21,7 @@ const sidebar = (page: Page) => page.locator('[data-nr-part="sidebar"]');
 const content = (page: Page) => page.getByRole("region", { name: "Content", exact: true });
 const tree = (page: Page) => page.getByRole("list", { name: "Tabs", exact: true });
 const treeTab = (page: Page, name: string) => tree(page).getByRole("button", { name, exact: true });
-const radio = (page: Page, name: string) => page.getByRole("radio", { name, exact: true });
+const radio = (screen: Locator, name: string) => screen.getByRole("radio", { name, exact: true });
 const menuItem = (page: Page, name: string) => page.getByRole("menuitem", { name, exact: true });
 // The bar has its own New tab button; the (hidden) sidebar has another one.
 const newTab = (page: Page) =>
@@ -36,25 +43,16 @@ async function box(locator: Locator) {
   return found;
 }
 
-/** Starts the page with the tabs on top (saved before it loads, and only when nothing is saved). */
+/**
+ * Starts the page with the tabs on top: a settings file with `appearance.tabs` (and `extra`, the
+ * rest of `appearance.sidebar`) that is there before the page loads, and only when there is none.
+ */
 async function startWithTopTabs(page: Page, extra: Record<string, unknown> = {}): Promise<void> {
-  await page.addInitScript(
-    ({ key, value }) => {
-      if (window.localStorage.getItem(key) === null) window.localStorage.setItem(key, value);
-    },
-    { key: LAYOUT_KEY, value: JSON.stringify({ tabs: "top", ...extra }) },
-  );
+  await seedConfig(page, JSON.stringify({ appearance: { tabs: "top", sidebar: extra } }));
 }
 
-async function openLayout(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Layout", exact: true }).click();
-  await expect(page.getByRole("group", { name: "Layout", exact: true })).toBeVisible();
-}
-
-async function closeLayout(page: Page): Promise<void> {
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("group", { name: "Layout", exact: true })).toBeHidden();
-  // The sidebar slides out when the mode changes; wait until it stops.
+/** Waits for the sidebar to stop moving: it slides out when the mode changes. */
+async function settled(page: Page): Promise<void> {
   await expect
     .poll(async () => {
       const before = await box(sidebar(page));
@@ -76,10 +74,11 @@ test("switching to top tabs shows the bar above the terminal, one tab per item i
   await expect(treeTab(page, "api")).toBeVisible();
   await expect(bar(page)).toHaveCount(0);
 
-  await openLayout(page);
-  await radio(page, "On top").check();
-  await expect(radio(page, "On top")).toBeChecked();
-  await closeLayout(page);
+  await changeSettings(page, async (screen) => {
+    await radio(screen, "On top").check();
+    await expect(radio(screen, "On top")).toBeChecked();
+  });
+  await settled(page);
 
   await expect(bar(page)).toBeVisible();
   await expect(bar(page)).toHaveAttribute("aria-label", "Tabs");
@@ -165,9 +164,8 @@ test("the mode stays after a reload, and going back to the sidebar brings the tr
   page,
 }) => {
   await page.goto("/");
-  await openLayout(page);
-  await radio(page, "On top").check();
-  await closeLayout(page);
+  await changeSettings(page, (screen) => radio(screen, "On top").check());
+  await settled(page);
   await expect(bar(page)).toBeVisible();
 
   await page.reload();
@@ -175,10 +173,11 @@ test("the mode stays after a reload, and going back to the sidebar brings the tr
   await expect(barTab(page, "api")).toBeVisible();
   await expect(sidebar(page)).toHaveAttribute("data-nr-state", "hidden");
 
-  await openLayout(page);
-  await expect(radio(page, "On top")).toBeChecked();
-  await radio(page, "In the sidebar").check();
-  await closeLayout(page);
+  const screen = await openSettings(page);
+  await expect(radio(screen, "On top")).toBeChecked();
+  await radio(screen, "In the sidebar").check();
+  await saveSettings(page);
+  await settled(page);
 
   await expect(bar(page)).toHaveCount(0);
   await expect(treeTab(page, "api")).toBeVisible();
@@ -199,7 +198,9 @@ test("the mode stays after a reload, and going back to the sidebar brings the tr
   await expect(bar(page)).toHaveCount(0);
 });
 
-test("layouts saved before top tabs existed keep the tabs in the sidebar", async ({ page }) => {
+test("a layout saved in the browser storage before top tabs existed moves into the file and keeps the tabs in the sidebar", async ({
+  page,
+}) => {
   await page.addInitScript((key) => {
     if (window.localStorage.getItem(key) === null) {
       window.localStorage.setItem(
@@ -218,6 +219,11 @@ test("layouts saved before top tabs existed keep the tabs in the sidebar", async
   await expect(treeTab(page, "api")).toBeVisible();
   await expect(bar(page)).toHaveCount(0);
   expect((await box(sidebar(page))).width).toBe(260);
+  // The width is in the file now, and the old key is gone; only what was not the default moved.
+  expect(JSON.parse((await configText(page)) ?? "null")).toEqual({
+    appearance: { sidebar: { width: 260 } },
+  });
+  expect(await page.evaluate((key) => window.localStorage.getItem(key), LAYOUT_KEY)).toBeNull();
 });
 
 test("the tab menu of the bar closes a tab and renaming works in place", async ({ page }) => {
@@ -308,17 +314,17 @@ test("spaces stay reachable: the sidebar slides in from the edge and switches th
   await expect(barTab(page, "elsewhere")).toHaveAttribute("aria-current", "true");
 });
 
-test("the Layout control disables compact mode with top tabs, and the bar follows a right-hand sidebar", async ({
+test("the settings screen disables compact mode with top tabs, and the bar follows a right-hand sidebar", async ({
   page,
 }) => {
-  await startWithTopTabs(page, { side: "right" });
+  await startWithTopTabs(page, { position: "right" });
   await page.goto("/");
   await expect(barTab(page, "api")).toBeVisible();
   // The bar takes the whole width whichever side the sidebar is on.
   expect((await box(bar(page))).x).toBeLessThan(40);
-  await openLayout(page);
-  await expect(page.getByRole("checkbox", { name: "Compact mode", exact: true })).toBeDisabled();
+  const screen = await openSettings(page);
+  await expect(screen.getByRole("checkbox", { name: "Compact mode", exact: true })).toBeDisabled();
   await expect(
-    page.getByRole("checkbox", { name: "Keep sidebar open", exact: true }),
+    screen.getByRole("checkbox", { name: "Keep sidebar open", exact: true }),
   ).toBeDisabled();
 });

@@ -37,7 +37,9 @@ export {
 } from "./config";
 export type { Config, ConfigError, ParseConfigResult } from "./config";
 export { ConfigManager } from "./config-manager";
-export type { ConfigSource, ConfigState } from "./config-manager";
+export type { ConfigSource, ConfigState, ConfigUpdateResult } from "./config-manager";
+export { editConfigText } from "./config-edit";
+export type { ConfigChange, ConfigValue } from "./config-edit";
 export { ManualClock } from "./clock";
 export type { Clock } from "./clock";
 export { createDefaultWorkspace } from "./default-workspace";

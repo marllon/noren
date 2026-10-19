@@ -77,6 +77,13 @@ export interface Backend {
    */
   watchConfig(callback: (text: string | null) => void): Unsubscribe;
   /**
+   * Replaces `config.jsonc` with `text` atomically: a crash never leaves half a file. Creates the
+   * file (and its folder) when there is none. The text is written as given, comments and all;
+   * editing it is the caller's job (`editConfigText`). Whoever called `watchConfig` hears the new
+   * text like any other change. Rejects when the file cannot be written.
+   */
+  saveConfig(text: string): Promise<void>;
+  /**
    * Text of `.noren/actions.json` inside the folder `cwd`, or `null` when the folder has no such
    * file. Rejects for any other failure (a folder where the file should be, no permission).
    * Parsing is the caller's job (`parseActionsFile`).

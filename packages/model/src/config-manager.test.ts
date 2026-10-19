@@ -132,6 +132,7 @@ describe("ConfigManager", () => {
         calls.push("watch");
         return backend.watchConfig(callback);
       },
+      saveConfig: (text) => backend.saveConfig(text),
       loadConfig: async () => {
         calls.push("load");
         // The file is changed while this read is in flight, and the read still answers the old text.
@@ -152,6 +153,7 @@ describe("ConfigManager", () => {
     await manager.start(backend);
     await manager.start({
       watchConfig: (callback) => backend.watchConfig(callback),
+      saveConfig: (text) => backend.saveConfig(text),
       loadConfig: () => Promise.reject(new Error("access denied")),
     });
     expect(manager.state.config.appearance?.sidebar?.position).toBe("right");
@@ -187,5 +189,165 @@ describe("FakeBackend config", () => {
       "watchConfig",
       "loadConfig",
     ]);
+  });
+});
+
+describe("ConfigManager.update", () => {
+  const COMMENTED = `// mine
+{
+  "appearance": {
+    "sidebar": { "position": "left" }, // keep it here
+  },
+}
+`;
+
+  it("edits only the settings asked for, keeps the comments, and applies at once", async () => {
+    const { backend, manager } = await started(COMMENTED);
+    const heard: (string | null)[] = [];
+    backend.watchConfig((text) => heard.push(text));
+
+    const result = await manager.update([
+      { path: ["appearance", "sidebar", "width"], value: 260 },
+      { path: ["notifications", "enabled"], value: false },
+    ]);
+
+    expect(result).toEqual({ ok: true, written: true });
+    expect(backend.configContent).toContain("// mine");
+    expect(backend.configContent).toContain("// keep it here");
+    expect(backend.configContent).toContain('"position": "left"');
+    expect(manager.state.config).toEqual({
+      appearance: { sidebar: { position: "left", width: 260 } },
+      notifications: { enabled: false },
+    });
+    // The file reported its own change and the manager already had that text: one tell, not a loop.
+    expect(heard).toEqual([backend.configContent]);
+    expect(backend.callsTo("saveConfig")).toHaveLength(1);
+  });
+
+  it("creates the file when there is none", async () => {
+    const { backend, manager } = await started(null);
+    const result = await manager.update([{ path: ["keybindings", "preset"], value: "browser" }]);
+    expect(result).toEqual({ ok: true, written: true });
+    expect(backend.configContent).toBe('{\n  "keybindings": {\n    "preset": "browser"\n  }\n}\n');
+    expect(manager.state.config).toEqual({ keybindings: { preset: "browser" } });
+  });
+
+  it("writes nothing when the file already says it", async () => {
+    const { backend, manager } = await started(COMMENTED);
+    const result = await manager.update([
+      { path: ["appearance", "sidebar", "position"], value: "left" },
+    ]);
+    expect(result).toEqual({ ok: true, written: false });
+    expect(backend.callsTo("saveConfig")).toHaveLength(0);
+    expect(backend.configContent).toBe(COMMENTED);
+  });
+
+  it("refuses to edit a file that has a problem of its own, and says where", async () => {
+    const { backend, manager } = await started(BROKEN);
+    const result = await manager.update([{ path: ["appearance", "tabs"], value: "top" }]);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain("nothing was saved");
+    expect(result.message).toContain("line 3");
+    expect(result.errors).toHaveLength(1);
+    expect(backend.callsTo("saveConfig")).toHaveLength(0);
+    expect(backend.configContent).toBe(BROKEN);
+  });
+
+  it("refuses a value the settings do not allow, and leaves the file as it was", async () => {
+    const { backend, manager } = await started(COMMENTED);
+    const result = await manager.update([
+      { path: ["appearance", "sidebar", "width"], value: 9999 },
+    ]);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain("appearance.sidebar.width");
+    expect(result.message).not.toContain("line ");
+    expect(backend.configContent).toBe(COMMENTED);
+    expect(manager.state.config.appearance?.sidebar?.width).toBeUndefined();
+  });
+
+  it("reports a file that could not be written and changes nothing", async () => {
+    const { backend, manager } = await started(COMMENTED);
+    backend.setConfigSaveFailure(new Error("disk full"));
+    const result = await manager.update([{ path: ["appearance", "tabs"], value: "top" }]);
+    expect(result).toEqual({
+      ok: false,
+      message: "Could not write config.jsonc: disk full",
+      errors: [],
+    });
+    expect(backend.configContent).toBe(COMMENTED);
+    expect(manager.state.config.appearance?.tabs).toBeUndefined();
+    // And the next one works once the disk does.
+    backend.setConfigSaveFailure(undefined);
+    expect(await manager.update([{ path: ["appearance", "tabs"], value: "top" }])).toEqual({
+      ok: true,
+      written: true,
+    });
+  });
+
+  it("reports a file that could not be read", async () => {
+    const backend = new FakeBackend({ config: COMMENTED });
+    const manager = new ConfigManager();
+    await manager.start({
+      watchConfig: (callback) => backend.watchConfig(callback),
+      saveConfig: (text) => backend.saveConfig(text),
+      loadConfig: () => Promise.reject(new Error("access denied")),
+    });
+    const result = await manager.update([{ path: ["appearance", "tabs"], value: "top" }]);
+    expect(result).toEqual({
+      ok: false,
+      message: "Could not read config.jsonc: access denied",
+      errors: [],
+    });
+    expect(backend.callsTo("saveConfig")).toHaveLength(0);
+  });
+
+  it("does nothing before the file is followed", async () => {
+    const result = await new ConfigManager().update([
+      { path: ["appearance", "tabs"], value: "top" },
+    ]);
+    expect(result).toEqual({ ok: false, message: "The settings are not available.", errors: [] });
+  });
+
+  it("lets two quick updates both land, each on the file the one before it wrote", async () => {
+    const { backend, manager } = await started(COMMENTED);
+    const first = manager.update([{ path: ["appearance", "density"], value: "compact" }]);
+    const second = manager.update([{ path: ["appearance", "paneHeaders"], value: true }]);
+    const third = manager.update([{ path: ["appearance", "density"], value: "comfortable" }]);
+    expect(await Promise.all([first, second, third])).toEqual([
+      { ok: true, written: true },
+      { ok: true, written: true },
+      { ok: true, written: true },
+    ]);
+    expect(manager.state.config.appearance).toEqual({
+      sidebar: { position: "left" },
+      density: "comfortable",
+      paneHeaders: true,
+    });
+    expect(backend.configContent).toContain("// keep it here");
+  });
+
+  it("edits the file as it is on disk now, not as the manager last heard of it", async () => {
+    const { backend, manager } = await started(COMMENTED);
+    // Another program saved the file; its event has not reached the manager yet.
+    manager.stop();
+    await manager.start(backend);
+    backend.setConfig(`${COMMENTED}// added by hand\n`);
+    await manager.update([{ path: ["appearance", "tabs"], value: "top" }]);
+    expect(backend.configContent).toContain("// added by hand");
+    expect(backend.configContent).toContain('"tabs": "top"');
+  });
+});
+
+describe("FakeBackend.saveConfig", () => {
+  it("replaces the text, tells the watchers, and is recorded", async () => {
+    const backend = new FakeBackend();
+    const heard: (string | null)[] = [];
+    backend.watchConfig((text) => heard.push(text));
+    await backend.saveConfig("// saved\n{}");
+    expect(backend.configContent).toBe("// saved\n{}");
+    expect(heard).toEqual(["// saved\n{}"]);
+    expect(backend.callsTo("saveConfig")[0]?.args).toEqual(["// saved\n{}"]);
   });
 });

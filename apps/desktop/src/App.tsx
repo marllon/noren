@@ -51,7 +51,10 @@ import {
 import type { ClickModifiers, Selection } from "./sidebar-tree";
 import { sidebarMode } from "./layout";
 import { NOTHING_UNREAD_NOTICE, shortCwd } from "./pane-info";
-import { updateLayout, useLayout, useLayoutLocks } from "./layout-store";
+import { useConfigState } from "./config-store";
+import { previewSidebarWidth, saveSidebarWidth, useLayout } from "./layout-store";
+import { SettingsDialog } from "./SettingsDialog";
+import { closeSettings, openSettings, useSettingsOpen } from "./settings-ui";
 import { SidebarResizer } from "./SidebarResizer";
 import { SidebarTree } from "./SidebarTree";
 import { TabBar } from "./TabBar";
@@ -158,6 +161,10 @@ export interface NorenTestHook {
    * program would. The web build keeps it in the browser storage, so a reload finds it.
    */
   setConfig(text: string | null): void;
+  /** Makes saving `config.jsonc` fail with this message (the disk refused); `null` undoes it. */
+  failConfigSaves(message: string | null): void;
+  /** Number of times the app was asked to write `config.jsonc`. */
+  configSaves(): number;
 }
 
 declare global {
@@ -394,7 +401,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const themeChoice = useThemeChoice();
   const colors = useMemo(() => terminalTheme(theme), [theme]);
   const layout = useLayout();
-  const layoutLocks = useLayoutLocks();
+  // A file with a problem of its own cannot be edited, so the handle cannot save a width either.
+  const settingsFileBroken = useConfigState().errors.length > 0;
+  const settingsOpen = useSettingsOpen();
   const reveal = useSidebarReveal(sidebarMode(layout) === "auto-hide");
 
   const space = activeSpaceOf(workspace);
@@ -695,6 +704,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) openSearch();
         return;
       }
+      if (action.command.kind === "settings") {
+        if (!modalOpen.current) openSettings();
+        return;
+      }
       if (action.command.kind === "mru") {
         if (!modalOpen.current || switcher.active()) switcher.step(action.command.delta, event);
         return;
@@ -794,6 +807,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
         },
         openUrl: (url) => handleDeepLink(url),
         setConfig: (text) => fake.setConfig(text),
+        failConfigSaves: (message) =>
+          fake.setConfigSaveFailure(message === null ? undefined : new Error(message)),
+        configSaves: () => fake.callsTo("saveConfig").length,
         killedSessions: () => fake.callsTo("kill").map((call) => Number(call.args[0])),
         sessionStarts: () =>
           fake.callsTo("createSession").map((call) => {
@@ -850,6 +866,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
     else if (entry.action.command.kind === "search-all") {
       // The search takes the keyboard itself; the palette must not hand it to the terminal.
       openSearch();
+      return;
+    } else if (entry.action.command.kind === "settings") {
+      // The settings screen takes the keyboard itself, and hands it back to the terminal on close.
+      setPaletteOpen(false);
+      openSettings();
       return;
     } else if (entry.action.command.kind === "mru") {
       // No modifier is held in the palette: go straight to the tab the chord would end on.
@@ -1032,7 +1053,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
   }
 
   const { pending } = projectActions;
-  modalOpen.current = overlay !== null || pending !== null;
+  modalOpen.current = overlay !== null || pending !== null || settingsOpen;
   const confirmNode = pending !== null && (
     <ConfirmDialog
       title="Run project action"
@@ -1091,8 +1112,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
           <SidebarResizer
             side={layout.side}
             width={layout.width}
-            onResize={(width) => updateLayout({ width })}
-            disabled={layoutLocks.has("width")}
+            onPreview={previewSidebarWidth}
+            onCommit={(width) => void saveSidebarWidth(width)}
+            disabled={settingsFileBroken}
           />
           {favorites.length > 0 && (
             <FavoritesGrid
@@ -1161,6 +1183,14 @@ function Shell({ store }: { store: WorkspaceStore }) {
       )}
       {paletteOpen && (
         <CommandPalette entries={paletteEntries} onRun={runPaletteEntry} onClose={closePalette} />
+      )}
+      {settingsOpen && (
+        <SettingsDialog
+          onClose={() => {
+            closeSettings();
+            focusTerminal();
+          }}
+        />
       )}
     </div>
   );

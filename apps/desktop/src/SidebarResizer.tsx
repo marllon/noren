@@ -6,8 +6,11 @@ import type { SidebarSide } from "./layout";
 interface SidebarResizerProps {
   side: SidebarSide;
   width: number;
-  onResize(width: number): void;
-  /** The width is set elsewhere (the settings file): the handle does nothing. */
+  /** The pointer moved the edge: show this width, without saving it yet. */
+  onPreview(width: number): void;
+  /** The move ended (the pointer was released, a key was pressed): save this width. */
+  onCommit(width: number): void;
+  /** The width cannot be saved now (the settings file has a problem): the handle does nothing. */
   disabled?: boolean;
 }
 
@@ -15,8 +18,16 @@ interface SidebarResizerProps {
  * The handle on the inner edge of the sidebar. Dragging it with the pointer or pressing the arrows
  * (Shift for a larger step, Home and End for the limits) changes the width of the sidebar.
  */
-export function SidebarResizer({ side, width, onResize, disabled = false }: SidebarResizerProps) {
-  const drag = useRef<{ startX: number; startWidth: number } | null>(null);
+export function SidebarResizer({
+  side,
+  width,
+  onPreview,
+  onCommit,
+  disabled = false,
+}: SidebarResizerProps) {
+  const drag = useRef<{ startX: number; startWidth: number; last: number; moved: boolean } | null>(
+    null,
+  );
   const [dragging, setDragging] = useState(false);
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -24,18 +35,25 @@ export function SidebarResizer({ side, width, onResize, disabled = false }: Side
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     event.currentTarget.focus();
-    drag.current = { startX: event.clientX, startWidth: width };
+    drag.current = { startX: event.clientX, startWidth: width, last: width, moved: false };
     setDragging(true);
   };
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (!drag.current) return;
-    onResize(widthAfterDrag(drag.current.startWidth, drag.current.startX, event.clientX, side));
+    const started = drag.current;
+    if (!started) return;
+    started.moved = true;
+    started.last = widthAfterDrag(started.startWidth, started.startX, event.clientX, side);
+    onPreview(started.last);
   };
 
   const stop = () => {
+    const ended = drag.current;
     drag.current = null;
     setDragging(false);
+    // A press with no move has no width to save; a move that came back to where it began still
+    // ends the preview, which saving the same width does.
+    if (ended?.moved === true) onCommit(ended.last);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -43,7 +61,7 @@ export function SidebarResizer({ side, width, onResize, disabled = false }: Side
     const next = widthAfterKey(width, event.key, side, event.shiftKey);
     if (next === undefined) return;
     event.preventDefault();
-    onResize(next);
+    onCommit(next);
   };
 
   return (
@@ -58,7 +76,7 @@ export function SidebarResizer({ side, width, onResize, disabled = false }: Side
       aria-valuemax={MAX_SIDEBAR_WIDTH}
       aria-valuenow={width}
       aria-disabled={disabled ? true : undefined}
-      title={disabled ? "The width is set in config.jsonc" : undefined}
+      title={disabled ? "The width cannot be saved while config.jsonc has a problem" : undefined}
       tabIndex={disabled ? -1 : 0}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

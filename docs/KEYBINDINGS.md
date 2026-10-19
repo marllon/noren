@@ -39,6 +39,7 @@ The **safe** preset is the default. It does not fight the shell: Ctrl+T, Ctrl+W 
 | Previous / next prompt        | Ctrl+Up / Ctrl+Down   | Ctrl+Up / Ctrl+Down   |
 | Select command output         | none                  | none                  |
 | Copy last command output      | none                  | none                  |
+| Open settings                 | none                  | none                  |
 
 The browser preset is opt-in. It takes Ctrl+T, Ctrl+W and Ctrl+1..9 away from the terminal, so a shell program that uses them (for example a readline "transpose characters" or a "delete word") no longer receives them.
 
@@ -54,13 +55,15 @@ If an override would bind a chord that another action holds, the override is not
 
 ## Storage
 
-The chosen preset and the overrides live in the browser storage under `noren.ui.keybindings`, as `{"preset": "safe" | "browser", "overrides": {"<action id>": "<chord>" | null}}`. This is provisional until the settings file (NOR-F8-01) owns it. A value that is missing, not JSON, not an object, or has an unknown preset falls back to the default; an override for an unknown action, or with a chord that cannot match, is dropped.
+The chosen preset is a setting of `config.jsonc`: `"keybindings": { "preset": "safe" | "browser" }` (see [CONFIG.md](CONFIG.md)). It is chosen in the **Shortcuts** section of the settings screen (the gear in the title bar, or **Open settings** in the palette), which also holds the button that opens the shortcuts screen. A file without the setting means the safe preset; an unknown preset is an error in the file, which keeps the last valid settings and shows the notice.
 
-The preset is chosen in the Layout panel of the title bar, which also holds the button that opens the shortcuts screen.
+The user's own chords (the overrides) are still provisional: they live in the browser storage under `noren.ui.keybindings`, as `{"overrides": {"<action id>": "<chord>" | null}}`, until the file gets a place for them. A value that is missing, not JSON or not an object falls back to no overrides; an override for an unknown action, or with a chord that cannot match, is dropped. Earlier builds kept the preset here too (`{"preset": ..., "overrides": ...}`): it is moved into the file once, at the first start, and removed from this key.
+
+"Open settings" has no key by default; record one for it in the shortcuts screen if you want.
 
 ## The shortcuts screen
 
-The **Keyboard shortcuts** button in the Layout panel opens a dialog that lists every action of the registry with its category and the chord in force for the current preset (`Ctrl+Shift+T`, `Alt+Left`; an action without a key reads `None`). Nothing is kept in the screen itself: it reads and writes the same preferences as above.
+The **Keyboard shortcuts** button in the Shortcuts section of the settings screen opens a dialog that lists every action of the registry with its category and the chord in force for the current preset (`Ctrl+Shift+T`, `Alt+Left`; an action without a key reads `None`). Nothing is kept in the screen itself: it reads and writes the same preferences as above.
 
 - **Search.** The box filters by title, category or chord text. Case, spaces and `+` do not matter, so `split right`, `Ctrl Shift D` and `ctrl+shift+d` all find Split right.
 - **Record.** The Record button of an action reads the next key press as its new chord and saves it as an override; it works at once, with no restart. While a row records, the global shortcut listener runs nothing, so pressing a chord that is already an action's (for example Ctrl+Shift+D) records it and does not split. Escape cancels, and the screen stays open. A press with no Ctrl or Alt, or with Meta held, is ignored and the hint says why. A modifier key on its own is waited on. Holding the key down (auto-repeat) is ignored.
@@ -68,7 +71,7 @@ The **Keyboard shortcuts** button in the Layout panel opens a dialog that lists 
 - **Conflicts.** Before anything is saved the new chord is laid over the chords in force and checked with `findConflicts`, and the result must still resolve with `resolveBindings`. If another action holds the chord, the change is refused: a warning (`role="alert"`) names the action that holds it, the action keeps its chord and the stored preferences stay as they were. This covers Record, and also Reset when another action has since taken the preset's chord. The refusal does not depend on the order of the registry: an action that was earlier in it cannot take a chord from a later one either. Both the check and the change are pure (`changeBinding` in `apps/desktop/src/shortcuts-screen.ts`).
 - **Shell keys.** A note on the screen lists the keys the browser preset takes from the terminal (today `Ctrl+T`, `Ctrl+W`, `Ctrl+1..9`). The list is computed from the registry: the chords the browser preset gives to an action that the safe preset leaves free, so a new action added to the registry shows up without editing the text. The note reads "would take" while the safe preset is on and "no longer reach" once the browser preset is on.
 
-The screen is a modal dialog; Escape (when no row is recording) or the Close button closes it and the focus goes back to the Layout button.
+The screen is a modal dialog over the settings screen; Escape (when no row is recording) or the Close button closes it and the focus goes back to the button that opened it. The preset note reads the preset in force, so a preset chosen in the settings screen shows in the note once it is saved.
 
 ## The recent-tab switcher
 

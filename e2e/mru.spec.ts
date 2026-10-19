@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { openShortcutsScreen } from "./settings-fixture";
 
 // The Ctrl+Tab switcher: a tap goes to the previous tab, holding Ctrl and pressing Tab again walks
 // the tabs by recent use in an overlay with a preview of each, releasing Ctrl commits and Escape
@@ -202,9 +203,7 @@ test("it reaches the tabs of other spaces and switches space", async ({ page }) 
 test("the shortcuts screen lists both actions with their chords", async ({ page }) => {
   await page.goto("/");
   await expect.poll(() => paneIds(page).then((ids) => ids.length)).toBe(1);
-  await page.getByRole("button", { name: "Layout", exact: true }).click();
-  await page.getByRole("button", { name: "Keyboard shortcuts", exact: true }).click();
-  const screen = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
+  const screen = await openShortcutsScreen(page);
   await expect(screen.getByLabel("Shortcut for Next recent tab", { exact: true })).toHaveText(
     "Ctrl+Tab",
   );

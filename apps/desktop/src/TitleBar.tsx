@@ -1,8 +1,8 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Copy, Minus, Square, X } from "lucide-react";
+import { Copy, Minus, Settings, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { insideTauri } from "./backend";
-import { LayoutControl } from "./LayoutControl";
+import { openSettings } from "./settings-ui";
 
 /** macOS keeps its native buttons (title bar overlay); Windows and Linux get our own. */
 const onMac = /Mac/i.test(navigator.userAgent);
@@ -80,7 +80,15 @@ export function TitleBar() {
       <span className="titlebar-title" data-tauri-drag-region>
         Noren
       </span>
-      <LayoutControl />
+      {/* In the title bar so it is reachable even when the sidebar is hidden. */}
+      <button
+        type="button"
+        className="window-button settings-button"
+        aria-label="Settings"
+        onClick={openSettings}
+      >
+        <Settings size={14} aria-hidden="true" />
+      </button>
       {onMac ? null : <WindowControls />}
     </header>
   );

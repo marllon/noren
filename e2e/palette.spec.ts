@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { openShortcutsScreen, seedConfig } from "./settings-fixture";
 
 // The command palette: Ctrl+Shift+P, tabs of every space, spaces and registry actions, the prefixes
 // that limit the list, and the keyboard going back to the terminal when it closes.
@@ -109,12 +110,7 @@ test("the Split right action run from the palette splits the pane and shows its 
 });
 
 test("the chord shown follows the preset", async ({ page }) => {
-  await page.addInitScript(() => {
-    window.localStorage.setItem(
-      "noren.ui.keybindings",
-      JSON.stringify({ preset: "browser", overrides: {} }),
-    );
-  });
+  await seedConfig(page, JSON.stringify({ keybindings: { preset: "browser" } }));
   await page.goto("/");
   await expect.poll(() => paneIds(page).then((ids) => ids.length)).toBe(1);
   await page.locator('[data-nr-part="pane"]:visible').click();
@@ -187,10 +183,7 @@ test("no shortcut acts while the palette search box has the keyboard", async ({ 
 test("Open palette is in the shortcuts screen with its chord", async ({ page }) => {
   await page.goto("/");
   await expect.poll(() => paneIds(page).then((ids) => ids.length)).toBe(1);
-  await page.getByRole("button", { name: "Layout", exact: true }).click();
-  await page.getByRole("button", { name: "Keyboard shortcuts", exact: true }).click();
-  const screen = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
-  await expect(screen).toBeVisible();
+  const screen = await openShortcutsScreen(page);
   await expect(screen.getByLabel("Shortcut for Open palette", { exact: true })).toHaveText(
     "Ctrl+Shift+P",
   );

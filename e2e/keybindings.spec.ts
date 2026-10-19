@@ -1,8 +1,10 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { changeSettings, configText, seedConfig } from "./settings-fixture";
 
-// The shortcut preset is kept in the browser storage under `noren.ui.keybindings`; a new test
-// context starts with none saved, which is the safe preset.
+// The shortcut preset is a setting of `config.jsonc` (`keybindings.preset`), chosen in the settings
+// screen; a new test context starts with no file, which is the safe preset. The user's own chords
+// stay in the browser storage under `noren.ui.keybindings`.
 
 type TestHook = { writeCalls(): number; paneIds(): string[] };
 type TestWindow = Window & { __norenTest?: TestHook };
@@ -16,7 +18,6 @@ const tabs = (page: Page) =>
   page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button");
 const tab = (page: Page, name: string) =>
   page.getByRole("list", { name: "Tabs", exact: true }).getByRole("button", { name, exact: true });
-const radio = (page: Page, name: string) => page.getByRole("radio", { name, exact: true });
 
 /** Opens the first tab and clicks its terminal so it holds the keyboard, as a user typing would. */
 async function openTerminal(page: Page): Promise<void> {
@@ -26,14 +27,13 @@ async function openTerminal(page: Page): Promise<void> {
   await page.locator('[data-nr-part="pane"]:visible').click();
 }
 
-/** Chooses a shortcut preset in the Layout panel and closes the panel. */
+/** Chooses a shortcut preset in the settings screen, saves, and gives the terminal the keyboard. */
 async function choosePreset(page: Page, name: "Safe" | "Browser"): Promise<void> {
-  await page.getByRole("button", { name: "Layout", exact: true }).click();
-  const panel = page.getByRole("group", { name: "Layout", exact: true });
-  await expect(panel).toBeVisible();
-  await radio(page, name).check();
-  await page.keyboard.press("Escape");
-  await expect(panel).toBeHidden();
+  await changeSettings(page, async (screen) => {
+    const radio = screen.getByRole("radio", { name, exact: true });
+    await radio.check();
+    await expect(radio).toBeChecked();
+  });
   await page.locator('[data-nr-part="pane"]:visible').click();
 }
 
@@ -155,4 +155,53 @@ test("a shortcut does not act while a text field has the keyboard", async ({ pag
   await expect(tabs(page)).toHaveCount(1);
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dialog).toBeHidden();
+});
+
+test("choosing the preset writes keybindings.preset into the file and leaves the rest of it alone", async ({
+  page,
+}) => {
+  await seedConfig(page, '// mine\n{\n  "notifications": { "enabled": false }, // quiet\n}\n');
+  await openTerminal(page);
+  await choosePreset(page, "Browser");
+  const text = (await configText(page)) ?? "";
+  expect(text).toContain("// mine");
+  expect(text).toContain("// quiet");
+  expect(text).toContain('"enabled": false');
+  expect(text).toMatch(/"keybindings": \{\s*"preset": "browser"\s*\}/);
+  // And it works at once, with no reload.
+  await page.keyboard.press("Control+T");
+  await expect(tabs(page)).toHaveCount(2);
+});
+
+test("a preset chosen before the settings file existed moves into it once", async ({ page }) => {
+  await page.addInitScript(() => {
+    if (window.localStorage.getItem("noren.web.state") === null) {
+      window.localStorage.setItem(
+        "noren.ui.keybindings",
+        JSON.stringify({ preset: "browser", overrides: { "pane.zoom": "Ctrl+Alt+KeyM" } }),
+      );
+    }
+  });
+  await openTerminal(page);
+  // The browser preset is in force from the first frame: Ctrl+T opens a tab.
+  await page.keyboard.press("Control+T");
+  await expect(tabs(page)).toHaveCount(2);
+  expect(JSON.parse((await configText(page)) ?? "null")).toEqual({
+    keybindings: { preset: "browser" },
+  });
+  // The user's own chord stays in the storage, without the preset, which the file owns.
+  const stored = await page.evaluate(() => window.localStorage.getItem("noren.ui.keybindings"));
+  expect(JSON.parse(stored ?? "null")).toEqual({ overrides: { "pane.zoom": "Ctrl+Alt+KeyM" } });
+});
+
+test("an unknown preset in the settings file keeps the safe preset and says so", async ({
+  page,
+}) => {
+  await seedConfig(page, '{\n  "keybindings": { "preset": "vim" }\n}\n');
+  await openTerminal(page);
+  const before = await writeCalls(page);
+  await page.keyboard.press("Control+T");
+  await expect.poll(() => writeCalls(page)).toBe(before + 1);
+  await expect(tabs(page)).toHaveCount(1);
+  await expect(page.locator('[data-nr-part="config-notice"]')).toContainText("line 2");
 });

@@ -136,6 +136,10 @@ export class TauriBackend implements Backend {
     return this.#bridge.invoke<string | null>("config_load");
   }
 
+  async saveConfig(text: string): Promise<void> {
+    await this.#bridge.invoke("config_save", { content: text });
+  }
+
   watchConfig(callback: (text: string | null) => void): Unsubscribe {
     this.#configListeners.add(callback);
     this.#startWatchingConfig();

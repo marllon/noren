@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { closeShortcutsScreen, openShortcutsScreen } from "./settings-fixture";
 
 // The search over the output of every open tab: Ctrl+Shift+Alt+F, the lines grouped by tab, and
 // Enter (or a click) going to the line: switch space if needed, focus the tab, scroll and select it.
@@ -284,9 +285,7 @@ test("the shortcuts screen lists the action with its chord and records a new one
 }) => {
   await page.goto("/");
   await expect.poll(() => paneIds(page).then((ids) => ids.length)).toBe(1);
-  await page.getByRole("button", { name: "Layout", exact: true }).click();
-  await page.getByRole("button", { name: "Keyboard shortcuts", exact: true }).click();
-  const screen = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
+  const screen = await openShortcutsScreen(page);
   await expect(screen.getByLabel("Shortcut for Search all tabs", { exact: true })).toHaveText(
     "Ctrl+Alt+Shift+F",
   );
@@ -297,7 +296,7 @@ test("the shortcuts screen lists the action with its chord and records a new one
   await expect(screen.getByLabel("Shortcut for Search all tabs", { exact: true })).toHaveText(
     "Ctrl+Alt+J",
   );
-  await screen.getByRole("button", { name: "Close", exact: true }).click();
+  await closeShortcutsScreen(page);
   await expect(screen).toBeHidden();
 
   await page.locator('[data-nr-part="pane"]:visible').click();

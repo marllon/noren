@@ -60,6 +60,19 @@
       "additionalProperties": false,
       "description": "How the window looks and is laid out."
     },
+    "keybindings": {
+      "type": "object",
+      "properties": {
+        "preset": {
+          "description": "Which set of shortcuts is in force: safe keeps the keys a shell uses, browser takes the keys of a web browser.",
+          "default": "safe",
+          "type": "string",
+          "enum": ["safe", "browser"]
+        }
+      },
+      "additionalProperties": false,
+      "description": "Keyboard shortcuts."
+    },
     "notifications": {
       "type": "object",
       "properties": {

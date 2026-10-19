@@ -18,6 +18,8 @@ import { backend, booted } from "./boot";
 import { consentText } from "./action-consent";
 import { loadHome } from "./home";
 import { ActionsHeader } from "./ActionsHeader";
+import { handleDeepLink, setDeepLinkHandler } from "./deep-link";
+import { createDeepLinkHandler } from "./deep-link-handler";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FavoritesGrid } from "./FavoritesGrid";
 import { resolveFavorites } from "./favorites";
@@ -94,6 +96,8 @@ export interface NorenTestHook {
   failCommands(code: number): void;
   /** Number of times the backend was asked to read an actions file. */
   actionsReads(): number;
+  /** Hands a raw `noren://` link to the same entry point the desktop app uses; resolves when applied. */
+  openUrl(url: string): Promise<void>;
 }
 
 declare global {
@@ -387,6 +391,21 @@ function Shell({ store }: { store: WorkspaceStore }) {
     noticeTimer.current = setTimeout(() => setNotice(""), NOTICE_MS);
   }, []);
   const projectActions = useProjectActions(store, backend, space, showNotice);
+  // A `noren://` link: the entry point stays the same while the run function (and so the hook's
+  // state) changes on every render, so the handler reads it through a ref.
+  const runActionIn = useRef(projectActions.runIn);
+  runActionIn.current = projectActions.runIn;
+  useEffect(() => {
+    setDeepLinkHandler(
+      createDeepLinkHandler({
+        store,
+        backend,
+        runAction: (spaceId, action) => runActionIn.current(spaceId, action),
+        notify: showNotice,
+      }),
+    );
+    return () => setDeepLinkHandler(undefined);
+  }, [store, showNotice]);
   /** A tab was dropped on a pane of the tab on screen: join it, or say why it cannot be. */
   const onPaneDrop = (sourceId: Id, drop: PaneDrop) => {
     if (activeId === undefined) return;
@@ -488,6 +507,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
         commandRuns: () => fake.commands.map(({ cwd, command }) => ({ cwd, command })),
         failCommands: (code) => fake.setCommandExitCode(code),
         actionsReads: () => fake.callsTo("readActionsFile").length,
+        openUrl: (url) => handleDeepLink(url),
         killedSessions: () => fake.callsTo("kill").map((call) => Number(call.args[0])),
         sessionStarts: () =>
           fake.callsTo("createSession").map((call) => {

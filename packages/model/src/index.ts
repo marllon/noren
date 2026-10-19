@@ -17,6 +17,8 @@ export type {
   ActionsFileWatcher,
   WatchActionsFileOptions,
 } from "./actions-watcher";
+export { findSpaceByFolder, parseDeepLink, sameFolder, spaceNameForFolder } from "./deep-link";
+export type { DeepLink, ParseDeepLinkResult } from "./deep-link";
 export { createProjectActions, createRunStop } from "./project-actions";
 export type {
   ActionStatus,

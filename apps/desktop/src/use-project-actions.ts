@@ -22,6 +22,11 @@ export interface ProjectActionsUi {
   actionOfTab(itemId: Id): ProjectAction | undefined;
   /** Runs the action, after asking when this exact command was never confirmed in the space. */
   run(action: ProjectAction): void;
+  /**
+   * The same as `run`, for any space (a link can name a space that is not on screen yet). The
+   * action must come from the file of that space.
+   */
+  runIn(spaceId: Id, action: ProjectAction): void;
   stop(action: ProjectAction): void;
   /** Set while the confirmation dialog is open. */
   pending: PendingRun | null;
@@ -59,6 +64,8 @@ export function useProjectActions(
   onError: (message: string) => void,
 ): ProjectActionsUi {
   const [executor, setExecutor] = useState<ProjectActions | undefined>(undefined);
+  // The same executor, readable before the render that follows its creation (a link can arrive then).
+  const executorRef = useRef<ProjectActions | undefined>(undefined);
   const [fileRead, setFileRead] = useState<FileRead | undefined>(undefined);
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [pending, setPending] = useState<PendingRun | null>(null);
@@ -77,10 +84,12 @@ export function useProjectActions(
       runStop: createRunStop(backend),
     });
     const offExit = created.onExit(() => setTick((tick) => tick + 1));
+    executorRef.current = created;
     setExecutor(created);
     return () => {
       offExit();
       created.dispose();
+      executorRef.current = undefined;
       setExecutor(undefined);
     };
   }, [store, backend]);
@@ -121,9 +130,18 @@ export function useProjectActions(
 
   const start = useCallback(
     (id: Id, action: ProjectAction) => {
-      if (executor) track(busyKey(id, action), executor.run(id, action));
+      const current = executorRef.current;
+      if (current) track(busyKey(id, action), current.run(id, action));
     },
-    [executor, track],
+    [track],
+  );
+
+  const runIn = useCallback(
+    (id: Id, action: ProjectAction) => {
+      if (isConfirmed(consent.current, id, action)) start(id, action);
+      else setPending({ spaceId: id, action });
+    },
+    [start],
   );
 
   return {
@@ -131,10 +149,8 @@ export function useProjectActions(
     statusOf: (action) => executor?.status(spaceId, action) ?? "idle",
     isBusy: (action) => busy.has(busyKey(spaceId, action)),
     actionOfTab: (itemId) => actions.find((action) => executor?.tabOf(spaceId, action) === itemId),
-    run: (action) => {
-      if (isConfirmed(consent.current, spaceId, action)) start(spaceId, action);
-      else setPending({ spaceId, action });
-    },
+    run: (action) => runIn(spaceId, action),
+    runIn,
     stop: (action) => {
       if (executor) track(busyKey(spaceId, action), executor.stop(spaceId, action));
     },

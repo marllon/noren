@@ -15,6 +15,7 @@ import {
   activeItemIdOf,
   activeSpaceOf,
   createWorkspaceStore,
+  itemShownIn,
   sessionStartOptions,
   spaceItemIds,
 } from "./workspace-store";
@@ -162,6 +163,29 @@ describe("workspace store", () => {
       workspace: { ...ws, spaces: [rest] },
     });
     expect(activeItemIdOf(store.getState())).toBe(spaceItemIds(space)[0]);
+  });
+
+  it("itemShownIn names the tab a space shows, also for a space that is not the active one", async () => {
+    const { store } = await openStore(new FakeBackend());
+    store.getState().newTab();
+    const main = activeSpaceOf(store.getState().workspace);
+    const lastOfMain = activeItemIdOf(store.getState());
+    store.getState().createSpace({ name: "Two" });
+    const spaces = store.getState().workspace.spaces;
+    const one = spaces[0];
+    if (!one) throw new Error("no space");
+    // The first space is out of sight now, and still has the tab it will show.
+    expect(activeSpaceOf(store.getState().workspace).id).not.toBe(one.id);
+    expect(itemShownIn(one)).toBe(lastOfMain);
+    expect(itemShownIn(one)).toBe(one.activeItemId);
+    // A space that holds no active tab (a hand-edited file) shows its first one.
+    const rest = { ...main };
+    delete rest.activeItemId;
+    expect(itemShownIn(rest)).toBe(spaceItemIds(main)[0]);
+    // An empty space shows none.
+    expect(itemShownIn({ ...main, items: {}, tree: [], pinned: [], activeItemId: "gone" })).toBe(
+      undefined,
+    );
   });
 
   it("each space keeps its own active tab when switching between them", async () => {

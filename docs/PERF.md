@@ -1,9 +1,9 @@
 # Performance
 
-The targets of the product, how each one is measured, and what was measured. Two tasks fill this
-page: NOR-F11-01a (the measurements that need no window, rows 1 to 4 of "Results") and NOR-F11-01b
+The targets of the product, how each one is measured, and what was measured. Three tasks fill this
+page: NOR-F11-01a (the measurements that need no window, rows 1 to 4 of "Results"), NOR-F11-01b
 (the ones that need the real app in a release build: the first prompt and the memory of 30 tabs,
-rows 5 and 6).
+rows 5 and 6) and NOR-F11-01c (why the first switch of space was sometimes slow, and the fix, row 4).
 
 ## Targets
 
@@ -12,7 +12,7 @@ rows 5 and 6).
 | 1   | Opening the app to the first prompt: under 800 ms (release, Windows)       | NOR-F11-01b | **not met**: 958 ms median (894 to 997), 158 ms over; NOR-F11-01d                                                               |
 | 2   | `cat` of 50 MB does not freeze the interface: the sidebar answers < 100 ms | NOR-F11-01a | **met** (13 ms)                                                                                                                 |
 | 3   | 30 tabs open: total memory under 500 MB                                    | NOR-F11-01b | **not met**: 3,651 MB of working set summed over the tree (private working set 1,384 MB), 30 shells are 83 % of it; NOR-F11-01e |
-| 4   | Changing space: under 100 ms                                               | NOR-F11-01a | **met** (16 ms), except the first switch of a page (56.5 ms median, up to 155 ms): NOR-F11-01c                                  |
+| 4   | Changing space: under 100 ms                                               | NOR-F11-01a | **met** (16 ms), also the first switch of a page (43.7 ms median, worst 49.8 of 25) after NOR-F11-01c                           |
 |     | Terminal throughput (no number in the spec)                                | NOR-F11-01a | measured, see below                                                                                                             |
 
 ## Machine
@@ -197,13 +197,13 @@ not read as the busy page being faster, only as the same one-frame floor.)
 Two spaces of 15 tabs each, so 30 terminals are mounted in the page (30 `.xterm` elements counted
 in every repetition). The test clicks the button of the other space and back, 6 times each way in a
 fresh page, 5 repetitions. The first switch of a page is shown apart: it is the one that draws the
-other space for the first time. The spec was run 5 times in all (the final run, three more runs
-back to back with `--repeat-each=3`, and once inside `pnpm e2e`), 25 repetitions.
+other space for the first time. In NOR-F11-01a the spec was run 5 times (the final run, three more
+runs back to back with `--repeat-each=3`, and once inside `pnpm e2e`), 25 repetitions.
 
-Later switches (the ones after the first, over the 5 runs): the median of each run was 15.5, 15.8,
-15.4, 15.7 and 15.5 ms; the slowest single switch in any run was 27.8 ms.
+Later switches (the ones after the first, over those 5 runs): the median of each run was 15.5,
+15.8, 15.4, 15.7 and 15.5 ms; the slowest single switch in any run was 27.8 ms.
 
-First switch of the page, in ms, by run (5 repetitions each):
+First switch of the page, in ms, by run (5 repetitions each), before NOR-F11-01c:
 
 | Run                              | Repetitions                      | Median |
 | -------------------------------- | -------------------------------- | ------ |
@@ -214,15 +214,89 @@ First switch of the page, in ms, by run (5 repetitions each):
 | Back to back, 3rd                | 141.1, 154.6, 142.2, 137.4, 71.3 | 141.1  |
 | **All 25**                       |                                  | 56.5   |
 
-The first switch has two modes: about 55 ms most of the time, and about 130 to 155 ms in 6 of the 25
+The first switch had two modes: about 55 ms most of the time, and 130 to 155 ms in 6 of the 25
 repetitions (all in the last two runs, one after the other). The later switches did not change in
-those runs, so the machine was not simply slower; something that only the first switch of a page does
-(drawing the other space for the first time, compiling code that has not run yet) costs two and a
-half times more some of the time. The cause was not found here.
+those runs. Task NOR-F11-01c was opened for it; what it found is below.
 
-**Target: under 100 ms. Verdict: met for every switch after the first (16 ms), with every terminal
-of the 30 tabs alive; not met for the first switch of a page**: the median of 25 is 56.5 ms, but 6 of
-25 are over 100 ms and the worst is 154.6 ms. Task NOR-F11-01c was opened for it.
+#### Why the first switch was sometimes slow (NOR-F11-01c)
+
+The measure was taken again before touching anything (two runs of 5 repetitions, the code of
+NOR-F11-01b): 6 of 50 first switches were over 100 ms (104.4, 118.8, 103.6, 120.9, 141.8 and 146.7)
+and the rest sat at 45 to 79 ms, median 55. The JavaScript of the switch is not where the time goes:
+a CPU profile of the click shows about 5 ms of page code (the React update, the ResizeObserver
+callbacks under 1 ms, xterm's `handleResize`). A Chromium trace (`devtools.timeline`, `gpu`,
+`gpu.angle`) shows the rest:
+
+- **What a first switch costs by itself (about 40 ms).** The terminal that is shown holds a WebGL
+  canvas that no frame has composited yet. In the headless build the compositor is software: the
+  frame that first shows the canvas stops the main thread in `GLES2::ReadPixels` (inside `Commit`,
+  `DoUpdateLayers`) until the graphics process has finished the canvas, which takes 35 to 45 ms the
+  first time and about 3 ms for a canvas that was shown before. With the DOM renderer in its place
+  the same switch takes 31 ms. The later switches (16 ms) pay none of it.
+- **What made it 100 to 160 ms (the slow mode).** `App.tsx` mounts the terminal of every tab at once,
+  hidden (`App.tsx:1775`, `App.tsx:426`), and `TerminalView.tsx` made the WebGL context of each one in
+  that same mount (`TerminalView.tsx:281-296` before the change). The 30 contexts, made within about
+  0.3 s of page time (0.43 to 0.72 s), keep the graphics process busy for the next second: the trace
+  of a slow switch shows its thread running a task of about 3 ms every 3.7 ms before the click, and
+  the readback of the shown canvas waiting behind them for 161 ms. A click that lands in that second
+  (the harness clicks 0.9 to 1.4 s after the page loads) is slow; one that lands later is not.
+  Clicking right after the first prompt, before the graphics process settled, gave 95 to 208 ms in
+  every repetition of a probe made for it, which is how the cause was told from chance.
+- **Not the cause.** The layers of the hidden spaces (`display: none` costs nothing until they are
+  shown), the hidden tabs, and the ResizeObserver fit (under 1 ms in every trace).
+
+Two more facts the trace showed, left alone (finding #137): the page allows 16 WebGL contexts and
+drops the oldest, so with 30 terminals the first 14 created lose theirs about 0.3 s after the start,
+**the one on screen included**; xterm waits 3 s and then falls back to the DOM renderer for them. The
+app behaved so before this task and does after it; it belongs to the memory task (NOR-F11-01e), which
+already looks at the context of each terminal.
+
+#### The fix
+
+`TerminalView` takes a new property `webglFirst`. The terminal on screen and the tab that each space
+shows first (`itemShownIn` in `workspace-store.ts`, passed down by `App.tsx` as `first`) make their
+WebGL context in the mount, as before, so a space has its first tab drawn before the person switches
+to it. The terminals of every other tab are queued and make theirs one every 40 ms (`preloadWebgl`),
+or at once if the tab is shown before its turn (`attachWebgl`, called when the view first has a
+size). Every terminal is still mounted, alive and drawn by the same renderer; what the person sees is
+the same, and only the order and the spacing in which the contexts appear changed. A new test
+(`e2e/webgl-contexts.spec.ts`) fails on the old code (all 30 contexts within 0.3 s) and passes on the
+new (a span of at least 1 s, and every tab gets one).
+
+Two attempts were measured and dropped. Laying out the first tab of each hidden space under
+`visibility: hidden`, so its canvas is drawn in advance, left the first switch at the same 75 to 90
+ms in this build (the compositor reads the canvas back when it is first painted, not when it is
+drawn) and made the later switches 7 ms slower. Making no context until a terminal is first shown
+brought the probe to 33 ms, but the text of the new tab was drawn 100 to 125 ms after the click (the
+probe stops at the frame after the click, not at the frame with the text), so that number was not a
+fix.
+
+#### After the fix: the 25 first switches
+
+5 runs of the space test, 5 repetitions each, a browser context of its own for each repetition, in ms
+(`NOREN_PERF_OUT=... playwright test perf.spec.ts -g space --workers=1`, the final code):
+
+| Run        | Repetitions                  | Median |
+| ---------- | ---------------------------- | ------ |
+| 1          | 33.3, 39.6, 41.7, 45.6, 48.6 | 41.7   |
+| 2          | 29.7, 39.9, 47.7, 46.5, 42.4 | 42.4   |
+| 3          | 33.4, 38.6, 44.4, 43.7, 49.8 | 43.7   |
+| 4          | 33.5, 38.0, 47.6, 47.0, 49.3 | 47.0   |
+| 5          | 31.2, 38.3, 46.0, 48.1, 48.5 | 46.0   |
+| **All 25** | min 29.7, max 49.8           | 43.7   |
+
+Other samples of the same logic: 5 more inside `pnpm e2e` (48.8, 47.4, 47.5, 42.0, 47.5) and 100 from
+four runs taken while the fix was being finished (median 48.8, worst 84.8 ms): 130 first switches,
+none over 100 ms, against 6 of 50 before. The later switches in the 5 runs: the median of each run was
+14.2, 15.8, 17.4, 17.0 and 12.2 ms; the slowest single one 47.5 ms. The 30 `.xterm` elements were in
+the page in every repetition.
+
+**Target: under 100 ms. Verdict: met**, the first switch of a page included: 25 of 25 under 100 ms
+(worst 49.8 ms), where it had been 6 of 25 over (worst 154.6 ms), and every switch after the first
+(16 ms), with every terminal of the 30 tabs alive. Not verified (D19): the real window. The real
+compositor uses the GPU, so the 40 ms of the first composite may not exist there; the new order of
+the contexts (`TerminalView.tsx`, `preloadWebgl`) can only help. What was measured is the headless
+build, where the cost showed.
 
 ### 5. Opening the app to the first prompt (real app, release build)
 
@@ -305,10 +379,16 @@ Task NOR-F11-01e was opened for it; its first step is to decide what "total memo
   here (the fastest feed of the harness, a timer-paced one, was drained as it came), so this is a
   hypothesis from reading the code, not a measurement.
 - **What the first prompt leaves out.** The clock stops when xterm has taken the prompt in, not when
-  the frame that shows it is painted (`apps/desktop/src/TerminalView.tsx:419`), which is one frame
+  the frame that shows it is painted (`apps/desktop/src/TerminalView.tsx:469`), which is one frame
   later in a shown window and is not observable in a hidden one. The shell is the one of this
   machine with the user's own profile (`$PROFILE` runs), and the web view cache of the machine is
   warm after the first run; a first start after an installation, with a cold cache, is not
   measured.
+- **What the click stopwatch leaves out (finding #138).** It stops at the frame after the element
+  changed, not at the frame that shows the text of the terminal that came on screen. A change that
+  postpones the drawing of the new terminal by a few frames makes the number smaller without making
+  the switch faster (an attempt in NOR-F11-01c did that, see row 4). The numbers of row 4 after that
+  task were checked against the first WebGL draw of the shown terminal in the same page, which came
+  before the frame the stopwatch stops at, but the spec itself does not check it.
 - **One machine.** A faster or slower computer changes every figure; the ratios (idle against
   loaded, Noren against raw) are the part that travels.

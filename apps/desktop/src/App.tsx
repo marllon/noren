@@ -149,6 +149,7 @@ import { useTerminalOptions, zoomTerminalFont } from "./terminal-options-store";
 import {
   activeItemIdOf,
   activeSpaceOf,
+  itemShownIn,
   sessionStartOptions,
   spaceItemIds,
 } from "./workspace-store";
@@ -315,6 +316,8 @@ interface PaneTerminalProps {
   pane: Pane;
   /** True when the terminal should hold the keyboard: its tab shows and it is the focused pane. */
   active: boolean;
+  /** True for a tab that a space shows or will show first: its terminal draws as soon as it mounts. */
+  first: boolean;
   colors: ITheme;
   onReady(paneId: Id, handle: TerminalHandle): void;
 }
@@ -324,7 +327,7 @@ interface PaneTerminalProps {
  * git branch of the pane (OSC 7 and 133 from the integrated shell); it is made once per pane, and
  * the session it listens to is the one the terminal starts or attaches.
  */
-function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTerminalProps) {
+function PaneTerminal({ store, space, pane, active, first, colors, onReady }: PaneTerminalProps) {
   const { profileId, cwd, env } = sessionStartOptions(space, pane);
   // Font, cursor, scrollback and bell: the settings of the file and the zoom of this window.
   const options = useTerminalOptions();
@@ -353,6 +356,7 @@ function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTermi
       theme={colors}
       options={options}
       active={active}
+      webglFirst={first}
       {...(pane.sessionId !== undefined ? { attach: Number(pane.sessionId) } : {})}
       {...(profileId !== undefined ? { profileId } : {})}
       {...(cwd !== undefined ? { cwd } : {})}
@@ -377,6 +381,8 @@ interface ItemViewProps {
   item: Item;
   /** True when this is the tab on screen; the others stay mounted, hidden. */
   shown: boolean;
+  /** True for the tab that its space shows (when the space is on screen) or will show first. */
+  first: boolean;
   colors: ITheme;
   /** The home folder, for the short form of the folder in a pane header (once known). */
   home: string | undefined;
@@ -386,7 +392,17 @@ interface ItemViewProps {
 }
 
 /** The layout of one tab: its panes as nested resizable panels, a terminal in each. */
-function ItemView({ store, space, item, shown, colors, home, onReady, onPaneMenu }: ItemViewProps) {
+function ItemView({
+  store,
+  space,
+  item,
+  shown,
+  first,
+  colors,
+  home,
+  onReady,
+  onPaneMenu,
+}: ItemViewProps) {
   const dispatch = useStore(store, (state) => state.dispatch);
   const { paneHeaders } = useLayout();
   const context: SplitLayoutContext = {
@@ -407,6 +423,7 @@ function ItemView({ store, space, item, shown, colors, home, onReady, onPaneMenu
         space={space}
         pane={pane}
         active={shown && pane.id === item.focusedPaneId}
+        first={first}
         colors={colors}
         onReady={onReady}
       />
@@ -1771,25 +1788,29 @@ function Shell({ store }: { store: WorkspaceStore }) {
           <div className="main">
             {tabsOnTop && <TabBar {...treeProps} onNewTab={() => newTab()} />}
             <section className="content" aria-label="Content">
-              {workspace.spaces.map((s) => (
-                <div key={s.id} className="space-layer" hidden={s.id !== space.id}>
-                  {Object.values(s.items).map((item) => (
-                    <ItemView
-                      key={item.id}
-                      store={store}
-                      space={s}
-                      item={item}
-                      shown={s.id === space.id && item.id === activeId}
-                      colors={colors}
-                      home={home}
-                      onReady={recordHandle}
-                      onPaneMenu={(paneId, point) =>
-                        setOverlay({ kind: "pane-menu", paneId, point })
-                      }
-                    />
-                  ))}
-                </div>
-              ))}
+              {workspace.spaces.map((s) => {
+                const firstId = itemShownIn(s);
+                return (
+                  <div key={s.id} className="space-layer" hidden={s.id !== space.id}>
+                    {Object.values(s.items).map((item) => (
+                      <ItemView
+                        key={item.id}
+                        store={store}
+                        space={s}
+                        item={item}
+                        shown={s.id === space.id && item.id === activeId}
+                        first={item.id === firstId}
+                        colors={colors}
+                        home={home}
+                        onReady={recordHandle}
+                        onPaneMenu={(paneId, point) =>
+                          setOverlay({ kind: "pane-menu", paneId, point })
+                        }
+                      />
+                    ))}
+                  </div>
+                );
+              })}
               <div
                 className="pane-notice"
                 role="status"

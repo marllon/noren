@@ -225,7 +225,11 @@ export function activeSpaceOf(ws: Workspace): Space {
  * the space's `activeItemId`; a space that holds none (a hand-edited file) shows its first tab.
  */
 export function activeItemIdOf(state: Pick<WorkspaceState, "workspace">): Id | undefined {
-  const space = activeSpaceOf(state.workspace);
+  return itemShownIn(activeSpaceOf(state.workspace));
+}
+
+/** The tab a space shows (or would show) in the content area, whether or not the space is active. */
+export function itemShownIn(space: Space): Id | undefined {
   const chosen = space.activeItemId;
   if (chosen !== undefined && space.items[chosen] !== undefined) return chosen;
   return spaceItemIds(space)[0];

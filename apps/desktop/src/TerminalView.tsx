@@ -119,6 +119,12 @@ interface TerminalViewProps {
    * ends it on unmount. Without this callback the view ends its own session when it goes away.
    */
   onSessionStart?(id: SessionId): void;
+  /**
+   * False for a view that is not on screen and is not the first thing its space will show: its WebGL
+   * context is made in its turn, a little after the mount, not in the mount (see `preloadWebgl`).
+   * Read once, on mount. True when left out.
+   */
+  webglFirst?: boolean;
   /** Colors of the terminal; changing them repaints the live terminal. */
   theme: ITheme;
   /**
@@ -146,6 +152,35 @@ interface TerminalViewProps {
   onOutput?(bytes: Uint8Array): void;
 }
 
+/** Pause between the WebGL contexts that views out of sight get ahead of their first show. */
+const WEBGL_PRELOAD_STEP_MS = 40;
+
+const preloadQueue: (() => void)[] = [];
+let preloadTimer: ReturnType<typeof setTimeout> | undefined;
+
+function runNextPreload(): void {
+  preloadTimer = undefined;
+  preloadQueue.shift()?.();
+  if (preloadQueue.length > 0) preloadTimer = setTimeout(runNextPreload, WEBGL_PRELOAD_STEP_MS);
+}
+
+/**
+ * Queues `attach` (creating the WebGL context of a view that is not on screen) to run in its turn,
+ * one every `WEBGL_PRELOAD_STEP_MS`, and returns the function that takes it off the queue. A start
+ * with many tabs mounts every terminal at once; creating all their contexts in that same moment
+ * kept the graphics process busy for a second, and whatever the person did first (switching space)
+ * waited behind it for 130 to 160 ms. Spread out, the same contexts are there a moment later and
+ * nothing waits for them.
+ */
+function preloadWebgl(attach: () => void): () => void {
+  preloadQueue.push(attach);
+  preloadTimer ??= setTimeout(runNextPreload, WEBGL_PRELOAD_STEP_MS);
+  return () => {
+    const at = preloadQueue.indexOf(attach);
+    if (at >= 0) preloadQueue.splice(at, 1);
+  };
+}
+
 function isShortcut(event: KeyboardEvent, code: string): boolean {
   return (
     event.type === "keydown" &&
@@ -166,6 +201,7 @@ export function TerminalView({
   env,
   restored,
   onSessionStart,
+  webglFirst = true,
   theme,
   options = DEFAULT_TERMINAL_OPTIONS,
   active = true,
@@ -191,7 +227,7 @@ export function TerminalView({
   const refitRef = useRef<(() => void) | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   // What the shell starts with is fixed when the view mounts; a later change must not restart it.
-  const [start0] = useState(() => ({ attach, profileId, cwd, env, restored }));
+  const [start0] = useState(() => ({ attach, profileId, cwd, env, restored, webglFirst }));
 
   useEffect(() => {
     rightClickRef.current = rightClick ?? "copy-or-paste";
@@ -277,19 +313,33 @@ export function TerminalView({
       commandMarks.setExplain((request) => onExplainRef.current?.(request));
     }
 
+    let disposed = false;
+
     // WebGL is the fast path; any failure (no WebGL2, lost context) drops back to the DOM renderer.
+    // The view on screen, and the one that each space will show first, get their context now. The
+    // others get it in their turn (see `preloadWebgl`), or at once if shown before that.
     let webgl: WebglAddon | null = null;
-    try {
-      const addon = new WebglAddon();
-      addon.onContextLoss(() => {
-        addon.dispose();
+    let webglTried = false;
+    let leaveQueue: (() => void) | undefined;
+    const attachWebgl = () => {
+      if (webglTried || disposed) return;
+      webglTried = true;
+      leaveQueue?.();
+      try {
+        const addon = new WebglAddon();
+        addon.onContextLoss(() => {
+          addon.dispose();
+          webgl = null;
+        });
+        term.loadAddon(addon);
+        webgl = addon;
+      } catch {
         webgl = null;
-      });
-      term.loadAddon(addon);
-      webgl = addon;
-    } catch {
-      webgl = null;
-    }
+      }
+    };
+    const hasSize = () => host.clientWidth > 0 && host.clientHeight > 0;
+    if (start0.webglFirst || hasSize()) attachWebgl();
+    else leaveQueue = preloadWebgl(attachWebgl);
 
     const safeFit = () => {
       try {
@@ -297,6 +347,7 @@ export function TerminalView({
       } catch {
         // The container has no size yet (hidden or detached); the next observation fits.
       }
+      if (hasSize()) attachWebgl();
     };
     safeFit();
     refitRef.current = safeFit;
@@ -313,7 +364,6 @@ export function TerminalView({
       flashTimer = setTimeout(() => view.classList.remove("bell-flash"), BELL_FLASH_MS);
     });
 
-    let disposed = false;
     let sessionId: SessionId | undefined;
     const cleanups: (() => void)[] = [];
 
@@ -527,6 +577,7 @@ export function TerminalView({
 
     return () => {
       disposed = true;
+      leaveQueue?.();
       observer.disconnect();
       refitRef.current = null;
       bellSub.dispose();

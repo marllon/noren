@@ -2,6 +2,7 @@ import type {
   Backend,
   CreateSessionOptions,
   GitInfo,
+  ModFile,
   SessionExit,
   SessionId,
   ShellProfile,
@@ -10,6 +11,7 @@ import type {
 import { ManualClock } from "./clock";
 import type { Clock } from "./clock";
 import { sameFolder } from "./deep-link";
+import { MAX_MOD_BYTES, MAX_MODS, isValidModFileName } from "./mods";
 import { OutputStream } from "./output-stream";
 import { THEME_ID_PATTERN } from "./theme";
 import { profilesProblem } from "./user-profile-schema";
@@ -57,6 +59,8 @@ export interface FakeBackendOptions {
   config?: string | null;
   /** Initial theme files of the user, by theme id (the text of `themes/<id>.json`). */
   userThemes?: Record<string, string>;
+  /** Initial mod files of the user, by file name (the text of `mods/<name>.css`). */
+  mods?: Record<string, string>;
 }
 
 /** One notification given to `notify`, for assertions. */
@@ -410,6 +414,9 @@ class FakeSession {
  * - the theme files of the user live in memory too: `saveUserTheme` writes one as the app does
  *   (an id that is not a theme id is refused, as the real one refuses it), `setUserTheme` puts a
  *   file there as if it had been placed by hand, `listUserThemes` answers them in the order of the ids
+ * - the mod files of the user live in memory: `setMod` puts a file there, edits it or removes it as
+ *   a person with an editor would, and tells whoever called `watchMods`; `listMods` answers the
+ *   ones the real folder would list (a valid name, not too large, at most `MAX_MODS`) by name
  * - the profiles of the user (`setUserProfiles`) are checked as the real backend checks them and
  *   listed after the profiles it was built with; a session of one starts in its `cwd` unless the call
  *   names a folder, and `session(id)` tells the `program` and `args` it was asked to run
@@ -435,6 +442,9 @@ export class FakeBackend implements Backend {
   readonly #notifications: FakeNotification[] = [];
   readonly #configListeners = new Set<(text: string | null) => void>();
   readonly #userThemes = new Map<string, string>();
+  readonly #mods = new Map<string, string>();
+  readonly #modListeners = new Set<(files: ModFile[]) => void>();
+  #modListFailure: Error | undefined;
   #userThemeSaveFailure: Error | undefined;
   #config: string | null;
   #configSaveFailure: Error | undefined;
@@ -450,6 +460,9 @@ export class FakeBackend implements Backend {
     this.#config = options.config ?? null;
     for (const [id, text] of Object.entries(options.userThemes ?? {})) {
       this.#userThemes.set(id, text);
+    }
+    for (const [name, text] of Object.entries(options.mods ?? {})) {
+      this.#mods.set(name, text);
     }
     this.#commandExitCode = options.commandExitCode ?? 0;
     for (const [cwd, text] of Object.entries(options.actionsFiles ?? {})) {
@@ -750,6 +763,62 @@ export class FakeBackend implements Backend {
   /** Makes `saveUserTheme` reject with `error` (the disk refused); `undefined` undoes it. */
   setUserThemeSaveFailure(error: Error | undefined): void {
     this.#userThemeSaveFailure = error;
+  }
+
+  async listMods(): Promise<ModFile[]> {
+    this.#record("listMods");
+    if (this.#modListFailure) throw this.#modListFailure;
+    return this.#modList();
+  }
+
+  watchMods(callback: (files: ModFile[]) => void): Unsubscribe {
+    this.#record("watchMods");
+    this.#modListeners.add(callback);
+    return () => {
+      this.#modListeners.delete(callback);
+    };
+  }
+
+  /**
+   * Puts the mod file `mods/<name>` in place with `text` (`null` removes it), as a person with an
+   * editor would, and tells everyone watching when the list of mods changed by it. Not a `Backend`
+   * call, so it is not recorded. A backend that keeps the files somewhere else (the web one)
+   * overrides `putMod` to keep them there.
+   */
+  setMod(name: string, text: string | null): void {
+    const before = JSON.stringify(this.#modList());
+    this.putMod(name, text);
+    const files = this.#modList();
+    if (JSON.stringify(files) === before) return;
+    for (const listener of [...this.#modListeners]) listener(files.map((file) => ({ ...file })));
+  }
+
+  /** Where the mod files are kept in this backend; the web one keeps them in the storage too. */
+  protected putMod(name: string, text: string | null): void {
+    if (text === null) this.#mods.delete(name);
+    else this.#mods.set(name, text);
+  }
+
+  /** The mod files as they are now, by file name (the ones the folder would not list included). */
+  get modFiles(): Readonly<Record<string, string>> {
+    return Object.fromEntries(this.#mods);
+  }
+
+  /** Makes `listMods` reject with `error` (the folder cannot be read); `undefined` undoes it. */
+  setModListFailure(error: Error | undefined): void {
+    this.#modListFailure = error;
+  }
+
+  /** What the real folder lists: valid names, not too large, the first `MAX_MODS` by name. */
+  #modList(): ModFile[] {
+    return [...this.#mods.entries()]
+      .filter(
+        ([name, text]) =>
+          isValidModFileName(name) && new TextEncoder().encode(text).length <= MAX_MOD_BYTES,
+      )
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .slice(0, MAX_MODS)
+      .map(([name, text]) => ({ name, text }));
   }
 
   async readActionsFile(cwd: string): Promise<string | null> {

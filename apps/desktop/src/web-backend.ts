@@ -38,8 +38,32 @@ export const WEB_CONFIG_KEY = "noren.web.config";
  */
 export const WEB_THEMES_KEY = "noren.web.themes";
 
+/**
+ * Key of the mod files of the user in web mode (`mods/<name>.css` of the real app): a JSON object
+ * from the file name to its text. The e2e tests can seed it before the page loads; a file placed
+ * with the `setMod` hook is kept here, so a reload finds it again.
+ */
+export const WEB_MODS_KEY = "noren.web.mods";
+
 /** What web mode needs of the browser storage. */
 export type StateStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+/** The mod files seeded under `WEB_MODS_KEY` (name to text), or `undefined` when there is no usable seed. */
+export function seededMods(storage: Pick<Storage, "getItem">): Record<string, string> | undefined {
+  try {
+    const raw = storage.getItem(WEB_MODS_KEY);
+    if (raw === null) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    const files: Record<string, string> = {};
+    for (const [name, text] of Object.entries(value)) {
+      if (typeof text === "string") files[name] = text;
+    }
+    return files;
+  } catch {
+    return undefined;
+  }
+}
 
 /** The theme files seeded under `WEB_THEMES_KEY` (id to text), or `undefined` when there is no usable seed. */
 export function seededUserThemes(
@@ -125,9 +149,11 @@ export class WebBackend extends FakeBackend {
   constructor(storage: StateStorage) {
     const profiles = seededProfiles(storage);
     const userThemes = seededUserThemes(storage);
+    const mods = seededMods(storage);
     super({
       ...(profiles !== undefined ? { profiles } : {}),
       ...(userThemes !== undefined ? { userThemes } : {}),
+      ...(mods !== undefined ? { mods } : {}),
       config: seededConfig(storage),
     });
     this.#storage = storage;
@@ -145,6 +171,20 @@ export class WebBackend extends FakeBackend {
       // Storage is blocked or full: the memory copy still serves this page load.
     }
     super.putUserTheme(id, text);
+  }
+
+  /** Like the fake one, and kept under `WEB_MODS_KEY` so a reload finds the same files. */
+  protected override putMod(name: string, text: string | null): void {
+    try {
+      const others = Object.entries(seededMods(this.#storage) ?? {}).filter(
+        ([known]) => known !== name,
+      );
+      const files = Object.fromEntries(text === null ? others : [...others, [name, text]]);
+      this.#storage.setItem(WEB_MODS_KEY, JSON.stringify(files));
+    } catch {
+      // Storage is blocked or full: the memory copy still serves this page load.
+    }
+    super.putMod(name, text);
   }
 
   /** Like the fake one, and kept under `WEB_CONFIG_KEY` so a reload finds the same file. */

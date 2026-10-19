@@ -9,7 +9,7 @@ mod smoke;
 use tauri::{Manager, RunEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 
-use bridge::{AppState, ConfigState, ThemeState};
+use bridge::{AppState, ConfigState, ModState, ThemeState};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -64,6 +64,8 @@ fn main() {
             bridge::config_watch,
             bridge::theme_list,
             bridge::theme_save,
+            bridge::mod_list,
+            bridge::mod_watch,
             notify::notify_show,
             notify::window_is_focused,
             deeplink::deep_link_take_waiting,
@@ -76,6 +78,7 @@ fn main() {
                     app.manage(smoke::deeplink_state_store(target));
                     app.manage(ConfigState::new(smoke::deeplink_config_store(target)));
                     app.manage(ThemeState::new(smoke::deeplink_theme_store(target)));
+                    app.manage(ModState::new(smoke::deeplink_mod_store(target)).without_watching());
                     app.manage(target.clone());
                 }
                 None => {
@@ -95,6 +98,10 @@ fn main() {
                     } else {
                         themes
                     });
+                    // The smoke run lists the mods of the user (a read) but does not watch the
+                    // folder: watching would create it.
+                    let mods = ModState::new(bridge::mod_store(app.handle())?);
+                    app.manage(if smoke { mods.without_watching() } else { mods });
                 }
             }
             // The window is created hidden (tauri.conf.json); only a normal start shows it.

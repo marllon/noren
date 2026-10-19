@@ -17,6 +17,7 @@ import {
   splitAt,
   swapPanes,
 } from "./layout";
+import { MAX_MODS, isValidModFileName, sameModList } from "./mods";
 import { layoutPanes, withoutSessions } from "./sessions";
 import { isMarked, isPaneVisible, mapPanes, shownItem, visiblePanes, withoutMarks } from "./unread";
 import {
@@ -118,6 +119,12 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       if (themeId === undefined) return ws;
       return updateSpace(ws, action.spaceId, (space) =>
         space.themeId === themeId ? undefined : { ...space, themeId },
+      );
+    }
+    case "space/set-mods": {
+      const modIds = cleanModIds(action.modIds);
+      return updateSpace(ws, action.spaceId, (space) =>
+        sameModList(space.modIds, modIds) ? undefined : { ...space, modIds },
       );
     }
     case "space/set-defaults":
@@ -253,6 +260,18 @@ function assertNever(_action: never, ws: Workspace): Workspace {
 function clean(text: string): string | undefined {
   const trimmed = text.trim();
   return trimmed === "" ? undefined : trimmed;
+}
+
+/** The mod names of a list, in order, once each; what is not a mod name is dropped. */
+function cleanModIds(list: readonly string[]): string[] {
+  if (!Array.isArray(list)) return [];
+  const names: string[] = [];
+  for (const name of list as readonly unknown[]) {
+    if (isValidModFileName(name) && !names.includes(name) && names.length < MAX_MODS) {
+      names.push(name);
+    }
+  }
+  return names;
 }
 
 /** The text as given, or undefined when it is blank (paths and profile ids are not trimmed). */

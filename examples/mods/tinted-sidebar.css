@@ -1,0 +1,15 @@
+/*
+ * Tinted sidebar
+ *
+ * The sidebar takes a little of the color of the space you are in, so you can tell the spaces apart
+ * at a glance. Turn it on for every space in Settings > Mods, or only for some spaces in the menu of
+ * each space (right-click the space at the foot of the sidebar).
+ *
+ * Uses: --nr-space-color (the color of the active space, else the accent of the theme),
+ *       --nr-surface, --nr-border.
+ */
+
+[data-nr-part="sidebar"] {
+  background: color-mix(in srgb, var(--nr-space-color) 14%, var(--nr-surface));
+  border-right-color: color-mix(in srgb, var(--nr-space-color) 40%, var(--nr-border));
+}

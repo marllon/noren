@@ -1,10 +1,13 @@
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, KeyboardEvent } from "react";
-import { describeConfigError } from "@noren/model";
+import { describeConfigError, movedMod, withMod } from "@noren/model";
 import type { Backend } from "@noren/model";
 import { useConfigState, configManager } from "./config-store";
 import type { Preset } from "./keybindings";
 import type { Density, SidebarSide, TabsPlacement } from "./layout";
+import { settingsModRows } from "./mod-options";
+import { useModFiles } from "./mods-store";
 import { commitProfileImport, readProfileFile, takenProfileIds } from "./profile-import";
 import type { ProfileImportPlan } from "./profile-import";
 import { ProfileImportDialog } from "./ProfileImportDialog";
@@ -150,6 +153,8 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
   }, []);
 
   const shown = shownSettings(config, draft);
+  const modFiles = useModFiles();
+  const modRows = settingsModRows(modFiles, shown.mods);
   const plan = planSave(config, draft);
   const [firstError] = errors;
   const canSave =
@@ -315,6 +320,59 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                   problem={plan.problems.longCommandSeconds}
                   onChange={(longCommandSeconds) => change({ longCommandSeconds })}
                 />
+              </section>
+              <section className="settings-section" aria-label="Mods" data-nr-part="settings-mods">
+                <h3>Mods</h3>
+                {modRows.length === 0 ? (
+                  <p className="settings-hint">
+                    No mods yet. Put a .css file in the mods folder, next to config.jsonc.
+                  </p>
+                ) : (
+                  <>
+                    <p className="settings-hint">
+                      CSS files from the mods folder. The mods that are on apply in this order; the
+                      last one wins.
+                    </p>
+                    <ul className="settings-mods">
+                      {modRows.map((row, index) => (
+                        <li key={row.name} className="settings-mod" data-nr-part="settings-mod">
+                          <Toggle
+                            label={row.name}
+                            checked={row.on}
+                            onChange={(on) => change({ mods: withMod(shown.mods, row.name, on) })}
+                          />
+                          {row.missing && (
+                            <span className="settings-hint">
+                              not in the folder, so it is ignored
+                            </span>
+                          )}
+                          {row.on && (
+                            <span className="settings-mod-move">
+                              <button
+                                type="button"
+                                className="settings-link"
+                                aria-label={`Move ${row.name} earlier`}
+                                disabled={index === 0}
+                                onClick={() => change({ mods: movedMod(shown.mods, row.name, -1) })}
+                              >
+                                <ArrowUp size={12} aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                className="settings-link"
+                                aria-label={`Move ${row.name} later`}
+                                disabled={index === shown.mods.length - 1}
+                                onClick={() => change({ mods: movedMod(shown.mods, row.name, 1) })}
+                              >
+                                <ArrowDown size={12} aria-hidden="true" />
+                              </button>
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
               </section>
               <section className="settings-section" aria-label="Import">
                 <h3>Import</h3>

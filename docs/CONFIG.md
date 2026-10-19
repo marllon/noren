@@ -14,11 +14,12 @@ It is the config folder of the app (Tauri `app_config_dir`), next to `state.json
 
 ## The settings screen
 
-The **Settings** button (the gear in the title bar), or **Open settings** in the command palette (`Ctrl+Shift+P`, then `>`), opens the screen. It has four sections:
+The **Settings** button (the gear in the title bar), or **Open settings** in the command palette (`Ctrl+Shift+P`, then `>`), opens the screen. It has five sections:
 
 - **Appearance**: the side of the sidebar and its width, where the tabs are (the sidebar or a bar on top), density, compact mode, keeping the sidebar open, and the pane headers.
 - **Shortcuts**: which preset is in force (safe or browser), and a button that opens the screen to see and record the keys of every action (see [KEYBINDINGS.md](KEYBINDINGS.md)).
 - **Notifications**: system notifications on or off, and how many seconds a command runs before it notifies when it ends out of sight.
+- **Mods**: the CSS files of the `mods` folder, a box for each to turn it on for every space, and arrows that move the ones that are on earlier or later (the mod applied last wins). A name that is on but has no file in the folder stays listed, marked, so you can turn it off. It is a draft like the rest and Save writes the whole `mods` list (see [Mods](#mods)).
 - **Import**: **Import color scheme...** (the same as the palette action: a theme from a color scheme file, see [THEMING.md](THEMING.md)) and **Import profiles...** (the shell profiles of another program's settings file, see [Profiles](#profiles)). Unlike the other sections these act at once and are not part of the draft: a color scheme is added as soon as the file is read, and profiles are added when you confirm the preview. What happened is told under the buttons.
 
 What you change is a draft until you press **Save** (Enter in a box saves too; **Cancel** or Esc drops it). Save writes **only the settings you changed**: a setting you put back where it was is not written, the rest of the file stays exactly as it was, with every comment, blank line and trailing comma in place, and a new setting is added where the list below puts it. The change shows at once in the window, with no restart and no reload, because the window follows the file. A number outside its range is refused where you type it.
@@ -62,6 +63,7 @@ Every setting is optional. Unknown settings are an error, so a typo does not go 
     "tabs": "sidebar", // "sidebar" | "top"
     "paneHeaders": false, // a header on every pane
   },
+  "mods": [], // CSS files of the mods folder that are on for every space, see Mods below
   "profiles": [], // shells of your own, see Profiles below
   "keybindings": {
     "preset": "safe", // "safe" | "browser"
@@ -74,6 +76,19 @@ Every setting is optional. Unknown settings are an error, so a typo does not go 
 ```
 
 The values above are the defaults. More sections (terminal, auto-archive, AI) arrive with the tasks that need them; the schema is the list of what exists now. Your own shortcuts (the keys you record for an action) and a few other preferences (the recent folders, the answers to the question about running a project action) are still kept in the browser storage of the window, not in this file, until their settings get a place here.
+
+## Mods
+
+`mods` lists the files of the `mods` folder (next to this file) that are turned on for every space, in the order they are applied; the last one wins:
+
+```jsonc
+"mods": ["tinted-sidebar.css", "accent-bar.css"],
+```
+
+- Each item is a file name: letters, digits, `.`, `_` and `-` (the first a letter or digit), ending in `.css` in lower case, and not a device name such as `con.css`. A name that is not one, a name listed twice and more than 100 names are errors of the file, shown with their line like any other.
+- A name with no file in the folder is not an error of the file: the mod is ignored and a notice says so. Mods can be turned on for one space too, in the menu of the space; that list is kept with the space in `state.json`, not here.
+- The file follows the folder and the folder follows the editor: edit a mod, add one or delete one, and the window changes with no reload. What a mod is, the cascade layer it is put in and the variables and attributes it can use are in [THEMING.md](THEMING.md#mods-your-own-css).
+- The settings screen writes the list whole, on one line, where the schema puts it (after `appearance`), so a comment inside the old list goes with it; the comments around the list stay.
 
 ## Profiles
 
@@ -142,5 +157,6 @@ Before the settings screen, the layout, the notification settings and the shortc
 - **Editing the text.** `editConfigText(text, changes)` (`packages/model/src/config-edit.ts`) is the only way the app writes the file. A setting the text already has gets only its value replaced (`modify` and `applyEdits` of `jsonc-parser`); a new one is inserted by hand as a line of its own, indented like its neighbors, under the line of the setting before it (so the comment at the end of that line stays with it), in the order the schema lists the settings, creating the groups it needs; an object written on one line stays on one line; line breaks (LF or CRLF), indentation and a byte order mark are kept. `modify`'s own formatting is not used for an insertion because it reformats every line it touches. A change cannot take a setting out: that would take the comments around it with it. Besides setting a value, an edit can **append** items to a list (`{ path: ["profiles"], append: [...] }`): the items go under the last one, indented like it and as objects over several lines, a list written on one line stays on one line, a trailing comma the list had is kept, and a list the file lacks is created in the place the schema lists it.
 - `ConfigManager.update(changes)` reads the file now, refuses when it has a problem or when the result would not be valid (nothing is written), edits it, saves it through the backend and applies the new text at once; the watcher then reports the same text and it is ignored. Updates queue up, so two quick ones both land.
 - **Profiles.** `UserProfileSchema` (`user-profile-schema.ts`) is the schema of one entry and is part of `ConfigSchema`. `profiles-store.ts` hands the `profiles` of the settings in force to the backend with `Backend.setUserProfiles` (at start, before any shell is restored, and at every change of that list) and keeps the joined list `listProfiles` answers; a list the backend refuses is `getProfilesProblem`, shown as a notice. In `noren-core` (`profiles.rs`) `UserProfile` is validated and `ProfileSet::with_user_profiles` joins it to the detected shells (`%NAME%` replaced through an injected environment); the Tauri command is `profiles_set_user`, and `AppState` keeps the detected set and the joined one. `FakeBackend` checks the list with the same rules (`profilesProblem`) and starts a session of a profile of the user in its `cwd`.
+- **Mods.** The `mods` key is `modsSchema` in `config.ts` (the name rule is `MOD_FILE_NAME_PATTERN` of `mods.ts`, the same rule the Rust store applies to the folder). An edit whose value is a list of names (`{ path: ["mods"], value: [...] }`) replaces the list the file has, or creates it where the schema puts it; this is how the screen writes it (`MODS_PATH` and `planSave` in `settings-screen.ts`). See [THEMING.md](THEMING.md#for-contributors) for the rest.
 - The screen is `SettingsDialog.tsx`; what it shows and what Save writes is the pure `settings-screen.ts` (`settingsOf`, `planSave`). `layout-store.ts`, `notification-settings.ts` and `keybindings-store.ts` read the settings in force; `legacy-settings.ts` is the one-time move described above.
 - The theme: `theme-choice.ts` reads `appearance.theme` from the settings in force (`themeChoiceOf`) and plans picking one (`planThemeChoice`, `runThemeChoice`, which hands the change to `ConfigManager.update`). `effectiveThemeChoice` there is the order above (pure, tested), `space-theme.ts` lists what a space can pick, and `use-theme.ts` follows the active space of the store (`followActiveSpaceTheme`, started at boot) and holds the preview of the palette over the saved choice: `previewTheme`, `clearThemePreview` and `chooseTheme`, which keeps the chosen theme on screen until the file has it, so the window does not flicker back. The built-in themes are in `packages/model/src/builtin-themes.ts`; `user-themes-store.ts` holds the list of them and of the user's (see [THEMING.md](THEMING.md)), and `theme-choice.ts` looks a theme up in the list it is given (the built-in ones by default, the whole list where the window asks).

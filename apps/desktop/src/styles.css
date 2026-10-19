@@ -1418,6 +1418,48 @@ body {
   cursor: pointer;
 }
 
+/* The mods in the settings screen: a row for each file, a switch and, for the ones that are on, the order. */
+.settings-mods {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-mod {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  overflow-wrap: anywhere;
+}
+
+.settings-mod-move {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.settings-mod-move .settings-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 5px;
+}
+
+.settings-mod-move .settings-link:disabled {
+  color: var(--nr-muted);
+  cursor: default;
+}
+
+/* The notice of a mod that is on but cannot be used sits under the title bar, apart from the one of the settings file. */
+.mods-notice {
+  top: 46px;
+  bottom: auto;
+}
+
 .settings-feedback p {
   margin: 0;
   font-size: 12px;

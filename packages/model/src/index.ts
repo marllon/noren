@@ -4,11 +4,28 @@ export type {
   Backend,
   CreateSessionOptions,
   GitInfo,
+  ModFile,
   SessionExit,
   SessionId,
   ShellProfile,
   Unsubscribe,
 } from "./backend";
+export {
+  MAX_MOD_BYTES,
+  MAX_MODS,
+  MOD_FILE_NAME_PATTERN,
+  MOD_LAYER,
+  MOD_LAYER_ORDER,
+  isReservedModName,
+  isValidModFileName,
+  modWarnings,
+  movedMod,
+  planMods,
+  sameModList,
+  withMod,
+  wrapModCss,
+} from "./mods";
+export type { AppliedMod, ModPlan, WrapModResult } from "./mods";
 export type { Action, ActionType, Placement, ReducerContext, SpaceItemsFate } from "./actions";
 export { ACTIONS_FILE_PATH, parseActionsFile } from "./actions-file";
 export type { ParseActionsResult, ProjectAction } from "./actions-file";

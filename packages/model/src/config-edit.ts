@@ -16,10 +16,14 @@ import { ConfigSchema } from "./config";
 /** A value a setting can hold. */
 export type ConfigValue = string | number | boolean;
 
-/** One setting to set, by its path in the file (`["appearance", "sidebar", "width"]`). */
+/**
+ * One setting to set, by its path in the file (`["appearance", "sidebar", "width"]`). A value that
+ * is a list of names (`["mods"]`) replaces the list the file has, on one line: the comments
+ * inside the old list go with it, the ones around it stay.
+ */
 export interface ConfigChange {
   readonly path: readonly string[];
-  readonly value: ConfigValue;
+  readonly value: ConfigValue | readonly string[];
 }
 
 /** What a list in the file holds: JSON, with `undefined` standing for a key that is left out. */
@@ -369,7 +373,14 @@ function applyChange(
   if (root.type !== "object") throw new Error("the settings file does not hold an object");
 
   // The setting is there already: only its value changes.
-  if (findNodeAtLocation(root, [...path]) !== undefined) {
+  const existing = findNodeAtLocation(root, [...path]);
+  if (existing !== undefined) {
+    if (isList(value)) {
+      // A whole list is written the way a new one is, so it reads the same wherever it comes from.
+      const indent = leadingSpace(text, lineStart(text, existing.offset));
+      const content = renderBlock(value, indent, unit, eol);
+      return applyEdits(text, [{ offset: existing.offset, length: existing.length, content }]);
+    }
     return applyEdits(text, modify(text, [...path], value, {}));
   }
 

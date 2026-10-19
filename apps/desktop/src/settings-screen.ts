@@ -1,4 +1,9 @@
-import { DEFAULT_NOTIFICATION_SETTINGS, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "@noren/model";
+import {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  sameModList,
+} from "@noren/model";
 import type { Config, ConfigChange } from "@noren/model";
 import type { Preset } from "./keybindings";
 import { DEFAULT_LAYOUT, layoutFromConfig } from "./layout";
@@ -75,7 +80,12 @@ export function settingsSetBy(config: Config): ReadonlySet<SettingKey> {
 export type SettingsDraft = Partial<Omit<SettingsValues, "width" | "longCommandSeconds">> & {
   width?: string;
   longCommandSeconds?: string;
+  /** The mods that are on for every space, in the order they apply (the file names). */
+  mods?: readonly string[];
 };
+
+/** The place of the list of global mods in `config.jsonc`. */
+export const MODS_PATH: readonly string[] = ["mods"];
 
 /** The two settings typed as numbers. */
 export type NumberKey = "width" | "longCommandSeconds";
@@ -84,6 +94,7 @@ export type NumberKey = "width" | "longCommandSeconds";
 export interface ShownSettings extends Omit<SettingsValues, NumberKey> {
   width: string;
   longCommandSeconds: string;
+  mods: readonly string[];
 }
 
 export function shownSettings(config: Config, draft: SettingsDraft): ShownSettings {
@@ -93,6 +104,7 @@ export function shownSettings(config: Config, draft: SettingsDraft): ShownSettin
     ...draft,
     width: draft.width ?? String(now.width),
     longCommandSeconds: draft.longCommandSeconds ?? String(now.longCommandSeconds),
+    mods: draft.mods ?? config.mods ?? [],
   };
 }
 
@@ -158,6 +170,10 @@ export function planSave(config: Config, draft: SettingsDraft): SavePlan {
     const value = wanted[key];
     if (value === undefined || value === now[key]) continue;
     changes.push({ path: SETTING_PATHS[key], value });
+  }
+  // The list of mods is written whole, and only when it is not the one in force.
+  if (draft.mods !== undefined && !sameModList(draft.mods, config.mods ?? [])) {
+    changes.push({ path: MODS_PATH, value: draft.mods });
   }
   return { changes, problems };
 }

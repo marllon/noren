@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent } from "react";
 import type { Space } from "@noren/model";
+import type { SpaceModOption } from "./mod-options";
 import type { SpaceThemeOption } from "./space-theme";
 
 /** Where the menu opens: the pointer, or the corner of the button that asked for it. */
@@ -16,9 +17,13 @@ interface SpaceMenuProps {
   count: number;
   /** The themes the space can take, and "Use global theme" (see `spaceThemeOptions`). */
   themes: readonly SpaceThemeOption[];
+  /** The mods of the mods folder, and the ones the space lists that the folder lacks (see `spaceModOptions`). */
+  mods: readonly SpaceModOption[];
   point: MenuPoint;
   /** The user picked a theme for the space, or (`null`) the global theme again. */
   onTheme(themeId: string | null): void;
+  /** The user turned a mod on or off for this space; the menu stays open for the next one. */
+  onMod(name: string, on: boolean): void;
   onEdit(): void;
   onMove(delta: -1 | 1): void;
   onDelete(): void;
@@ -31,8 +36,10 @@ export function SpaceMenu({
   index,
   count,
   themes,
+  mods,
   point,
   onTheme,
+  onMod,
   onEdit,
   onMove,
   onDelete,
@@ -106,6 +113,33 @@ export function SpaceMenu({
             onClick={() => onTheme(option.themeId)}
           >
             {option.label}
+          </button>
+        ))}
+        {/* Nothing is drawn for a folder with no mods, so the menu stays as it was. */}
+        {mods.length > 0 && (
+          <div className="menu-heading" role="presentation">
+            Mods
+          </div>
+        )}
+        {mods.map((mod) => (
+          <button
+            key={mod.name}
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={mod.on}
+            // A mod that is on for every space is turned off in the settings screen.
+            disabled={mod.global}
+            title={
+              mod.global
+                ? "On for every space; turn it off in the settings"
+                : mod.missing
+                  ? "Not in the mods folder, so it is ignored"
+                  : undefined
+            }
+            onClick={() => onMod(mod.name, !mod.on)}
+          >
+            {mod.global ? `${mod.name} (all spaces)` : mod.name}
+            {mod.missing ? " (missing)" : ""}
           </button>
         ))}
       </div>

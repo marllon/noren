@@ -3,6 +3,7 @@
 pub mod config;
 pub mod git;
 pub mod integration;
+pub mod mods;
 pub mod profiles;
 pub mod project;
 pub mod pty;
@@ -14,6 +15,10 @@ pub use git::{GitHead, read_head};
 pub use integration::{
     BASH_LOGIN_VAR, BASH_SCRIPT, POWERSHELL_SCRIPT, ZSH_DIR, ZSH_RC, ZSH_USER_DIR_VAR,
     cmd_integration_prompt, is_bash, is_cmd, is_powershell, is_zsh, powershell_integration_args,
+};
+pub use mods::{
+    MAX_MOD_BYTES, MAX_MODS, MODS_DIR_NAME, ModError, ModFile, ModStore, ModWatcher,
+    is_valid_mod_file_name,
 };
 pub use profiles::{
     MAX_USER_PROFILES, Platform, ProbeEnv, Profile, ProfileSet, RESERVED_PROFILE_ID, SystemEnv,

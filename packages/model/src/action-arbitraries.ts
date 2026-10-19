@@ -32,6 +32,14 @@ const arbThemeId = fc.oneof(
   { weight: 2, arbitrary: fc.constant(null) },
   { weight: 1, arbitrary: fc.constantFrom("", "  ") },
 );
+/** Lists of mod names: mostly valid ones, repeats and names that are not mod names now and then. */
+const arbModIds = fc.array(
+  fc.oneof(
+    { weight: 6, arbitrary: fc.constantFrom("mod-a.css", "mod-b.css", "mod-c.css") },
+    { weight: 1, arbitrary: fc.constantFrom("", "../x.css", "con.css", "Mod B.css", "mod-a") },
+  ),
+  { maxLength: 5 },
+);
 const arbProfile = fc.constantFrom("pwsh", "bash", "wsl:Ubuntu");
 const arbProfileOrBlank = fc.oneof(
   { weight: 3, arbitrary: arbProfile },
@@ -198,6 +206,7 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
     weighted(1, fc.record({ type: tag("space/set-color"), spaceId, color: arbColor })),
     weighted(1, fc.record({ type: tag("space/set-icon"), spaceId, icon: arbIcon })),
     weighted(1, fc.record({ type: tag("space/set-theme"), spaceId, themeId: arbThemeId })),
+    weighted(1, fc.record({ type: tag("space/set-mods"), spaceId, modIds: arbModIds })),
     weighted(1, fc.record({ type: tag("space/move"), spaceId, index: arbIndex })),
     weighted(2, fc.record({ type: tag("space/activate"), spaceId })),
     weighted(

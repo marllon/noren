@@ -1,0 +1,16 @@
+/*
+ * Accent bar
+ *
+ * A bar in the color of the space on the tab you are in, and rounder tabs.
+ *
+ * Uses: --nr-space-color, --nr-radius.
+ * Hooks: data-nr-part="item" (a tab), data-nr-state="active" (the tab you are in).
+ */
+
+[data-nr-part="item"] {
+  border-radius: calc(var(--nr-radius) * 1.5);
+}
+
+[data-nr-part="item"][data-nr-state="active"] {
+  box-shadow: inset 3px 0 0 var(--nr-space-color);
+}

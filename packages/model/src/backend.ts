@@ -47,6 +47,12 @@ export interface GitInfo {
   detached: boolean;
 }
 
+/** A mod of the user: the name of its file in the `mods` folder (`dark-sidebar.css`) and its CSS. */
+export interface ModFile {
+  name: string;
+  text: string;
+}
+
 export interface Backend {
   /**
    * The shells a session can start: the ones found on the machine (the default one marked), then
@@ -112,6 +118,21 @@ export interface Backend {
    * (`serializeTheme`). Rejects when the file cannot be written.
    */
   saveUserTheme(id: string, text: string): Promise<void>;
+  /**
+   * The CSS files of the user (`mods/*.css` next to `config.jsonc`), in the order of the file
+   * names. The folder missing is no files. A file is left out when its name is not a mod name
+   * (`isValidModFileName`), when it is a folder, is not UTF-8 text or is larger than
+   * `MAX_MOD_BYTES`; at most `MAX_MODS` are listed. Wrapping the text in its layer is the
+   * caller's job (`wrapModCss`). Rejects when the folder cannot be read.
+   */
+  listMods(): Promise<ModFile[]>;
+  /**
+   * Calls `callback` with the whole list of mods (what `listMods` would answer) every time a file
+   * of the folder is added, changed or removed, whether the app or another program did it. The
+   * files there when the watching starts are not delivered; `listMods` has them. A change that
+   * leaves the list as it was is not delivered. Stops when the returned function is called.
+   */
+  watchMods(callback: (files: ModFile[]) => void): Unsubscribe;
   /**
    * Text of `.noren/actions.json` inside the folder `cwd`, or `null` when the folder has no such
    * file. Rejects for any other failure (a folder where the file should be, no permission).

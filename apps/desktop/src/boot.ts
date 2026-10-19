@@ -5,8 +5,10 @@ import { configManager } from "./config-store";
 import { loadHome } from "./home";
 import { migrateLegacySettings } from "./legacy-settings";
 import type { LegacyStorageArea } from "./legacy-settings";
+import { startMods } from "./mods-store";
 import { notificationSettings } from "./notification-settings";
 import { getProfiles, startProfiles } from "./profiles-store";
+import { followActiveSpaceMods } from "./use-mods";
 import { followActiveSpaceTheme } from "./use-theme";
 import { loadUserThemes } from "./user-themes-store";
 import { createWorkspaceStore } from "./workspace-store";
@@ -50,6 +52,10 @@ export async function bootWorkspace(
     // The themes of the user, before the first frame: a space or the settings may name one of them.
     // A folder that cannot be read leaves the built-in themes, and never stops the app.
     await loadUserThemes(target).catch(() => undefined);
+    // The mods of the user, before the first frame too, so the first frame already has the ones
+    // that are on; the folder is watched from here on, and an edited file reloads. A folder that
+    // cannot be read leaves the app without mods, and never stops it.
+    await startMods(target);
     // The profiles of the user (from the file) are handed to the backend before anything restores a
     // shell, since a saved pane may name one of them; the list is then the machine's and the user's.
     await startProfiles(target, configManager);
@@ -70,6 +76,8 @@ export async function bootWorkspace(
     });
     // The window shows the theme of the active space, if it has one, from the first frame.
     followActiveSpaceTheme(store);
+    // And the mods of the active space.
+    followActiveSpaceMods(store);
     const flush = () => {
       store
         .getState()

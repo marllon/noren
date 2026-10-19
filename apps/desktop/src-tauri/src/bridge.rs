@@ -10,9 +10,10 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use noren_core::{
-    ACTIONS_FILE_PATH, CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, GitHead, Profile, ProfileSet,
-    SessionEvent, SessionId, SessionManager, SpawnSpec, StateStore, THEMES_DIR_NAME, ThemeStore,
-    UserProfile, detect_system_profiles, read_head, read_project_file, run_short,
+    ACTIONS_FILE_PATH, CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, GitHead, MODS_DIR_NAME,
+    ModFile, ModStore, ModWatcher, Profile, ProfileSet, SessionEvent, SessionId, SessionManager,
+    SpawnSpec, StateStore, THEMES_DIR_NAME, ThemeStore, UserProfile, detect_system_profiles,
+    read_head, read_project_file, run_short,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -499,6 +500,109 @@ pub async fn theme_save(
     content: String,
 ) -> Result<(), String> {
     state.save(&id, &content)
+}
+
+/// Name of the event emitted when a file of the `mods` folder is added, changed or removed. The
+/// payload is the whole list of mods after the change.
+pub const MODS_CHANGED_EVENT: &str = "mods-changed";
+
+/// One mod as the interface sees it: the name of its file and its CSS.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ModFileDto {
+    pub name: String,
+    pub text: String,
+}
+
+impl From<ModFile> for ModFileDto {
+    fn from(file: ModFile) -> Self {
+        Self {
+            name: file.name,
+            text: file.text,
+        }
+    }
+}
+
+/// The folder of the mods of the user, next to `config.jsonc`, and the watching of it, which starts
+/// when the interface asks for it. The app only reads the folder: a mod is a file the person puts
+/// there.
+pub struct ModState {
+    pub store: ModStore,
+    watcher: Mutex<Option<ModWatcher>>,
+    watching_allowed: bool,
+}
+
+impl ModState {
+    pub fn new(store: ModStore) -> Self {
+        Self {
+            store,
+            watcher: Mutex::new(None),
+            watching_allowed: true,
+        }
+    }
+
+    /// The same, but `watch` does nothing: watching creates the mods folder when it is missing, and
+    /// the smoke run must leave the folders of the user as they are. Listing still works (it only
+    /// reads, and never creates the folder).
+    pub fn without_watching(mut self) -> Self {
+        self.watching_allowed = false;
+        self
+    }
+
+    /// The mods in the folder (see [`ModStore::list`]).
+    pub fn list(&self) -> Result<Vec<ModFileDto>, String> {
+        self.store
+            .list()
+            .map(|files| files.into_iter().map(ModFileDto::from).collect())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Starts calling `on_change` when the files change, unless the folder is already watched (the
+    /// page reloaded and asked again): then the first watching goes on and `on_change` is dropped.
+    pub fn watch(
+        &self,
+        on_change: impl Fn(Vec<ModFileDto>) + Send + 'static,
+    ) -> Result<(), String> {
+        if !self.watching_allowed {
+            return Ok(());
+        }
+        let mut watcher = self.watcher.lock().unwrap_or_else(|e| e.into_inner());
+        if watcher.is_none() {
+            *watcher = Some(
+                self.store
+                    .watch(move |files| {
+                        on_change(files.into_iter().map(ModFileDto::from).collect())
+                    })
+                    .map_err(|e| e.to_string())?,
+            );
+        }
+        Ok(())
+    }
+}
+
+/// Builds the store for the mods of the user: the `mods` folder inside the app config folder. Only
+/// resolves the path: the folder is created when it is first watched.
+pub fn mod_store(app: &AppHandle) -> Result<ModStore, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("could not find the app config folder: {e}"))?;
+    Ok(ModStore::new(dir.join(MODS_DIR_NAME)))
+}
+
+/// The mods of the user, in the order of the file names. Applying them belongs to the interface.
+#[tauri::command]
+pub async fn mod_list(state: State<'_, ModState>) -> Result<Vec<ModFileDto>, String> {
+    state.list()
+}
+
+/// Starts telling the interface, with the `mods-changed` event, every time the mods change. Asking
+/// again changes nothing.
+#[tauri::command]
+pub async fn mod_watch(app: AppHandle, state: State<'_, ModState>) -> Result<(), String> {
+    state.watch(move |files| {
+        // A failed emit means the interface is gone; the next change tries again.
+        let _ = app.emit(MODS_CHANGED_EVENT, files);
+    })
 }
 
 /// Longest a project command (the `stop` of an action) may run before it is killed.
@@ -1137,6 +1241,113 @@ mod tests {
         let message = state.save("lagoon", "{}").expect_err("the save is refused");
         assert!(message.contains("does not write"));
         assert!(!folder.exists(), "the themes folder was created");
+        assert_eq!(state.list(), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn mod_state_lists_the_files_without_making_the_folder() {
+        let dir = TempDir::new("mods-list");
+        let folder = dir.0.join("not-yet").join(MODS_DIR_NAME);
+        let state = ModState::new(ModStore::new(&folder));
+        assert_eq!(state.list(), Ok(Vec::new()));
+        assert!(!folder.exists(), "listing created the mods folder");
+
+        std::fs::create_dir_all(&folder).expect("folder");
+        std::fs::write(folder.join("b.css"), ".b { color: red }").expect("write");
+        std::fs::write(folder.join("a.css"), ".a {}").expect("write");
+        std::fs::write(folder.join("notes.txt"), "not a mod").expect("write");
+        assert_eq!(
+            state.list(),
+            Ok(vec![
+                ModFileDto {
+                    name: "a.css".to_owned(),
+                    text: ".a {}".to_owned()
+                },
+                ModFileDto {
+                    name: "b.css".to_owned(),
+                    text: ".b { color: red }".to_owned()
+                },
+            ])
+        );
+    }
+
+    #[test]
+    fn mod_list_failure_is_a_message_for_the_interface() {
+        let dir = TempDir::new("mods-blocked");
+        let blocked = dir.0.join("blocked");
+        std::fs::write(&blocked, b"in the way").expect("write");
+        let message = ModState::new(ModStore::new(&blocked))
+            .list()
+            .expect_err("fails");
+        assert!(message.starts_with("could not read the mods folder"));
+    }
+
+    #[test]
+    fn mod_files_reach_the_interface_as_name_and_text() {
+        let json = serde_json::to_string(&ModFileDto::from(ModFile {
+            name: "dark.css".to_owned(),
+            text: ".a { color: red }".to_owned(),
+        }))
+        .expect("serialize");
+        assert_eq!(json, r#"{"name":"dark.css","text":".a { color: red }"}"#);
+    }
+
+    #[test]
+    fn mod_watching_starts_once_and_reports_the_whole_list() {
+        let dir = TempDir::new("mods-watch");
+        let folder = dir.0.join(MODS_DIR_NAME);
+        let state = ModState::new(ModStore::new(&folder));
+        let (first, first_heard) = std::sync::mpsc::channel();
+        let (second, second_heard) = std::sync::mpsc::channel();
+        state
+            .watch(move |files| {
+                let _ = first.send(files);
+            })
+            .expect("watch");
+        // The page reloaded and asked again: the first watching goes on, this callback is dropped.
+        state
+            .watch(move |files| {
+                let _ = second.send(files);
+            })
+            .expect("watch again");
+        assert!(folder.is_dir(), "watching makes the folder to put files in");
+
+        std::fs::write(folder.join("dark.css"), ".a {}").expect("write");
+        assert_eq!(
+            first_heard.recv_timeout(Duration::from_secs(15)),
+            Ok(vec![ModFileDto {
+                name: "dark.css".to_owned(),
+                text: ".a {}".to_owned()
+            }])
+        );
+        assert_eq!(
+            second_heard.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Disconnected)
+        );
+    }
+
+    #[test]
+    fn mod_state_without_watching_leaves_the_folders_alone() {
+        // The smoke run: watching would make the mods folder of the user.
+        let dir = TempDir::new("mods-no-watch");
+        let folder = dir.0.join("not-yet").join(MODS_DIR_NAME);
+        let state = ModState::new(ModStore::new(&folder)).without_watching();
+        let (heard, never) = std::sync::mpsc::channel();
+        state
+            .watch(move |files| {
+                let _ = heard.send(files);
+            })
+            .expect("watch");
+        assert!(!folder.exists(), "the mods folder was created");
+        assert!(
+            !dir.0.join("not-yet").exists(),
+            "the config folder was created"
+        );
+        assert_eq!(
+            never.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Disconnected)
+        );
+        // Reading still works, and finds no files.
         assert_eq!(state.list(), Ok(Vec::new()));
     }
 

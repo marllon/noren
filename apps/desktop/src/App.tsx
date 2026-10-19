@@ -6,6 +6,7 @@ import {
   PaneLocationTracker,
   layoutPanes,
   treeGroups,
+  withMod,
 } from "@noren/model";
 import type { GroupNode, Id, Item, Pane, Space } from "@noren/model";
 import type { ITheme } from "@xterm/xterm";
@@ -109,6 +110,9 @@ import {
   useThemeChoice,
 } from "./use-theme";
 import { addUserThemes, getUserThemes, useAllThemes } from "./user-themes-store";
+import { spaceModOptions } from "./mod-options";
+import { ModStyles } from "./ModStyles";
+import { useModFiles } from "./mods-store";
 import { importSchemeFile } from "./scheme-import";
 import { useProfiles, useProfilesProblem } from "./profiles-store";
 import type { TerminalHandle } from "./TerminalView";
@@ -179,6 +183,12 @@ export interface NorenTestHook {
    * program would. The web build keeps it in the browser storage, so a reload finds it.
    */
   setConfig(text: string | null): void;
+  /**
+   * Places the mod file `mods/<name>` with this CSS (`null` removes it), as an editor would; the
+   * app reloads the mod without a restart. The web build keeps the files in the browser storage,
+   * so a reload finds them.
+   */
+  setMod(name: string, text: string | null): void;
   /** Makes saving `config.jsonc` fail with this message (the disk refused); `null` undoes it. */
   failConfigSaves(message: string | null): void;
   /** Number of times the app was asked to write `config.jsonc`. */
@@ -429,7 +439,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
   }, [themeChoice]);
   const layout = useLayout();
   // A file with a problem of its own cannot be edited, so the handle cannot save a width either.
-  const settingsFileBroken = useConfigState().errors.length > 0;
+  const configState = useConfigState();
+  const settingsFileBroken = configState.errors.length > 0;
+  // The mod files of the folder, for the menu of a space.
+  const modFiles = useModFiles();
   const settingsOpen = useSettingsOpen();
   const reveal = useSidebarReveal(sidebarMode(layout) === "auto-hide");
 
@@ -873,6 +886,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
         },
         openUrl: (url) => handleDeepLink(url),
         setConfig: (text) => fake.setConfig(text),
+        setMod: (name, text) => fake.setMod(name, text),
         failConfigSaves: (message) =>
           fake.setConfigSaveFailure(message === null ? undefined : new Error(message)),
         configSaves: () => fake.callsTo("saveConfig").length,
@@ -1135,10 +1149,18 @@ function Shell({ store }: { store: WorkspaceStore }) {
         index={workspace.spaces.indexOf(overlaySpace)}
         count={workspace.spaces.length}
         themes={spaceThemeOptions(overlaySpace.themeId, themes)}
+        mods={spaceModOptions(modFiles, configState.config.mods ?? [], overlaySpace.modIds)}
         point={overlay.point}
         onTheme={(themeId) => {
           dispatch({ type: "space/set-theme", spaceId: overlaySpace.id, themeId });
           close();
+        }}
+        onMod={(name, on) => {
+          dispatch({
+            type: "space/set-mods",
+            spaceId: overlaySpace.id,
+            modIds: withMod(overlaySpace.modIds, name, on),
+          });
         }}
         onEdit={() => setOverlay({ kind: "edit", spaceId: overlaySpace.id })}
         onMove={(delta) => {
@@ -1357,6 +1379,7 @@ export function App() {
     <main className="app">
       <TitleBar />
       <ConfigErrorNotice />
+      <ModStyles />
       <Suspense fallback={null}>
         <Booted />
       </Suspense>

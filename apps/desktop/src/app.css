@@ -1,0 +1,17 @@
+/*
+ * The stylesheet of the window, in cascade layers. A rule in a later layer beats a rule in an
+ * earlier one whatever its specificity, so this order is what lets a mod (`@layer mods`, applied by
+ * the app from the mods folder) win over the style of Noren with a plain selector:
+ *
+ *   vendor  the CSS of the terminal library
+ *   base    the style of Noren (styles.css)
+ *   mods    the CSS files of the user
+ *
+ * The statement below fixes the order before any layer is used; every mod repeats it (see
+ * MOD_LAYER_ORDER in @noren/model), so the order holds whichever stylesheet the browser reads
+ * first. Nothing in the app is left outside a layer.
+ */
+@layer vendor, base, mods;
+
+@import "@xterm/xterm/css/xterm.css" layer(vendor);
+@import "./styles.css" layer(base);

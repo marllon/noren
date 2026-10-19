@@ -1,6 +1,7 @@
 import { findNodeAtLocation, getNodeValue, parseTree, printParseErrorCode } from "jsonc-parser";
 import type { Node as JsonNode, ParseError } from "jsonc-parser";
 import { z } from "zod";
+import { MAX_MODS, MOD_FILE_NAME_PATTERN, isReservedModName } from "./mods";
 import { THEME_ID_PATTERN } from "./theme";
 import { MAX_USER_PROFILES, RESERVED_PROFILE_IDS, UserProfileSchema } from "./user-profile-schema";
 
@@ -74,6 +75,36 @@ const appearanceSchema = z
   })
   .meta({ description: "How the window looks and is laid out." });
 
+const MOD_NAME_MESSAGE =
+  'Not a mod file name: letters, digits, ".", "_" and "-" (the first a letter or digit), ending in ".css", and not a device name such as "con"';
+
+/** The mods turned on for every space, in the order they are applied. */
+const modsSchema = z
+  .array(
+    z
+      .string()
+      .regex(MOD_FILE_NAME_PATTERN, { message: MOD_NAME_MESSAGE })
+      .refine((name) => !isReservedModName(name), { message: MOD_NAME_MESSAGE }),
+  )
+  .max(MAX_MODS)
+  .superRefine((names, context) => {
+    const seen = new Set<string>();
+    names.forEach((name, index) => {
+      if (seen.has(name)) {
+        context.addIssue({
+          code: "custom",
+          message: `The mod "${name}" is listed twice`,
+          path: [index],
+        });
+      }
+      seen.add(name);
+    });
+  })
+  .meta({
+    description:
+      'The CSS files of the mods folder (next to this file) that are turned on for every space, as file names such as "compact-tabs.css", in the order they are applied: the last one wins. A file that is not in the folder is ignored.',
+  });
+
 const notificationsSchema = z
   .strictObject({
     enabled: setting(z.boolean(), "Off: Noren never asks the system to show a notification.", true),
@@ -130,6 +161,7 @@ export const ConfigSchema = z
       .optional()
       .meta({ description: "Where the JSON Schema of this file is, for the editor." }),
     appearance: appearanceSchema.optional(),
+    mods: modsSchema.optional(),
     profiles: profilesSchema.optional(),
     keybindings: keybindingsSchema.optional(),
     notifications: notificationsSchema.optional(),

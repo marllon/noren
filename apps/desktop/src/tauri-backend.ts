@@ -5,6 +5,7 @@ import type {
   Backend,
   CreateSessionOptions,
   GitInfo,
+  ModFile,
   SessionExit,
   SessionId,
   ShellProfile,
@@ -45,6 +46,9 @@ const SESSION_EXIT_EVENT = "session-exit";
 /** Event emitted by the Rust side when `config.jsonc` changes; the payload is the new text or `null`. */
 const CONFIG_CHANGED_EVENT = "config-changed";
 
+/** Event emitted by the Rust side when a mod file is added, changed or removed; the payload is the whole list. */
+const MODS_CHANGED_EVENT = "mods-changed";
+
 /** `Backend` over the Tauri commands in `src-tauri/src/bridge.rs`. */
 export class TauriBackend implements Backend {
   readonly #bridge: TauriBridge;
@@ -55,8 +59,10 @@ export class TauriBackend implements Backend {
   /** Exits that arrived before `session_create` returned the id. */
   readonly #earlyExits = new Map<SessionId, SessionExit>();
   readonly #configListeners = new Set<(text: string | null) => void>();
+  readonly #modListeners = new Set<(files: ModFile[]) => void>();
   #exitSubscription: Promise<() => void> | undefined;
   #configSubscription: Promise<() => void> | undefined;
+  #modSubscription: Promise<() => void> | undefined;
 
   constructor(bridge: TauriBridge = tauriBridge()) {
     this.#bridge = bridge;
@@ -153,6 +159,19 @@ export class TauriBackend implements Backend {
     await this.#bridge.invoke("theme_save", { id, content: text });
   }
 
+  async listMods(): Promise<ModFile[]> {
+    const files = await this.#bridge.invoke<ModFile[]>("mod_list");
+    return files.map(({ name, text }) => ({ name, text }));
+  }
+
+  watchMods(callback: (files: ModFile[]) => void): Unsubscribe {
+    this.#modListeners.add(callback);
+    this.#startWatchingMods();
+    return () => {
+      this.#modListeners.delete(callback);
+    };
+  }
+
   watchConfig(callback: (text: string | null) => void): Unsubscribe {
     this.#configListeners.add(callback);
     this.#startWatchingConfig();
@@ -191,6 +210,38 @@ export class TauriBackend implements Backend {
     this.#configSubscription = undefined;
     this.#configListeners.clear();
     if (config) (await config.catch(() => undefined))?.();
+    const mods = this.#modSubscription;
+    this.#modSubscription = undefined;
+    this.#modListeners.clear();
+    if (mods) (await mods.catch(() => undefined))?.();
+  }
+
+  /**
+   * Hears `mods-changed` first and only then asks the Rust side to start watching, so no change is
+   * missed. Done once; if it fails the mods stay as they were loaded, and the next `watchMods`
+   * tries again.
+   */
+  #startWatchingMods(): void {
+    if (this.#modSubscription) return;
+    const subscription = this.#bridge
+      .listen<ModFile[]>(MODS_CHANGED_EVENT, (event) => {
+        for (const listener of [...this.#modListeners]) {
+          listener(event.payload.map(({ name, text }) => ({ name, text })));
+        }
+      })
+      .then(async (unlisten) => {
+        try {
+          await this.#bridge.invoke("mod_watch");
+        } catch (error) {
+          unlisten();
+          throw error;
+        }
+        return unlisten;
+      });
+    this.#modSubscription = subscription;
+    subscription.catch(() => {
+      if (this.#modSubscription === subscription) this.#modSubscription = undefined;
+    });
   }
 
   /**

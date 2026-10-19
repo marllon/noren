@@ -6,7 +6,6 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import type { ITheme } from "@xterm/xterm";
-import "@xterm/xterm/css/xterm.css";
 import type { Backend, SessionId } from "@noren/model";
 import { useEffect, useRef, useState } from "react";
 import { PasteDialog } from "./PasteDialog";

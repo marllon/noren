@@ -11,8 +11,8 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use noren_core::{
-    CONFIG_FILE_NAME, ConfigStore, SessionId, StateStore, THEMES_DIR_NAME, ThemeStore,
-    is_powershell,
+    CONFIG_FILE_NAME, ConfigStore, MODS_DIR_NAME, ModStore, SessionId, StateStore, THEMES_DIR_NAME,
+    ThemeStore, is_powershell,
 };
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Listener, Manager};
@@ -342,6 +342,12 @@ pub fn deeplink_theme_store(target: &DeepLinkTarget) -> ThemeStore {
     ThemeStore::new(target.state_dir.join(THEMES_DIR_NAME))
 }
 
+/// The mods folder of the deep-link run: in the same folder, so the mods of the user are neither
+/// read nor watched.
+pub fn deeplink_mod_store(target: &DeepLinkTarget) -> ModStore {
+    ModStore::new(target.state_dir.join(MODS_DIR_NAME))
+}
+
 /// Compares the folder the interface reports for the active space with the one in the link, by
 /// the same rules the interface uses to pick a space for a link.
 fn check_reported_folder(expected: &str, reported: Option<&str>) -> Result<(), String> {
@@ -466,6 +472,11 @@ mod tests {
         assert_eq!(
             deeplink_theme_store(&first).dir(),
             first.state_dir.join("themes")
+        );
+        // And the mods folder.
+        assert_eq!(
+            deeplink_mod_store(&first).dir(),
+            first.state_dir.join("mods")
         );
     }
 

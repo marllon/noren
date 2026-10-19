@@ -74,6 +74,15 @@
       "additionalProperties": false,
       "description": "How the window looks and is laid out."
     },
+    "mods": {
+      "maxItems": 100,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\\.css$"
+      },
+      "description": "The CSS files of the mods folder (next to this file) that are turned on for every space, as file names such as \"compact-tabs.css\", in the order they are applied: the last one wins. A file that is not in the folder is ignored."
+    },
     "profiles": {
       "maxItems": 200,
       "type": "array",

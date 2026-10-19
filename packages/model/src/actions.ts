@@ -62,6 +62,14 @@ export type Action =
    * importer is not lost. A blank id changes nothing.
    */
   | { type: "space/set-theme"; spaceId: Id; themeId: string | null }
+  /**
+   * Sets the mods the space turns on, as the names of their files in the mods folder, in the order
+   * they apply (the one applied last wins; the space's mods come after the global ones). The names
+   * are kept as given when they are mod names (`isValidModFileName`), without repeats, so a mod the
+   * folder does not have right now stays on the list; anything else in the list is dropped. An
+   * empty list turns the space's mods off. A list the space already has changes nothing.
+   */
+  | { type: "space/set-mods"; spaceId: Id; modIds: readonly string[] }
   | { type: "space/move"; spaceId: Id; index: number }
   | { type: "space/activate"; spaceId: Id }
   /**

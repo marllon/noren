@@ -14,9 +14,7 @@ import type { GroupNode, Id, Item, Pane, Space } from "@noren/model";
 import type { ITheme } from "@xterm/xterm";
 import type { ChangeEvent } from "react";
 import {
-  Suspense,
   createContext,
-  use,
   useCallback,
   useContext,
   useEffect,
@@ -27,7 +25,9 @@ import {
 } from "react";
 import { useStore } from "zustand";
 import { insideTauri } from "./backend";
+import { perfMark, perfMarkOnce } from "./perf-probe";
 import { backend, booted } from "./boot";
+import type { BootResult } from "./boot";
 import { consentText } from "./action-consent";
 import { loadHome } from "./home";
 import { realClock } from "./real-clock";
@@ -1331,6 +1331,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     }
     if (insideTauri) {
       // Tells the Rust side the interface is mounted (used by `noren --smoke`).
+      perfMark("app-ready");
       emit("app-ready").catch(() => undefined);
     }
   }, [store]);
@@ -1899,8 +1900,29 @@ function Shell({ store }: { store: WorkspaceStore }) {
   );
 }
 
+/**
+ * The result of the boot, once it is there (`undefined` before). It is read with state and not with
+ * `use` inside a Suspense boundary: React holds back the reveal of a boundary that showed its
+ * fallback for up to 300 ms (its flash throttle), and the whole first terminal waited for it.
+ */
+function useBooted(): BootResult | undefined {
+  const [result, setResult] = useState<BootResult>();
+  useEffect(() => {
+    let live = true;
+    void booted.then((value) => {
+      if (live) setResult(value);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return result;
+}
+
 function Booted() {
-  const result = use(booted);
+  const result = useBooted();
+  if (result === undefined) return null;
+  perfMarkOnce("app-render");
   if (!result.ok) return <p role="alert">{result.error}</p>;
   return <Shell store={result.store} />;
 }
@@ -1943,9 +1965,7 @@ export function App() {
       <ConfigErrorNotice />
       <BackgroundNotice picture={picture} />
       <ModStyles />
-      <Suspense fallback={null}>
-        <Booted />
-      </Suspense>
+      <Booted />
     </main>
   );
 }

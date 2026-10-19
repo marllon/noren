@@ -1,15 +1,16 @@
 # Performance
 
-The targets of the product, how each one is measured, and what was measured. Three tasks fill this
+The targets of the product, how each one is measured, and what was measured. Four tasks fill this
 page: NOR-F11-01a (the measurements that need no window, rows 1 to 4 of "Results"), NOR-F11-01b
 (the ones that need the real app in a release build: the first prompt and the memory of 30 tabs,
-rows 5 and 6) and NOR-F11-01c (why the first switch of space was sometimes slow, and the fix, row 4).
+rows 5 and 6), NOR-F11-01c (why the first switch of space was sometimes slow, and the fix, row 4) and
+NOR-F11-01d (where the time to the first prompt went, and the cuts, row 5).
 
 ## Targets
 
 | #   | Target (spec, section 11)                                                  | Measured in | Status                                                                                                                          |
 | --- | -------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Opening the app to the first prompt: under 800 ms (release, Windows)       | NOR-F11-01b | **not met**: 958 ms median (894 to 997), 158 ms over; NOR-F11-01d                                                               |
+| 1   | Opening the app to the first prompt: under 800 ms (release, Windows)       | NOR-F11-01d | **met**: 621 ms median (583 to 677) after NOR-F11-01d, 958 ms before (01b)                                                      |
 | 2   | `cat` of 50 MB does not freeze the interface: the sidebar answers < 100 ms | NOR-F11-01a | **met** (13 ms)                                                                                                                 |
 | 3   | 30 tabs open: total memory under 500 MB                                    | NOR-F11-01b | **not met**: 3,651 MB of working set summed over the tree (private working set 1,384 MB), 30 shells are 83 % of it; NOR-F11-01e |
 | 4   | Changing space: under 100 ms                                               | NOR-F11-01a | **met** (16 ms), also the first switch of a page (43.7 ms median, worst 49.8 of 25) after NOR-F11-01c                           |
@@ -67,7 +68,9 @@ One machine, left alone while the numbers were taken (no other build or test run
   `perf-prompt-shown`) and the app stamps it on arrival. It is measured over a saved workspace of
   one tab, which is what a first start looks like. Two cross-checks are kept: from the launch call
   in the script (it also counts the creation of the process by Node, an upper bound) and from the
-  start of `main` in the app (it leaves out the loader of Windows, a lower bound).
+  start of `main` in the app (it leaves out the loader of Windows, a lower bound). Since NOR-F11-01d
+  the app and the page also stamp the steps in between (`perf::mark`, `perfMark`; only the hidden
+  perf mode keeps them), and the script prints each one as ms from the creation of the process.
 - **Memory** is the sum of the working set of every process in the tree under `noren.exe` (the web
   view processes, the shells and their console hosts), read from the process list after the 30
   prompts are in and the app has been left alone for 3 seconds; three readings, 1 second apart, and
@@ -87,7 +90,11 @@ node scripts/perf.mjs --skip-e2e   # only the PTY ones (about 17 minutes)
 node scripts/perf.mjs --only-app   # only the real app: release build, then 5 + 5 hidden runs (about 5 minutes)
 ```
 
-`--only-app` also takes `--no-build` (use the release binary that is there). It refuses to start if a
+`--only-app` also takes `--no-build` (use the release binary that is there) and `--first-only` (only
+the 1-tab runs, no 30-tab memory runs), and the environment variable `NOREN_PERF_BINARY` (run that
+`noren.exe` instead of `target/release/noren.exe`; its `resources/` folder has to sit beside it), which
+is how two builds are launched alternately for a comparison on the same day. Besides the summary it
+prints the stamps of the app and of the page ("Where the time went", section 5). It refuses to start if a
 `noren.exe` is already running, and it checks after every run that none is left. The pure parts of
 the script (which processes belong to the tree, the sums, the clock) are tested by
 `node --test scripts/perf-app-lib.test.mjs`. Or each part by itself:
@@ -301,27 +308,114 @@ build, where the cost showed.
 ### 5. Opening the app to the first prompt (real app, release build)
 
 `noren --smoke-perf` over a saved workspace of one tab, the window hidden, 5 cold starts, in ms
-(see "Method" for what the clock starts and stops on):
+(see "Method" for what the clock starts and stops on). **Before** is the measurement of
+NOR-F11-01b, **after** is NOR-F11-01d (`node scripts/perf.mjs --only-app`, the 30-tab runs in
+between as in 01b):
 
-| Repetition                                 | 1    | 2   | 3   | 4   | 5   | Median  | Min / max  |
-| ------------------------------------------ | ---- | --- | --- | --- | --- | ------- | ---------- |
-| **From the creation of the process**       | 960  | 913 | 894 | 958 | 997 | **958** | 894 / 997  |
-| From the launch call in the script (upper) | 1164 | 915 | 895 | 960 | 999 | 960     | 895 / 1164 |
-| From the start of `main` (lower)           | 878  | 844 | 826 | 882 | 923 | 878     | 826 / 923  |
-| `app-ready` of the page, from `main`       | 825  | 806 | 808 | 833 | 838 | 825     | 806 / 838  |
+| Repetition                                  | 1   | 2   | 3   | 4   | 5   | Median  | Min / max |
+| ------------------------------------------- | --- | --- | --- | --- | --- | ------- | --------- |
+| **After: from the creation of the process** | 621 | 677 | 621 | 600 | 583 | **621** | 583 / 677 |
+| After: from the launch call (upper bound)   | 946 | 707 | 623 | 601 | 607 | 623     | 601 / 946 |
+| After: from the start of `main` (lower)     | 536 | 591 | 548 | 527 | 511 | 536     | 511 / 591 |
+| After: `app-ready` of the page, from `main` | 522 | 563 | 530 | 505 | 490 | 522     | 490 / 563 |
+| Before (01b, 5 earlier runs)                | 960 | 913 | 894 | 958 | 997 | 958     | 894 / 997 |
 
-The two cross-checks bracket the figure (878 to 960 ms) and the five repetitions sit within 103 ms
-of one another (the 1164 ms is the first launch of the series, the slow creation of a process by
-Node, which the system's own creation time leaves out). With 30 tabs saved, the first prompt of
-any of them took 1,761 ms (median; 1,667 to 1,901) and the last of the 30 took 1,936 ms (1,761 to
-2,183): the app starts the shells one after the other before the page appears.
+The 946 ms is the first launch of the series, the slow creation of a process by Node, which the
+system's own creation time leaves out. This machine is noisy from one hour to the next (the same
+unchanged code measured 958 ms in 01b and 933 to 1,033 ms on the day of 01d), so the comparison
+that counts is the one run **interleaved on the same day**: the build of the commit before this
+task (`35b5b52`) and the build of this task, launched alternately, 5 each, same script, same state
+of the machine (`NOREN_PERF_BINARY`, `--first-only`):
 
-**Target: under 800 ms. Verdict: not met.** The median is 958 ms, 158 ms over, and even the best
-repetition (894 ms) is 94 ms over; the spread is small against that gap, so it is not noise.
-The page says `app-ready` at about 825 ms after `main` and the prompt is on screen 18 to 85 ms
-later, so most of the time is before the interface exists (the web view starting, the page's
-scripts, the boot of the workspace, which starts the shells), not the shell itself. That is a
-reading of the two clocks, not a profile: finding out is the task NOR-F11-01d.
+| Repetition                                                               | 1    | 2   | 3    | 4    | 5    | Median   | Min / max  |
+| ------------------------------------------------------------------------ | ---- | --- | ---- | ---- | ---- | -------- | ---------- |
+| Before (commit `35b5b52`)                                                | 1018 | 960 | 1152 | 1094 | 1033 | **1033** | 960 / 1152 |
+| After (this task, before the last small change of `quick.rs`, see below) | 581  | 532 | 555  | 583  | 573  | **573**  | 532 / 583  |
+
+**Target: under 800 ms in the median and under 900 ms in the worst. Verdict: met.** The final
+build measured 621 ms median and 677 ms worst of 5, and 573 / 583 ms in the interleaved run, where
+the old code measured 1,033 / 1,152 ms.
+
+With 30 tabs saved the first prompt of any took 1,403 ms (median; 1,399 to 1,683) and the last of
+the 30 took 1,972 ms (1,866 to 2,321); in 01b they took 1,761 and 1,936 ms. The first of them is
+the shell started ahead; the other 29 are started one after the other by `restoreWorkspace`, as
+before (not changed here: the task is the first prompt of a first start).
+
+#### Where the time went
+
+Each step was stamped (`perf::mark` in the app, `perfMark` in the page; the page's stamps travel in
+the payload of the first prompt event, so a normal start pays an array push per stamp and no IPC)
+and the script reads them as ms from the creation of the process, median of 5 (`node
+scripts/perf.mjs --only-app --first-only` prints them). **Before** is the original code with the
+stamps and no cut (first prompt 933 ms median in that run); **after** is the final build (621 ms):
+
+| Step (stamp)                                                 | Where                                                 | Before   | After                 |
+| ------------------------------------------------------------ | ----------------------------------------------------- | -------- | --------------------- |
+| `main` starts (`main`)                                       | `apps/desktop/src-tauri/src/main.rs:27`               | 73       | 74                    |
+| profiles detected, `wsl.exe -l -q` (`detect-end`)            | `src-tauri/src/bridge.rs:66`                          | 146      | off the path (thread) |
+| builder done (`built`)                                       | `src-tauri/src/main.rs:256`                           | 157      | 87                    |
+| shell started ahead (`prespawn-start`, `shell-spawned`)      | `src-tauri/src/prespawn.rs:201`, `bridge.rs:370`      | none     | 88, 203               |
+| web view navigates (`page-navigation-start`)                 | page, `performance.timeOrigin`                        | 408      | 369                   |
+| `setup` of the app (`setup-start`)                           | `src-tauri/src/main.rs:155`                           | 436      | 396                   |
+| quick window created (`quick-window-end`)                    | in `setup` before; `src-tauri/src/quick.rs:129` after | 506      | out of the start      |
+| page script runs (`page-script`)                             | `apps/desktop/src/main.tsx:10`                        | 500      | 453                   |
+| boot begins (`boot-start`)                                   | `apps/desktop/src/boot.ts:53`                         | 531      | 480                   |
+| settings read (`boot-config`)                                | `boot.ts:63`                                          | 549      | 509                   |
+| themes, mods, profiles (`boot-profiles`)                     | `boot.ts:76-85`                                       | 565      | 520                   |
+| the page asks for the shell (`session-create-called`)        | `src-tauri/src/bridge.rs:287`                         | 571      | 527                   |
+| shell started (`shell-spawned`)                              | `src-tauri/src/bridge.rs:370`                         | 611      | 203 (claimed at 528)  |
+| workspace restored (`boot-restore`, `boot-done`)             | `boot.ts:90`, `boot.ts:152`                           | 612, 616 | 529, 534              |
+| interface renders the boot result (`app-render`)             | `apps/desktop/src/App.tsx:1925`                       | 616      | 535                   |
+| **terminal mounts (`terminal-mount`)**                       | `apps/desktop/src/TerminalView.tsx:284`               | **858**  | **554**               |
+| terminal open, listening to the shell (`terminal-listening`) | `TerminalView.tsx:354`, `:467`                        | 889      | 594                   |
+| page says it is up (`app-ready`)                             | `apps/desktop/src/App.tsx:1334`                       | 894      | 602                   |
+| first prompt bytes leave the shell (`shell-prompt-bytes`)    | `src-tauri/src/bridge.rs:342`                         | 928      | 585                   |
+| prompt taken in by xterm (`perf-prompt-shown`)               | `TerminalView.tsx:472`                                | 933      | 621                   |
+
+What the stamps showed, and what was done (nothing the person sees was changed, with one
+exception told at the end):
+
+1. **A 235 ms wait inside React (`app-render` 616 to `terminal-mount` 858).** `Booted` read the
+   boot with `use(booted)` inside `<Suspense fallback={null}>`. The boundary showed its fallback
+   at once, and React holds back the reveal of the content until 300 ms after the fallback (its
+   throttle against flashing fallbacks), whatever the page is doing: no long task was seen in the
+   gap, and a CPU profile of the page in Chromium showed about 200 ms of work in all. Now the boot
+   result is read with a state (`useBooted`, `App.tsx:1908`) and the boundary is gone: the terminal
+   mounts 19 ms after the render. The largest cut.
+2. **The shell started only when the page asked for it** (`session-create-called` at 571 ms, its
+   prompt at 928: Windows PowerShell 5.1 takes 350 to 400 ms from its start to its prompt). The
+   command the page will ask for first is already in `state.json`, so a thread of the app
+   (`prespawn.rs`) reads it as soon as the builder is done, starts that shell and holds its output.
+   The page's `session_create` is handed the running session, with what it printed, when its
+   command is exactly the same one (`SpawnSpec` equality, which covers the profile after the
+   profiles of the user were applied); otherwise it starts its own, as before. A shell nobody
+   claimed ends at `app-ready`, without a word to the page. It is the visible pane (the focused
+   pane of the active tab of the active space) that is started ahead.
+3. **`AppState::detect` took 72 ms before the window existed** (it asks `wsl.exe -l -q`): it is
+   now a thread, waited for only when the first profile is needed (`bridge.rs:66`).
+4. **The quick window (a second web view loading the same page) was created inside `setup`**, in
+   front of the load events of the main page, sharing the CPU with it (70 ms on the thread of the
+   windows). It is now created 1.5 s after the main page says `app-ready` (`quick.rs:129`).
+
+What was left alone, being a floor or small: the start of the process up to `main` (about 75 ms);
+the time from the end of the builder to the first navigation of the web view (about 280 ms:
+WebView2 creating its environment and its processes, not under the control of the app); the
+scripts of the page (about 110 ms from the navigation to `boot-start`); the settings, themes and
+mods calls of the boot (about 40 ms in series; side by side they would save about 10 ms); the shell
+itself. The shell is now the last link: its prompt bytes (585 ms) arrive about when the terminal
+begins to listen (594 ms).
+
+**Not verified (D19): a visible window.** All of this is the hidden window (every `--smoke*` mode,
+`apps/desktop/src-tauri/src/main.rs:207`, `tauri.conf.json:20`). WebView2 may start, load and run
+the page differently with the window shown; the 300 ms throttle that was removed is React's and
+holds in both, and the shell started ahead does not depend on the window. A person's first prompt
+may differ from these figures by an amount that was not measured.
+
+**What changed in behavior, on purpose, in the first seconds.** The shortcut of the quick window
+pressed before about 2.5 s after the start finds no window yet: it makes it then (the same path as
+a failure to make it at the start always took) and, new, asks its page for the shell again once the
+page says it is ready (`quick.rs`, `toggle_window`), so the window does not open empty. Pressed
+later, nothing differs.
 
 ### 6. Memory with 30 tabs open (real app, release build)
 
@@ -356,6 +450,12 @@ which. The 30 shells are 83 % of the working set, and the shell of this machine 
 PowerShell 5.1 with the user's own profile, so the figure moves with the shell and the profile.
 Task NOR-F11-01e was opened for it; its first step is to decide what "total memory" counts.
 
+Re-measured in the run of NOR-F11-01d (5 repetitions, the same script), with the quick window
+made 1.5 s after the page is up: 3,556.1 MB of working set (3,551.1 to 3,590.9), 1,355.8 MB private (1,352.1
+to 1,391.5), 501.4 MB in the web view processes, 68 processes. That is about 95 MB under 01b; the cause was not
+isolated (the repetitions agree within 0.2 %, but it is one day against another), the verdict is the
+same and NOR-F11-01e starts from the figures above.
+
 ## Limits of these numbers
 
 - **Headless Chromium, not the app.** The web build is the same interface, but the shell is the
@@ -367,7 +467,7 @@ Task NOR-F11-01e was opened for it; its first step is to decide what "total memo
   (rows 1 and 3) depends on it.
 - **Real app, hidden window.** Rows 5 and 6 are the real release build, but with the main window
   hidden, as every `--smoke*` mode runs (`apps/desktop/src-tauri/tauri.conf.json:20`, kept hidden by
-  `smoke::should_show_window` at `apps/desktop/src-tauri/src/main.rs:191`). Whether WebView2 loads
+  `smoke::should_show_window` at `apps/desktop/src-tauri/src/main.rs:207`). Whether WebView2 loads
   the page, starts its processes and keeps its terminals slower or lighter with the window hidden
   than with it shown (a hidden page may skip frames and release its GPU surfaces) is not verified
   (D19): showing the window would take the focus of whoever is at the machine. The rows say what the
@@ -379,7 +479,7 @@ Task NOR-F11-01e was opened for it; its first step is to decide what "total memo
   here (the fastest feed of the harness, a timer-paced one, was drained as it came), so this is a
   hypothesis from reading the code, not a measurement.
 - **What the first prompt leaves out.** The clock stops when xterm has taken the prompt in, not when
-  the frame that shows it is painted (`apps/desktop/src/TerminalView.tsx:469`), which is one frame
+  the frame that shows it is painted (`apps/desktop/src/TerminalView.tsx:472`), which is one frame
   later in a shown window and is not observable in a hidden one. The shell is the one of this
   machine with the user's own profile (`$PROFILE` runs), and the web view cache of the machine is
   warm after the first run; a first start after an installation, with a cold cache, is not

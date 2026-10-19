@@ -8,9 +8,12 @@
 //! app; "promoting" it to a tab of the main window moves its output there (`session_attach`) and
 //! keeps the process.
 
+use std::thread;
+use std::time::Duration;
+
 use tauri::{
-    AppHandle, Emitter, PhysicalPosition, PhysicalSize, Runtime, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
+    AppHandle, Emitter, Listener, PhysicalPosition, PhysicalSize, Runtime, WebviewUrl,
+    WebviewWindow, WebviewWindowBuilder,
 };
 
 /// The label of the quick window; the page tells its form from it (`quick.ts`).
@@ -115,6 +118,32 @@ pub fn create_hidden<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<WebviewWin
     Ok(window)
 }
 
+/// How long after the main page says it is up (`app-ready`) the quick window is made. Making it at
+/// the start put a second web view to load, and its creation on the one thread of the windows, in
+/// front of the first prompt of the main one (NOR-F11-01d); a few seconds later nothing waits for it.
+const CREATE_AFTER_READY: Duration = Duration::from_millis(1500);
+
+/// Makes the hidden quick window once the main page has said it is up, and a moment after, instead
+/// of during the start. A failure is a line in the log, not a reason to stop; the shortcut makes
+/// the window itself (see [`toggle_window`]) if it is pressed before this ran.
+pub fn create_hidden_after_ready(app: &tauri::App) {
+    let handle = app.handle().clone();
+    app.once("app-ready", move |_| {
+        let handle = handle.clone();
+        thread::spawn(move || {
+            thread::sleep(CREATE_AFTER_READY);
+            let on_main = handle.clone();
+            let _ = handle.run_on_main_thread(move || {
+                crate::perf::mark("quick-window-start");
+                if let Err(error) = create_hidden(&on_main) {
+                    eprintln!("could not create the quick window: {error}");
+                }
+                crate::perf::mark("quick-window-end");
+            });
+        });
+    });
+}
+
 /// What the toggle does to the quick window, one step at a time, so the order is a plain function
 /// that a test can run against a recording stand-in (no test or smoke run may show the real window).
 pub trait QuickWindow {
@@ -175,7 +204,18 @@ impl<R: Runtime> QuickWindow for Live<'_, R> {
 /// [`toggle`] on the quick window of the app, which is made first if a failure at start left it
 /// out. Returns whether the window is visible afterwards.
 pub fn toggle_window<R: Runtime>(app: &AppHandle<R>) -> Result<bool, String> {
+    use tauri::Manager;
+    let made_now = app.get_webview_window(QUICK_LABEL).is_none();
     let window = create_hidden(app).map_err(|e| e.to_string())?;
+    if made_now {
+        // The page of a window made just now is not listening yet, so the `quick-open` of the toggle
+        // would be lost (the window is made after the start, not during it: the shortcut can come
+        // first). It is asked again when the page says it is ready; asking twice opens one shell.
+        let again = app.clone();
+        app.once(READY_EVENT, move |_| {
+            let _ = again.emit(OPEN_EVENT, ());
+        });
+    }
     toggle(&Live {
         app,
         window: &window,

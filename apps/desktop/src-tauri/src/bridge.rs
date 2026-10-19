@@ -6,7 +6,8 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use std::time::Duration;
 
 use noren_core::{
@@ -37,13 +38,18 @@ pub const SESSION_EXIT_EVENT: &str = "session-exit";
 /// and the ones the user defined (`profiles` of `config.jsonc`), which the interface hands over.
 pub struct AppState {
     pub sessions: SessionManager,
-    /// The shells found on this machine, detected once.
-    detected: ProfileSet,
+    /// The shells found on this machine, detected once. The detection runs on a thread of its own
+    /// from the start of the program (it asks `wsl.exe`, which takes ~70 ms) and the first reader
+    /// waits for it, which is long after it ended.
+    detected: LazyLock<ProfileSet, DetectedProfiles>,
     /// The detected shells followed by the profiles of the user: what is listed and what starts.
-    profiles: RwLock<ProfileSet>,
+    /// `None` until the user's profiles are handed over: the detected set is the list then.
+    profiles: RwLock<Option<ProfileSet>>,
     /// Where the output of each live session goes, by session id. A route is added when the session
     /// starts and removed when it ends; `session_attach` changes the channel behind it.
     routes: Arc<Mutex<HashMap<u64, Arc<OutputRoute>>>>,
+    /// The shell of the pane on screen, started before the page asked for it (see `prespawn`).
+    pub(crate) prespawn: Mutex<crate::prespawn::Slot>,
 }
 
 /// What a `%NAME%` in a profile of the user is replaced with: the environment of the process.
@@ -51,26 +57,55 @@ fn process_env(name: &str) -> Option<String> {
     std::env::var(name).ok()
 }
 
+/// How the detected profiles are produced the first time they are read.
+type DetectedProfiles = Box<dyn FnOnce() -> ProfileSet + Send + Sync>;
+
 impl AppState {
-    /// Detects the system profiles (once) and starts with no session and no profile of the user.
+    /// Starts detecting the system profiles (once, on a thread of its own) and starts with no
+    /// session and no profile of the user.
     pub fn detect() -> Self {
-        Self::with_detected(detect_system_profiles())
+        let detection = std::thread::spawn(detect_system_profiles);
+        let waiting = Mutex::new(Some(detection));
+        Self::with_detection(Box::new(move || {
+            // A detection that panicked leaves no shell, which the first session reports.
+            let handle = waiting.lock().unwrap_or_else(|e| e.into_inner()).take();
+            handle
+                .and_then(|handle| handle.join().ok())
+                .unwrap_or(ProfileSet {
+                    profiles: Vec::new(),
+                    default_id: None,
+                })
+        }))
     }
 
     /// The same around profiles already known (a test builds its own).
+    #[cfg(test)]
     pub fn with_detected(detected: ProfileSet) -> Self {
+        Self::with_detection(Box::new(move || detected))
+    }
+
+    fn with_detection(detection: DetectedProfiles) -> Self {
         Self {
             sessions: SessionManager::new(),
-            profiles: RwLock::new(detected.clone()),
-            detected,
+            detected: LazyLock::new(detection),
+            profiles: RwLock::new(None),
             routes: Arc::default(),
+            prespawn: Mutex::default(),
+        }
+    }
+
+    /// Runs `read` on the profiles in force: the user's followed the detected ones, once handed over.
+    fn with_profiles<T>(&self, read: impl FnOnce(&ProfileSet) -> T) -> T {
+        let joined = self.profiles.read().unwrap_or_else(|e| e.into_inner());
+        match joined.as_ref() {
+            Some(profiles) => read(profiles),
+            None => read(&self.detected),
         }
     }
 
     /// The profile `id`, or the default one for `None`.
     pub fn find_profile(&self, id: Option<&str>) -> Result<Profile, String> {
-        let profiles = self.profiles.read().unwrap_or_else(|e| e.into_inner());
-        match id {
+        self.with_profiles(|profiles| match id {
             Some(id) => profiles
                 .get(id)
                 .cloned()
@@ -79,7 +114,7 @@ impl AppState {
                 .default_profile()
                 .cloned()
                 .ok_or_else(|| "no shell profile was found on this machine".to_owned()),
-        }
+        })
     }
 
     /// Where the output of the session `id` goes; `None` for a session that never started or ended.
@@ -93,7 +128,7 @@ impl AppState {
 
     /// Every profile, the detected ones first, as the interface lists them.
     pub fn list_profiles(&self) -> Vec<ProfileDto> {
-        profile_dtos(&self.profiles.read().unwrap_or_else(|e| e.into_inner()))
+        self.with_profiles(profile_dtos)
     }
 
     /// Replaces the profiles of the user. The whole list is refused, and the profiles stay as they
@@ -104,7 +139,7 @@ impl AppState {
             .detected
             .with_user_profiles(user, &process_env)
             .map_err(|e| e.to_string())?;
-        *self.profiles.write().unwrap_or_else(|e| e.into_inner()) = joined;
+        *self.profiles.write().unwrap_or_else(|e| e.into_inner()) = Some(joined);
         Ok(())
     }
 }
@@ -249,14 +284,45 @@ pub fn create_session<R: Runtime>(
     rows: u16,
     output: Channel<InvokeResponseBody>,
 ) -> Result<(u64, String), String> {
-    let profile = state.find_profile(profile_id)?;
+    crate::perf::mark_once("session-create-called");
+    let (profile, spec) = session_spec(app, state, profile_id, cwd, env, cols, rows)?;
+    // The shell this very page is about to ask for may be running already (see `prespawn`).
+    if let Some(id) = state.claim_prespawned(&spec, &output) {
+        return Ok((id.0, profile.id.clone()));
+    }
+    let id = launch(app, state, spec, output, None)?;
+    Ok((id.0, profile.id.clone()))
+}
 
+/// The profile and the command a `session_create` with these arguments starts: the one place that
+/// decides it, so a shell started ahead of the call (see `prespawn`) is known to be the same one.
+pub fn session_spec<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    profile_id: Option<&str>,
+    cwd: Option<&str>,
+    env: Option<HashMap<String, String>>,
+    cols: u16,
+    rows: u16,
+) -> Result<(Profile, SpawnSpec), String> {
+    let profile = state.find_profile(profile_id)?;
     let spec = apply_session_options(
         profile.spawn_spec_with_integration(cols, rows, integration_dir(app).as_deref()),
         cwd,
         env,
     )?;
+    Ok((profile, spec))
+}
 
+/// Starts the shell of `spec`, sends its output to `output` through a route kept in `state` and
+/// emits `session-exit` when it ends (unless `silent` is set by then: a shell nobody ever knew of).
+pub fn launch<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    spec: SpawnSpec,
+    output: Channel<InvokeResponseBody>,
+    silent: Option<Arc<AtomicBool>>,
+) -> Result<SessionId, String> {
     // The exit event carries the session id, which exists only after `spawn` returned. The
     // callback waits on this lock for it; a session that ends at once cannot report too early.
     let id_slot: Arc<Mutex<Option<SessionId>>> = Arc::new(Mutex::new(None));
@@ -271,7 +337,11 @@ pub fn create_session<R: Runtime>(
         .sessions
         .spawn(spec, move |event| match event {
             // A failed send means the page is gone; the session ends with the app.
-            SessionEvent::Output(bytes) => sink.send(bytes),
+            SessionEvent::Output(bytes) => {
+                crate::perf::mark_once("shell-first-byte");
+                crate::perf::mark_prompt_bytes(bytes);
+                sink.send(bytes)
+            }
             SessionEvent::Exit(info) => {
                 let id = *callback_slot.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(id) = id {
@@ -279,6 +349,12 @@ pub fn create_session<R: Runtime>(
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
                         .remove(&id.0);
+                    if silent
+                        .as_ref()
+                        .is_some_and(|silent| silent.load(Ordering::SeqCst))
+                    {
+                        return;
+                    }
                     let _ = app.emit(
                         SESSION_EXIT_EVENT,
                         SessionExitPayload {
@@ -291,6 +367,7 @@ pub fn create_session<R: Runtime>(
             }
         })
         .map_err(|e| e.to_string())?;
+    crate::perf::mark_once("shell-spawned");
     // Before the lock is released: the exit callback waits for it, so it cannot remove a route
     // that was not added yet.
     state
@@ -299,7 +376,7 @@ pub fn create_session<R: Runtime>(
         .unwrap_or_else(|e| e.into_inner())
         .insert(id.0, route);
     *slot = Some(id);
-    Ok((id.0, profile.id.clone()))
+    Ok(id)
 }
 
 /// Moves the output of the live session `id` to `output`: what the shell prints from now on goes
@@ -373,11 +450,16 @@ pub async fn session_create(
 /// Builds the store for `state.json` inside the app data folder. Only resolves the path: the
 /// folder is created on the first save.
 pub fn state_store(app: &AppHandle) -> Result<StateStore, String> {
+    state_file(app).map(StateStore::new)
+}
+
+/// Where `state.json` lives (the file may not be there yet).
+pub fn state_file<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("could not find the app data folder: {e}"))?;
-    Ok(StateStore::new(dir.join(STATE_FILE_NAME)))
+    Ok(dir.join(STATE_FILE_NAME))
 }
 
 /// Reads `state.json` as text; `None` when there is no file yet. Bytes that are not valid UTF-8
@@ -2065,6 +2147,145 @@ mod tests {
         let refusal = attach_session(&state, id, late).expect_err("the session is gone");
         assert!(refusal.contains("unknown session"), "{refusal}");
         assert!(received(&in_late).is_empty());
+    }
+
+    /// A `state.json` whose active pane asks for the default profile in `cwd`.
+    fn saved_state_in(cwd: &Path) -> PathBuf {
+        let file = cwd.join("state.json");
+        let state = serde_json::json!({
+            "version": 2,
+            "activeSpaceId": "s1",
+            "spaces": [{
+                "id": "s1",
+                "defaults": { "env": {} },
+                "activeItemId": "i1",
+                "items": { "i1": {
+                    "focusedPaneId": "p1",
+                    "layout": { "kind": "pane", "pane": {
+                        "id": "p1", "type": "terminal", "profileId": "default",
+                        "cwd": cwd.to_string_lossy(),
+                    } },
+                } },
+            }],
+        });
+        std::fs::write(&file, state.to_string()).expect("write the saved state");
+        file
+    }
+
+    /// Starts the search for the shell ahead and waits until it is running.
+    fn wait_for_prespawned(app: &tauri::App<tauri::test::MockRuntime>, file: PathBuf) {
+        crate::prespawn::start(app.handle(), file);
+        let deadline = std::time::Instant::now() + Duration::from_secs(40);
+        loop {
+            let state = app.state::<AppState>();
+            let slot = state.prespawn.lock().unwrap();
+            if matches!(*slot, crate::prespawn::Slot::Ready(_)) {
+                return;
+            }
+            assert!(
+                !matches!(*slot, crate::prespawn::Slot::Closed),
+                "no shell was started ahead"
+            );
+            drop(slot);
+            assert!(std::time::Instant::now() < deadline, "no shell in time");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    fn temp_folder(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("noren-test-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("make the folder");
+        dir
+    }
+
+    #[test]
+    fn a_shell_started_ahead_is_handed_to_the_call_that_asks_for_the_same_thing_with_what_it_printed()
+     {
+        let dir = temp_folder("prespawn-claim");
+        let app = tauri::test::mock_app();
+        app.manage(state_with_shell());
+        wait_for_prespawned(&app, saved_state_in(&dir));
+        let state = app.state::<AppState>();
+        assert_eq!(state.sessions.session_count(), 1, "one shell is running");
+        // Let it print its first lines before anyone asks for it.
+        std::thread::sleep(Duration::from_millis(1500));
+
+        let (page, in_page) = collecting();
+        let dir_text = dir.to_string_lossy().into_owned();
+        let (id, profile) = create_session(
+            app.handle(),
+            &state,
+            None,
+            Some(&dir_text),
+            None,
+            80,
+            24,
+            page,
+        )
+        .expect("claim");
+        assert_eq!(profile, "test");
+        assert_eq!(state.sessions.session_count(), 1, "no second shell started");
+        assert!(
+            !received(&in_page).is_empty(),
+            "what the shell printed before the call came with it"
+        );
+        let route = state.route(id).expect("a route");
+        assert_eq!(route.channels(), 1, "the page did not move the session");
+
+        state
+            .sessions
+            .write(SessionId(id), PID_COMMAND)
+            .expect("write");
+        assert!(wait_for_pid(&in_page) > 0, "the claimed shell answers");
+        state.sessions.kill(SessionId(id)).expect("kill");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_call_that_asks_for_something_else_starts_its_own_shell_and_closing_ends_the_other_silently()
+     {
+        let dir = temp_folder("prespawn-other");
+        let app = tauri::test::mock_app();
+        app.manage(state_with_shell());
+        wait_for_prespawned(&app, saved_state_in(&dir));
+        let state = app.state::<AppState>();
+
+        // Another folder: not the shell that was started.
+        let (page, in_page) = collecting();
+        let (id, _) = create_session(app.handle(), &state, None, None, None, 80, 24, page)
+            .expect("its own shell");
+        assert_eq!(state.sessions.session_count(), 2, "both shells are running");
+        state
+            .sessions
+            .write(SessionId(id), PID_COMMAND)
+            .expect("write");
+        assert!(wait_for_pid(&in_page) > 0);
+
+        state.close_prespawn();
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        while state.sessions.session_count() > 1 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the shell ahead stayed"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            matches!(
+                *state.prespawn.lock().unwrap(),
+                crate::prespawn::Slot::Closed
+            ),
+            "nothing is kept"
+        );
+        // Nothing to claim any more.
+        let (again, _) = collecting();
+        assert!(state.claim_prespawned(&shell_spec(), &again).is_none());
+        state.sessions.kill(SessionId(id)).expect("kill");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn shell_spec() -> SpawnSpec {
+        shell_profile().spawn_spec(80, 24)
     }
 
     #[test]

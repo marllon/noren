@@ -7,13 +7,14 @@ mod deeplink;
 mod lifecycle;
 mod notify;
 mod perf;
+mod prespawn;
 mod quick;
 mod route;
 mod shortcut;
 mod smoke;
 mod window_effect;
 
-use tauri::{Manager, RunEvent};
+use tauri::{Listener, Manager, RunEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 
 use ai::AiState;
@@ -21,6 +22,10 @@ use bridge::{AppState, BackgroundState, ConfigState, ModState, ScrollbackState, 
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    // The first thing, so the zero of the marks is the start of the program (NOR-F11-01d).
+    if perf::has_perf_flag(&args) {
+        perf::enable();
+    }
     let smoke = args.iter().skip(1).any(|arg| arg == smoke::SMOKE_FLAG);
     let smoke_deeplink = deeplink::has_smoke_deeplink_flag(&args);
     // The deep-link check needs a link with a folder before anything starts.
@@ -85,6 +90,9 @@ fn main() {
     }
     .expect("could not build the AI client");
 
+    let perf_state_file = perf_run
+        .as_ref()
+        .map(|run| run.state_dir.join(bridge::STATE_FILE_NAME));
     let app = builder
         .manage(AppState::detect())
         .manage(deeplink::Links::default())
@@ -92,6 +100,13 @@ fn main() {
         .manage(shortcut::QuickShortcut::new(!any_smoke))
         .manage(ai_state)
         .on_window_event(lifecycle::on_window_event)
+        .on_page_load(|webview, payload| {
+            let event = match payload.event() {
+                tauri::webview::PageLoadEvent::Started => "started",
+                tauri::webview::PageLoadEvent::Finished => "finished",
+            };
+            perf::mark(&format!("page-load-{event}:{}", webview.label()));
+        })
         .invoke_handler(tauri::generate_handler![
             ai::ai_providers,
             ai::ai_configure,
@@ -137,6 +152,7 @@ fn main() {
             deeplink::deep_link_applied,
         ])
         .setup(move |app| {
+            perf::mark("setup-start");
             match (&smoke_link, &quick_sandbox, &perf_run) {
                 // The deep-link, quick and perf checks never touch the user's files: they run on a
                 // folder of their own.
@@ -194,17 +210,11 @@ fn main() {
                 window.show()?;
                 window.set_focus()?;
             }
-            // The quick terminal: a second window, hidden, that loads its page now so it is ready when
-            // something shows it. The plain smoke runs check the main window alone and leave it out; a
-            // failure to make it never stops a normal start, but fails the quick run.
-            if !smoke
-                && !smoke_deeplink
-                && let Err(error) = quick::create_hidden(app.handle())
-            {
-                if smoke_quick {
-                    return Err(error.into());
-                }
-                eprintln!("could not create the quick window: {error}");
+            // The quick terminal: a second window, hidden, that loads its page once the main one is up
+            // (see `quick::create_hidden_after_ready`), so it is ready when something shows it. The
+            // plain smoke runs check the main window alone and leave it out.
+            if !smoke && !smoke_deeplink {
+                quick::create_hidden_after_ready(app);
             }
             // The global shortcut of the quick terminal: only a normal start registers one. A chord
             // another program holds is a line in the log, not a reason to stop.
@@ -238,10 +248,28 @@ fn main() {
             if let Some(run) = perf_run.clone() {
                 perf::arm(app, run);
             }
+            perf::mark("setup-end");
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while building Noren");
+    perf::mark("built");
+    // The shell of the pane on screen starts now, in the time the web view takes to start (see
+    // `prespawn`). Not in the smoke runs, whose state is not the one the page will read, and whose
+    // sessions the checks count.
+    let prespawn_state = match (perf_state_file, any_smoke) {
+        (Some(file), _) => Some(file),
+        (None, false) => bridge::state_file(app.handle()).ok(),
+        (None, true) => None,
+    };
+    if let Some(file) = prespawn_state {
+        prespawn::start(app.handle(), file);
+        // The page asks for its shells before it says it is up; one nobody claimed ends here.
+        let handle = app.handle().clone();
+        app.once("app-ready", move |_| {
+            handle.state::<AppState>().close_prespawn();
+        });
+    }
 
     app.run(|handle, event| {
         // No terminal session may outlive the app.

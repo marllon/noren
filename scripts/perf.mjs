@@ -13,7 +13,9 @@
 // and prints the lines `docs/PERF.md` quotes. Nothing here opens a window or touches the keyboard.
 //
 // Options: --skip-e2e, --skip-pty, --skip-app, --only-app (the other two skipped), --no-build (use
-// the release binary that is already there). Environment: NOREN_PERF_MB (size of the file the PTY
+// the release binary that is already there), --first-only (the runs of 1 tab only, no 30-tab memory
+// runs; NOR-F11-01d, to compare two builds of the first prompt). Environment: NOREN_PERF_BINARY (the
+// `noren.exe` to run instead of target/release/noren.exe, with --no-build); NOREN_PERF_MB (size of the file the PTY
 // prints, default 50), NOREN_PERF_REPS (repetitions of the PTY test and of the app, default 5),
 // NOREN_PERF_PRODUCER (`type` or `cat`), NOREN_PERF_LINE_BYTES, NOREN_E2E_PORT (see docs/DEV.md).
 import { spawn, spawnSync } from "node:child_process";
@@ -31,7 +33,7 @@ import { dirname, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { summarize } from "../e2e/perf-stats.ts";
-import { launchTo, processTree, sumMemory } from "./perf-app-lib.mjs";
+import { launchTo, marksSince, processTree, sumMemory } from "./perf-app-lib.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const isWindows = process.platform === "win32";
@@ -170,6 +172,8 @@ async function runApp(binary, tabs) {
     }
     // The system's own record of when the process was created: the start the target talks about.
     const sincePrompts = result.promptsUnixMs.map((at) => launchTo(created, at));
+    // Every mark of the app and of the page, in ms from the creation of the process (NOR-F11-01d).
+    const marks = marksSince(created, result.marksUnixMs);
     const med = (list, pick) => summarize(list.map(pick)).median;
     writeFileSync(`${out}.done`, "done");
     const code = await Promise.race([exited, sleep(30_000).then(() => "timeout")]);
@@ -190,6 +194,7 @@ async function runApp(binary, tabs) {
       lastPromptMs: Math.max(...sincePrompts),
       firstPromptFromLaunchMs: Math.min(...prompts),
       firstPromptFromMainMs: result.firstPromptMs,
+      marks,
       appReadyFromMainMs: result.appReadyMs,
       workingSetMb: summarize(workingSetMb).median,
       workingSetMbSamples: workingSetMb,
@@ -209,7 +214,7 @@ async function measureApp() {
     console.log("\n== real app: Windows only, skipped ==");
     return;
   }
-  const binary = resolve(root, "target", "release", "noren.exe");
+  const binary = process.env.NOREN_PERF_BINARY ?? resolve(root, "target", "release", "noren.exe");
   if (!args.has("--no-build")) {
     console.log("\n== release build of the app (no installer) ==");
     run("pnpm", ["--filter", "@noren/desktop", "exec", "tauri", "build", "--no-bundle"]);
@@ -224,10 +229,13 @@ async function measureApp() {
   const first = [];
   const thirty = [];
   for (let rep = 1; rep <= APP_REPS; rep++) {
-    for (const [tabs, into] of [
-      [1, first],
-      [30, thirty],
-    ]) {
+    const kinds = args.has("--first-only")
+      ? [[1, first]]
+      : [
+          [1, first],
+          [30, thirty],
+        ];
+    for (const [tabs, into] of kinds) {
       const entry = await runApp(binary, tabs);
       into.push(entry);
       const line = JSON.stringify({ name: `app-${tabs}-tabs`, rep, ...entry });
@@ -242,35 +250,57 @@ async function measureApp() {
     "first prompt, 1 tab (ms from launch in the script)": pick(first, "firstPromptFromLaunchMs"),
     "first prompt, 1 tab (ms from main)": pick(first, "firstPromptFromMainMs"),
     "app-ready, 1 tab (ms from main)": pick(first, "appReadyFromMainMs"),
-    "first prompt, 30 tabs (ms from process creation)": pick(thirty, "firstPromptMs"),
-    "last of 30 prompts (ms from process creation)": pick(thirty, "lastPromptMs"),
-    "memory, 30 tabs, working set sum (MB)": pick(thirty, "workingSetMb"),
-    "memory, 30 tabs, private working set sum (MB)": pick(thirty, "privateWorkingSetMb"),
-    "memory, 30 tabs, Noren process, working set (MB)": rolePick(thirty, "noren", "workingSetMb"),
-    "memory, 30 tabs, web view processes, working set (MB)": rolePick(
-      thirty,
-      "webview",
-      "workingSetMb",
-    ),
-    "memory, 30 tabs, shells and consoles, working set (MB)": rolePick(
-      thirty,
-      "shells",
-      "workingSetMb",
-    ),
-    "memory, 30 tabs, web view processes, private (MB)": rolePick(
-      thirty,
-      "webview",
-      "privateWorkingSetMb",
-    ),
-    "memory, 30 tabs, shells and consoles, private (MB)": rolePick(
-      thirty,
-      "shells",
-      "privateWorkingSetMb",
-    ),
+  };
+  if (thirty.length > 0) {
+    Object.assign(summary, {
+      "first prompt, 30 tabs (ms from process creation)": pick(thirty, "firstPromptMs"),
+      "last of 30 prompts (ms from process creation)": pick(thirty, "lastPromptMs"),
+      "memory, 30 tabs, working set sum (MB)": pick(thirty, "workingSetMb"),
+      "memory, 30 tabs, private working set sum (MB)": pick(thirty, "privateWorkingSetMb"),
+      "memory, 30 tabs, Noren process, working set (MB)": rolePick(thirty, "noren", "workingSetMb"),
+      "memory, 30 tabs, web view processes, working set (MB)": rolePick(
+        thirty,
+        "webview",
+        "workingSetMb",
+      ),
+      "memory, 30 tabs, shells and consoles, working set (MB)": rolePick(
+        thirty,
+        "shells",
+        "workingSetMb",
+      ),
+      "memory, 30 tabs, web view processes, private (MB)": rolePick(
+        thirty,
+        "webview",
+        "privateWorkingSetMb",
+      ),
+      "memory, 30 tabs, shells and consoles, private (MB)": rolePick(
+        thirty,
+        "shells",
+        "privateWorkingSetMb",
+      ),
+      "processes, 30 tabs": pick(thirty, "processes"),
+    });
+  }
+  Object.assign(summary, {
     "memory, 1 tab, working set sum (MB)": pick(first, "workingSetMb"),
     "memory, 1 tab, private working set sum (MB)": pick(first, "privateWorkingSetMb"),
-    "processes, 30 tabs": pick(thirty, "processes"),
-  };
+  });
+  // Where the time goes: each mark of the 1-tab runs, median over the repetitions (NOR-F11-01d).
+  const markNames = [...new Set(first.flatMap((entry) => Object.keys(entry.marks)))];
+  const markRows = markNames
+    .map((name) => {
+      const seen = first.filter((entry) => name in entry.marks).map((entry) => entry.marks[name]);
+      return { name, ...summarize(seen) };
+    })
+    .sort((a, b) => a.median - b.median);
+  console.log("\n== real app: marks, 1 tab (ms from process creation) ==");
+  for (const row of markRows) {
+    const r = (v) => Math.round(v * 10) / 10;
+    console.log(
+      `${row.name}: median ${r(row.median)}, min ${r(row.min)}, max ${r(row.max)}, n ${row.n}`,
+    );
+  }
+  appendFileSync(out, `${JSON.stringify({ name: "app-marks", marks: markRows })}\n`);
   console.log("\n== real app: summary (median, min, max) ==");
   for (const [name, s] of Object.entries(summary)) {
     const r = (v) => Math.round(v * 10) / 10;

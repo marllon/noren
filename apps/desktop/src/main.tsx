@@ -3,9 +3,11 @@ import { StrictMode } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { insideTauri } from "./backend";
+import { perfMark } from "./perf-probe";
 import { quickPreviewEnabled, windowKindOf } from "./quick";
 import "./app.css";
 
+perfMark("page-script");
 const root = document.getElementById("root");
 if (!root) {
   throw new Error("Missing #root element");

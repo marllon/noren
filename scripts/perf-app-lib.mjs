@@ -81,3 +81,17 @@ export function sumMemory(tree) {
 export function launchTo(launchedMs, reportedMs) {
   return Number(BigInt(reportedMs) - BigInt(launchedMs));
 }
+
+/**
+ * The marks the app and its page reported (`[name, milliseconds since 1970]`, the page's with a
+ * fraction) as milliseconds since `createdMs`, the creation of the process, to a tenth of a
+ * millisecond. A mark reached twice keeps the first time. A report with no marks (an older build)
+ * gives an empty object.
+ */
+export function marksSince(createdMs, marks) {
+  const since = {};
+  for (const [name, at] of marks ?? []) {
+    if (!(name in since)) since[name] = Math.round((at - createdMs) * 10) / 10;
+  }
+  return since;
+}

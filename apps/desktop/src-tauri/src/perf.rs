@@ -12,6 +12,8 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -36,6 +38,95 @@ const MAX_TABS: usize = 100;
 const PROMPTS_TIMEOUT: Duration = Duration::from_secs(90);
 /// Time the app waits to be told the memory was read, before it ends on its own.
 const HOLD_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Whether this process is a perf run: only then do the marks below keep anything.
+static ENABLED: AtomicBool = AtomicBool::new(false);
+/// The moments the app went through, in the order they were marked (microseconds since 1970).
+static MARKS: Mutex<Vec<(String, u128)>> = Mutex::new(Vec::new());
+
+/// Notes that the app reached `name` now (NOR-F11-01d). Does nothing outside a perf run, so the
+/// calls left in the code of a normal start cost one atomic read.
+pub fn mark(name: &str) {
+    if ENABLED.load(Ordering::Relaxed) {
+        MARKS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((name.to_owned(), unix_us()));
+    }
+}
+
+/// Like [`mark`], but only the first time `name` is reached (the first byte of a shell).
+pub fn mark_once(name: &str) {
+    if ENABLED.load(Ordering::Relaxed) {
+        let mut marks = MARKS.lock().unwrap_or_else(|e| e.into_inner());
+        if !marks.iter().any(|(known, _)| known == name) {
+            marks.push((name.to_owned(), unix_us()));
+        }
+    }
+}
+
+/// The bytes that start a prompt (`ESC ] 133 ; A`), the mark the page waits for too.
+const PROMPT_MARK: &[u8] = b"]133;A";
+
+/// Marks the first chunk of shell output that holds a prompt: the moment the shell has the first
+/// prompt ready, before the page has had any part in it. A mark split between two chunks is missed
+/// (the page-side mark still catches it).
+pub fn mark_prompt_bytes(chunk: &[u8]) {
+    if ENABLED.load(Ordering::Relaxed) && chunk.windows(PROMPT_MARK.len()).any(|w| w == PROMPT_MARK)
+    {
+        mark_once("shell-prompt-bytes");
+    }
+}
+
+fn unix_us() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_micros())
+}
+
+/// Turns the marks on for this process. Called at the start of `main`, before anything else.
+pub fn enable() {
+    ENABLED.store(true, Ordering::Relaxed);
+    mark("main");
+}
+
+/// Every mark as `[name, milliseconds since 1970]`, the ones of the page (`page`, same shape,
+/// from the payload of the first prompt event) included, sorted by time.
+fn marks_json(page: &[(String, f64)]) -> Value {
+    let mut all: Vec<(String, f64)> = MARKS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .map(|(name, us)| (name.clone(), (*us as f64) / 1000.0))
+        .collect();
+    all.extend(page.iter().cloned());
+    all.sort_by(|a, b| a.1.total_cmp(&b.1));
+    Value::Array(
+        all.into_iter()
+            .map(|(name, ms)| json!([name, (ms * 10.0).round() / 10.0]))
+            .collect(),
+    )
+}
+
+/// The `[name, ms]` pairs the page put in the payload of its first prompt event.
+fn page_marks(payload: &Value) -> Vec<(String, f64)> {
+    payload
+        .get("marks")
+        .and_then(Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter_map(|pair| {
+                    let pair = pair.as_array()?;
+                    Some((pair.first()?.as_str()?.to_owned(), pair.get(1)?.as_f64()?))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// What the page told the app: the event, the session it names, when it arrived (milliseconds since
+/// 1970) and the marks the page made.
+type Arrival = (String, Option<u64>, u128, Vec<(String, f64)>);
 
 /// What the run was asked for, and the folder that holds its own files.
 #[derive(Clone, Debug)]
@@ -189,7 +280,12 @@ fn write_atomic(path: &Path, value: &Value) -> std::io::Result<()> {
 }
 
 /// The result of the run: the prompts in the order they reached the page, with their times.
-fn result_json(run: &PerfRun, app_ready_ms: Option<u128>, prompts: &[(u64, u128, u128)]) -> Value {
+fn result_json(
+    run: &PerfRun,
+    app_ready_ms: Option<u128>,
+    prompts: &[(u64, u128, u128)],
+    page: &[(String, f64)],
+) -> Value {
     let ms: Vec<u128> = prompts.iter().map(|p| p.1).collect();
     let unix: Vec<u128> = prompts.iter().map(|p| p.2).collect();
     json!({
@@ -201,6 +297,7 @@ fn result_json(run: &PerfRun, app_ready_ms: Option<u128>, prompts: &[(u64, u128,
         "promptsUnixMs": unix.iter().map(u128::to_string).collect::<Vec<_>>(),
         "firstPromptMs": ms.first(),
         "lastPromptMs": ms.last(),
+        "marksUnixMs": marks_json(page),
     })
 }
 
@@ -218,16 +315,17 @@ fn fail(app: &AppHandle, run: &PerfRun, message: &str) -> ! {
 fn wait_for_prompts(
     app: &AppHandle,
     run: &PerfRun,
-    rx: &mpsc::Receiver<(String, Option<u64>, u128)>,
+    rx: &mpsc::Receiver<Arrival>,
 ) -> Result<Value, String> {
     let deadline = run.started + PROMPTS_TIMEOUT;
     let mut app_ready = None;
     let mut prompts: Vec<(u64, u128, u128)> = Vec::new();
     let mut seen = HashSet::new();
+    let mut page: Vec<(String, f64)> = Vec::new();
     while prompts.len() < run.tabs {
         let remaining = deadline.saturating_duration_since(Instant::now());
         match rx.recv_timeout(remaining) {
-            Ok((name, id, at_ms)) => {
+            Ok((name, id, at_ms, marks)) => {
                 let since = |at: u128| at.saturating_sub(run.started_unix_ms);
                 if name == "app-ready" {
                     app_ready.get_or_insert(since(at_ms));
@@ -235,6 +333,9 @@ fn wait_for_prompts(
                 } else if let Some(id) = id
                     && seen.insert(id)
                 {
+                    if prompts.is_empty() {
+                        page = marks;
+                    }
                     prompts.push((id, since(at_ms), at_ms));
                 }
             }
@@ -261,22 +362,27 @@ fn wait_for_prompts(
             run.tabs
         ));
     }
-    Ok(result_json(run, app_ready, &prompts))
+    Ok(result_json(run, app_ready, &prompts, &page))
 }
 
 /// Starts the run: waits for the prompts, writes the result, holds the app open until the script
 /// says it has read the memory (`<file>.done`), then exits with 0.
 pub fn arm(app: &tauri::App, run: PerfRun) {
-    let (tx, rx) = mpsc::channel::<(String, Option<u64>, u128)>();
+    let (tx, rx) = mpsc::channel::<Arrival>();
     for name in ["app-ready", PROMPT_SHOWN_EVENT] {
         let tx = tx.clone();
         let started = run.started_unix_ms;
         app.listen(name, move |event| {
-            let id = serde_json::from_str::<Value>(event.payload())
-                .ok()
-                .and_then(|payload| payload.get("id").and_then(Value::as_u64));
+            mark(name);
+            let payload = serde_json::from_str::<Value>(event.payload()).unwrap_or(Value::Null);
+            let id = payload.get("id").and_then(Value::as_u64);
             // The run is over once the receiver is gone; late events are of no interest.
-            let _ = tx.send((name.to_owned(), id, unix_ms().max(started)));
+            let _ = tx.send((
+                name.to_owned(),
+                id,
+                unix_ms().max(started),
+                page_marks(&payload),
+            ));
         });
     }
 
@@ -444,12 +550,39 @@ mod tests {
     #[test]
     fn the_result_lists_the_prompts_in_order() {
         let run = parse_args(&args(&["noren.exe", "--smoke-perf", "--perf-out", "o"])).unwrap();
-        let result = result_json(&run, Some(310), &[(1, 420, 1_000_420), (2, 450, 1_000_450)]);
+        let result = result_json(
+            &run,
+            Some(310),
+            &[(1, 420, 1_000_420), (2, 450, 1_000_450)],
+            &[("boot-start".to_owned(), 1_234.5)],
+        );
         assert_eq!(result["firstPromptMs"], 420);
         assert_eq!(result["lastPromptMs"], 450);
         assert_eq!(result["appReadyMs"], 310);
         assert_eq!(result["promptsMs"], json!([420, 450]));
         assert_eq!(result["tabs"], 1);
+        // The marks of the page come in the result, in time order, beside the ones of this side.
+        let marks = result["marksUnixMs"].as_array().unwrap();
+        assert!(marks.iter().any(|m| m == &json!(["boot-start", 1234.5])));
+    }
+
+    #[test]
+    fn the_prompt_mark_is_found_inside_a_chunk() {
+        let hit = b"abc]133;Adef";
+        assert!(hit.windows(PROMPT_MARK.len()).any(|w| w == PROMPT_MARK));
+        let miss = b"abc]133;Bdef";
+        assert!(!miss.windows(PROMPT_MARK.len()).any(|w| w == PROMPT_MARK));
+    }
+
+    #[test]
+    fn the_marks_of_the_page_are_read_from_the_payload_and_bad_ones_are_dropped() {
+        let payload =
+            json!({ "id": 1, "marks": [["a", 10.5], ["b"], [3, 4.0], ["c", "x"], ["d", 12]] });
+        assert_eq!(
+            page_marks(&payload),
+            vec![("a".to_owned(), 10.5), ("d".to_owned(), 12.0)]
+        );
+        assert!(page_marks(&json!({ "id": 1 })).is_empty());
     }
 
     #[test]

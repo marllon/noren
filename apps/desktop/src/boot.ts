@@ -11,6 +11,7 @@ import { migrateLegacySettings } from "./legacy-settings";
 import type { LegacyStorageArea } from "./legacy-settings";
 import { startMods } from "./mods-store";
 import { notificationSettings } from "./notification-settings";
+import { perfMark } from "./perf-probe";
 import { getProfiles, startProfiles } from "./profiles-store";
 import { loadScrollbackForRestore, setRestoredScrollback } from "./scrollback-restore";
 import {
@@ -49,6 +50,7 @@ export async function bootWorkspace(
   events: Pick<Window, "addEventListener">,
   storage: LegacyStorageArea | undefined,
 ): Promise<BootResult> {
+  perfMark("boot-start");
   try {
     try {
       storage?.removeItem(LEGACY_ACTIVE_ITEMS_KEY);
@@ -58,6 +60,7 @@ export async function bootWorkspace(
     // The settings first, so the first frame already has the side of the sidebar. A file that is
     // missing, unreadable or invalid never stops the app: the defaults and an error notice stand in.
     await configManager.start(target);
+    perfMark("boot-config");
     // The providers of the file go to the AI side now and at every change of the list. A refusal is
     // told in the settings screen and never stops the app.
     aiProvidersSync.follow(configManager, target.ai);
@@ -70,17 +73,21 @@ export async function bootWorkspace(
     // The themes of the user, before the first frame: a space or the settings may name one of them.
     // A folder that cannot be read leaves the built-in themes, and never stops the app.
     await loadUserThemes(target).catch(() => undefined);
+    perfMark("boot-themes");
     // The mods of the user, before the first frame too, so the first frame already has the ones
     // that are on; the folder is watched from here on, and an edited file reloads. A folder that
     // cannot be read leaves the app without mods, and never stops it.
     await startMods(target);
+    perfMark("boot-mods");
     // The profiles of the user (from the file) are handed to the backend before anything restores a
     // shell, since a saved pane may name one of them; the list is then the machine's and the user's.
     await startProfiles(target, configManager);
+    perfMark("boot-profiles");
     if (getProfiles().length === 0) {
       return { ok: false, error: "No shell was found on this machine." };
     }
     const restored = await restoreWorkspace(target, { defaults: { newId, clock } });
+    perfMark("boot-restore");
     // The scrollback saved before: read now, so the terminal of each pane can write it, dimmed and
     // above the new shell, when it mounts. A snapshot that cannot be read leaves the pane without it.
     const snapshots = await loadScrollbackForRestore(target, restored.workspace, {
@@ -142,6 +149,7 @@ export async function bootWorkspace(
     };
     events.addEventListener("beforeunload", flush);
     events.addEventListener("pagehide", flush);
+    perfMark("boot-done");
     return { ok: true, store, source: restored.source };
   } catch (reason: unknown) {
     return { ok: false, error: reason instanceof Error ? reason.message : String(reason) };

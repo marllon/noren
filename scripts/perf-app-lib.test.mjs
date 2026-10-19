@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { median } from "../e2e/perf-stats.ts";
-import { launchTo, processTree, sumMemory } from "./perf-app-lib.mjs";
+import { launchTo, marksSince, processTree, sumMemory } from "./perf-app-lib.mjs";
 
 const MB = 1024 * 1024;
 const proc = (pid, ppid, name, ws = MB, wsPrivate = MB / 2) => ({ pid, ppid, name, ws, wsPrivate });
@@ -67,4 +67,14 @@ test("the median is the middle one, or the mean of the two in the middle", () =>
   assert.equal(median([4, 1, 2, 3]), 2.5);
   assert.equal(median([620, 640, 700, 610, 900]), 640);
   assert.ok(Number.isNaN(median([])));
+});
+
+test("the marks are counted from the creation of the process, to a tenth, first time only", () => {
+  const since = marksSince(1_000, [
+    ["main", 1_073.44],
+    ["setup-start", 1_361.6],
+    ["main", 1_900],
+  ]);
+  assert.deepEqual(since, { main: 73.4, "setup-start": 361.6 });
+  assert.deepEqual(marksSince(1_000, undefined), {});
 });

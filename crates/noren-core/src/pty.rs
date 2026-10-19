@@ -49,7 +49,7 @@ impl fmt::Display for SessionId {
 }
 
 /// What to run and how to size its terminal.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpawnSpec {
     pub program: String,
     pub args: Vec<String>,

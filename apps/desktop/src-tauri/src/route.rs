@@ -79,6 +79,35 @@ impl OutputRoute {
         old
     }
 
+    /// Makes `channel` the destination of everything sent from now on, after it has been handed the
+    /// `backlog` (what was kept for it, in order). The channel counts as the first one: this is a
+    /// session that waited for its page, not one that changed page. Both happen under the one lock,
+    /// so nothing sent meanwhile gets ahead of the backlog or is lost between the two.
+    pub fn adopt(
+        &self,
+        channel: Channel<InvokeResponseBody>,
+        backlog: impl FnOnce() -> Vec<Vec<u8>>,
+    ) {
+        let mut inner = self.lock();
+        drop(std::mem::replace(&mut inner.channel, channel));
+        inner.delivered = 0;
+        for chunk in backlog() {
+            if inner
+                .channel
+                .send(InvokeResponseBody::Raw(chunk.clone()))
+                .is_err()
+            {
+                continue;
+            }
+            inner.delivered += 1;
+            if let Some(tail) = &mut inner.tail {
+                tail.bytes.extend_from_slice(&chunk);
+                let excess = tail.bytes.len().saturating_sub(tail.limit);
+                tail.bytes.drain(..excess);
+            }
+        }
+    }
+
     /// How many channels the route has had; a session that never changed page has had one.
     pub fn channels(&self) -> u32 {
         self.lock().channels
@@ -142,6 +171,24 @@ mod tests {
         assert_eq!(chunks(&old_rx), vec![b"one".to_vec(), b"two".to_vec()]);
         assert_eq!(chunks(&new_rx), vec![b"three".to_vec()]);
         assert_eq!(route.channels(), 2);
+    }
+
+    #[test]
+    fn an_adopted_channel_gets_the_backlog_first_then_the_rest_and_the_route_keeps_count_of_one() {
+        let (waiting, waiting_rx) = listening();
+        let (page, page_rx) = listening();
+        let route = OutputRoute::new(waiting);
+        route.send(b"early");
+        route.adopt(page, || vec![b"one".to_vec(), b"two".to_vec()]);
+        route.send(b"three");
+
+        // The first channel got what was sent to it; the page got the backlog, then what followed.
+        assert_eq!(chunks(&waiting_rx), vec![b"early".to_vec()]);
+        assert_eq!(
+            chunks(&page_rx),
+            vec![b"one".to_vec(), b"two".to_vec(), b"three".to_vec()]
+        );
+        assert_eq!((route.channels(), route.delivered()), (1, 3));
     }
 
     #[test]

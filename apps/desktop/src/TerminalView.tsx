@@ -17,7 +17,7 @@ import type { ExplainRequest } from "./ask-panel";
 import { parseOsc7 } from "./osc7";
 import { decidePaste, insertableText } from "./paste";
 import { watchFirstPrompt } from "./first-prompt";
-import { reportPromptShown } from "./perf-probe";
+import { perfMark, reportPromptShown } from "./perf-probe";
 import { isTranslucent } from "./theme";
 
 /** What a right click does: copy the selection or paste, always paste, or leave the native menu. */
@@ -281,6 +281,7 @@ export function TerminalView({
     const host = container.current;
     if (!host) return;
 
+    perfMark("terminal-mount");
     const term = new Terminal({
       allowProposedApi: true,
       cursorBlink: optionsRef.current.cursorBlink,
@@ -350,6 +351,7 @@ export function TerminalView({
       if (hasSize()) attachWebgl();
     };
     safeFit();
+    perfMark("terminal-opened");
     refitRef.current = safeFit;
 
     // The bell: the pane flashes and/or beeps as the settings say (the tab is marked either way).
@@ -462,6 +464,7 @@ export function TerminalView({
         else ownsSession = true;
       }
       sessionId = id;
+      perfMark("terminal-listening");
       const firstPrompt = watchFirstPrompt();
       cleanups.push(
         backend.onOutput(id, (bytes) => {

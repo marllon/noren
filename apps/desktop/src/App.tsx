@@ -43,7 +43,7 @@ import type { MenuPoint } from "./SpaceMenu";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import { SplitLayout } from "./SplitLayout";
 import type { SplitLayoutContext } from "./SplitLayout";
-import { joinedPaneCount, paneDropAction, paneLimitNotice } from "./sidebar-drop";
+import { joinedPaneCount, paneDropAction, paneLimitNotice, paneSwapAction } from "./sidebar-drop";
 import type { PaneDrop } from "./sidebar-drop";
 import { keyboardResize } from "./split-layout";
 import { splitCommand, typesText } from "./split-keys";
@@ -167,6 +167,7 @@ function ItemView({ store, space, item, shown, colors, home, onReady }: ItemView
     onFocusPane: (paneId) => dispatch({ type: "pane/focus", itemId: item.id, paneId }),
     onZoomPane: (paneId) => dispatch({ type: "pane/zoom", itemId: item.id, paneId }),
     onClosePane: (paneId) => dispatch({ type: "pane/close", itemId: item.id, paneId }),
+    onDetachPane: (paneId) => dispatch({ type: "pane/detach", itemId: item.id, paneId }),
     onResize: (path, sizes) => dispatch({ type: "pane/resize", itemId: item.id, path, sizes }),
   };
   return (
@@ -380,6 +381,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
       return;
     }
     const action = paneDropAction({ kind: "item", id: sourceId }, activeId, drop);
+    if (action) dispatch(action);
+  };
+  /** A pane header was dropped on the middle of another pane of the tab on screen: swap them. */
+  const onPaneSwap = (paneId: Id, otherPaneId: Id) => {
+    if (activeId === undefined) return;
+    const action = paneSwapAction(activeId, paneId, otherPaneId);
     if (action) dispatch(action);
   };
   useEffect(() => {
@@ -641,6 +648,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
         onAction={dispatch}
         paneItemId={activeId}
         onPaneDrop={onPaneDrop}
+        onPaneSwap={onPaneSwap}
       >
         <aside
           ref={sidebarRef}

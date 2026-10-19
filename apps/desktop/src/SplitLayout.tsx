@@ -1,10 +1,10 @@
 import type { Id, LayoutNode, Pane, SplitNode } from "@noren/model";
-import { Maximize2, Minimize2, X } from "lucide-react";
+import { Maximize2, Minimize2, SquareArrowOutUpRight, X } from "lucide-react";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { Group, Panel, Separator, useGroupRef } from "react-resizable-panels";
 import type { Layout } from "react-resizable-panels";
-import { usePaneDrop } from "./TreeDnd";
+import { usePaneDrag, usePaneDrop } from "./TreeDnd";
 import {
   MIN_PANEL_PERCENT,
   childPanelId,
@@ -21,7 +21,7 @@ export interface SplitLayoutContext {
   framed: boolean;
   /** The pane that fills the item while the others stay hidden (mounted), if any. */
   zoomedPaneId: Id | undefined;
-  /** The panes take the drop of a tab dragged from the sidebar (this is the tab on screen). */
+  /** The panes take the drop of a tab dragged from the sidebar or of another pane's header (this is the tab on screen). */
   dropEnabled: boolean;
   /** Every pane shows a header with its title and the zoom and close buttons. */
   headers: boolean;
@@ -31,6 +31,8 @@ export interface SplitLayoutContext {
   onFocusPane(paneId: Id): void;
   onZoomPane(paneId: Id): void;
   onClosePane(paneId: Id): void;
+  /** Move the pane to a tab of its own. */
+  onDetachPane(paneId: Id): void;
   /** The user dragged a separator: the split at `path` now has these sizes. */
   onResize(path: number[], sizes: number[]): void;
 }
@@ -99,17 +101,36 @@ interface PaneHeaderProps {
   context: SplitLayoutContext;
 }
 
-/** Title of a pane with the buttons that zoom it and close it. */
+/**
+ * Title of a pane with the buttons that zoom it, detach it and close it. The title is the handle
+ * that drags the pane onto the middle of another pane to swap them.
+ */
 function PaneHeader({ pane, zoomed, actions, context }: PaneHeaderProps) {
   const title = context.paneTitle(pane);
   const ZoomIcon = zoomed ? Minimize2 : Maximize2;
+  // The pane swaps with the others of the tab on screen: with one pane there is nothing to swap.
+  const drag = usePaneDrag(pane.id, title, actions && context.dropEnabled);
   return (
     <div className="pane-header" data-nr-part="pane-header">
-      <span className="pane-header-title" title={title}>
+      <span
+        className="pane-header-title"
+        title={title}
+        data-nr-state={drag.dragging ? "dragging" : undefined}
+        data-nr-draggable={actions && context.dropEnabled ? "true" : undefined}
+        {...drag.handleProps}
+      >
         {title}
       </span>
       {actions && (
         <>
+          <button
+            type="button"
+            className="pane-header-button"
+            aria-label="Detach pane"
+            onClick={() => context.onDetachPane(pane.id)}
+          >
+            <SquareArrowOutUpRight size={12} aria-hidden="true" />
+          </button>
           <button
             type="button"
             className="pane-header-button"
@@ -176,6 +197,9 @@ function PaneFrame({ pane, context }: { pane: Pane; context: SplitLayoutContext 
         />
       ) : null}
       {context.renderPane(pane)}
+      {drop.swap && (
+        <span className="pane-swap-zone" data-nr-part="pane-swap-zone" aria-hidden="true" />
+      )}
       {drop.zone && (
         <span
           className="pane-drop-zone"

@@ -29,10 +29,12 @@ import {
   outsideAction,
   outsideId,
   outsideOf,
+  paneDragId,
   paneDropId,
   paneOf,
   paneZone,
   resolveDrop,
+  swapTarget,
 } from "./sidebar-drop";
 import type { DragSource, DropTarget, OutsideDrop, PaneDrop, PaneZone } from "./sidebar-drop";
 import type { TreeRow } from "./sidebar-tree";
@@ -58,6 +60,8 @@ interface DragState {
   outside: OutsideDrop | null;
   /** The zone of a pane of the tab on screen under the pointer, when dropping there would join the tab. */
   pane: PaneDrop | null;
+  /** The pane that a dragged pane would swap with, when it is under the pointer. */
+  swap: Id | null;
   /** Whether a drag is under way (the empty-state drop zones only show then). */
   dragging: boolean;
 }
@@ -66,6 +70,7 @@ const DragStateContext = createContext<DragState>({
   target: null,
   outside: null,
   pane: null,
+  swap: null,
   dragging: false,
 });
 
@@ -129,6 +134,20 @@ const samePane = (a: PaneDrop | null, b: PaneDrop | null): boolean =>
   a === b ||
   (a !== null && b !== null && a.paneId === b.paneId && a.dir === b.dir && a.side === b.side);
 
+/** A pane header being dragged: the pane, and the text its ghost and announcements use. */
+interface PaneSource {
+  paneId: Id;
+  title: string;
+}
+
+function paneSourceOf(data: unknown): PaneSource | undefined {
+  if (typeof data !== "object" || data === null) return undefined;
+  const { kind, id, title } = data as { kind?: unknown; id?: unknown; title?: unknown };
+  return kind === "pane" && typeof id === "string"
+    ? { paneId: id, title: typeof title === "string" ? title : "Terminal" }
+    : undefined;
+}
+
 const sameTarget = (a: DropTarget | null, b: DropTarget | null): boolean =>
   a === b ||
   (a !== null &&
@@ -143,9 +162,10 @@ interface Place {
   target: DropTarget | null;
   outside: OutsideDrop | null;
   pane: PaneDrop | null;
+  swap: Id | null;
 }
 
-const NOWHERE: Place = { target: null, outside: null, pane: null };
+const NOWHERE: Place = { target: null, outside: null, pane: null, swap: null };
 
 const SIDE_WORDS = {
   row: { before: "left", after: "right" },
@@ -166,6 +186,8 @@ interface TreeDndProps {
   paneItemId: Id | undefined;
   /** A tab was dropped on a pane of the tab on screen: join it there (or refuse). */
   onPaneDrop(sourceId: Id, drop: PaneDrop): void;
+  /** A pane header was dropped on the middle of another pane: swap the two. */
+  onPaneSwap(paneId: Id, otherPaneId: Id): void;
   children: ReactNode;
 }
 
@@ -181,12 +203,14 @@ export function TreeDnd({
   onAction,
   paneItemId,
   onPaneDrop,
+  onPaneSwap,
   children,
 }: TreeDndProps) {
   const [place, setPlace] = useState<Place>(NOWHERE);
   const [status, setStatus] = useState("");
-  const [dragging, setDragging] = useState<Id | null>(null);
-  const { target, outside, pane } = place;
+  /** What the ghost says: the name of the tab, group or pane being dragged. */
+  const [dragging, setDragging] = useState<string | null>(null);
+  const { target, outside, pane, swap } = place;
 
   const order = spaceItemIds(space);
   /** The name of a tab or group, for what is read aloud and shown on the ghost. */
@@ -196,7 +220,12 @@ export function TreeDnd({
     return treeGroups(space.tree).find((group) => group.id === id)?.name ?? id;
   };
 
-  const describe = ({ target: spot, outside: away, pane: beside }: Place): string => {
+  /** The name of what a drag started on, from the data its draggable carries. */
+  const labelOfActive = (active: { id: string | number; data: { current?: unknown } }): string =>
+    paneSourceOf(active.data.current)?.title ?? labelOf(String(active.id));
+
+  const describe = ({ target: spot, outside: away, pane: beside, swap: other }: Place): string => {
+    if (other !== null) return "Swap places with this pane.";
     if (beside) return `Open beside the pane, on the ${SIDE_WORDS[beside.dir][beside.side]}.`;
     if (away) {
       if (away.kind === "pinned") return "Pin this tab.";
@@ -212,13 +241,32 @@ export function TreeDnd({
 
   /** The place under the pointer or keyboard cursor, from the data of a drag event. */
   const placeOf = (event: DragMoveEvent | DragEndEvent): Place => {
-    const source = sourceOf(event.active.data.current);
     const collision = event.collisions?.[0];
+    // A pane header only ever lands on the middle of another pane of the tab on screen.
+    const dragged = paneSourceOf(event.active.data.current);
+    if (dragged) {
+      const over = collision && paneOf(String(collision.id));
+      if (!collision || over === undefined) return NOWHERE;
+      const { x, y, left, top, width, height } = (collision.data ?? {}) as Record<string, unknown>;
+      if (
+        typeof x !== "number" ||
+        typeof y !== "number" ||
+        typeof left !== "number" ||
+        typeof top !== "number" ||
+        typeof width !== "number" ||
+        typeof height !== "number"
+      ) {
+        return NOWHERE;
+      }
+      const other = swapTarget(dragged.paneId, over, { left, top, width, height }, { x, y });
+      return other === undefined ? NOWHERE : { ...NOWHERE, swap: other };
+    }
+    const source = sourceOf(event.active.data.current);
     if (!source || !collision) return NOWHERE;
     const away = outsideOf(String(collision.id));
     if (away) {
       const valid = outsideAction(spaces, favorites, source, away) !== undefined;
-      return { target: null, outside: valid ? away : null, pane: null };
+      return { ...NOWHERE, outside: valid ? away : null };
     }
     const { x, y, left, top, width, height } = (collision.data ?? {}) as Record<string, unknown>;
     if (typeof y !== "number" || typeof top !== "number" || typeof height !== "number") {
@@ -231,13 +279,12 @@ export function TreeDnd({
         return NOWHERE;
       }
       const zone = paneZone({ left, top, width, height }, { x, y });
-      return zone ? { target: null, outside: null, pane: { paneId, ...zone } } : NOWHERE;
+      return zone ? { ...NOWHERE, pane: { paneId, ...zone } } : NOWHERE;
     }
     const fraction = height > 0 ? Math.min(1, Math.max(0, (y - top) / height)) : 0.5;
     return {
+      ...NOWHERE,
       target: resolveDrop(space, rows, source, String(collision.id), fraction) ?? null,
-      outside: null,
-      pane: null,
     };
   };
 
@@ -308,11 +355,11 @@ export function TreeDnd({
   );
 
   const announcements: Announcements = {
-    onDragStart: ({ active }) => `Picked up ${labelOf(String(active.id))}.`,
+    onDragStart: ({ active }) => `Picked up ${labelOfActive(active)}.`,
     onDragOver: () => undefined,
     onDragMove: () => undefined,
-    onDragEnd: ({ active }) => `Dropped ${labelOf(String(active.id))}.`,
-    onDragCancel: ({ active }) => `Move of ${labelOf(String(active.id))} cancelled.`,
+    onDragEnd: ({ active }) => `Dropped ${labelOfActive(active)}.`,
+    onDragCancel: ({ active }) => `Move of ${labelOfActive(active)} cancelled.`,
   };
 
   const onDragMove = (event: DragMoveEvent) => {
@@ -320,7 +367,8 @@ export function TreeDnd({
     if (
       sameTarget(target, next.target) &&
       sameOutside(outside, next.outside) &&
-      samePane(pane, next.pane)
+      samePane(pane, next.pane) &&
+      swap === next.swap
     ) {
       return;
     }
@@ -335,9 +383,14 @@ export function TreeDnd({
   };
 
   const onDragEnd = (event: DragEndEvent) => {
+    const dragged = paneSourceOf(event.active.data.current);
     const source = sourceOf(event.active.data.current);
     const landing = placeOf(event);
     clear();
+    if (dragged) {
+      if (landing.swap !== null) onPaneSwap(dragged.paneId, landing.swap);
+      return;
+    }
     if (!source) return;
     let action: Action | undefined;
     if (landing.pane) onPaneDrop(source.id, landing.pane);
@@ -347,13 +400,13 @@ export function TreeDnd({
   };
 
   const onDragStart = (event: DragStartEvent) => {
-    setDragging(String(event.active.id));
+    setDragging(labelOfActive(event.active));
     setPlace(NOWHERE);
     setStatus("");
   };
 
   return (
-    <DragStateContext value={{ target, outside, pane, dragging: dragging !== null }}>
+    <DragStateContext value={{ target, outside, pane, swap, dragging: dragging !== null }}>
       <DndContext
         sensors={sensors}
         collisionDetection={rowCollision}
@@ -367,7 +420,7 @@ export function TreeDnd({
         <DragOverlay dropAnimation={null}>
           {dragging !== null && (
             <div className="drag-ghost" data-nr-part="drag-ghost">
-              {labelOf(dragging)}
+              {dragging}
             </div>
           )}
         </DragOverlay>
@@ -463,13 +516,50 @@ export function useOutsideDrop(drop: OutsideDrop): OutsideDropHandle {
 export interface PaneDropHandle {
   ref(node: HTMLElement | null): void;
   zone: PaneZone | undefined;
+  /** A dragged pane would swap places with this pane if dropped now. */
+  swap: boolean;
 }
 
-/** Makes a pane a drop place; `zone` follows the same rule the drop uses. */
+/** Makes a pane a drop place; `zone` and `swap` follow the same rules the drop uses. */
 export function usePaneDrop(paneId: Id, enabled: boolean): PaneDropHandle {
-  const { pane } = useContext(DragStateContext);
+  const { pane, swap } = useContext(DragStateContext);
   const { setNodeRef } = useDroppable({ id: paneDropId(paneId), disabled: !enabled });
-  return { ref: setNodeRef, zone: enabled && pane?.paneId === paneId ? pane : undefined };
+  return {
+    ref: setNodeRef,
+    zone: enabled && pane?.paneId === paneId ? pane : undefined,
+    swap: enabled && swap === paneId,
+  };
+}
+
+/** What the title of a pane header needs to drag the pane. */
+export interface PaneDragHandle {
+  /** Spread on the element that starts the drag (the title, not the buttons). */
+  handleProps: {
+    ref(node: HTMLElement | null): void;
+    onPointerDown(event: PointerEvent): void;
+  };
+  dragging: boolean;
+}
+
+/** Makes the title of a pane header the handle that drags the pane (to swap it with another). */
+export function usePaneDrag(paneId: Id, title: string, enabled: boolean): PaneDragHandle {
+  const { setActivatorNodeRef, setNodeRef, listeners, isDragging } = useDraggable({
+    id: paneDragId(paneId),
+    data: { kind: "pane", id: paneId, title },
+    disabled: !enabled,
+  });
+  const press = listeners?.["onPointerDown"] as ((event: PointerEvent) => void) | undefined;
+  return {
+    // The handle is also the draggable node: the title is all that moves.
+    handleProps: {
+      ref: (node) => {
+        setNodeRef(node);
+        setActivatorNodeRef(node);
+      },
+      onPointerDown: (event) => press?.(event),
+    },
+    dragging: isDragging,
+  };
 }
 
 function DropZone({ drop, label }: { drop: OutsideDrop; label: string }) {

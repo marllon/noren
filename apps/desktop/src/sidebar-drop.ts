@@ -281,6 +281,55 @@ export function paneOf(id: string): Id | undefined {
   return id.startsWith(PANE_DROP_PREFIX) ? id.slice(PANE_DROP_PREFIX.length) : undefined;
 }
 
+/** Prefix of the draggable id of a pane's header; the rest is the pane id. */
+export const PANE_DRAG_PREFIX = "pane-drag:";
+
+/** The draggable id of a pane's header (the inverse of `paneDragOf`). */
+export const paneDragId = (paneId: Id): string => `${PANE_DRAG_PREFIX}${paneId}`;
+
+/** The pane a draggable id stands for; undefined for anything else. */
+export function paneDragOf(id: string): Id | undefined {
+  return id.startsWith(PANE_DRAG_PREFIX) ? id.slice(PANE_DRAG_PREFIX.length) : undefined;
+}
+
+/**
+ * Whether the pointer is in the middle of a pane, the part `paneZone` leaves free: the place a
+ * dragged pane swaps with the pane under it.
+ */
+export function inPaneCenter(
+  rect: { left: number; top: number; width: number; height: number },
+  point: { x: number; y: number },
+): boolean {
+  if (rect.width <= 0 || rect.height <= 0) return false;
+  const inside =
+    point.x >= rect.left &&
+    point.x <= rect.left + rect.width &&
+    point.y >= rect.top &&
+    point.y <= rect.top + rect.height;
+  return inside && paneZone(rect, point) === undefined;
+}
+
+/**
+ * The pane a dragged pane would swap with: the one under the pointer, when the pointer is in its
+ * middle. Dropping a pane on itself, on an edge of another pane or outside the panes changes
+ * nothing (joining a pane somewhere else is not offered).
+ */
+export function swapTarget(
+  sourcePaneId: Id,
+  overPaneId: Id,
+  rect: { left: number; top: number; width: number; height: number },
+  point: { x: number; y: number },
+): Id | undefined {
+  if (sourcePaneId === overPaneId) return undefined;
+  return inPaneCenter(rect, point) ? overPaneId : undefined;
+}
+
+/** The action that swaps two panes of the tab `itemId`. */
+export function paneSwapAction(itemId: Id, paneId: Id, otherPaneId: Id): Action | undefined {
+  if (paneId === otherPaneId) return undefined;
+  return { type: "pane/swap", itemId, paneId, otherPaneId };
+}
+
 /** Which side of a pane the dropped tab lands on, as the split it makes. */
 export interface PaneZone {
   dir: "row" | "column";
@@ -294,7 +343,7 @@ export interface PaneDrop extends PaneZone {
 
 /**
  * How deep into the pane (a fraction of its width or height, counted from the nearest edge) the
- * pointer still means "beside this pane". The middle is left alone for the swap (NOR-F5-02c).
+ * pointer still means "beside this pane". The middle is where a dragged pane swaps (`inPaneCenter`).
  */
 export const PANE_EDGE_BAND = 0.3;
 

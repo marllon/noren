@@ -822,7 +822,17 @@ body {
   bottom: 0;
 }
 
-/* Optional header of a pane: its title and the zoom and close buttons. */
+/* The middle of a pane while another pane's header is over it: dropping there swaps the two. */
+.pane-swap-zone {
+  position: absolute;
+  z-index: 3;
+  inset: 30%;
+  border: 2px dashed var(--nr-accent);
+  background: color-mix(in srgb, var(--nr-accent) 22%, transparent);
+  pointer-events: none;
+}
+
+/* Optional header of a pane: its title and the zoom, detach and close buttons. */
 .pane-header {
   display: flex;
   flex: none;
@@ -842,6 +852,17 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The title is the handle that drags the pane; the buttons next to it stay plain clicks. */
+.pane-header-title[data-nr-draggable] {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.pane-header-title[data-nr-state="dragging"] {
+  opacity: 0.5;
 }
 
 .pane-header-button {

@@ -53,7 +53,7 @@ import type { SplitLayoutContext } from "./SplitLayout";
 import { joinedPaneCount, paneDropAction, paneLimitNotice, paneSwapAction } from "./sidebar-drop";
 import type { PaneDrop } from "./sidebar-drop";
 import { keyboardResize } from "./split-layout";
-import { currentResolver } from "./keybindings-store";
+import { currentResolver, isRecording } from "./keybindings-store";
 import type { ActionCommand } from "./keybindings";
 import { typesText } from "./split-keys";
 import { DropZones, TreeDnd } from "./TreeDnd";
@@ -445,6 +445,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
   // window, so a key that is a shortcut never reaches the terminal and any other key does.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // The shortcuts screen is capturing a chord: the press is its to read, not an action to run.
+      if (isRecording()) return;
       const action = currentResolver()(event);
       const target = event.target instanceof HTMLElement ? event.target : null;
       if (action === undefined || typesText(target)) return;

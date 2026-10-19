@@ -1,10 +1,12 @@
 import { PanelLeft } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { KeyboardEvent } from "react";
 import type { Density, SidebarSide, TabsPlacement } from "./layout";
 import { updateLayout, useLayout } from "./layout-store";
 import type { Preset } from "./keybindings";
 import { updateKeybindings, useKeybindings } from "./keybindings-store";
+import { ShortcutsDialog } from "./ShortcutsDialog";
 
 interface ChoiceProps<T extends string> {
   legend: string;
@@ -61,6 +63,7 @@ export function LayoutControl() {
   const layout = useLayout();
   const keybindings = useKeybindings();
   const [open, setOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
@@ -153,8 +156,28 @@ export function LayoutControl() {
             options={KEY_PRESETS}
             onChange={(preset) => updateKeybindings({ preset })}
           />
+          <button
+            type="button"
+            className="layout-link"
+            onClick={() => {
+              setOpen(false);
+              setShortcutsOpen(true);
+            }}
+          >
+            Keyboard shortcuts
+          </button>
         </div>
       )}
+      {shortcutsOpen &&
+        createPortal(
+          <ShortcutsDialog
+            onClose={() => {
+              setShortcutsOpen(false);
+              buttonRef.current?.focus();
+            }}
+          />,
+          document.body,
+        )}
     </div>
   );
 }

@@ -45,6 +45,20 @@ export function updateKeybindings(patch: Partial<Keybindings>): void {
   for (const listener of listeners) listener();
 }
 
+let recording = false;
+
+/**
+ * Tells the keyboard listener that the shortcuts screen is recording a chord: while it is, the
+ * listener runs no action, so the chord being pressed is captured and not carried out.
+ */
+export function setRecording(value: boolean): void {
+  recording = value;
+}
+
+export function isRecording(): boolean {
+  return recording;
+}
+
 /** The resolver for the preferences in force right now (the keyboard listener reads it per press). */
 export function currentResolver(): Resolver {
   return snapshot().resolver;

@@ -1,5 +1,6 @@
 //! Noren core library. Kept free of Tauri so it can be tested on its own.
 
+pub mod ai;
 pub mod background;
 pub mod config;
 pub mod fonts;
@@ -14,6 +15,10 @@ pub mod store;
 pub mod themes;
 pub mod window;
 
+pub use ai::{
+    AiClient, AiError, ChatMessage, DEFAULT_TIMEOUT, OLLAMA_DEFAULT_URL, OllamaProbe, Provider,
+    ProviderKind, Role, SseDecoder, SseMessage, StreamEvent, StreamParser,
+};
 pub use background::{BackgroundError, BackgroundStore, MAX_BACKGROUND_BYTES, sniff_image};
 pub use config::{CONFIG_FILE_NAME, ConfigError, ConfigStore, ConfigWatcher};
 pub use fonts::{MAX_FONT_NAME_CHARS, is_font_name, list_monospace_families, monospace_families};

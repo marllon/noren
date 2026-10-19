@@ -21,3 +21,25 @@ fontdb = { version = "0.24.0", default-features = false, features = ["std", "fs"
 # FSEvents) instead of polling the file. 8.2.0, CC0-1.0.
 notify = "8.2.0"
 portable-pty = "0.9.0"
+# HTTP client of the AI providers (`ai` module): requests with a streamed response body, read
+# chunk by chunk for the SSE stream. 0.13.5, MIT OR Apache-2.0 (already in the tree through Tauri).
+# The default features are off because the default TLS (rustls with aws-lc-rs) brings aws-lc-sys
+# (OpenSSL license) and webpki-roots (CDLA-Permissive-2.0), both outside the license list.
+# `native-tls` uses the TLS stack of the system (SChannel on Windows, Secure Transport on macOS,
+# OpenSSL on Linux) and its certificate roots, so a corporate or local CA works too; the crates
+# are MIT or Apache-2.0. `stream` gives `Response::bytes_stream`.
+reqwest = { version = "0.13.5", default-features = false, features = ["native-tls", "stream"] }
+# Reads and builds the JSON of the provider APIs (the stream events, the request body, the list of
+# models of Ollama) as untyped values, so no derive macro is added. 1.0, MIT OR Apache-2.0
+# (already in the tree through Tauri).
+serde_json = "1"
+# Runtime of the AI client: reqwest is async, and `time` gives the timeouts. The client is driven
+# from a runtime the caller owns; the tests build a small current-thread one. 1.53.3, MIT
+# (already in the tree through Tauri).
+tokio = { version = "1.53.3", features = ["rt", "time", "macros"] }
+# `CancellationToken`: stops a request from another thread and wakes the stream that is waiting
+# for the next chunk. 0.7.20, MIT (already in the tree through Tauri).
+tokio-util = { version = "0.7.20", default-features = false }
+# futures-util's `StreamExt::next` over the body stream. 0.3, MIT OR Apache-2.0 (already in the
+# tree through Tauri).
+futures-util = { version = "0.3", default-features = false }

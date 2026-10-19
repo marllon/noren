@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { WEB_ACTIONS_KEY, WEB_STATE_KEY, WebBackend } from "./web-backend";
+import { WEB_ACTIONS_KEY, WEB_PROFILES_KEY, WEB_STATE_KEY, WebBackend } from "./web-backend";
 import type { StateStorage } from "./web-backend";
 
 function memoryStorage(): StateStorage & { keys(): string[] } {
@@ -72,5 +72,29 @@ describe("WebBackend", () => {
     expect(await backend.readActionsFile("/proj")).toBe("memory");
     storage.setItem(WEB_ACTIONS_KEY, "[1]");
     expect(await backend.readActionsFile("/proj")).toBe("memory");
+  });
+
+  it("lists the profiles seeded under the profiles key, and the one fake shell otherwise", async () => {
+    const storage = memoryStorage();
+    expect((await new WebBackend(storage).listProfiles()).map((p) => p.id)).toEqual(["fake"]);
+    storage.setItem(
+      WEB_PROFILES_KEY,
+      JSON.stringify([
+        { id: "pwsh", name: "PowerShell", default: true },
+        { id: "bash", name: "Git Bash" },
+      ]),
+    );
+    expect(await new WebBackend(storage).listProfiles()).toEqual([
+      { id: "pwsh", name: "PowerShell", default: true },
+      { id: "bash", name: "Git Bash", default: false },
+    ]);
+  });
+
+  it("ignores a profiles seed that is not a usable list", async () => {
+    for (const seed of ["not json", "{}", "[]", '[{"id":1,"name":"x"}]', "[null]"]) {
+      const storage = memoryStorage();
+      storage.setItem(WEB_PROFILES_KEY, seed);
+      expect((await new WebBackend(storage).listProfiles()).map((p) => p.id)).toEqual(["fake"]);
+    }
   });
 });

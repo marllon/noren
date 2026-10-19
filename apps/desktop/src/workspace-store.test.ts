@@ -39,6 +39,27 @@ describe("workspace store", () => {
     vi.useRealTimers();
   });
 
+  it("a new tab with options starts with that profile and folder, the rest from the space", async () => {
+    const { store } = await openStore(new FakeBackend());
+    store.getState().createSpace({ name: "Work", profileId: "pwsh", cwd: "/work" });
+    store.getState().newTab({ profileId: "bash" });
+    store.getState().newTab({ cwd: "/other" });
+    store.getState().newTab();
+    const space = activeSpaceOf(store.getState().workspace);
+    const starts = spaceItemIds(space)
+      .slice(1)
+      .map((id) => {
+        const item = space.items[id];
+        const pane = item && layoutPanes(item.layout)[0];
+        return pane && sessionStartOptions(space, pane);
+      });
+    expect(starts).toEqual([
+      { profileId: "bash", cwd: "/work" },
+      { profileId: "pwsh", cwd: "/other" },
+      { profileId: "pwsh", cwd: "/work" },
+    ]);
+  });
+
   it("starts from the restored workspace: 1 space, 1 tab, active", async () => {
     const { store, restored } = await openStore(new FakeBackend());
     const state = store.getState();

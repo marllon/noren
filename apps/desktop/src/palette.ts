@@ -1,13 +1,15 @@
 // The pure parts of the command palette: the entries it can list (tabs of every space, spaces,
-// registry actions with their chord), the prefixes that narrow the list and the fuzzy match that
-// orders it. The palette itself (`CommandPalette.tsx`) only draws what this returns.
+// registry actions with their chord, shell profiles, recent folders and themes), the prefixes that
+// narrow the list and the fuzzy match that orders it. The palette itself (`CommandPalette.tsx`)
+// only draws what this returns.
 
-import type { Id, Workspace } from "@noren/model";
+import type { Id, ShellProfile, Workspace } from "@noren/model";
 import { itemTitle } from "./favorites";
 import { ACTIONS } from "./keybindings";
 import type { ActionDef, ChordMap } from "./keybindings";
 import { shortCwd, summarizeItem } from "./pane-info";
 import { formatChord } from "./shortcuts-screen";
+import type { Theme } from "./theme";
 import { spaceItemIds } from "./workspace-store";
 
 interface EntryBase {
@@ -44,13 +46,45 @@ export interface ActionEntry extends EntryBase {
   chord?: string;
 }
 
-export type PaletteEntry = TabEntry | SpaceEntry | ActionEntry;
+/** "New <profile> tab": a tab in the active space that starts this shell profile. */
+export interface ProfileEntry extends EntryBase {
+  kind: "profile";
+  profileId: string;
+}
+
+/** A folder a shell reported through OSC 7: a new tab there, with the profile of the space. */
+export interface FolderEntry extends EntryBase {
+  kind: "folder";
+  /** The folder as the shell reported it. */
+  path: string;
+}
+
+/** A theme to apply, or (`themeId` null) the choice to follow the system again. */
+export interface ThemeEntry extends EntryBase {
+  kind: "theme";
+  themeId: string | null;
+  /** This is the choice in force. */
+  current: boolean;
+}
+
+export type PaletteEntry =
+  TabEntry | SpaceEntry | ActionEntry | ProfileEntry | FolderEntry | ThemeEntry;
 export type EntryKind = PaletteEntry["kind"];
 
-/** Which entries the query asks for: everything, or what one prefix limits it to. */
-export type Scope = "all" | EntryKind;
+/**
+ * Which entries the query asks for: everything, or what one prefix limits it to. `action` is the
+ * command group: the registry actions, the profiles, the recent folders and the themes.
+ */
+export type Scope = "all" | "tab" | "space" | "action";
 
-export const PREFIXES: Readonly<Record<string, EntryKind>> = {
+/** The kinds of entry each scope lists. */
+const SCOPE_KINDS: Readonly<Record<Exclude<Scope, "all">, readonly EntryKind[]>> = {
+  tab: ["tab"],
+  space: ["space"],
+  action: ["action", "profile", "folder", "theme"],
+};
+
+export const PREFIXES: Readonly<Record<string, Exclude<Scope, "all">>> = {
   ">": "action",
   "@": "tab",
   "#": "space",
@@ -76,6 +110,12 @@ export interface EntrySources {
   chords: ChordMap;
   /** The home folder, for the short form of a folder. */
   home?: string | undefined;
+  /** The shell profiles the machine has (empty or left out: no profile entries). */
+  profiles?: readonly ShellProfile[];
+  /** The folders shells reported, most recent first (empty or left out: no folder entries). */
+  folders?: readonly string[];
+  /** The themes on offer and the id in force, `null` while the theme follows the system. */
+  themes?: { list: readonly Theme[]; choice: string | null };
 }
 
 function plural(count: number, one: string): string {
@@ -141,7 +181,51 @@ export function buildEntries(sources: EntrySources): PaletteEntry[] {
       };
     },
   );
-  return [...tabs, ...spaces, ...actions];
+  const where = workspace.spaces.find((space) => space.id === workspace.activeSpaceId)?.name ?? "";
+  const profiles = (sources.profiles ?? []).map((profile): ProfileEntry => ({
+    kind: "profile",
+    id: `profile:${profile.id}`,
+    title: `New ${profile.name} tab`,
+    detail: where !== "" ? `in ${where}` : "",
+    keywords: [profile.id, "shell", "profile", ...(where !== "" ? [where] : [])],
+    profileId: profile.id,
+  }));
+  const folders = (sources.folders ?? []).map((path): FolderEntry => {
+    const short = shortCwd(path, home);
+    return {
+      kind: "folder",
+      id: `folder:${path}`,
+      title: short !== "" ? short : path,
+      detail: "Recent folder · new tab",
+      keywords: [path, "recent", "folder"],
+      path,
+    };
+  });
+  const themes: ThemeEntry[] = [];
+  if (sources.themes !== undefined) {
+    const { list, choice } = sources.themes;
+    for (const theme of list) {
+      themes.push({
+        kind: "theme",
+        id: `theme:${theme.id}`,
+        title: `Theme: ${theme.name}`,
+        detail: `${theme.kind === "dark" ? "Dark" : "Light"}${choice === theme.id ? " · in use" : ""}`,
+        keywords: [theme.name, theme.kind, "theme"],
+        themeId: theme.id,
+        current: choice === theme.id,
+      });
+    }
+    themes.push({
+      kind: "theme",
+      id: "theme:system",
+      title: "Follow system theme",
+      detail: choice === null ? "In use" : "Light or dark, as the system",
+      keywords: ["theme", "system", "auto", "light", "dark"],
+      themeId: null,
+      current: choice === null,
+    });
+  }
+  return [...tabs, ...spaces, ...actions, ...profiles, ...folders, ...themes];
 }
 
 /**
@@ -196,19 +280,20 @@ export function entryScore(entry: PaletteEntry, term: string): number | undefine
   return total / words.length;
 }
 
-const KIND_ORDER: readonly EntryKind[] = ["tab", "space", "action"];
+const KIND_ORDER: readonly EntryKind[] = ["tab", "space", "action", "profile", "folder", "theme"];
 
 /**
- * The entries the query asks for. A prefix limits the kind; the rest of the text is matched fuzzily
- * and the best match comes first within each kind (ties keep the order of `entries`). The kinds
- * stay in the order tabs, spaces, actions. With nothing to search for, everything of the scope is
- * listed in its own order.
+ * The entries the query asks for. A prefix limits the kinds (`>` lists everything that is not a tab
+ * or a space); the rest of the text is matched fuzzily and the best match comes first within each
+ * kind (ties keep the order of `entries`, so recent folders stay most recent first). The kinds stay
+ * in the order tabs, spaces, actions, profiles, folders, themes. With nothing to search for,
+ * everything of the scope is listed in its own order.
  */
 export function searchEntries(entries: readonly PaletteEntry[], query: string): PaletteEntry[] {
   const { scope, term } = parseQuery(query);
   const result: PaletteEntry[] = [];
   for (const kind of KIND_ORDER) {
-    if (scope !== "all" && scope !== kind) continue;
+    if (scope !== "all" && !SCOPE_KINDS[scope].includes(kind)) continue;
     const scored = entries
       .filter((entry) => entry.kind === kind)
       .map((entry, order) => ({ entry, order, score: entryScore(entry, term) }))
@@ -227,4 +312,7 @@ export const KIND_HEADINGS: Readonly<Record<EntryKind, string>> = {
   tab: "Tabs",
   space: "Spaces",
   action: "Actions",
+  profile: "Profiles",
+  folder: "Recent folders",
+  theme: "Themes",
 };

@@ -26,7 +26,7 @@ const searchBox = (page: Page): Locator =>
 const terminalFocused = (page: Page): Locator =>
   page.locator("textarea.xterm-helper-textarea:focus");
 
-/** The kind (`tab`, `space`, `action`) of every entry the palette lists. */
+/** The kind (`tab`, `space`, `action`, `profile`, `folder`, `theme`) of every entry listed. */
 const kinds = async (page: Page): Promise<string[]> => [
   ...new Set(
     await options(page).evaluateAll((all) => all.map((o) => o.getAttribute("data-nr-kind") ?? "")),
@@ -127,9 +127,12 @@ test("the prefixes > @ # limit the list to actions, tabs or spaces", async ({ pa
   await twoSpaces(page);
   await page.keyboard.press("Control+Shift+P");
   // Nothing typed: every kind is listed.
-  expect(await kinds(page)).toEqual(["tab", "space", "action"]);
+  await expect
+    .poll(() => kinds(page))
+    .toEqual(["tab", "space", "action", "profile", "folder", "theme"]);
   await page.keyboard.type(">");
-  await expect.poll(() => kinds(page)).toEqual(["action"]);
+  // Under > the commands: actions, profiles, recent folders and themes.
+  await expect.poll(() => kinds(page)).toEqual(["action", "profile", "folder", "theme"]);
   await page.keyboard.press("Backspace");
   await page.keyboard.type("@");
   await expect.poll(() => kinds(page)).toEqual(["tab"]);

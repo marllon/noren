@@ -53,6 +53,12 @@ export interface SpaceEdit {
   gitIdentity?: GitIdentity;
 }
 
+/** What a new tab can name; what is left out comes from the space. */
+export interface NewTabOptions {
+  profileId?: string;
+  cwd?: string;
+}
+
 /** How to start the shell of a pane: its own settings first, then the defaults of its space. */
 export interface SessionStartOptions {
   profileId?: string;
@@ -66,8 +72,11 @@ export interface WorkspaceState {
   failedPaneIds: Id[];
   /** Runs an action through the reducer, schedules the save and ends the sessions it dropped. */
   dispatch(action: Action): void;
-  /** Makes a new tab in the active space and activates it. */
-  newTab(): void;
+  /**
+   * Makes a new tab in the active space and activates it. It starts with the profile and folder of
+   * the space unless the options name others.
+   */
+  newTab(options?: NewTabOptions): void;
   /** Makes a space (active) with its first tab, which starts with the defaults of the space. */
   createSpace(input: NewSpaceInput): void;
   /** Renames, recolors, re-icons or changes the defaults of a space; unknown ids change nothing. */
@@ -257,8 +266,12 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
         }
       },
 
-      newTab() {
-        get().dispatch({ type: "item/create" });
+      newTab(options = {}) {
+        get().dispatch({
+          type: "item/create",
+          ...(options.profileId !== undefined ? { profileId: options.profileId } : {}),
+          ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+        });
       },
 
       createSpace(input) {

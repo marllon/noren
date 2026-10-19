@@ -10,6 +10,7 @@ import "@xterm/xterm/css/xterm.css";
 import type { Backend, SessionId } from "@noren/model";
 import { useEffect, useRef, useState } from "react";
 import { PasteDialog } from "./PasteDialog";
+import { parseOsc7 } from "./osc7";
 import { decidePaste } from "./paste";
 
 /** What a right click does: copy the selection or paste, always paste, or leave the native menu. */
@@ -51,6 +52,8 @@ interface TerminalViewProps {
   rightClick?: RightClickAction;
   /** Called once the terminal is mounted. */
   onReady?(handle: TerminalHandle): void;
+  /** Called with the folder the shell reports through OSC 7 (at each prompt of an integrated shell). */
+  onCwd?(path: string): void;
 }
 
 function isShortcut(event: KeyboardEvent, code: string): boolean {
@@ -76,11 +79,13 @@ export function TerminalView({
   active = true,
   rightClick,
   onReady,
+  onCwd,
 }: TerminalViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const rightClickRef = useRef<RightClickAction>(rightClick ?? "copy-or-paste");
   const onReadyRef = useRef(onReady);
+  const onCwdRef = useRef(onCwd);
   const onSessionStartRef = useRef(onSessionStart);
   const activeRef = useRef(active);
   const themeRef = useRef(theme);
@@ -91,6 +96,7 @@ export function TerminalView({
   useEffect(() => {
     rightClickRef.current = rightClick ?? "copy-or-paste";
     onReadyRef.current = onReady;
+    onCwdRef.current = onCwd;
     onSessionStartRef.current = onSessionStart;
     activeRef.current = active;
     themeRef.current = theme;
@@ -209,6 +215,12 @@ export function TerminalView({
     const observer = new ResizeObserver(safeFit);
     observer.observe(host);
 
+    // The shell says which folder it is in (OSC 7); the sequence is consumed here, never drawn.
+    const cwdHandler = term.parser.registerOscHandler(7, (data) => {
+      const path = parseOsc7(data);
+      if (path !== undefined) onCwdRef.current?.(path);
+      return true;
+    });
     const dataSub = term.onData((data) => {
       if (sessionId !== undefined) backend.write(sessionId, data).catch(() => undefined);
     });
@@ -277,6 +289,7 @@ export function TerminalView({
       host.removeEventListener("paste", onNativePaste, true);
       host.removeEventListener("contextmenu", onContextMenu);
       dataSub.dispose();
+      cwdHandler.dispose();
       resizeSub.dispose();
       for (const cleanup of cleanups) cleanup();
       if (sessionId !== undefined && ownsSession)

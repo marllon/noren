@@ -17,12 +17,14 @@ function ofKind(entries: readonly PaletteEntry[], kind: EntryKind): PaletteEntry
   return entries.filter((entry) => entry.kind === kind);
 }
 
-const KINDS: readonly EntryKind[] = ["tab", "space", "action"];
+const KINDS: readonly EntryKind[] = ["tab", "space", "action", "profile", "folder", "theme"];
 
 /**
- * The command palette: a search box over the tabs of every space, the spaces and the actions.
+ * The command palette: a search box over the tabs of every space, the spaces, the actions, the shell
+ * profiles, the recent folders and the themes.
  * `cmdk` draws the list and moves the selection; the matching is `searchEntries` (so `cmdk` does
- * not filter on its own). The prefixes `>`, `@` and `#` limit the list to actions, tabs or spaces.
+ * not filter on its own). The prefixes `>`, `@` and `#` limit the list to commands (the actions,
+ * profiles, folders and themes), tabs or spaces.
  */
 export function CommandPalette({ entries, onRun, onClose }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
@@ -59,7 +61,7 @@ export function CommandPalette({ entries, onRun, onClose }: CommandPaletteProps)
             autoFocus
             value={query}
             onValueChange={setQuery}
-            placeholder="Search tabs, spaces and actions  (> actions, @ tabs, # spaces)"
+            placeholder="Search tabs, spaces and commands  (> commands, @ tabs, # spaces)"
           />
           <Command.List>
             <Command.Empty>No results</Command.Empty>
@@ -75,7 +77,7 @@ export function CommandPalette({ entries, onRun, onClose }: CommandPaletteProps)
                       data-nr-kind={entry.kind}
                       onSelect={() => onRun(entry)}
                     >
-                      {entry.kind !== "action" && (
+                      {(entry.kind === "tab" || entry.kind === "space") && (
                         <span
                           className="palette-dot"
                           aria-hidden="true"

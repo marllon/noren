@@ -1,6 +1,6 @@
 import { emit } from "@tauri-apps/api/event";
 import { DEFAULT_MAX_PANES, FakeBackend, layoutPanes, treeGroups } from "@noren/model";
-import type { GroupNode, Id, Item, Pane, Space } from "@noren/model";
+import type { GroupNode, Id, Item, Pane, ShellProfile, Space } from "@noren/model";
 import type { ITheme } from "@xterm/xterm";
 import {
   Suspense,
@@ -17,6 +17,7 @@ import { insideTauri } from "./backend";
 import { backend, booted } from "./boot";
 import { consentText } from "./action-consent";
 import { loadHome } from "./home";
+import { recentFolders, recordFolder } from "./recent-folders-store";
 import { ActionsHeader } from "./ActionsHeader";
 import { handleDeepLink, setDeepLinkHandler } from "./deep-link";
 import { createDeepLinkHandler } from "./deep-link-handler";
@@ -63,10 +64,10 @@ import { typesText } from "./split-keys";
 import { DropZones, TreeDnd } from "./TreeDnd";
 import { createWheelGesture, wheelTravel } from "./spaces";
 import { TerminalView } from "./TerminalView";
-import { applySpaceColor, applyTheme, terminalTheme } from "./theme";
+import { THEMES, applySpaceColor, applyTheme, terminalTheme } from "./theme";
 import { TitleBar } from "./TitleBar";
 import { FavoriteContextMenu, GroupContextMenu, ItemContextMenu } from "./TreeMenus";
-import { useTheme } from "./use-theme";
+import { setThemeChoice, useTheme, useThemeChoice } from "./use-theme";
 import type { TerminalHandle } from "./TerminalView";
 import {
   activeItemIdOf,
@@ -142,6 +143,7 @@ function PaneTerminal({ store, space, pane, active, colors, onReady }: PaneTermi
       {...(env !== undefined ? { env } : {})}
       onSessionStart={(id) => store.getState().attachSession(pane.id, String(id))}
       onReady={(handle) => onReady(pane.id, handle)}
+      onCwd={recordFolder}
     />
   );
 }
@@ -308,6 +310,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const handles = useRef(new Map<Id, TerminalHandle>());
   const theme = useTheme();
+  const themeChoice = useThemeChoice();
   const colors = useMemo(() => terminalTheme(theme), [theme]);
   const layout = useLayout();
   const reveal = useSidebarReveal(sidebarMode(layout) === "auto-hide");
@@ -389,6 +392,21 @@ function Shell({ store }: { store: WorkspaceStore }) {
     void loadHome().then((path) => {
       if (live) setHome(path);
     });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // The shell profiles of the machine, for the palette; listed once.
+  const [profiles, setProfiles] = useState<ShellProfile[]>([]);
+  useEffect(() => {
+    let live = true;
+    backend.listProfiles().then(
+      (list) => {
+        if (live) setProfiles(list);
+      },
+      () => undefined,
+    );
     return () => {
       live = false;
     };
@@ -587,15 +605,25 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const paletteEntries = useMemo(
     () =>
       paletteOpen
-        ? buildEntries({ workspace, chords: resolveBindings(keybindings).chords, home })
+        ? buildEntries({
+            workspace,
+            chords: resolveBindings(keybindings).chords,
+            home,
+            profiles,
+            folders: recentFolders(),
+            themes: { list: THEMES, choice: themeChoice },
+          })
         : [],
-    [paletteOpen, workspace, keybindings, home],
+    [paletteOpen, workspace, keybindings, home, profiles, themeChoice],
   );
 
   /** An entry of the palette: the same calls a click or a shortcut makes. */
   const runPaletteEntry = (entry: PaletteEntry) => {
     if (entry.kind === "tab") showTab(entry.spaceId, entry.itemId);
     else if (entry.kind === "space") activateSpace(entry.spaceId);
+    else if (entry.kind === "profile") newTab({ profileId: entry.profileId });
+    else if (entry.kind === "folder") newTab({ cwd: entry.path });
+    else if (entry.kind === "theme") setThemeChoice(entry.themeId);
     else {
       const refusal = runCommand(store, entry.action.command);
       if (refusal !== undefined) showNotice(refusal);

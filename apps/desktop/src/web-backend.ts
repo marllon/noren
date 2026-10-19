@@ -1,4 +1,5 @@
 import { FakeBackend } from "@noren/model";
+import type { ShellProfile } from "@noren/model";
 
 /** Key of `state.json` in the browser's storage (web mode only). */
 export const WEB_STATE_KEY = "noren.web.state";
@@ -9,7 +10,34 @@ export const WEB_STATE_KEY = "noren.web.state";
  */
 export const WEB_ACTIONS_KEY = "noren.web.actions";
 
+/**
+ * Key of the shell profiles in web mode: a JSON list of `{ id, name, default }`. Without it (or
+ * with a value that is not a usable list) the one fake shell is the only profile. The e2e tests
+ * seed it before the page loads, to have more than one shell to pick.
+ */
+export const WEB_PROFILES_KEY = "noren.web.profiles";
+
 export type StateStorage = Pick<Storage, "getItem" | "setItem">;
+
+/** The profiles seeded under `WEB_PROFILES_KEY`, or `undefined` for the fake backend's own. */
+export function seededProfiles(storage: Pick<Storage, "getItem">): ShellProfile[] | undefined {
+  try {
+    const raw = storage.getItem(WEB_PROFILES_KEY);
+    if (raw === null) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (!Array.isArray(value)) return undefined;
+    const profiles: ShellProfile[] = [];
+    for (const entry of value as unknown[]) {
+      if (typeof entry !== "object" || entry === null) return undefined;
+      const { id, name, default: isDefault } = entry as Record<string, unknown>;
+      if (typeof id !== "string" || typeof name !== "string") return undefined;
+      profiles.push({ id, name, default: isDefault === true });
+    }
+    return profiles.length > 0 ? profiles : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * The in-memory backend with `state.json` kept in `localStorage`, so a reload in web mode finds
@@ -19,7 +47,8 @@ export class WebBackend extends FakeBackend {
   readonly #storage: StateStorage;
 
   constructor(storage: StateStorage) {
-    super();
+    const profiles = seededProfiles(storage);
+    super(profiles !== undefined ? { profiles } : {});
     this.#storage = storage;
   }
 

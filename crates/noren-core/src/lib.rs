@@ -13,12 +13,14 @@ pub mod pty;
 pub mod scrollback;
 pub mod store;
 pub mod themes;
+pub mod vault;
 pub mod window;
 
 pub use ai::{
     AiClient, AiError, ChatMessage, DEFAULT_TIMEOUT, OLLAMA_DEFAULT_URL, OllamaProbe, Provider,
     ProviderKind, Role, SseDecoder, SseMessage, StreamEvent, StreamParser,
 };
+// Re-exported so the app can cancel a request without depending on tokio-util itself.
 pub use background::{BackgroundError, BackgroundStore, MAX_BACKGROUND_BYTES, sniff_image};
 pub use config::{CONFIG_FILE_NAME, ConfigError, ConfigStore, ConfigWatcher};
 pub use fonts::{MAX_FONT_NAME_CHARS, is_font_name, list_monospace_families, monospace_families};
@@ -42,6 +44,11 @@ pub use scrollback::{
 };
 pub use store::{StateStore, StoreError};
 pub use themes::{THEMES_DIR_NAME, ThemeError, ThemeStore, is_valid_theme_id};
+pub use tokio_util::sync::CancellationToken;
+pub use vault::{
+    KeyVault, KeyringVault, MAX_KEY_CHARS, MAX_PROVIDER_ID_LEN, MemoryVault,
+    SERVICE as KEYCHAIN_SERVICE, VaultError, is_valid_provider_id,
+};
 pub use window::{EffectOutcome, WindowEffect, WindowPainter, apply_effect};
 
 /// Returns the product name.

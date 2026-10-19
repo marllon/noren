@@ -1,6 +1,7 @@
 // Keeps the release build from opening a console window on Windows.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod ai;
 mod bridge;
 mod deeplink;
 mod lifecycle;
@@ -14,6 +15,7 @@ mod window_effect;
 use tauri::{Manager, RunEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 
+use ai::AiState;
 use bridge::{AppState, BackgroundState, ConfigState, ModState, ScrollbackState, ThemeState};
 
 fn main() {
@@ -60,13 +62,27 @@ fn main() {
             .build(),
     );
 
+    // The keys of the AI providers live in the keychain of the system. The smoke runs get a vault
+    // in memory: they never touch the keychain of the person, and call no AI command.
+    let ai_state = if any_smoke {
+        AiState::with_vault(std::sync::Arc::new(noren_core::MemoryVault::new()))
+    } else {
+        AiState::system()
+    }
+    .expect("could not build the AI client");
+
     let app = builder
         .manage(AppState::detect())
         .manage(deeplink::Links::default())
         .manage(lifecycle::CloseGate::default())
         .manage(shortcut::QuickShortcut::new(!any_smoke))
+        .manage(ai_state)
         .on_window_event(lifecycle::on_window_event)
         .invoke_handler(tauri::generate_handler![
+            ai::ai_providers,
+            ai::ai_set_key,
+            ai::ai_chat_stream,
+            ai::ai_cancel,
             bridge::profiles_list,
             bridge::profiles_set_user,
             bridge::session_create,

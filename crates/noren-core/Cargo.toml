@@ -43,3 +43,19 @@ tokio-util = { version = "0.7.20", default-features = false }
 # futures-util's `StreamExt::next` over the body stream. 0.3, MIT OR Apache-2.0 (already in the
 # tree through Tauri).
 futures-util = { version = "0.3", default-features = false }
+
+# The API keys of the AI providers live in the keychain of the system, never in a file (`vault`
+# module). `keyring` 3.6.3 (MIT OR Apache-2.0) is one small API over the native store of each
+# system; only the native backends are turned on, one table per system, so no backend that keeps
+# the secret in a file or in a database is built in. Windows: Credential Manager
+# (windows-native adds windows-sys and byteorder, MIT OR Apache-2.0 and Unlicense OR MIT).
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
+# macOS: the Keychain, through security-framework (already in the tree through Tauri).
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
+# Linux and the other Unixes: the Secret Service (GNOME Keyring, KWallet) over D-Bus, through the
+# pure Rust `secret-service` and zbus (zbus is already in the tree through Tauri) with the Rust
+# crypto, so no system library (libdbus, OpenSSL) is needed to build it.
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+keyring = { version = "3.6.3", default-features = false, features = ["async-secret-service", "crypto-rust"] }

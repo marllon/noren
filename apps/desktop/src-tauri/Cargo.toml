@@ -46,3 +46,6 @@ tauri-plugin-global-shortcut = "2"
 # page uses (the name of the command and of its arguments, the raw answer). A feature of the crate
 # above, no new crate.
 tauri = { version = "2", features = ["test"] }
+# `#[tokio::test]` for the AI command tests, which drive an async client against a server on
+# 127.0.0.1. Already in the tree through Tauri and noren-core; 1.53.3, MIT.
+tokio = { version = "1.53.3", features = ["rt", "time", "macros"] }

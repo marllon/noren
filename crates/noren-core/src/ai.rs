@@ -637,7 +637,7 @@ impl AiClient {
     /// `Delta`, then exactly one `Done` or `Error`. The return value repeats that last event
     /// (`Ok` for `Done`). `api_key` is `None` for a provider that needs none, such as Ollama.
     /// Cancelling `cancel` ends the request with `Cancelled` and closes the connection.
-    pub async fn chat_stream<F: FnMut(StreamEvent)>(
+    pub async fn chat_stream<F: FnMut(StreamEvent) + Send>(
         &self,
         provider: &Provider,
         api_key: Option<&str>,
@@ -665,7 +665,7 @@ impl AiClient {
         api_key: Option<&str>,
         messages: &[ChatMessage],
         cancel: &CancellationToken,
-        on_event: &mut dyn FnMut(StreamEvent),
+        on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<(), AiError> {
         provider.validate()?;
         let body = request_body(provider, messages)?;
@@ -809,7 +809,10 @@ impl AiClient {
 
 /// Hands events to the callback. An error is returned instead of delivered: the caller delivers
 /// it once, after taking the key out of its text.
-fn deliver(events: Vec<StreamEvent>, on_event: &mut dyn FnMut(StreamEvent)) -> Result<(), AiError> {
+fn deliver(
+    events: Vec<StreamEvent>,
+    on_event: &mut (dyn FnMut(StreamEvent) + Send),
+) -> Result<(), AiError> {
     for event in events {
         match event {
             StreamEvent::Error(error) => return Err(error),

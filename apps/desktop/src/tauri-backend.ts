@@ -423,6 +423,10 @@ export class TauriBackend implements Backend {
     return this.#bridge.invoke<boolean>("window_is_focused");
   }
 
+  async openExternal(url: string): Promise<void> {
+    await this.#bridge.invoke("link_open", { url });
+  }
+
   /** Stops listening to `session-exit` and `config-changed`. Sessions still running will keep their ids until killed. */
   async dispose(): Promise<void> {
     const subscription = this.#exitSubscription;

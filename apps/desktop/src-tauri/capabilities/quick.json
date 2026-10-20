@@ -1,7 +1,17 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "quick",
-  "description": "Capabilities of the quick terminal window: read-only window and app information, the events it exchanges with the other windows, and hiding itself (Esc, and after the shell is promoted to a tab). Showing and moving it are done from the Rust side.",
+  "description": "Capabilities of the quick terminal window: one shell (start, input, size, end), opening a confirmed link, the events it exchanges with the other windows, and hiding itself (Esc, and after the shell is promoted to a tab). No settings, state, files, AI or notification commands. Showing and moving the window are done from the Rust side.",
   "windows": ["quick"],
-  "permissions": ["core:default", "core:window:allow-hide"]
+  "permissions": [
+    "allow-session-create",
+    "allow-session-write",
+    "allow-session-resize",
+    "allow-session-kill",
+    "allow-link-open",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:event:allow-emit",
+    "core:window:allow-hide"
+  ]
 }

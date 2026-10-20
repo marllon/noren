@@ -1,3 +1,5 @@
+import "./zod-config";
+
 export const MODEL_PACKAGE_NAME = "@noren/model";
 
 export type {
@@ -308,6 +310,7 @@ export type {
   SplitNode,
   Workspace,
 } from "./types";
+export { MAX_LINK_BYTES, externalLinkProblem, isExternalLink } from "./external-link";
 export { DEFAULT_AI_REPLY, FakeBackend } from "./fake-backend";
 export type {
   FakeAiMethod,

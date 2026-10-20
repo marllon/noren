@@ -202,7 +202,7 @@ Invariants (checked with property-based tests): every pane belongs to exactly on
 
 ## The quick terminal
 
-A second window of the app, labelled `quick`: frameless, always on top, out of the taskbar, created hidden at the start (`src-tauri/src/quick.rs`) and placed against the top edge of the main screen, centered, 60% of its width and 45% of its height within limits (`top_bounds`, a pure function of the usable area and the scale). Three things show or hide it, described below: the global shortcut, the palette entry and the key inside the main window all call `quick::toggle_window`; Esc and the "Promote to tab" button hide it from its own page. It has a capability of its own (`capabilities/quick.json`: `core:default` and `core:window:allow-hide`, nothing more; showing and placing it are done by the Rust side), and the window event handler (`lifecycle.rs`) leaves it alone: the close gate belongs to `main`, and destroying `main` destroys `quick` too, so the hidden window never keeps the app alive.
+A second window of the app, labelled `quick`: frameless, always on top, out of the taskbar, created hidden at the start (`src-tauri/src/quick.rs`) and placed against the top edge of the main screen, centered, 60% of its width and 45% of its height within limits (`top_bounds`, a pure function of the usable area and the scale). Three things show or hide it, described below: the global shortcut, the palette entry and the key inside the main window all call `quick::toggle_window`; Esc and the "Promote to tab" button hide it from its own page. It has a capability of its own (`capabilities/quick.json`: the commands to run one shell and to open a confirmed link, the three event permissions and `core:window:allow-hide`, nothing more; showing and placing it are done by the Rust side), and the window event handler (`lifecycle.rs`) leaves it alone: the close gate belongs to `main`, and destroying `main` destroys `quick` too, so the hidden window never keeps the app alive.
 
 The window loads the same page as the main one, in a minimal form. `main.tsx` picks it from the label of the window (`windowKindOf`) and imports only that page, because importing `App` starts the workspace (the saved state, the settings, a shell for every tab) and a second copy of that would write over the first. `QuickApp.tsx` is one `TerminalView` with the default profile, a title line with the "Promote to tab" button, and nothing else; the window talks to the others through events (`quick.ts`, names repeated in `quick.rs`): `quick-ready` when it listens, `quick-open` (asks for a shell), `quick-session` (`{ id }`, the shell it started), `quick-promote` (`{ id }`, asks the main window to take that shell) and `quick-promoted` (`{ id, ok, itemId | reason }`, the answer).
 
@@ -301,6 +301,15 @@ Two more ways into the AI, both through a preview that waits for the person's Se
 **What a test can do.** `e2e/explain-command.spec.ts` runs both flows against the `FakeBackend` and checks, in the writes the backend recorded, that no `\r` or `\n` reached the session, that the messages the fake provider received are the text of the preview, and that with the AI off (settings or space) there is no button, no entry and no call.
 
 What is not there yet: the questions of a conversation stand alone (earlier turns are shown but not sent again), a tab chip reads only the focused pane of that tab, and the panel has a fixed width.
+
+## Security
+
+The page is treated as code that can be tricked, because it draws text that programs wrote. Four layers keep that from reaching the machine, and [SECURITY_REVIEW.md](SECURITY_REVIEW.md) lists what was checked in each, with the evidence:
+
+- **Content Security Policy** (`tauri.conf.json`): scripts only from the app itself, no `eval`, no remote content; `connect-src` is the IPC and nothing else. Inline styles are the one relaxation (the terminal library and the mods write `<style>` elements).
+- **Capabilities** (`capabilities/`): the app commands are declared in `build.rs`, so each window gets only the ones it names; no `core:default` set is granted. The tests in `src/capabilities.rs` keep `main.rs`, `build.rs`, the capabilities and the policy in step.
+- **Links** (`link-prompt.ts`, `link.rs`): a click on a link asks first and only `http` and `https` addresses are opened, checked again on the Rust side; a navigation away from the app pages is refused (`navigation.rs`).
+- **Names that become files** (mods, themes, scrollback snapshots, background pictures, `noren://` folders): validated in TypeScript and again in `noren-core`, with tests that hand them `..`, absolute paths, drives, streams and device names.
 
 ## Quality and tests
 

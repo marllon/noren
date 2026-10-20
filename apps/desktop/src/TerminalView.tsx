@@ -14,6 +14,7 @@ import { BELL_FLASH_MS, beep, beeps, flashes } from "./bell";
 import { attachCommandMarks, markColors } from "./command-marks-view";
 import type { CommandMarkInfo, CommandOutput, TerminalCommandMarks } from "./command-marks-view";
 import type { ExplainRequest } from "./ask-panel";
+import { requestExternalLink } from "./link-prompt";
 import { parseOsc7 } from "./osc7";
 import { decidePaste, insertableText } from "./paste";
 import { watchFirstPrompt } from "./first-prompt";
@@ -284,6 +285,12 @@ export function TerminalView({
     perfMark("terminal-mount");
     const term = new Terminal({
       allowProposedApi: true,
+      // The links a program declares itself (OSC 8) go through the same question; the default
+      // handler would open a browser window after a bare `confirm`.
+      linkHandler: {
+        activate: (_event, uri) => requestExternalLink(uri),
+        allowNonHttpProtocols: false,
+      },
       cursorBlink: optionsRef.current.cursorBlink,
       cursorStyle: optionsRef.current.cursorStyle,
       fontFamily: optionsRef.current.fontFamily,
@@ -302,7 +309,9 @@ export function TerminalView({
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.loadAddon(new Unicode11Addon());
-    term.loadAddon(new WebLinksAddon());
+    // A click on an address does not open it: it asks the person first (`link-prompt.ts`). The
+    // default handler of the addon would call `window.open` at once.
+    term.loadAddon(new WebLinksAddon((_event, uri) => requestExternalLink(uri)));
     term.loadAddon(new SearchAddon());
     const serialize = new SerializeAddon();
     term.loadAddon(serialize);

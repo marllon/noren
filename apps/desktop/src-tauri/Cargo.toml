@@ -41,6 +41,12 @@ window-vibrancy = "0.8"
 # 0.8.0 underneath), Apache-2.0 OR MIT.
 tauri-plugin-global-shortcut = "2"
 
+# Hands an http or https address the person confirmed to the browser of the system (`link.rs`, the
+# only caller, which checks the address first). Chosen over the Tauri opener plugin because it has
+# no commands for the page to be granted: the page can ask for this one command and nothing else.
+# 5.4.4, MIT.
+open = "5"
+
 [dev-dependencies]
 # The mock runtime of `tauri::test`, so the tests can call a command through the same path the
 # page uses (the name of the command and of its arguments, the raw answer). A feature of the crate

@@ -11,8 +11,12 @@ import { MAX_BACKGROUND_BLUR, MAX_BACKGROUND_PATH, backgroundImageProblem } from
 const OPAQUE_COLOR = /^#[0-9a-f]{6}$/i;
 /** `#rrggbb` or `#rrggbbaa`: a color that may be see-through, such as the selection. */
 const ALPHA_COLOR = /^#[0-9a-f]{6}([0-9a-f]{2})?$/i;
-/** `noren-dusk`: lower case words joined by single hyphens. */
-export const THEME_ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+/**
+ * `noren-dusk`: lower case words joined by single hyphens. The id is a file name (`themes/<id>.json`),
+ * so a device name of Windows (`con`, `aux`, `nul`, `com1`, `lpt1`...) is not an id.
+ */
+export const THEME_ID_PATTERN =
+  /^(?!(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$)[a-z0-9]+(-[a-z0-9]+)*$/;
 
 const color = z.string().regex(OPAQUE_COLOR, "Expected a color like #1a2b3c");
 const colorWithAlpha = z.string().regex(ALPHA_COLOR, "Expected a color like #1a2b3c or #1a2b3c80");

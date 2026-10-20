@@ -119,3 +119,11 @@ fallback with its reason; a system that cannot paint it still passes.
 Both paths were checked on disk: the WebView folder after an install, and `state.json` after a
 release build saved a state (the folder does not exist until the first save). Deleting both folders
 resets the app to a fresh install.
+
+## Security audits
+
+Run them before a release and whenever a dependency changes; the results of the last review are in [SECURITY_REVIEW.md](SECURITY_REVIEW.md).
+
+- `pnpm audit --prod`: known vulnerabilities in the production npm dependencies.
+- `cargo install cargo-audit --locked` once, then `cargo audit`: known vulnerabilities and unmaintained or unsound crates in `Cargo.lock`.
+- `pnpm licenses:check`: licenses of the dependencies of both kinds.

@@ -244,4 +244,10 @@ export interface Backend {
   notify(title: string, body: string): Promise<void>;
   /** Whether the window of the app has the keyboard focus of the system now. */
   isWindowFocused(): Promise<boolean>;
+  /**
+   * Opens a web address in the browser of the system. Only `http://` and `https://` addresses are
+   * opened (`externalLinkProblem` says why one is not); the backend checks again whatever the
+   * caller did, and rejects with that sentence. The page confirms with the person before calling.
+   */
+  openExternal(url: string): Promise<void>;
 }

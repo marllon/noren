@@ -68,6 +68,10 @@ export const ptBR: Dictionary = {
   "runAction.messageWithStop":
     'Executar "{label}"? O Noren vai digitar o comando abaixo na aba "{tab}" e apertar Enter. A segunda linha roda quando você parar a ação. Ele vem do .noren/actions.json do projeto.',
   "runAction.confirm": "Executar",
+  "openLink.title": "Abrir link",
+  "openLink.message":
+    "Um programa no terminal imprimiu este link. Abrir no navegador? Só abra endereços em que você confia.",
+  "openLink.confirm": "Abrir",
 
   // The tabs of the sidebar and of the top bar
   "tree.tabs": "Abas",

@@ -55,6 +55,7 @@ import { TabSearch } from "./TabSearch";
 import { collectSearchTabs } from "./tab-search";
 import type { SearchHit, SearchTab, TabHits } from "./tab-search";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { LinkPrompt } from "./LinkPrompt";
 import { FavoritesGrid } from "./FavoritesGrid";
 import { itemTitle, resolveFavorites } from "./favorites";
 import type { ResolvedFavorite } from "./favorites";
@@ -212,6 +213,8 @@ export interface NorenTestHook {
   notifications(): { title: string; body: string }[];
   /** Makes the fake window have the keyboard focus (it starts with it) or lose it. */
   setWindowFocused(focused: boolean): void;
+  /** Every web address the backend was asked to open in the browser, in order. None is ever opened. */
+  openedLinks(): string[];
   /** Every command line the backend was asked to run in a short process (stop commands), in order. */
   commandRuns(): { cwd: string; command: string }[];
   /** Makes the next short commands end with this exit code (0 by default). */
@@ -1235,6 +1238,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
         },
         notifications: () => fake.notifications.map(({ title, body }) => ({ title, body })),
         setWindowFocused: (focused) => fake.setWindowFocused(focused),
+        openedLinks: () => [...fake.openedLinks],
         commandRuns: () => fake.commands.map(({ cwd, command }) => ({ cwd, command })),
         failCommands: (code) => fake.setCommandExitCode(code),
         actionsReads: () => fake.callsTo("readActionsFile").length,
@@ -1881,6 +1885,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
         </TreeDnd>
         {overlayNode}
         {confirmNode}
+        <LinkPrompt backend={backend} />
         <input
           ref={schemeInput}
           type="file"

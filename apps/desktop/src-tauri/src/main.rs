@@ -3,8 +3,12 @@
 
 mod ai;
 mod bridge;
+#[cfg(test)]
+mod capabilities;
 mod deeplink;
 mod lifecycle;
+mod link;
+mod navigation;
 mod notify;
 mod perf;
 mod prespawn;
@@ -67,6 +71,8 @@ fn main() {
             deeplink::on_second_instance(app, argv);
         }));
     }
+    // No web view of the app may navigate away from the pages the app serves.
+    builder = builder.plugin(navigation::guard());
     // The scheme itself is declared in tauri.conf.json (plugins > deep-link) and written by the
     // installer. Nothing here registers it at run time or touches the registry.
     builder = builder.plugin(tauri_plugin_deep_link::init());
@@ -146,6 +152,7 @@ fn main() {
             bridge::window_effect_set,
             bridge::background_image_read,
             bridge::fonts_list_monospace,
+            link::link_open,
             notify::notify_show,
             notify::window_is_focused,
             deeplink::deep_link_take_waiting,

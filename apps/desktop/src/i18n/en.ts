@@ -66,6 +66,10 @@ export const en = {
   "runAction.messageWithStop":
     'Run "{label}"? Noren will type the command below into the tab "{tab}" and press Enter. The second line runs when you stop it. It comes from the project\'s .noren/actions.json.',
   "runAction.confirm": "Run",
+  "openLink.title": "Open link",
+  "openLink.message":
+    "A program in the terminal printed this link. Open it in your browser? Only open addresses you trust.",
+  "openLink.confirm": "Open",
 
   // The tabs of the sidebar and of the top bar
   "tree.tabs": "Tabs",

@@ -14,6 +14,7 @@ import {
 } from "./quick";
 import type { QuickEvents } from "./quick";
 import { createQuickWindowActions } from "./quick-window";
+import { LinkPrompt } from "./LinkPrompt";
 import { TerminalView } from "./TerminalView";
 import type { TerminalHandle } from "./TerminalView";
 import { applyTheme, terminalTheme, themeForScheme } from "./theme";
@@ -201,6 +202,7 @@ export function QuickApp({ backend = pageBackend(), events, hide }: QuickAppProp
       >
         {notice}
       </div>
+      <LinkPrompt backend={backend} />
     </div>
   );
 }

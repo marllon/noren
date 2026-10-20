@@ -185,7 +185,9 @@ describe("a list of font names", () => {
         expect(quotes % 2).toBe(0);
         const inside = css.replace(/"[^"]*"/g, "");
         expect(inside).not.toContain('"');
-        expect(css).not.toMatch(/url/i);
+        // A plain name may spell "url" ("URl" is a font name); what must never come out is the
+        // function, `url(`, which would load something.
+        expect(css).not.toMatch(/url\s*\(/i);
       }),
       { numRuns: 500 },
     );

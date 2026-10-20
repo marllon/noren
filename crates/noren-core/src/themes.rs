@@ -20,6 +20,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use crate::mods::is_reserved_name;
 use crate::store::{StoreError, write_atomic};
 
 /// Name of the folder inside the config folder of the app.
@@ -72,10 +73,11 @@ impl std::error::Error for ThemeError {
 }
 
 /// Whether `id` is a theme id: lower case letters and digits, in words joined by single hyphens,
-/// at most 64 characters.
+/// at most 64 characters, and not a device name Windows reserves (`con.json` is the console there).
 pub fn is_valid_theme_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= MAX_ID_LEN
+        && !is_reserved_name(id)
         && id.split('-').all(|word| {
             !word.is_empty()
                 && word
@@ -370,6 +372,17 @@ mod tests {
             "", "-", "a-", "-a", "a--b", "Ab", "a_b", "a b", "a.b", "a/b",
         ] {
             assert!(!is_valid_theme_id(id), "{id:?} should be invalid");
+        }
+    }
+
+    #[test]
+    fn a_device_name_of_windows_is_not_a_theme_id() {
+        for id in ["con", "prn", "aux", "nul", "com1", "lpt9"] {
+            assert!(!is_valid_theme_id(id), "{id:?} should be invalid");
+        }
+        // Only the whole name is a device: these are ordinary files.
+        for id in ["con-dark", "aux2", "com10", "my-nul", "console"] {
+            assert!(is_valid_theme_id(id), "{id:?} should be valid");
         }
     }
 }

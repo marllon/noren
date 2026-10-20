@@ -30,6 +30,7 @@ import type { BackgroundImageFile } from "./background";
 import { ManualClock } from "./clock";
 import type { Clock } from "./clock";
 import { sameFolder } from "./deep-link";
+import { externalLinkProblem } from "./external-link";
 import { MAX_MOD_BYTES, MAX_MODS, isValidModFileName } from "./mods";
 import { OutputStream } from "./output-stream";
 import { MAX_SCROLLBACK_BYTES, isScrollbackPaneId } from "./scrollback";
@@ -757,6 +758,7 @@ export class FakeBackend implements Backend {
   readonly #commands: FakeCommandRun[] = [];
   readonly #gitRepos = new Map<string, GitInfo>();
   readonly #notifications: FakeNotification[] = [];
+  readonly #openedLinks: string[] = [];
   readonly #configListeners = new Set<(text: string | null) => void>();
   readonly #userThemes = new Map<string, string>();
   readonly #mods = new Map<string, string>();
@@ -1386,6 +1388,18 @@ export class FakeBackend implements Backend {
   async isWindowFocused(): Promise<boolean> {
     this.#record("isWindowFocused");
     return this.#windowFocused;
+  }
+
+  async openExternal(url: string): Promise<void> {
+    this.#record("openExternal", url);
+    const problem = externalLinkProblem(url);
+    if (problem !== undefined) throw new Error(problem);
+    this.#openedLinks.push(url);
+  }
+
+  /** Every address `openExternal` accepted, in order. Nothing is opened. */
+  get openedLinks(): readonly string[] {
+    return this.#openedLinks;
   }
 
   /** Whether `isWindowFocused` answers true. The fake window starts with the focus. */

@@ -13,8 +13,8 @@ use std::time::Duration;
 use noren_core::{
     ACTIONS_FILE_PATH, AgentEntry, BackgroundStore, CONFIG_FILE_NAME, ConfigStore, ConfigWatcher,
     GitHead, MODS_DIR_NAME, ModFile, ModStore, ModWatcher, ProcessSource, Profile, ProfileSet,
-    SCROLLBACK_DIR_NAME, ScrollbackStore, SessionEvent, SessionId, SessionManager, SpawnSpec,
-    StateStore, SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect, Worktree,
+    SCROLLBACK_DIR_NAME, ScrollbackStore, SessionEvent, SessionId, SpawnSpec, StateStore,
+    SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect, Worktree,
     check_catalog, create_worktree, detect_system_profiles, list_worktrees, native_path, read_head,
     read_project_file, remove_worktree, run_short, scan_sessions,
 };
@@ -23,6 +23,7 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
+use crate::daemon_link::{Host, Sessions};
 use crate::route::OutputRoute;
 
 /// File name of the workspace state inside the app data folder.
@@ -35,10 +36,11 @@ pub const INTEGRATION_RESOURCE_DIR: &str = "resources/shell-integration";
 /// Name of the event emitted when a session's child ended and all its output was delivered.
 pub const SESSION_EXIT_EVENT: &str = "session-exit";
 
-/// State managed by Tauri: every PTY session and the shell profiles: the ones found on this machine,
-/// and the ones the user defined (`profiles` of `config.jsonc`), which the interface hands over.
+/// State managed by Tauri: every PTY session (in the session daemon, or in this process when there
+/// is none; see `daemon_link`) and the shell profiles: the ones found on this machine, and the ones
+/// the user defined (`profiles` of `config.jsonc`), which the interface hands over.
 pub struct AppState {
-    pub sessions: SessionManager,
+    pub sessions: Sessions,
     /// The shells found on this machine, detected once. The detection runs on a thread of its own
     /// from the start of the program (it asks `wsl.exe`, which takes ~70 ms) and the first reader
     /// waits for it, which is long after it ended.
@@ -65,32 +67,43 @@ fn process_env(name: &str) -> Option<String> {
 type DetectedProfiles = Box<dyn FnOnce() -> ProfileSet + Send + Sync>;
 
 impl AppState {
-    /// Starts detecting the system profiles (once, on a thread of its own) and starts with no
-    /// session and no profile of the user.
-    pub fn detect() -> Self {
+    /// Starts detecting the system profiles (once, on a thread of its own), starts looking for the
+    /// session daemon the same way when `host` asks for one, and starts with no session and no
+    /// profile of the user.
+    pub fn detect(host: Host) -> Self {
         let detection = std::thread::spawn(detect_system_profiles);
         let waiting = Mutex::new(Some(detection));
-        Self::with_detection(Box::new(move || {
-            // A detection that panicked leaves no shell, which the first session reports.
-            let handle = waiting.lock().unwrap_or_else(|e| e.into_inner()).take();
-            handle
-                .and_then(|handle| handle.join().ok())
-                .unwrap_or(ProfileSet {
-                    profiles: Vec::new(),
-                    default_id: None,
-                })
-        }))
+        Self::with_detection(
+            Box::new(move || {
+                // A detection that panicked leaves no shell, which the first session reports.
+                let handle = waiting.lock().unwrap_or_else(|e| e.into_inner()).take();
+                handle
+                    .and_then(|handle| handle.join().ok())
+                    .unwrap_or(ProfileSet {
+                        profiles: Vec::new(),
+                        default_id: None,
+                    })
+            }),
+            host,
+        )
     }
 
-    /// The same around profiles already known (a test builds its own).
+    /// The same around profiles already known, with the sessions in this process (a test builds its
+    /// own).
     #[cfg(test)]
     pub fn with_detected(detected: ProfileSet) -> Self {
-        Self::with_detection(Box::new(move || detected))
+        Self::with_detected_in(detected, Host::InProcess)
     }
 
-    fn with_detection(detection: DetectedProfiles) -> Self {
+    /// The same, with the sessions where `host` says.
+    #[cfg(test)]
+    pub fn with_detected_in(detected: ProfileSet, host: Host) -> Self {
+        Self::with_detection(Box::new(move || detected), host)
+    }
+
+    fn with_detection(detection: DetectedProfiles, host: Host) -> Self {
         Self {
-            sessions: SessionManager::new(),
+            sessions: Sessions::new(host),
             detected: LazyLock::new(detection),
             profiles: RwLock::new(None),
             routes: Arc::default(),
@@ -1060,10 +1073,10 @@ pub fn scan_agents(
 ) -> Result<Vec<AgentHitDto>, String> {
     let catalog: Vec<AgentEntry> = catalog.into_iter().map(AgentEntry::from).collect();
     check_catalog(&catalog).map_err(|e| e.to_string())?;
-    let roots: Vec<(SessionId, Option<u32>)> = session_ids
-        .iter()
-        .map(|id| (SessionId(*id), state.sessions.process_id(SessionId(*id))))
-        .collect();
+    // The pid of each shell: from the list of the daemon (`SessionInfo`) when the sessions live in
+    // one, else from the session manager of the app.
+    let ids: Vec<SessionId> = session_ids.iter().map(|id| SessionId(*id)).collect();
+    let roots = state.sessions.process_ids(&ids);
     Ok(scan_sessions(source, &roots, &catalog)
         .into_iter()
         .map(|(session, found)| AgentHitDto {
@@ -2236,6 +2249,12 @@ mod tests {
     #[cfg(not(windows))]
     const PID_COMMAND: &[u8] = b"echo \"noren-pid-$$-end\"\n";
 
+    /// The line that makes the shell end by itself, with code 0.
+    #[cfg(windows)]
+    const EXIT_COMMAND: &[u8] = b"exit\r";
+    #[cfg(not(windows))]
+    const EXIT_COMMAND: &[u8] = b"exit\n";
+
     /// The process number the shell printed in answer to [`PID_COMMAND`], when it has.
     fn printed_pid(output: &[u8]) -> Option<u32> {
         let text = crate::smoke::strip_ansi(&String::from_utf8_lossy(output));
@@ -2285,7 +2304,12 @@ mod tests {
 
     #[test]
     fn a_session_moved_to_a_new_channel_is_the_same_process_with_its_output_only_in_the_new_one() {
-        let state = state_with_shell();
+        moving_a_session_keeps_its_process(state_with_shell());
+    }
+
+    /// The scenario of the promotion of a quick-window session, for sessions that live wherever
+    /// `state` keeps them.
+    fn moving_a_session_keeps_its_process(state: AppState) {
         let app = tauri::test::mock_app();
         let (old, in_old) = collecting();
         let (id, profile) =
@@ -2405,9 +2429,15 @@ mod tests {
     #[test]
     fn a_shell_started_ahead_is_handed_to_the_call_that_asks_for_the_same_thing_with_what_it_printed()
      {
-        let dir = temp_folder("prespawn-claim");
+        a_shell_started_ahead_is_claimed(state_with_shell(), "prespawn-claim");
+    }
+
+    /// The scenario of the shell started ahead, for sessions that live wherever `state` keeps them;
+    /// `folder` names the scratch folder of the run.
+    fn a_shell_started_ahead_is_claimed(state: AppState, folder: &str) {
+        let dir = temp_folder(folder);
         let app = tauri::test::mock_app();
-        app.manage(state_with_shell());
+        app.manage(state);
         wait_for_prespawned(&app, saved_state_in(&dir));
         let state = app.state::<AppState>();
         assert_eq!(state.sessions.session_count(), 1, "one shell is running");
@@ -2498,5 +2528,163 @@ mod tests {
         let (channel, _) = collecting();
         let refusal = attach_session(&state, 99, channel).expect_err("no such session");
         assert_eq!(refusal, "unknown session 99");
+    }
+
+    // ---- The same, with the sessions in the session daemon (NOR-F14-02a) ----
+
+    /// A daemon of the test on a name of its own, and a state whose sessions live in it.
+    fn state_in_a_daemon() -> (noren_core::daemon::Daemon, AppState) {
+        use crate::daemon_link::{DaemonSettings, Host};
+        use noren_core::daemon::{Daemon, Endpoint, ServerConfig};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let name = format!(
+            "bridge-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        );
+        let daemon = Daemon::start(
+            Endpoint::named(&name).expect("endpoint"),
+            ServerConfig::default(),
+        )
+        .expect("start the daemon");
+        let settings = DaemonSettings {
+            // A path with nothing at it: the state must find the daemon, not start one.
+            program: Some(std::env::temp_dir().join("noren-no-such-norend-77b2c0")),
+            ..DaemonSettings::for_run(name)
+        };
+        let state = AppState::with_detected_in(
+            ProfileSet {
+                profiles: vec![shell_profile()],
+                default_id: Some("test".to_owned()),
+            },
+            Host::Daemon(settings),
+        );
+        (daemon, state)
+    }
+
+    #[test]
+    fn a_session_in_the_daemon_streams_to_the_page_and_its_end_is_announced_and_releases_its_route()
+    {
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        use tauri::Listener;
+
+        let (daemon, state) = state_in_a_daemon();
+        let app = tauri::test::mock_app();
+        let (exits_tx, exits) = std::sync::mpsc::channel::<String>();
+        app.listen(SESSION_EXIT_EVENT, move |event| {
+            let _ = exits_tx.send(event.payload().to_owned());
+        });
+
+        let (page, in_page) = collecting();
+        let (id, _) =
+            create_session(app.handle(), &state, None, None, None, 120, 30, page).expect("start");
+        assert_eq!(daemon.session_count(), 1, "the shell lives in the daemon");
+        assert!(state.route(id).is_some());
+
+        state
+            .sessions
+            .write(SessionId(id), PID_COMMAND)
+            .expect("write");
+        let printed = wait_for_pid(&in_page);
+        // The pid the daemon lists for the session is the pid the shell says it has.
+        let listed = state.sessions.process_ids(&[SessionId(id)]);
+        assert_eq!(listed, vec![(SessionId(id), Some(printed))]);
+
+        // The shell ends on its own: the page is told, once, with the id and the code.
+        state
+            .sessions
+            .write(SessionId(id), EXIT_COMMAND)
+            .expect("write exit");
+        let payload = exits
+            .recv_timeout(Duration::from_secs(40))
+            .expect("session-exit within 40 s");
+        let payload: serde_json::Value = serde_json::from_str(&payload).expect("json");
+        assert_eq!(payload["id"], id);
+        assert_eq!(payload["code"], 0);
+        assert!(state.route(id).is_none(), "the route went with the session");
+        assert!(
+            exits.recv_timeout(Duration::from_millis(300)).is_err(),
+            "announced once"
+        );
+
+        // An ended session stays in the daemon until it is killed, like in the session manager.
+        assert_eq!(daemon.session_count(), 1);
+        state.sessions.kill(SessionId(id)).expect("release it");
+        assert_eq!(daemon.session_count(), 0);
+        assert_eq!(state.sessions.session_count(), 0);
+    }
+
+    #[test]
+    fn a_session_in_the_daemon_moved_to_a_new_channel_is_the_same_process() {
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_daemon, state) = state_in_a_daemon();
+        moving_a_session_keeps_its_process(state);
+    }
+
+    #[test]
+    fn a_shell_started_ahead_in_the_daemon_is_handed_to_the_call_that_asks_for_it() {
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (daemon, state) = state_in_a_daemon();
+        a_shell_started_ahead_is_claimed(state, "prespawn-claim-daemon");
+        assert_eq!(daemon.session_count(), 0, "it was killed at the end");
+    }
+
+    #[test]
+    fn the_agent_scan_starts_from_the_pid_the_daemon_lists_for_each_session() {
+        use noren_core::ProcessInfo;
+
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_daemon, state) = state_in_a_daemon();
+        let app = tauri::test::mock_app();
+        let (page, in_page) = collecting();
+        let (id, _) =
+            create_session(app.handle(), &state, None, None, None, 80, 24, page).expect("start");
+        // The shell is up (it printed something) before anything is asked or closed.
+        let deadline = std::time::Instant::now() + Duration::from_secs(40);
+        while received(&in_page).is_empty() {
+            assert!(std::time::Instant::now() < deadline, "the shell was silent");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let shell = state.sessions.process_ids(&[SessionId(id)])[0]
+            .1
+            .expect("a live shell has a pid");
+
+        // A process tree made up around that pid: an agent under the shell of the session.
+        struct Tree(Vec<ProcessInfo>);
+        impl ProcessSource for Tree {
+            fn snapshot(&self) -> Vec<ProcessInfo> {
+                self.0.clone()
+            }
+        }
+        let process = |pid: u32, parent: u32, name: &str| ProcessInfo {
+            pid,
+            parent: Some(parent),
+            name: name.to_owned(),
+            cmdline: vec![name.to_owned()],
+        };
+        let tree = Tree(vec![
+            process(shell, 1, "shell"),
+            process(shell + 100_000, shell, "claude"),
+        ]);
+        let found = scan_agents(&state, &tree, &[id, 987_654], vec![agent_entry("claude")]);
+        assert_eq!(
+            found,
+            Ok(vec![AgentHitDto {
+                session_id: id,
+                agent_id: "claude".to_owned()
+            }]),
+            "the session that exists has its agent, the one that does not has none"
+        );
+        state.sessions.kill(SessionId(id)).expect("kill");
     }
 }

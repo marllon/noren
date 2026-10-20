@@ -11,6 +11,12 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 noren-core = { path = "../../../crates/noren-core" }
+# The link to the session daemon (`daemon_link.rs`) drives the async client of noren-core from a
+# runtime of its own with two worker threads, so the app needs the multi-thread flavour of it
+# (`rt-multi-thread`), the queues between the callers and the task that reads the connection
+# (`sync`), `select!` (`macros`) and the waits (`time`). Already in the tree through Tauri and
+# noren-core; 1.53.3, MIT.
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "sync", "macros", "time"] }
 tauri = { version = "2", features = [] }
 # Derive macros for the command DTOs (profile list, session-exit payload, write payload).
 # Already in the dependency tree through Tauri; MIT OR Apache-2.0.

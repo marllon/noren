@@ -5,6 +5,7 @@ mod ai;
 mod bridge;
 #[cfg(test)]
 mod capabilities;
+mod daemon_link;
 mod deeplink;
 mod lifecycle;
 mod link;
@@ -23,6 +24,7 @@ use tauri_plugin_deep_link::DeepLinkExt;
 
 use ai::AiState;
 use bridge::{AppState, BackgroundState, ConfigState, ModState, ScrollbackState, ThemeState};
+use daemon_link::{DaemonSettings, Host};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -96,11 +98,22 @@ fn main() {
     }
     .expect("could not build the AI client");
 
+    // Where the sessions live: in the session daemon of the user, found or started next to the app.
+    // A smoke run has a daemon of its own, under a name only it uses, and stops it when it ends, so
+    // it never meets the daemon of the user. The perf run measures the start of a shell inside the
+    // app (what its numbers are compared with), so it keeps the sessions in the process.
+    let host = if perf_run.is_some() {
+        Host::InProcess
+    } else if any_smoke {
+        Host::Daemon(DaemonSettings::for_run(smoke::run_daemon_name()))
+    } else {
+        Host::Daemon(DaemonSettings::normal())
+    };
     let perf_state_file = perf_run
         .as_ref()
         .map(|run| run.state_dir.join(bridge::STATE_FILE_NAME));
     let app = builder
-        .manage(AppState::detect())
+        .manage(AppState::detect(host))
         .manage(deeplink::Links::default())
         .manage(lifecycle::CloseGate::default())
         .manage(shortcut::QuickShortcut::new(!any_smoke))

@@ -11,9 +11,9 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use noren_core::{
-    BackgroundStore, CONFIG_FILE_NAME, ConfigStore, MODS_DIR_NAME, ModStore, SCROLLBACK_DIR_NAME,
-    ScrollbackStore, SessionId, StateStore, THEMES_DIR_NAME, ThemeStore, WindowEffect,
-    is_powershell,
+    BackgroundStore, CONFIG_FILE_NAME, ConfigStore, MODS_DIR_NAME, ModStore, ProcessSource,
+    SCROLLBACK_DIR_NAME, ScrollbackStore, SessionId, StateStore, SystemProcesses, THEMES_DIR_NAME,
+    ThemeStore, WindowEffect, is_powershell,
 };
 use serde_json::{Value, json};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -23,6 +23,7 @@ use crate::bridge::{
     self, AppState, BackgroundState, ConfigState, ModState, STATE_FILE_NAME, ScrollbackState,
     ThemeState,
 };
+use crate::daemon_link::Placement;
 use crate::deeplink::{self, Links};
 use crate::quick;
 use crate::shortcut;
@@ -251,7 +252,97 @@ fn visible_tail(output: &[u8]) -> String {
     text.chars().skip(skip).collect()
 }
 
-/// Reports a failure, ends every session and exits with code 1.
+/// The name of the session daemon a smoke run owns. It is unique to the run (the process and the
+/// moment), so the run never meets the daemon of the user, and the run stops it when it ends.
+pub fn run_daemon_name() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    format!("smoke-{}-{nanos}", process::id())
+}
+
+/// Fails unless session `id` runs in the `norend` this run started: the shell is a child of that
+/// process, which is not the app. Prints the `SMOKE DAEMON` line the script looks for. A run whose
+/// sessions fell back to the app (no `norend` next to it) fails here, so the smoke cannot pass on
+/// the weaker path.
+fn check_runs_in_daemon(state: &AppState, id: u64) -> Result<(), String> {
+    let (endpoint, norend) = match state.sessions.placement() {
+        Placement::Daemon {
+            endpoint,
+            norend_pid: Some(pid),
+        } => (endpoint, pid),
+        Placement::Daemon { endpoint, .. } => {
+            return Err(format!(
+                "the run found a daemon on {endpoint} that it did not start; a smoke run owns its daemon"
+            ));
+        }
+        Placement::Process { reason } => {
+            return Err(format!(
+                "the sessions of the run live inside the app, not in norend ({}); build it with \
+                 `cargo build -p norend`",
+                reason.unwrap_or_else(|| "no reason given".to_owned())
+            ));
+        }
+    };
+    let shell = state
+        .sessions
+        .process_ids(&[SessionId(id)])
+        .first()
+        .and_then(|(_, pid)| *pid)
+        .ok_or_else(|| format!("the daemon reports no process for session {id}"))?;
+    let processes = SystemProcesses::new().snapshot();
+    let of = |pid: u32| processes.iter().find(|process| process.pid == pid);
+    let parent = of(shell).and_then(|process| process.parent);
+    if parent != Some(norend) || norend == process::id() {
+        return Err(format!(
+            "the shell {shell} of session {id} has the parent {parent:?}, not norend {norend} (the app is {})",
+            process::id()
+        ));
+    }
+    let name = of(norend).map(|process| process.name.to_lowercase());
+    if !name.as_deref().is_some_and(|name| name.contains("norend")) {
+        return Err(format!("process {norend} is called {name:?}, not norend"));
+    }
+    print_line(&format!(
+        "SMOKE DAEMON norend pid {norend} on {endpoint}: session {id} runs in it (shell pid {shell}, the app is pid {})",
+        process::id()
+    ));
+    Ok(())
+}
+
+/// Stops the daemon of the run and fails unless it is gone: the process ended with code 0 and
+/// nothing listens on its endpoint any more. Prints the `SMOKE DAEMON stopped` line.
+fn check_daemon_stopped(state: &AppState) -> Result<(), String> {
+    let stopped = state
+        .sessions
+        .stop_daemon()
+        .map_err(|e| format!("the daemon of the run would not stop: {e}"))?;
+    let pid = stopped
+        .norend_pid
+        .ok_or_else(|| "the daemon of the run is not one the run started".to_owned())?;
+    if stopped.exit_code != Some(0) {
+        return Err(format!(
+            "norend {pid} stopped with {:?}, expected exit code 0",
+            stopped.exit_code
+        ));
+    }
+    if state.sessions.daemon_listens() {
+        return Err("something still listens on the endpoint of the run".to_owned());
+    }
+    if SystemProcesses::new()
+        .snapshot()
+        .iter()
+        .any(|process| process.pid == pid)
+    {
+        return Err(format!("norend {pid} is still running"));
+    }
+    print_line(&format!(
+        "SMOKE DAEMON stopped norend pid {pid} with exit code 0, endpoint closed"
+    ));
+    Ok(())
+}
+
+/// Reports a failure, ends every session (and the daemon of the run) and exits with code 1.
 fn fail(app: &AppHandle, message: &str) -> ! {
     eprintln!("SMOKE FAILED: {message}");
     app.state::<AppState>().sessions.shutdown();
@@ -278,7 +369,9 @@ fn check_session(app: &AppHandle, deadline: Instant) -> Result<(), String> {
         "SMOKE session {id} started with profile {profile}"
     ));
 
-    let result = wait_for_marker(&state, SessionId(id), &rx, deadline);
+    // While the shell is alive: it runs in the daemon of the run, not in the app.
+    let in_daemon = check_runs_in_daemon(&state, id);
+    let result = in_daemon.and_then(|()| wait_for_marker(&state, SessionId(id), &rx, deadline));
     let _ = state.sessions.kill(SessionId(id));
     let seen = result?;
     let integrated = state
@@ -389,7 +482,8 @@ pub fn arm(app: &tauri::App) {
                 .inspect(|()| check_fonts())
                 .and_then(|()| check_scrollback())
                 .and_then(|()| check_no_global_shortcut(&handle))
-                .and_then(|()| check_window_hidden(&handle));
+                .and_then(|()| check_window_hidden(&handle))
+                .and_then(|()| check_daemon_stopped(&handle.state::<AppState>()));
             match result {
                 Ok(()) => {
                     print_line("SMOKE window hidden");
@@ -566,7 +660,8 @@ pub fn arm_deeplink(app: &tauri::App, target: DeepLinkTarget) {
             })
             .and_then(|()| check_session(&handle, started + SMOKE_TIMEOUT))
             .and_then(|()| check_no_global_shortcut(&handle))
-            .and_then(|()| check_window_hidden(&handle));
+            .and_then(|()| check_window_hidden(&handle))
+            .and_then(|()| check_daemon_stopped(&handle.state::<AppState>()));
         match result {
             Ok(()) => {
                 print_line("SMOKE window hidden");
@@ -772,6 +867,7 @@ fn run_quick(app: &AppHandle, inbox: &mut Inbox, deadline: Instant) -> Result<u6
     print_line(&format!("SMOKE session {id} opened in the quick window"));
 
     let state = app.state::<AppState>();
+    check_runs_in_daemon(&state, id)?;
     let route = state
         .route(id)
         .ok_or_else(|| format!("session {id} has no route for its output"))?;
@@ -843,6 +939,7 @@ fn run_quick(app: &AppHandle, inbox: &mut Inbox, deadline: Instant) -> Result<u6
     check_quick_window(app)?;
     check_no_global_shortcut(app)?;
     check_window_hidden(app)?;
+    check_daemon_stopped(&state)?;
     Ok(id)
 }
 
@@ -960,6 +1057,21 @@ mod tests {
         first.remove();
         assert!(!first.state_dir.exists());
         first.remove();
+    }
+
+    #[test]
+    fn a_smoke_run_has_a_daemon_name_of_its_own_that_is_a_valid_endpoint() {
+        let name = run_daemon_name();
+        assert!(name.starts_with("smoke-"), "{name}");
+        assert_ne!(name, crate::daemon_link::DEFAULT_ENDPOINT_NAME);
+        assert!(noren_core::daemon::Endpoint::named(&name).is_ok(), "{name}");
+        // The run owns that daemon and stops it; a normal run leaves the daemon of the user alone.
+        let own = crate::daemon_link::DaemonSettings::for_run(name.clone());
+        assert!(own.stop_on_shutdown);
+        assert_eq!(own.endpoint, name);
+        let normal = crate::daemon_link::DaemonSettings::normal();
+        assert!(!normal.stop_on_shutdown);
+        assert_eq!(normal.endpoint, "default");
     }
 
     #[test]

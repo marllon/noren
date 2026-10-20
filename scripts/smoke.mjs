@@ -12,6 +12,12 @@
 // main window), "SMOKE quick window hidden" and "SMOKE window hidden" (neither window ever shown).
 // Every run must also print "SMOKE global shortcut none registered": no smoke mode registers the
 // global shortcut of the quick terminal (the run fails if the app holds one).
+// The sessions of every run live in `norend`, the session daemon, which the app starts from beside
+// its own executable on an endpoint named for the run (so it never meets the daemon of the user):
+// this script builds `norend` first, and every run must print "SMOKE DAEMON norend pid <n> ..."
+// (the session of the run was a child of that process, not of the app) and "SMOKE DAEMON stopped
+// norend pid <n> ..." (the run asked it to stop and it ended with code 0). After each run the pid
+// is checked here too, and a daemon of the run that is still alive is ended and fails the smoke.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -48,6 +54,51 @@ if (build.status !== 0) fail(`build failed with exit code ${build.status}`);
 const binary = resolve(root, "target", "debug", isWindows ? "noren.exe" : "noren");
 if (!existsSync(binary)) fail(`binary not found: ${binary}`);
 
+// The session daemon, built in the same profile, so it sits next to the app (where the app looks).
+const buildDaemon = spawnSync("cargo", ["build", "-p", "norend"], { cwd: root, stdio: "inherit" });
+if (buildDaemon.error) fail(`could not run cargo: ${buildDaemon.error.message}`);
+if (buildDaemon.status !== 0) fail(`building norend failed with exit code ${buildDaemon.status}`);
+const daemonBinary = resolve(root, "target", "debug", isWindows ? "norend.exe" : "norend");
+if (!existsSync(daemonBinary)) fail(`binary not found: ${daemonBinary}`);
+
+/** Whether a process with this pid is running. */
+function alive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // No permission to signal it still means it exists.
+    return error.code === "EPERM";
+  }
+}
+
+/** Waits up to `ms` for the process to end. */
+function waitForExit(pid, ms) {
+  const until = Date.now() + ms;
+  while (alive(pid) && Date.now() < until)
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+  return !alive(pid);
+}
+
+/**
+ * The daemons a run said it started, from its output. One that is still alive is ended (a run that
+ * was cut short leaves one behind) and reported.
+ */
+function leftoverDaemons(stdout) {
+  const left = [];
+  for (const match of stdout.matchAll(/SMOKE DAEMON norend pid (\d+)/g)) {
+    const pid = Number(match[1]);
+    if (waitForExit(pid, 5_000)) continue;
+    left.push(pid);
+    try {
+      process.kill(pid);
+    } catch {
+      // It ended meanwhile.
+    }
+  }
+  return left;
+}
+
 /** Runs the binary in a hidden smoke mode and requires every text in `required` on stdout. */
 function runSmoke(args, required) {
   const run = spawnSync(binary, args, {
@@ -56,14 +107,17 @@ function runSmoke(args, required) {
     timeout: 60_000,
     killSignal: "SIGKILL",
   });
+  const stdout = run.stdout ?? "";
+  // Whatever the outcome, a daemon of the run must not stay alive.
+  const left = leftoverDaemons(stdout);
   if (run.error) fail(`could not run ${binary}: ${run.error.message}`);
 
-  process.stdout.write(run.stdout ?? "");
+  process.stdout.write(stdout);
   process.stderr.write(run.stderr ?? "");
 
+  if (left.length > 0) fail(`norend ${left.join(", ")} was still alive after noren ${args[0]}`);
   if (run.status !== 0) fail(`noren ${args[0]} exited with code ${run.status}`);
-  const stdout = run.stdout ?? "";
-  for (const text of required) {
+  for (const text of [...required, "SMOKE DAEMON norend pid", "SMOKE DAEMON stopped norend pid"]) {
     if (!stdout.includes(text)) fail(`${text} not found in the output of noren ${args[0]}`);
   }
 }

@@ -27,8 +27,8 @@
 //!
 //! ## What is not here
 //!
-//! The daemon does not start itself and the app does not use it yet; the executable that runs it
-//! is the `norend` crate (see `docs/DAEMON.md`). A session buffer is bytes, not the state of a terminal: after it
+//! The daemon does not start itself; the executable that runs it is the `norend` crate, which the
+//! app starts when none answers (see `docs/DAEMON.md`). A session buffer is bytes, not the state of a terminal: after it
 //! wrapped, a replay can begin in the middle of an escape sequence, and a program on the
 //! alternate screen is not redrawn by it. The client does not check who owns the pipe it opens on
 //! Windows (the name carries the user's SID and the daemon creates the first instance, so another

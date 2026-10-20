@@ -23,6 +23,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { cargoEnv } from "./game-mode.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const isWindows = process.platform === "win32";
@@ -35,6 +36,8 @@ function fail(message) {
 // pnpm is a .cmd shim on Windows and Node refuses to spawn those without a shell. When started
 // through `pnpm smoke`, npm_execpath points at pnpm's JS entry, which Node can run directly.
 const pnpmEntry = process.env.npm_execpath;
+// Game mode (NOR-F11-04): CARGO_BUILD_JOBS=8 for both cargo builds while the user is playing.
+const buildEnv = cargoEnv();
 const runPnpmWithNode = pnpmEntry !== undefined && /\.c?js$/.test(pnpmEntry);
 const buildArgs = [
   "--filter",
@@ -46,8 +49,12 @@ const buildArgs = [
   "--no-bundle",
 ];
 const build = runPnpmWithNode
-  ? spawnSync(process.execPath, [pnpmEntry, ...buildArgs], { cwd: root, stdio: "inherit" })
-  : spawnSync("pnpm", buildArgs, { cwd: root, stdio: "inherit", shell: isWindows });
+  ? spawnSync(process.execPath, [pnpmEntry, ...buildArgs], {
+      cwd: root,
+      stdio: "inherit",
+      env: buildEnv,
+    })
+  : spawnSync("pnpm", buildArgs, { cwd: root, stdio: "inherit", shell: isWindows, env: buildEnv });
 if (build.error) fail(`could not run the build: ${build.error.message}`);
 if (build.status !== 0) fail(`build failed with exit code ${build.status}`);
 
@@ -55,7 +62,11 @@ const binary = resolve(root, "target", "debug", isWindows ? "noren.exe" : "noren
 if (!existsSync(binary)) fail(`binary not found: ${binary}`);
 
 // The session daemon, built in the same profile, so it sits next to the app (where the app looks).
-const buildDaemon = spawnSync("cargo", ["build", "-p", "norend"], { cwd: root, stdio: "inherit" });
+const buildDaemon = spawnSync("cargo", ["build", "-p", "norend"], {
+  cwd: root,
+  stdio: "inherit",
+  env: buildEnv,
+});
 if (buildDaemon.error) fail(`could not run cargo: ${buildDaemon.error.message}`);
 if (buildDaemon.status !== 0) fail(`building norend failed with exit code ${buildDaemon.status}`);
 const daemonBinary = resolve(root, "target", "debug", isWindows ? "norend.exe" : "norend");

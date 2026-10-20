@@ -187,3 +187,16 @@ Run them before a release and whenever a dependency changes; the results of the 
 - `pnpm audit --prod`: known vulnerabilities in the production npm dependencies.
 - `cargo install cargo-audit --locked` once, then `cargo audit`: known vulnerabilities and unmaintained or unsound crates in `Cargo.lock`.
 - `pnpm licenses:check`: licenses of the dependencies of both kinds.
+
+## Game mode
+
+While a game is open, a Windows watcher on the maintainer's machine keeps the file
+`D:/Projetos/.modo-jogo` fresh. `scripts/game-mode.mjs` is the only reader of it: the signal is valid
+if the file exists and was modified less than 60 s ago. The path can be changed with
+`NOREN_MODO_JOGO_ARQUIVO` (the tests use a temporary file).
+
+When the signal is valid as a command starts, Vitest uses at most 8 workers, Playwright 4 (both
+configs) and cargo gets `CARGO_BUILD_JOBS=8` (`rust:check`, `licenses:check`, `desktop:build` and the
+builds of `pnpm smoke`, through `scripts/game-run.mjs`, which starts the command without a shell). A
+line such as `game mode: CARGO_BUILD_JOBS=8` goes to stderr. Without the signal nothing changes, and
+CI never has the file.

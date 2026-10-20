@@ -1,0 +1,9 @@
+export const SIGNAL_PATH: string;
+export const SIGNAL_ENV: string;
+export const MAX_AGE_MS: number;
+export const LIMITS: { vitestWorkers: number; playwrightWorkers: number; cargoJobs: number };
+export function gameModeActive(env?: NodeJS.ProcessEnv, now?: number): boolean;
+export function announce(text: string, env?: NodeJS.ProcessEnv): void;
+export function vitestWorkers(env?: NodeJS.ProcessEnv, now?: number): number | undefined;
+export function playwrightWorkers(env?: NodeJS.ProcessEnv, now?: number): number | undefined;
+export function cargoEnv(env?: NodeJS.ProcessEnv, now?: number): NodeJS.ProcessEnv;

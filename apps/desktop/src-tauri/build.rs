@@ -15,6 +15,8 @@ const COMMANDS: &[&str] = &[
     "profiles_set_user",
     "session_create",
     "session_attach",
+    "session_reattach",
+    "sessions_keep_set",
     "quick_shortcut_set",
     "quick_toggle",
     "session_write",

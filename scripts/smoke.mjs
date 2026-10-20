@@ -18,8 +18,21 @@
 // (the session of the run was a child of that process, not of the app) and "SMOKE DAEMON stopped
 // norend pid <n> ..." (the run asked it to stop and it ended with code 0). After each run the pid
 // is checked here too, and a daemon of the run that is still alive is ended and fails the smoke.
+// The persistence run (`--smoke-persist`, NOR-F14-02b) is two runs of the app on one daemon and one
+// folder of their own: the first starts a shell for a pane and leaves without ending it, the second
+// takes the shell back and must find the same process, still answering. This script checks from the
+// outside what each run says (the shell and the daemon are alive between the two, and the daemon, the
+// shell and both apps are gone after the second) and ends a daemon of the pair that is still alive.
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  closeSync,
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -171,4 +184,113 @@ runSmoke(
     "SMOKE QUICK OK",
   ],
 );
+
+/** A failed check of the persistence run: thrown, so the clean-up of `persistCheck` always runs. */
+function problem(message) {
+  throw new Error(message);
+}
+
+/**
+ * One run of `--smoke-persist`. Its output goes to a file, not a pipe: the first run leaves the
+ * daemon alive on purpose, and a daemon that inherited the pipe would keep it open after the app
+ * ended (the reader would wait for it).
+ */
+function runPersist(role, endpoint, folder, logFile, required) {
+  const log = openSync(logFile, "w");
+  let run;
+  try {
+    run = spawnSync(binary, ["--smoke-persist", role, endpoint, folder], {
+      cwd: root,
+      stdio: ["ignore", log, log],
+      timeout: 90_000,
+      killSignal: "SIGKILL",
+    });
+  } finally {
+    closeSync(log);
+  }
+  const text = readFileSync(logFile, "utf8");
+  process.stdout.write(text);
+  if (run.error) problem(`could not run ${binary}: ${run.error.message}`);
+  if (run.status !== 0) problem(`noren --smoke-persist ${role} exited with code ${run.status}`);
+  for (const wanted of required) {
+    if (!text.includes(wanted))
+      problem(`${wanted} not found in the output of noren --smoke-persist ${role}`);
+  }
+  return text;
+}
+
+/** The first number captured by `pattern` in `text`, or a failure that says which line is missing. */
+function pidFrom(text, pattern, what) {
+  const match = pattern.exec(text);
+  if (match === null) problem(`could not read ${what} from the output`);
+  return Number(match[1]);
+}
+
+function persistCheck() {
+  const folder = mkdtempSync(join(tmpdir(), "noren smoke persist "));
+  const logs = mkdtempSync(join(tmpdir(), "noren smoke persist logs "));
+  const endpoint = `smoke-persist-${process.pid}-${Date.now()}`;
+  const common = ["SMOKE window hidden", "SMOKE global shortcut none registered"];
+  let norend;
+  let failed = true;
+  try {
+    // A saved workspace of one pane, so the interface of each run restores a pane of its own.
+    copyFileSync(join(root, "scripts", "smoke-persist-state.json"), join(folder, "state.json"));
+    const first = runPersist("first", endpoint, folder, join(logs, "first.log"), [
+      ...common,
+      "SMOKE PERSIST daemon norend pid",
+      "SMOKE PERSIST first run: shell pid",
+    ]);
+    norend = pidFrom(first, /SMOKE PERSIST daemon norend pid (\d+)/, "the pid of norend");
+    const shell = pidFrom(first, /first run: shell pid (\d+)/, "the pid of the shell");
+    const firstApp = pidFrom(first, /the app is pid (\d+)\)/, "the pid of the first app");
+
+    // The app is gone, and the daemon and the shell it started are not.
+    if (alive(firstApp)) problem(`the first app, pid ${firstApp}, is still running`);
+    if (!alive(norend)) problem(`norend ${norend} did not survive the first app`);
+    if (!alive(shell)) problem(`the shell ${shell} did not survive the first app`);
+
+    const second = runPersist("second", endpoint, folder, join(logs, "second.log"), [
+      ...common,
+      "SMOKE PERSIST same shell pid",
+      "SMOKE PERSIST page pane: the interface took back its shell too",
+      "SMOKE PERSIST orphans ended: 1",
+      "SMOKE PERSIST stopped norend pid",
+      "SMOKE PERSIST OK",
+    ]);
+    const before = pidFrom(second, /same shell pid (\d+) before/, "the first pid of the shell");
+    const after = pidFrom(second, /closing the app and (\d+) after/, "the second pid of the shell");
+    if (before !== shell || after !== shell) {
+      problem(`the shell was ${shell}, then ${before} and ${after}: not the same process`);
+    }
+
+    // After the second run nothing of the pair is left: the daemon, the shell, the apps.
+    const apps = /apps (\d+) and (\d+)/.exec(second);
+    if (apps === null) problem("could not read the pids of the two apps from the output");
+    for (const app of [Number(apps[1]), Number(apps[2])]) {
+      if (!waitForExit(app, 10_000)) problem(`the app, pid ${app}, was still alive after its run`);
+    }
+    if (!waitForExit(norend, 10_000))
+      problem(`norend ${norend} was still alive after the second run`);
+    if (!waitForExit(shell, 10_000))
+      problem(`the shell ${shell} was still alive after the second run`);
+    failed = false;
+  } finally {
+    if (norend !== undefined && alive(norend)) {
+      try {
+        process.kill(norend);
+      } catch {
+        // It ended meanwhile.
+      }
+      if (!failed) problem(`norend ${norend} was left running`);
+    }
+    rmSync(folder, { recursive: true, force: true });
+    rmSync(logs, { recursive: true, force: true });
+  }
+}
+try {
+  persistCheck();
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
 process.exit(0);

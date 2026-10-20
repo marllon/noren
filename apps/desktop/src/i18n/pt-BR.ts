@@ -772,6 +772,9 @@ export const ptBR: Dictionary = {
     "Desligado: o Noren nunca coloca uma aba no arquivo por conta própria. Uma aba que você arquiva ou fecha não é afetada.",
   "field.archive.afterHours":
     "Quantas horas uma aba fica parada antes de ir para o arquivo: sem comando em execução, sem saída, sem nada não lido e fora da tela. Abas fixadas e favoritos nunca são arquivados. Uma fração vale (0,5 é meia hora).",
+  "field.sessions": "Se os shells dos seus painéis sobrevivem à janela.",
+  "field.sessions.keepOnClose":
+    "Ligado: fechar a janela deixa os shells dos seus painéis rodando em segundo plano (no daemon de sessões, o norend) e abrir o Noren de novo devolve a cada painel o seu shell, com o que ele imprimiu nesse meio-tempo. Desligado: fechar a janela encerra todos os shells, como sempre foi. Os shells que nenhum painel reclama são encerrados quando o Noren abre.",
   "field.agents":
     "Agentes de CLI: quais programas contam como agente, com que frequência o Noren procura um sob os seus shells e como se descobre o estado de um agente (trabalhando, esperando você, ocioso). Um agente aparece como um ícone na aba.",
   "field.agents.enabled":

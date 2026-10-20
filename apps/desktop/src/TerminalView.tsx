@@ -110,6 +110,11 @@ interface TerminalViewProps {
   /** Extra environment of the new shell. Read once. */
   env?: Record<string, string>;
   /**
+   * The pane this terminal is in. A shell started for a pane outlives the app when the settings keep
+   * sessions, and the pane gets it back at the next start. Read once.
+   */
+  paneId?: string;
+  /**
    * Text to write to the terminal before anything the session prints: the scrollback saved before,
    * dimmed, and the line "session restored" (`restoredTerminalText`). It must already be clean.
    * Read once, on mount.
@@ -205,6 +210,7 @@ export function TerminalView({
   profileId,
   cwd,
   env,
+  paneId,
   restored,
   onSessionStart,
   webglFirst = true,
@@ -235,7 +241,7 @@ export function TerminalView({
   const refitRef = useRef<(() => void) | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   // What the shell starts with is fixed when the view mounts; a later change must not restart it.
-  const [start0] = useState(() => ({ attach, profileId, cwd, env, restored, webglFirst }));
+  const [start0] = useState(() => ({ attach, profileId, cwd, env, paneId, restored, webglFirst }));
 
   useEffect(() => {
     rightClickRef.current = rightClick ?? "copy-or-paste";
@@ -470,6 +476,7 @@ export function TerminalView({
           ...(start0.profileId !== undefined ? { profileId: start0.profileId } : {}),
           ...(start0.cwd !== undefined ? { cwd: start0.cwd } : {}),
           ...(start0.env !== undefined ? { env: start0.env } : {}),
+          ...(start0.paneId !== undefined ? { paneId: start0.paneId } : {}),
           cols: startCols,
           rows: startRows,
         });

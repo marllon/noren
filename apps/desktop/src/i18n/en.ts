@@ -767,6 +767,9 @@ export const en = {
     "Off: Noren never puts a tab in the archive on its own. A tab you archive or close yourself is not affected.",
   "field.archive.afterHours":
     "How many hours a tab is left alone before it goes to the archive: with no command running, no output, nothing unread and not on screen. Pinned tabs and favorites are never archived. A fraction is fine (0.5 is half an hour).",
+  "field.sessions": "Whether the shells of your panes outlive the window.",
+  "field.sessions.keepOnClose":
+    "On: closing the window leaves the shells of your panes running in the background (in the session daemon, norend) and opening Noren again gives each pane its shell back, with what it printed meanwhile. Off: closing the window ends every shell, as it always did. Shells that no pane comes back for are ended when Noren opens.",
   "field.agents":
     "CLI agents: which programs count as an agent, how often Noren looks for one under your shells, and how the state of an agent (working, waiting for you, idle) is told. An agent shows as an icon on its tab.",
   "field.agents.enabled":

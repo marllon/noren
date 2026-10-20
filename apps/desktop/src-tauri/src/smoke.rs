@@ -232,7 +232,7 @@ pub fn has_marker_line(output: &[u8]) -> bool {
 
 /// True when some line of `output`, once escape sequences are removed and the line is trimmed, is
 /// exactly `marker`.
-fn has_line(output: &[u8], marker: &str) -> bool {
+pub(crate) fn has_line(output: &[u8], marker: &str) -> bool {
     let text = strip_ansi(&String::from_utf8_lossy(output));
     text.split(['\n', '\r']).any(|line| line.trim() == marker)
 }
@@ -246,7 +246,7 @@ fn has_line_after_repaint(output: &[u8], marker: &str) -> bool {
 }
 
 /// The last `TAIL_CHARS` characters of the visible output, for failure messages.
-fn visible_tail(output: &[u8]) -> String {
+pub(crate) fn visible_tail(output: &[u8]) -> String {
     let text = strip_ansi(&String::from_utf8_lossy(output));
     let skip = text.chars().count().saturating_sub(TAIL_CHARS);
     text.chars().skip(skip).collect()
@@ -266,6 +266,29 @@ pub fn run_daemon_name() -> String {
 /// sessions fell back to the app (no `norend` next to it) fails here, so the smoke cannot pass on
 /// the weaker path.
 fn check_runs_in_daemon(state: &AppState, id: u64) -> Result<(), String> {
+    let found = locate_in_daemon(state, id)?;
+    print_line(&format!(
+        "SMOKE DAEMON norend pid {} on {}: session {id} runs in it (shell pid {}, the app is pid {})",
+        found.norend,
+        found.endpoint,
+        found.shell,
+        process::id()
+    ));
+    Ok(())
+}
+
+/// Where a session runs, as [`locate_in_daemon`] found it.
+pub(crate) struct InDaemon {
+    pub endpoint: String,
+    /// The `norend` this run started.
+    pub norend: u32,
+    /// The process of the shell of the session.
+    pub shell: u32,
+}
+
+/// Fails unless session `id` runs in the `norend` this run started: the shell is a child of that
+/// process, which is not the app, and the process is called `norend`.
+pub(crate) fn locate_in_daemon(state: &AppState, id: u64) -> Result<InDaemon, String> {
     let (endpoint, norend) = match state.sessions.placement() {
         Placement::Daemon {
             endpoint,
@@ -290,6 +313,17 @@ fn check_runs_in_daemon(state: &AppState, id: u64) -> Result<(), String> {
         .first()
         .and_then(|(_, pid)| *pid)
         .ok_or_else(|| format!("the daemon reports no process for session {id}"))?;
+    check_shell_runs_in(shell, norend, id)?;
+    Ok(InDaemon {
+        endpoint,
+        norend,
+        shell,
+    })
+}
+
+/// Fails unless the process `shell` is a child of the process `norend`, which is not the app and is
+/// called `norend`.
+pub(crate) fn check_shell_runs_in(shell: u32, norend: u32, id: u64) -> Result<(), String> {
     let processes = SystemProcesses::new().snapshot();
     let of = |pid: u32| processes.iter().find(|process| process.pid == pid);
     let parent = of(shell).and_then(|process| process.parent);
@@ -303,10 +337,6 @@ fn check_runs_in_daemon(state: &AppState, id: u64) -> Result<(), String> {
     if !name.as_deref().is_some_and(|name| name.contains("norend")) {
         return Err(format!("process {norend} is called {name:?}, not norend"));
     }
-    print_line(&format!(
-        "SMOKE DAEMON norend pid {norend} on {endpoint}: session {id} runs in it (shell pid {shell}, the app is pid {})",
-        process::id()
-    ));
     Ok(())
 }
 
@@ -415,7 +445,7 @@ fn check_integration_files(app: &AppHandle) -> Result<(), String> {
 /// The sequence the integration script writes at the start of every prompt (`OSC 133;A`).
 const PROMPT_START_MARK: &[u8] = b"\x1b]133;A\x07";
 
-fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+pub(crate) fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())
         .any(|window| window == needle)

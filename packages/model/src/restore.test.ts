@@ -273,3 +273,98 @@ describe("restoreWorkspace and commands", () => {
     expect(restored.lastCommand).toEqual({ text: "ls", exitCode: 0, durationMs: 4 });
   });
 });
+
+describe("restoreWorkspace and the shells the backend kept (NOR-F14-02b)", () => {
+  /** A backend whose session daemon kept a shell for each pane in `kept` (a new session per id). */
+  async function backendKeeping(
+    ...kept: string[]
+  ): Promise<{ backend: FakeBackend; ids: number[] }> {
+    const backend = new FakeBackend({ profiles: BASH, state: serializeWorkspace(richWorkspace()) });
+    const ids: number[] = [];
+    for (const paneId of kept) {
+      const id = await backend.createSession({ cols: 80, rows: 24 });
+      backend.holdSessionForPane(paneId, id);
+      ids.push(id);
+    }
+    return { backend, ids };
+  }
+
+  it("gives a pane the shell it had, starts a new one for the others, and says which came back", async () => {
+    const { backend, ids } = await backendKeeping("p2");
+    const started = backend.callsTo("createSession").length;
+
+    const result = await restoreWorkspace(backend);
+
+    expect(result.reattachedPaneIds).toEqual(["p2"]);
+    expect(result.failedPaneIds).toEqual([]);
+    expect(paneById(result.workspace, "p2").sessionId).toBe(String(ids[0]));
+    // Only p1 and p3 started a shell: the kept one was not started again.
+    expect(backend.callsTo("createSession")).toHaveLength(started + 2);
+    expect(backend.callsTo("reattachSession").map((call) => call.args[0])).toEqual([
+      "p1",
+      "p2",
+      "p3",
+    ]);
+    expect(paneById(result.workspace, "p1").sessionId).not.toBe(String(ids[0]));
+    expect(checkInvariants(result.workspace)).toEqual([]);
+  });
+
+  it("starts a shell for every pane when the backend kept none", async () => {
+    const backend = new FakeBackend({ profiles: BASH, state: serializeWorkspace(richWorkspace()) });
+    const result = await restoreWorkspace(backend);
+    expect(result.reattachedPaneIds).toEqual([]);
+    expect(backend.callsTo("createSession")).toHaveLength(3);
+    expectNoOrphans(backend, result.workspace);
+  });
+
+  it("tells the backend which pane every new shell is for, also when it falls back", async () => {
+    const backend = new FakeBackend({ profiles: BASH, state: serializeWorkspace(richWorkspace()) });
+    const create = backend.createSession.bind(backend);
+    const asked: unknown[] = [];
+    backend.createSession = (options) => {
+      asked.push([options.paneId, options.cwd]);
+      return options.cwd === "/work/docs" ? Promise.reject(new Error("gone")) : create(options);
+    };
+    await restoreWorkspace(backend);
+    expect(asked).toEqual([
+      ["p1", "/work/app"],
+      ["p2", "/work"],
+      ["p3", "/work/docs"],
+      // p3 again, with the defaults of the backend.
+      ["p3", undefined],
+    ]);
+  });
+
+  it("starts a new shell for a pane when the backend cannot say what it kept", async () => {
+    const { backend } = await backendKeeping("p1");
+    backend.reattachSession = () => Promise.reject(new Error("the daemon would not answer"));
+    const result = await restoreWorkspace(backend);
+    expect(result.reattachedPaneIds).toEqual([]);
+    expect(allPanes(result.workspace).every((pane) => pane.sessionId !== undefined)).toBe(true);
+  });
+
+  it("does not give back a shell that ended, and a shell is given back once", async () => {
+    const { backend, ids } = await backendKeeping("p1", "p3");
+    await backend.kill(ids[0] as number);
+    const result = await restoreWorkspace(backend);
+    expect(result.reattachedPaneIds).toEqual(["p3"]);
+    expect(await backend.reattachSession("p3")).toBeUndefined();
+  });
+
+  it("restores a pane that had a shell with a clean state, as for a new one", async () => {
+    const saved = richWorkspace();
+    const pane = paneById(saved, "p2");
+    pane.runningCommand = { text: "sleep 100" };
+    pane.lastCommand = { text: "ls", exitCode: 0, durationMs: 4 };
+    const backend = new FakeBackend({ profiles: BASH, state: serializeWorkspace(saved) });
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    backend.holdSessionForPane("p2", id);
+
+    const { workspace } = await restoreWorkspace(backend);
+    const restored = paneById(workspace, "p2");
+    expect(restored.sessionId).toBe(String(id));
+    expect(restored.status).toBe("idle");
+    expect(restored).not.toHaveProperty("runningCommand");
+    expect(restored.lastCommand).toEqual({ text: "ls", exitCode: 0, durationMs: 4 });
+  });
+});

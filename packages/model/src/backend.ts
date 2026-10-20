@@ -34,6 +34,12 @@ export interface CreateSessionOptions {
   cwd?: string;
   /** Extra environment variables for the shell. */
   env?: Record<string, string>;
+  /**
+   * The pane the shell is for. A shell that has a pane outlives the app when the settings keep
+   * sessions (`sessions.keepOnClose`): the next start gives the pane the same shell back
+   * (`reattachSession`). A shell with none, such as the one in the quick window, ends with the app.
+   */
+  paneId?: string;
 }
 
 /** How a session ended. */
@@ -103,9 +109,26 @@ export interface Backend {
    * promoted): from then on `onOutput(id)` delivers its output here and the window that had it gets
    * none. The shell is the same process under the same id, nothing is restarted, and what it prints
    * while this is being asked is held for the first `onOutput` subscriber. Rejects when no live
-   * session has the id (never started, or already ended).
+   * session has the id (never started, or already ended). A session taken over this way has no pane
+   * (see `CreateSessionOptions.paneId`), so it does not outlive the app.
    */
   attachSession(id: SessionId): Promise<void>;
+  /**
+   * Gives the pane `paneId` the shell it had before the app was closed, when the settings keep
+   * sessions and the session daemon still holds it: from then on `onOutput(id)` delivers what the
+   * shell printed meanwhile, then everything it prints, and the shell is the same process under the
+   * same id (nothing is restarted). Resolves with that id, or with `undefined` when the pane has no
+   * shell to come back to (the caller starts a new one with `createSession`). Never rejects for
+   * that reason.
+   */
+  reattachSession(paneId: string): Promise<SessionId | undefined>;
+  /**
+   * Tells the backend whether the shells of the panes outlive the app (`sessions.keepOnClose` of the
+   * settings): when the app closes, `true` leaves them running for the next start and `false` ends
+   * them. Until it is called the backend ends them, as it always did. Rejects when the backend
+   * cannot take the setting.
+   */
+  setKeepSessions(keep: boolean): Promise<void>;
   /**
    * Shows the quick terminal window if it is hidden (at the top of the screen, with the keyboard)
    * and hides it if it is showing, as its global shortcut does. Resolves with whether the window is

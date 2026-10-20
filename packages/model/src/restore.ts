@@ -31,13 +31,23 @@ export interface RestoreResult {
   migratedFrom?: number;
   /** Panes whose shell could not start even without cwd and profile; they have no session. */
   failedPaneIds: Id[];
+  /**
+   * Panes that got back the shell they had before the app was closed (the session daemon kept it):
+   * their terminal gets what the shell printed meanwhile, so a saved copy of the old scrollback would
+   * only repeat it.
+   */
+  reattachedPaneIds: Id[];
 }
 
-type RestoreBackend = Pick<Backend, "loadState" | "quarantineState" | "createSession">;
+type RestoreBackend = Pick<
+  Backend,
+  "loadState" | "quarantineState" | "createSession" | "reattachSession"
+>;
 
 /**
- * Loads `state.json`, migrates and validates it, and starts one session per terminal pane in the
- * folder saved with the pane. Unusable content (broken JSON, wrong shape, broken invariants,
+ * Loads `state.json`, migrates and validates it, and gives every terminal pane a session: the shell it
+ * had before the app was closed when the backend still holds it (`reattachSession`), else a new one in
+ * the folder saved with the pane. Unusable content (broken JSON, wrong shape, broken invariants,
  * unknown version) is quarantined and the default workspace is used instead. A failure to read
  * the file is not handled here: it rejects, and the file is left alone.
  */
@@ -70,23 +80,29 @@ export async function restoreWorkspace(
     }
   }
 
-  const { workspace, failedPaneIds } = await startSessions(base, backend, options);
-  return { workspace, source, ...extra, failedPaneIds };
+  const { workspace, failedPaneIds, reattachedPaneIds } = await startSessions(
+    base,
+    backend,
+    options,
+  );
+  return { workspace, source, ...extra, failedPaneIds, reattachedPaneIds };
 }
 
-/** Starts a shell for every pane of the spaces' items and returns the workspace holding them. */
+/** Gives a shell to every pane of the spaces' items and returns the workspace holding them. */
 async function startSessions(
   ws: Workspace,
-  backend: Pick<Backend, "createSession">,
+  backend: RestoreSessions,
   options: RestoreOptions,
-): Promise<{ workspace: Workspace; failedPaneIds: Id[] }> {
+): Promise<{ workspace: Workspace; failedPaneIds: Id[]; reattachedPaneIds: Id[] }> {
   const started = new Map<Id, Pane>();
   const failedPaneIds: Id[] = [];
+  const reattachedPaneIds: Id[] = [];
   for (const space of ws.spaces) {
     for (const item of Object.values(space.items)) {
       for (const pane of layoutPanes(item.layout)) {
-        const next = await startPane(pane, space, backend, options);
+        const { pane: next, reattached } = await startPane(pane, space, backend, options);
         if (next.sessionId === undefined) failedPaneIds.push(pane.id);
+        if (reattached) reattachedPaneIds.push(pane.id);
         started.set(pane.id, next);
       }
     }
@@ -109,24 +125,30 @@ async function startSessions(
       })),
     },
     failedPaneIds,
+    reattachedPaneIds,
   };
 }
 
+type RestoreSessions = Pick<Backend, "createSession" | "reattachSession">;
+
 /**
- * New shell for one pane: its own profile and cwd (the space's cwd when it has none) and the
- * space's env. If that fails (folder gone, profile unknown), a second try uses the backend's
- * defaults; a pane that still fails keeps no session and shows as exited.
+ * The shell of one pane. First the one it had before the app was closed, if the backend still holds
+ * it. Else a new one: its own profile and cwd (the space's cwd when it has none) and the space's
+ * env; if that fails (folder gone, profile unknown), a second try uses the backend's defaults; a pane
+ * that still fails keeps no session and shows as exited. Either way the backend is told which pane the
+ * shell is for, so it can give it back at the next start.
  */
 async function startPane(
   pane: Pane,
   space: Space,
-  backend: Pick<Backend, "createSession">,
+  backend: RestoreSessions,
   options: RestoreOptions,
-): Promise<Pane> {
+): Promise<{ pane: Pane; reattached: boolean }> {
   const size = { cols: options.cols ?? 80, rows: options.rows ?? 24 };
   const cwd = pane.cwd ?? space.defaults.cwd;
   const wanted: CreateSessionOptions = {
     ...size,
+    paneId: pane.id,
     ...(pane.profileId !== DEFAULT_PROFILE_ID ? { profileId: pane.profileId } : {}),
     ...(cwd !== undefined ? { cwd } : {}),
     ...(Object.keys(space.defaults.env).length > 0 ? { env: space.defaults.env } : {}),
@@ -137,15 +159,22 @@ async function startPane(
   delete fresh.exitCode;
   delete fresh.runningCommand;
 
-  for (const attempt of [wanted, size]) {
+  // A backend that cannot say, or has nothing for the pane, means a new shell.
+  const kept = await backend.reattachSession(pane.id).catch(() => undefined);
+  if (kept !== undefined) {
+    return { pane: { ...fresh, sessionId: String(kept) }, reattached: true };
+  }
+
+  const fallback: CreateSessionOptions = { ...size, paneId: pane.id };
+  for (const attempt of [wanted, fallback]) {
     try {
       const id = await backend.createSession(attempt);
       const started: Pane = { ...fresh, sessionId: String(id) };
-      if (attempt === size) delete started.cwd;
-      return started;
+      if (attempt === fallback) delete started.cwd;
+      return { pane: started, reattached: false };
     } catch {
       // Try the next set of options.
     }
   }
-  return { ...fresh, status: "exited" };
+  return { pane: { ...fresh, status: "exited" }, reattached: false };
 }

@@ -1,6 +1,7 @@
-import { FakeBackend, SystemNotifier, restoreWorkspace, scrollbackAllowed } from "@noren/model";
+import { FakeBackend, SystemNotifier, scrollbackAllowed } from "@noren/model";
 import type { Backend } from "@noren/model";
 import { startAgentScanner } from "./agent-service";
+import { restoreKeepingSessions, withoutReattachedSnapshots } from "./boot-sessions";
 import { setAgentStateClock } from "./agent-state-store";
 import { archiveClock, startAutoArchive } from "./auto-archive-service";
 import { createBackend, insideTauri } from "./backend";
@@ -88,14 +89,22 @@ export async function bootWorkspace(
     if (getProfiles().length === 0) {
       return { ok: false, error: "No shell was found on this machine." };
     }
-    const restored = await restoreWorkspace(target, { defaults: { newId, clock } });
+    // Whether the shells of the panes outlive the app (`sessions.keepOnClose`) goes to the backend
+    // before anything restores a shell: it gives a pane its old shell back only when the settings
+    // keep sessions. It follows the file from here on. A backend that refuses never stops the app.
+    const { restored } = await restoreKeepingSessions(target, configManager, {
+      defaults: { newId, clock },
+    });
     perfMark("boot-restore");
     // The scrollback saved before: read now, so the terminal of each pane can write it, dimmed and
     // above the new shell, when it mounts. A snapshot that cannot be read leaves the pane without it.
+    // A pane that got its old shell back has what it printed from the shell itself, so its snapshot
+    // is left out: it would only repeat that.
     const snapshots = await loadScrollbackForRestore(target, restored.workspace, {
       enabled: scrollbackAllowed(configManager.state.config.terminal),
       now: clock.now(),
     }).catch(() => undefined);
+    withoutReattachedSnapshots(snapshots?.texts, restored.reattachedPaneIds);
     setRestoredScrollback(snapshots?.texts ?? new Map());
     const home = await loadHome();
     const store = createWorkspaceStore({

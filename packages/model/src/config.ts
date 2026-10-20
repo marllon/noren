@@ -19,6 +19,7 @@ import {
 } from "./agents";
 import { DEFAULT_ARCHIVE_AFTER_HOURS, DEFAULT_ARCHIVE_ENABLED } from "./archive";
 import { MAX_BACKGROUND_BLUR, MAX_BACKGROUND_PATH, backgroundImageProblem } from "./background";
+import { DEFAULT_KEEP_SESSIONS } from "./keep-sessions";
 import { MAX_MODS, MOD_FILE_NAME_PATTERN, isReservedModName } from "./mods";
 import { DEFAULT_SAVE_SCROLLBACK, SCROLLBACK_SAVE_LINES } from "./scrollback";
 import {
@@ -224,6 +225,16 @@ const terminalSchema = z
     ),
   })
   .meta({ description: "The terminal: its font, cursor, scrollback and bell." });
+
+const sessionsSchema = z
+  .strictObject({
+    keepOnClose: setting(
+      z.boolean(),
+      "On: closing the window leaves the shells of your panes running in the background (in the session daemon, norend) and opening Noren again gives each pane its shell back, with what it printed meanwhile. Off: closing the window ends every shell, as it always did. Shells that no pane comes back for are ended when Noren opens.",
+      DEFAULT_KEEP_SESSIONS,
+    ),
+  })
+  .meta({ description: "Whether the shells of your panes outlive the window." });
 
 const archiveSchema = z
   .strictObject({
@@ -451,6 +462,7 @@ export const ConfigSchema = z
     archive: archiveSchema.optional(),
     agents: agentsSchema.optional(),
     ai: aiSchema.optional(),
+    sessions: sessionsSchema.optional(),
   })
   .meta({
     title: "Noren settings",

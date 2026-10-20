@@ -794,6 +794,10 @@ export class FakeBackend implements Backend {
   #quickVisible = false;
   #quickShortcut: string | null = null;
   #quickShortcutFailure: Error | undefined;
+  /** What the app was last told about keeping the shells of the panes (it starts by ending them). */
+  #keepSessions = false;
+  /** Sessions held over from an earlier run, by the pane they belong to (see `holdSessionForPane`). */
+  readonly #heldForPanes = new Map<string, SessionId>();
   #notifyFailure: Error | undefined;
   #commandExitCode: number;
   #commandFailure: Error | undefined;
@@ -1022,6 +1026,39 @@ export class FakeBackend implements Backend {
   async attachSession(id: SessionId): Promise<void> {
     this.#record("attachSession", id);
     this.#alive(id);
+  }
+
+  /**
+   * The shell a pane had before the app was closed, when one was held for it
+   * (`holdSessionForPane`) and it is still running; `undefined` otherwise, which is every pane of a
+   * fake that holds nothing. A session is handed back once.
+   */
+  async reattachSession(paneId: string): Promise<SessionId | undefined> {
+    this.#record("reattachSession", paneId);
+    const id = this.#heldForPanes.get(paneId);
+    if (id === undefined || !this.#sessions.get(id)?.alive) return undefined;
+    this.#heldForPanes.delete(paneId);
+    return id;
+  }
+
+  async setKeepSessions(keep: boolean): Promise<void> {
+    this.#record("setKeepSessions", keep);
+    this.#keepSessions = keep;
+  }
+
+  /** What the app last told the backend about keeping the shells of the panes (`false` at first). */
+  get keepSessions(): boolean {
+    return this.#keepSessions;
+  }
+
+  /**
+   * Makes the running session `id` the shell that the pane `paneId` had before the app was closed, as
+   * the session daemon holds it: the next `reattachSession(paneId)` gives it back. Not a `Backend`
+   * call, so it is not recorded.
+   */
+  holdSessionForPane(paneId: string, id: SessionId): void {
+    this.#alive(id);
+    this.#heldForPanes.set(paneId, id);
   }
 
   /**

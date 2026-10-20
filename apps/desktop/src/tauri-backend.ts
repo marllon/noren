@@ -257,6 +257,7 @@ export class TauriBackend implements Backend {
       ...(options.profileId !== undefined ? { profileId: options.profileId } : {}),
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
       ...(options.env !== undefined ? { env: options.env } : {}),
+      ...(options.paneId !== undefined ? { paneId: options.paneId } : {}),
     });
     this.#streams.set(id, stream);
 
@@ -284,6 +285,34 @@ export class TauriBackend implements Backend {
       this.#earlyExits.delete(id);
       this.#handleExit(early);
     }
+  }
+
+  async reattachSession(paneId: string): Promise<SessionId | undefined> {
+    await this.#listenForExits();
+
+    // As `attachSession`: what the shell printed while no app was there, and after, is held by the
+    // stream until the terminal of the pane subscribes. A pane with no shell to come back to leaves
+    // nothing behind but a stream nobody uses.
+    const stream = new OutputStream();
+    const channel = this.#bridge.createChannel<ArrayBuffer>();
+    channel.onmessage = (message) => stream.push(new Uint8Array(message));
+    const id = await this.#bridge.invoke<SessionId | null>("session_reattach", {
+      paneId,
+      onOutput: channel,
+    });
+    if (id === null) return undefined;
+    this.#streams.set(id, stream);
+
+    const early = this.#earlyExits.get(id);
+    if (early) {
+      this.#earlyExits.delete(id);
+      this.#handleExit(early);
+    }
+    return id;
+  }
+
+  async setKeepSessions(keep: boolean): Promise<void> {
+    await this.#bridge.invoke("sessions_keep_set", { keep });
   }
 
   async quickToggle(): Promise<boolean> {

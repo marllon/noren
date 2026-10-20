@@ -396,6 +396,7 @@ function PaneTerminal({ store, space, pane, active, first, colors, onReady }: Pa
       {...(profileId !== undefined ? { profileId } : {})}
       {...(cwd !== undefined ? { cwd } : {})}
       {...(env !== undefined ? { env } : {})}
+      paneId={pane.id}
       {...(restored !== undefined ? { restored } : {})}
       onSessionStart={(id) => store.getState().attachSession(pane.id, String(id))}
       onReady={(handle) => onReady(pane.id, handle)}

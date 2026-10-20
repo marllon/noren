@@ -23,7 +23,8 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
-use crate::daemon_link::{Host, Sessions};
+use crate::daemon_link::{Host, SessionError, Sessions};
+use crate::pane_sessions::PaneBook;
 use crate::route::OutputRoute;
 
 /// File name of the workspace state inside the app data folder.
@@ -56,6 +57,12 @@ pub struct AppState {
     /// The process tree of this machine, read by `agents_scan`; it keeps what it learned between
     /// scans so the next one only refreshes.
     processes: SystemProcesses,
+    /// Whether the shells of the panes outlive the app (`sessions.keepOnClose` of the settings, which
+    /// the interface hands over). Off until it does, so an app that never heard from the interface
+    /// ends its sessions as it always did.
+    pub(crate) keep_sessions: AtomicBool,
+    /// Which session of the daemon belongs to which pane (see `pane_sessions`).
+    pub(crate) pane_book: Mutex<PaneBook>,
 }
 
 /// What a `%NAME%` in a profile of the user is replaced with: the environment of the process.
@@ -109,6 +116,8 @@ impl AppState {
             routes: Arc::default(),
             prespawn: Mutex::default(),
             processes: SystemProcesses::new(),
+            keep_sessions: AtomicBool::new(false),
+            pane_book: Mutex::new(PaneBook::in_memory()),
         }
     }
 
@@ -341,7 +350,36 @@ pub fn launch<R: Runtime>(
     output: Channel<InvokeResponseBody>,
     silent: Option<Arc<AtomicBool>>,
 ) -> Result<SessionId, String> {
-    // The exit event carries the session id, which exists only after `spawn` returned. The
+    route_session(app, state, output, silent, |on_event| {
+        state.sessions.spawn(spec, on_event)
+    })
+}
+
+/// Takes over the session `id` that the daemon still holds from an earlier run: what it printed
+/// meanwhile and everything after goes to `output` through a route kept in `state`, and its end is
+/// announced with `session-exit`, exactly as for a session [`launch`] started.
+pub fn launch_existing<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    id: SessionId,
+    output: Channel<InvokeResponseBody>,
+) -> Result<SessionId, String> {
+    route_session(app, state, output, None, |on_event| {
+        state.sessions.reattach(id, on_event)?;
+        Ok(id)
+    })
+}
+
+/// The part [`launch`] and [`launch_existing`] share: `begin` starts or takes over the session and
+/// is given the callback that carries its output to a route and announces its end.
+fn route_session<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    output: Channel<InvokeResponseBody>,
+    silent: Option<Arc<AtomicBool>>,
+    begin: impl FnOnce(Box<dyn FnMut(SessionEvent<'_>) + Send>) -> Result<SessionId, SessionError>,
+) -> Result<SessionId, String> {
+    // The exit event carries the session id, which exists only after `begin` returned. The
     // callback waits on this lock for it; a session that ends at once cannot report too early.
     let id_slot: Arc<Mutex<Option<SessionId>>> = Arc::new(Mutex::new(None));
     let mut slot = id_slot.lock().unwrap_or_else(|e| e.into_inner());
@@ -351,40 +389,38 @@ pub fn launch<R: Runtime>(
     let sink = Arc::clone(&route);
     let routes = Arc::clone(&state.routes);
     let app = app.clone();
-    let id = state
-        .sessions
-        .spawn(spec, move |event| match event {
-            // A failed send means the page is gone; the session ends with the app.
-            SessionEvent::Output(bytes) => {
-                crate::perf::mark_once("shell-first-byte");
-                crate::perf::mark_prompt_bytes(bytes);
-                sink.send(bytes)
-            }
-            SessionEvent::Exit(info) => {
-                let id = *callback_slot.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(id) = id {
-                    routes
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .remove(&id.0);
-                    if silent
-                        .as_ref()
-                        .is_some_and(|silent| silent.load(Ordering::SeqCst))
-                    {
-                        return;
-                    }
-                    let _ = app.emit(
-                        SESSION_EXIT_EVENT,
-                        SessionExitPayload {
-                            id: id.0,
-                            code: info.code,
-                            signal: info.signal,
-                        },
-                    );
+    let id = begin(Box::new(move |event| match event {
+        // A failed send means the page is gone; the session ends with the app.
+        SessionEvent::Output(bytes) => {
+            crate::perf::mark_once("shell-first-byte");
+            crate::perf::mark_prompt_bytes(bytes);
+            sink.send(bytes)
+        }
+        SessionEvent::Exit(info) => {
+            let id = *callback_slot.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(id) = id {
+                routes
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&id.0);
+                if silent
+                    .as_ref()
+                    .is_some_and(|silent| silent.load(Ordering::SeqCst))
+                {
+                    return;
                 }
+                let _ = app.emit(
+                    SESSION_EXIT_EVENT,
+                    SessionExitPayload {
+                        id: id.0,
+                        code: info.code,
+                        signal: info.signal,
+                    },
+                );
             }
-        })
-        .map_err(|e| e.to_string())?;
+        }
+    }))
+    .map_err(|e| e.to_string())?;
     crate::perf::mark_once("shell-spawned");
     // Before the lock is released: the exit callback waits for it, so it cannot remove a route
     // that was not added yet.
@@ -414,6 +450,8 @@ pub fn attach_session(
 }
 
 /// Takes over the output of a live session that another window started (see [`attach_session`]).
+/// The session has no pane, so it does not outlive the app (a shell from the quick window that was
+/// promoted to a tab is not kept).
 #[tauri::command(rename_all = "camelCase")]
 pub async fn session_attach(
     state: State<'_, AppState>,
@@ -421,6 +459,29 @@ pub async fn session_attach(
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<(), String> {
     attach_session(&state, id, on_output)
+}
+
+/// Takes the settings of the interface for the shells of the panes: `keep` is
+/// `sessions.keepOnClose`, whether they outlive the app.
+#[tauri::command]
+pub fn sessions_keep_set(state: State<'_, AppState>, keep: bool) {
+    state.set_keep_sessions(keep);
+}
+
+/// Gives the pane `pane_id` the shell it had before the app was closed, when the daemon still holds
+/// it and the settings keep shells: its buffer and everything after go to `on_output`. Resolves with
+/// the id of the session, or `null` when the pane has none to come back to (the page then starts a
+/// new shell, as it always did).
+#[tauri::command(rename_all = "camelCase")]
+pub async fn session_reattach(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    pane_id: String,
+    on_output: Channel<InvokeResponseBody>,
+) -> Result<Option<u64>, String> {
+    Ok(state
+        .reattach_pane(&app, &pane_id, on_output)
+        .map(|id| id.0))
 }
 
 #[tauri::command]
@@ -450,9 +511,10 @@ pub async fn session_create(
     env: Option<HashMap<String, String>>,
     cols: u16,
     rows: u16,
+    pane_id: Option<String>,
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<u64, String> {
-    create_session(
+    let (id, _) = create_session(
         &app,
         &state,
         profile_id.as_deref(),
@@ -461,8 +523,12 @@ pub async fn session_create(
         cols,
         rows,
         on_output,
-    )
-    .map(|(id, _)| id)
+    )?;
+    // The shell of a pane is written down with it, so a later run can find it again.
+    if let Some(pane) = pane_id {
+        state.bind_pane(&pane, SessionId(id));
+    }
+    Ok(id)
 }
 
 /// Builds the store for `state.json` inside the app data folder. Only resolves the path: the
@@ -1140,10 +1206,11 @@ pub async fn session_resize(
 
 #[tauri::command]
 pub async fn session_kill(state: State<'_, AppState>, id: u64) -> Result<(), String> {
-    state
-        .sessions
-        .kill(SessionId(id))
-        .map_err(|e| e.to_string())
+    let ended = state.sessions.kill(SessionId(id));
+    // A session that is gone is no pane's to come back to, whether this call ended it or it was
+    // already gone.
+    state.unbind_session(SessionId(id));
+    ended.map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -2686,5 +2753,475 @@ mod tests {
             "the session that exists has its agent, the one that does not has none"
         );
         state.sessions.kill(SessionId(id)).expect("kill");
+    }
+
+    // ---- The shells of the panes outliving the app (NOR-F14-02b) ----
+    //
+    // A "run" is an `AppState` on a daemon of the test; dropping it is the app going away (its
+    // connection closes and the daemon, which is the test's, carries on).
+
+    use crate::pane_sessions::Binding;
+
+    /// A daemon of the test on a name of its own.
+    fn a_daemon() -> (noren_core::daemon::Daemon, String) {
+        use noren_core::daemon::{Daemon, Endpoint, ServerConfig};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let name = format!(
+            "persist-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        );
+        let daemon = Daemon::start(
+            Endpoint::named(&name).expect("endpoint"),
+            ServerConfig::default(),
+        )
+        .expect("start the daemon");
+        (daemon, name)
+    }
+
+    /// One run of the app on the daemon `name`, with the setting as `keep` says and its book in
+    /// `book` (in memory when `None`).
+    fn a_run_on(name: &str, book: Option<&Path>, keep: bool) -> AppState {
+        use crate::daemon_link::DaemonSettings;
+
+        let state = AppState::with_detected_in(
+            ProfileSet {
+                profiles: vec![shell_profile()],
+                default_id: Some("test".to_owned()),
+            },
+            Host::Daemon(DaemonSettings {
+                endpoint: name.to_owned(),
+                // A path with nothing at it: the run must find the daemon, not start one.
+                program: Some(std::env::temp_dir().join("noren-no-such-norend-31c9d4")),
+                ..DaemonSettings::normal()
+            }),
+        );
+        state.set_keep_sessions(keep);
+        if let Some(book) = book {
+            state.use_pane_book(PaneBook::open(book.to_path_buf(), name));
+        }
+        state
+    }
+
+    /// Starts a shell the way the `session_create` command does for a pane (`pane` is its id, `None`
+    /// for a shell with no pane, such as the quick window's) and waits until it has answered.
+    fn start_pane_shell(
+        app: &tauri::App<tauri::test::MockRuntime>,
+        state: &AppState,
+        pane: Option<&str>,
+    ) -> (u64, u32) {
+        let (output, heard) = collecting();
+        let (id, _) = create_session(app.handle(), state, None, None, None, 80, 24, output)
+            .expect("start a shell");
+        if let Some(pane) = pane {
+            state.bind_pane(pane, SessionId(id));
+        }
+        state
+            .sessions
+            .write(SessionId(id), PID_COMMAND)
+            .expect("write");
+        (id, wait_for_pid(&heard))
+    }
+
+    fn a_book_file(name: &str) -> PathBuf {
+        temp_folder(name).join(crate::pane_sessions::BOOK_FILE_NAME)
+    }
+
+    /// Waits until the daemon holds `count` sessions.
+    fn wait_for_session_count(daemon: &noren_core::daemon::Daemon, count: usize) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(40);
+        while daemon.session_count() != count {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the daemon holds {} sessions, expected {count}",
+                daemon.session_count()
+            );
+            std::thread::sleep(Duration::from_millis(30));
+        }
+    }
+
+    /// Waits until the daemon says nobody is attached to the sessions `ids`: a run that went away
+    /// closed its connection, and the daemon notices a moment later.
+    fn wait_until_nobody_is_attached(state: &AppState, ids: &[u64]) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(40);
+        loop {
+            let attached = state
+                .sessions
+                .list()
+                .expect("list")
+                .iter()
+                .filter(|info| ids.contains(&info.session.0) && info.attached > 0)
+                .count();
+            if attached == 0 {
+                return;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{attached} session(s) still have a client attached"
+            );
+            std::thread::sleep(Duration::from_millis(30));
+        }
+    }
+
+    #[test]
+    fn leaving_with_the_setting_on_keeps_the_shell_of_a_pane_running_and_ends_the_rest() {
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (daemon, name) = a_daemon();
+        let state = a_run_on(&name, None, true);
+        let app = tauri::test::mock_app();
+        let (pane_shell, pid) = start_pane_shell(&app, &state, Some("pane-a"));
+        // A shell with no pane to come back to, like the one in the quick window.
+        let (_other, _) = start_pane_shell(&app, &state, None);
+        assert_eq!(daemon.session_count(), 2);
+
+        state.end_sessions_on_exit();
+
+        wait_for_session_count(&daemon, 1);
+        let listed = state.sessions.list().expect("list");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].session, SessionId(pane_shell));
+        assert_eq!(listed[0].pid, Some(pid), "the same process, still running");
+        assert!(listed[0].exit.is_none());
+        assert_eq!(
+            state.pane_book.lock().unwrap().binding("pane-a"),
+            Some(Binding {
+                session: pane_shell,
+                pid
+            }),
+            "the pane is still written down for the next run"
+        );
+        state
+            .sessions
+            .kill(SessionId(pane_shell))
+            .expect("clean up");
+    }
+
+    #[test]
+    fn leaving_with_the_setting_off_ends_every_session_and_forgets_the_panes() {
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (daemon, name) = a_daemon();
+        let book = a_book_file("leave-off");
+        let state = a_run_on(&name, Some(&book), false);
+        let app = tauri::test::mock_app();
+        start_pane_shell(&app, &state, Some("pane-a"));
+        start_pane_shell(&app, &state, Some("pane-b"));
+        assert_eq!(daemon.session_count(), 2);
+        assert_eq!(state.pane_book.lock().unwrap().len(), 2);
+
+        state.end_sessions_on_exit();
+
+        wait_for_session_count(&daemon, 0);
+        assert!(state.pane_book.lock().unwrap().is_empty());
+        assert!(
+            PaneBook::open(book.clone(), &name).is_empty(),
+            "and so is the book on disk"
+        );
+        let _ = std::fs::remove_dir_all(book.parent().unwrap());
+    }
+
+    #[test]
+    fn the_next_run_gets_back_the_shell_of_the_pane_by_its_id_with_what_it_printed() {
+        use tauri::Listener;
+
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (daemon, name) = a_daemon();
+        let book = a_book_file("reattach");
+        let app = tauri::test::mock_app();
+
+        let first = a_run_on(&name, Some(&book), true);
+        let (id, pid) = start_pane_shell(&app, &first, Some("pane-a"));
+        first.end_sessions_on_exit();
+        drop(first);
+        assert_eq!(daemon.session_count(), 1, "the shell outlived that run");
+
+        let second = a_run_on(&name, Some(&book), true);
+        let (exits_tx, exits) = std::sync::mpsc::channel::<String>();
+        app.listen(SESSION_EXIT_EVENT, move |event| {
+            let _ = exits_tx.send(event.payload().to_owned());
+        });
+
+        // A pane the book does not know gets nothing: the page starts a shell for it.
+        let (stranger, _) = collecting();
+        assert_eq!(second.reattach_pane(app.handle(), "pane-z", stranger), None);
+        assert_eq!(second.sessions.session_count(), 0);
+
+        let (output, heard) = collecting();
+        let got = second
+            .reattach_pane(app.handle(), "pane-a", output)
+            .expect("the pane gets its shell back");
+        assert_eq!(got, SessionId(id));
+        assert!(
+            second.route(id).is_some(),
+            "it has a route like any session"
+        );
+        assert_eq!(second.sessions.session_count(), 1);
+        assert_eq!(daemon.session_count(), 1, "nothing was started");
+        // What it printed while no app was attached came with it ...
+        assert_eq!(wait_for_pid(&heard), pid, "the buffer came back");
+        // ... and it is the same process, answering.
+        let (second_output, second_received) = collecting();
+        attach_session(&second, id, second_output).expect("move the output");
+        second.sessions.write(got, PID_COMMAND).expect("write");
+        assert_eq!(wait_for_pid(&second_received), pid);
+
+        // Its end is announced as for any session.
+        second.sessions.write(got, EXIT_COMMAND).expect("exit");
+        let payload = exits
+            .recv_timeout(Duration::from_secs(40))
+            .expect("session-exit within 40 s");
+        let payload: serde_json::Value = serde_json::from_str(&payload).expect("json");
+        assert_eq!(payload["id"], id);
+        assert!(second.route(id).is_none());
+
+        second.sessions.kill(got).expect("release it");
+        let _ = std::fs::remove_dir_all(book.parent().unwrap());
+    }
+
+    #[test]
+    fn a_session_with_the_ids_of_the_pane_but_another_process_is_not_its_shell() {
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (daemon, name) = a_daemon();
+        let book = a_book_file("another-process");
+        let app = tauri::test::mock_app();
+
+        let first = a_run_on(&name, Some(&book), true);
+        let (id, pid) = start_pane_shell(&app, &first, Some("pane-a"));
+        first.end_sessions_on_exit();
+        drop(first);
+
+        // The daemon started again would number its sessions from the start: same id, other process.
+        let second = a_run_on(&name, Some(&book), true);
+        second.pane_book.lock().unwrap().bind(
+            "pane-a",
+            Binding {
+                session: id,
+                pid: pid + 1,
+            },
+        );
+        let (output, heard) = collecting();
+        assert_eq!(second.reattach_pane(app.handle(), "pane-a", output), None);
+        assert!(received(&heard).is_empty());
+        assert_eq!(second.pane_book.lock().unwrap().binding("pane-a"), None);
+        assert_eq!(second.sessions.session_count(), 0);
+        assert_eq!(daemon.session_count(), 1, "and it was not touched");
+
+        second.sessions.kill(SessionId(id)).expect("clean up");
+        let _ = std::fs::remove_dir_all(book.parent().unwrap());
+    }
+
+    #[test]
+    fn the_shells_no_pane_came_back_for_are_ended_and_the_ones_somebody_is_attached_to_are_not() {
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (daemon, name) = a_daemon();
+        let book = a_book_file("orphans");
+        let app = tauri::test::mock_app();
+
+        let first = a_run_on(&name, Some(&book), true);
+        let (a, _) = start_pane_shell(&app, &first, Some("pane-a"));
+        let (b, _) = start_pane_shell(&app, &first, Some("pane-b"));
+        let (c, _) = start_pane_shell(&app, &first, Some("pane-c"));
+        first.end_sessions_on_exit();
+        drop(first);
+        assert_eq!(daemon.session_count(), 3);
+
+        // The next run restores one pane. Another client is attached to the shell of a third.
+        let second = a_run_on(&name, Some(&book), true);
+        let elsewhere = a_run_on(&name, None, true);
+        wait_until_nobody_is_attached(&second, &[a, b, c]);
+        let (output, _received) = collecting();
+        assert_eq!(
+            second.reattach_pane(app.handle(), "pane-a", output),
+            Some(SessionId(a))
+        );
+        elsewhere
+            .sessions
+            .reattach(SessionId(c), |_| {})
+            .expect("another client attaches");
+
+        assert_eq!(second.reap_orphans(), 1, "only the one nobody wants");
+        wait_for_session_count(&daemon, 2);
+        let left: Vec<u64> = second
+            .sessions
+            .list()
+            .expect("list")
+            .iter()
+            .map(|info| info.session.0)
+            .collect();
+        assert!(left.contains(&a), "the pane's own shell stays");
+        assert!(left.contains(&c), "so does the one a client is attached to");
+        assert!(!left.contains(&b));
+        assert_eq!(
+            second.pane_book.lock().unwrap().binding("pane-b"),
+            None,
+            "its pane is forgotten"
+        );
+        assert_eq!(second.reap_orphans(), 0, "nothing more to end");
+
+        second.sessions.kill(SessionId(a)).expect("clean up");
+        elsewhere.sessions.kill(SessionId(c)).expect("clean up");
+        let _ = std::fs::remove_dir_all(book.parent().unwrap());
+    }
+
+    #[test]
+    fn with_the_setting_off_nothing_is_taken_over_and_what_was_left_is_ended() {
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (daemon, name) = a_daemon();
+        let book = a_book_file("setting-off");
+        let app = tauri::test::mock_app();
+
+        let first = a_run_on(&name, Some(&book), true);
+        let (a, _) = start_pane_shell(&app, &first, Some("pane-a"));
+        first.end_sessions_on_exit();
+        drop(first);
+
+        let second = a_run_on(&name, Some(&book), false);
+        wait_until_nobody_is_attached(&second, &[a]);
+        let (output, heard) = collecting();
+        assert_eq!(second.reattach_pane(app.handle(), "pane-a", output), None);
+        assert!(received(&heard).is_empty());
+        assert_eq!(daemon.session_count(), 1, "it asked for nothing");
+
+        assert_eq!(second.reap_orphans(), 1);
+        wait_for_session_count(&daemon, 0);
+        let _ = std::fs::remove_dir_all(book.parent().unwrap());
+    }
+
+    #[test]
+    fn a_shell_that_ended_while_the_app_was_away_is_released_and_the_pane_gets_a_new_one() {
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (daemon, name) = a_daemon();
+        let book = a_book_file("ended-away");
+        let app = tauri::test::mock_app();
+
+        let first = a_run_on(&name, Some(&book), true);
+        let (a, _) = start_pane_shell(&app, &first, Some("pane-a"));
+        first.end_sessions_on_exit();
+        drop(first);
+
+        // Somebody else ends the shell while no app is there.
+        let elsewhere = a_run_on(&name, None, true);
+        elsewhere
+            .sessions
+            .write(SessionId(a), EXIT_COMMAND)
+            .expect("write exit");
+        let deadline = std::time::Instant::now() + Duration::from_secs(40);
+        while elsewhere
+            .sessions
+            .list()
+            .expect("list")
+            .iter()
+            .any(|info| info.session.0 == a && info.exit.is_none())
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the shell did not end"
+            );
+            std::thread::sleep(Duration::from_millis(30));
+        }
+
+        let second = a_run_on(&name, Some(&book), true);
+        let (output, heard) = collecting();
+        assert_eq!(second.reattach_pane(app.handle(), "pane-a", output), None);
+        assert!(received(&heard).is_empty());
+        assert_eq!(second.pane_book.lock().unwrap().binding("pane-a"), None);
+        wait_for_session_count(&daemon, 0);
+        let _ = std::fs::remove_dir_all(book.parent().unwrap());
+    }
+
+    #[test]
+    fn killing_the_session_of_a_pane_forgets_the_pane() {
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (daemon, name) = a_daemon();
+        let app = tauri::test::mock_app();
+        app.manage(a_run_on(&name, None, true));
+        let state = app.state::<AppState>();
+        let (id, _) = start_pane_shell(&app, &state, Some("pane-a"));
+        assert!(state.pane_book.lock().unwrap().binding("pane-a").is_some());
+
+        tauri::async_runtime::block_on(session_kill(app.state::<AppState>(), id)).expect("kill");
+
+        assert_eq!(state.pane_book.lock().unwrap().binding("pane-a"), None);
+        wait_for_session_count(&daemon, 0);
+    }
+
+    #[test]
+    fn sessions_in_this_process_are_never_left_written_down_or_taken_over() {
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let state = state_with_shell();
+        state.set_keep_sessions(true);
+        let app = tauri::test::mock_app();
+        let (id, _) = start_pane_shell(&app, &state, Some("pane-a"));
+        assert!(
+            state.pane_book.lock().unwrap().is_empty(),
+            "a session that cannot outlive the app is not written down"
+        );
+        let (output, heard) = collecting();
+        assert_eq!(state.reattach_pane(app.handle(), "pane-a", output), None);
+        assert!(received(&heard).is_empty());
+        assert_eq!(state.reap_orphans(), 0);
+
+        state.end_sessions_on_exit();
+        assert!(
+            !state.sessions.owns(SessionId(id)),
+            "the setting cannot keep it"
+        );
+    }
+
+    #[test]
+    fn no_shell_is_started_ahead_for_a_pane_whose_shell_is_waiting_in_the_daemon() {
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let dir = temp_folder("prespawn-kept");
+        let (daemon, name) = a_daemon();
+        let app = tauri::test::mock_app();
+        app.manage(a_run_on(&name, None, true));
+        let state = app.state::<AppState>();
+        // The book says the pane `saved_state_in` asks for first ("p1") had a shell.
+        state.pane_book.lock().unwrap().bind(
+            "p1",
+            Binding {
+                session: 1,
+                pid: 4242,
+            },
+        );
+
+        crate::prespawn::start(app.handle(), saved_state_in(&dir));
+
+        // The search ends with nothing started: the page takes the old shell back instead.
+        let deadline = std::time::Instant::now() + Duration::from_secs(40);
+        while !matches!(
+            *state.prespawn.lock().unwrap(),
+            crate::prespawn::Slot::Closed
+        ) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the search for a shell ahead never ended"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(daemon.session_count(), 0, "no shell was started ahead");
+        assert_eq!(state.sessions.session_count(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

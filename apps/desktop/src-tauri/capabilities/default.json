@@ -15,6 +15,8 @@
     "allow-profiles-set-user",
     "allow-session-create",
     "allow-session-attach",
+    "allow-session-reattach",
+    "allow-sessions-keep-set",
     "allow-quick-shortcut-set",
     "allow-quick-toggle",
     "allow-session-write",

@@ -1,0 +1,41 @@
+{
+  "version": 2,
+  "spaces": [
+    {
+      "id": "smoke-persist-space",
+      "name": "Main",
+      "icon": "terminal",
+      "color": "#6b8afd",
+      "modIds": [],
+      "defaults": { "env": {} },
+      "aiEnabled": true,
+      "saveScrollback": true,
+      "pinned": [],
+      "tree": [{ "kind": "item", "id": "smoke-persist-tab" }],
+      "items": {
+        "smoke-persist-tab": {
+          "id": "smoke-persist-tab",
+          "titleLocked": false,
+          "layout": {
+            "kind": "pane",
+            "pane": {
+              "id": "smoke-persist-page-pane",
+              "type": "terminal",
+              "profileId": "default",
+              "status": "idle",
+              "unread": false,
+              "bell": false
+            }
+          },
+          "focusedPaneId": "smoke-persist-page-pane",
+          "lastActivityAt": 0
+        }
+      },
+      "activeItemId": "smoke-persist-tab"
+    }
+  ],
+  "activeSpaceId": "smoke-persist-space",
+  "favorites": [],
+  "closed": [],
+  "archive": []
+}

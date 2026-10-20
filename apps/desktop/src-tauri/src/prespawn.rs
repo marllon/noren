@@ -60,6 +60,8 @@ pub struct Ready {
 /// What the first `session_create` of the page will ask for, read from the saved state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Wanted {
+    /// The pane the shell is for.
+    pub pane_id: String,
     /// `None` for the default profile, as the page sends it.
     pub profile_id: Option<String>,
     pub cwd: Option<String>,
@@ -131,6 +133,7 @@ pub fn wanted_from_state(text: &str) -> Option<Wanted> {
         Some(map)
     };
     Some(Wanted {
+        pane_id: pane.get("id")?.as_str()?.to_owned(),
         profile_id: (profile != DEFAULT_PROFILE_ID).then(|| profile.to_owned()),
         cwd,
         env,
@@ -218,6 +221,12 @@ fn run<R: Runtime>(app: &AppHandle<R>, state_file: &PathBuf) -> Option<()> {
     let text = String::from_utf8_lossy(&std::fs::read(state_file).ok()?).into_owned();
     let wanted = wanted_from_state(&text)?;
     let state = app.state::<AppState>();
+    // The shell this pane had before the app was closed may be waiting for it in the daemon (see
+    // `persist`): the page takes it back instead of asking for a new one, and a shell started here
+    // would only be thrown away.
+    if state.has_kept_shell(&wanted.pane_id) {
+        return None;
+    }
     let (_, spec) = session_spec(
         app,
         &state,
@@ -302,6 +311,7 @@ mod tests {
         assert_eq!(
             wanted_from_state(&text),
             Some(Wanted {
+                pane_id: "p3".to_owned(),
                 profile_id: None,
                 cwd: Some("C:\\work".to_owned()),
                 env: None

@@ -11,12 +11,15 @@ mod lifecycle;
 mod link;
 mod navigation;
 mod notify;
+mod pane_sessions;
 mod perf;
+mod persist;
 mod prespawn;
 mod quick;
 mod route;
 mod shortcut;
 mod smoke;
+mod smoke_persist;
 mod window_effect;
 
 use tauri::{Listener, Manager, RunEvent};
@@ -24,7 +27,8 @@ use tauri_plugin_deep_link::DeepLinkExt;
 
 use ai::AiState;
 use bridge::{AppState, BackgroundState, ConfigState, ModState, ScrollbackState, ThemeState};
-use daemon_link::{DaemonSettings, Host};
+use daemon_link::{DEFAULT_ENDPOINT_NAME, DaemonSettings, Host};
+use pane_sessions::PaneBook;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -63,7 +67,21 @@ fn main() {
     } else {
         None
     };
-    let any_smoke = smoke || smoke_deeplink || smoke_quick || perf_run.is_some();
+    // The persistence run: a shell outlives the app that started it, checked by two runs on one
+    // daemon and one folder of their own (scripts/smoke.mjs starts both).
+    let persist_run = if smoke_persist::has_flag(&args) {
+        match smoke_persist::parse_args(&args) {
+            Ok(run) => Some(run),
+            Err(message) => {
+                eprintln!("SMOKE FAILED: {message}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        None
+    };
+    let any_smoke =
+        smoke || smoke_deeplink || smoke_quick || perf_run.is_some() || persist_run.is_some();
 
     let mut builder = tauri::Builder::default();
     // First of all, so a second instance is detected before the rest of the setup runs. Not in a
@@ -104,6 +122,8 @@ fn main() {
     // app (what its numbers are compared with), so it keeps the sessions in the process.
     let host = if perf_run.is_some() {
         Host::InProcess
+    } else if let Some(run) = &persist_run {
+        Host::Daemon(run.daemon_settings())
     } else if any_smoke {
         Host::Daemon(DaemonSettings::for_run(smoke::run_daemon_name()))
     } else {
@@ -138,6 +158,8 @@ fn main() {
             bridge::profiles_set_user,
             bridge::session_create,
             bridge::session_attach,
+            bridge::session_reattach,
+            bridge::sessions_keep_set,
             shortcut::quick_shortcut_set,
             shortcut::quick_toggle,
             bridge::session_write,
@@ -177,22 +199,38 @@ fn main() {
         ])
         .setup(move |app| {
             perf::mark("setup-start");
-            match (&smoke_link, &quick_sandbox, &perf_run) {
-                // The deep-link, quick and perf checks never touch the user's files: they run on a
-                // folder of their own.
-                (Some(target), _, _) => {
+            match (&smoke_link, &quick_sandbox, &perf_run, &persist_run) {
+                // The deep-link, quick, perf and persistence checks never touch the user's files:
+                // they run on a folder of their own.
+                (Some(target), _, _, _) => {
                     smoke::manage_sandbox_stores(app, &target.state_dir);
                     app.manage(target.clone());
                 }
-                (None, Some(sandbox), _) => {
+                (None, Some(sandbox), _, _) => {
                     smoke::manage_sandbox_stores(app, &sandbox.state_dir);
                     app.manage(sandbox.clone());
                 }
-                (None, None, Some(run)) => {
+                (None, None, Some(run), _) => {
                     smoke::manage_sandbox_stores(app, &run.state_dir);
                     app.manage(run.clone());
                 }
-                (None, None, None) => {
+                (None, None, None, Some(run)) => {
+                    smoke::manage_sandbox_stores(app, &run.dir);
+                    // Both runs of the pair keep the book of which shell is which pane's in the
+                    // folder they share.
+                    app.state::<AppState>()
+                        .use_pane_book(PaneBook::open(run.book_file(), &run.endpoint));
+                }
+                (None, None, None, None) => {
+                    // Which shell is which pane's is kept next to the saved state, for the daemon
+                    // of the user. The plain smoke run keeps it in memory: it must not touch the
+                    // book of the user.
+                    if !any_smoke {
+                        let book = bridge::state_file(app.handle())?
+                            .with_file_name(pane_sessions::BOOK_FILE_NAME);
+                        app.state::<AppState>()
+                            .use_pane_book(PaneBook::open(book, DEFAULT_ENDPOINT_NAME));
+                    }
                     app.manage(bridge::state_store(app.handle())?);
                     let config = ConfigState::new(bridge::config_store(app.handle())?);
                     // The smoke run reads the settings but does not watch them: watching would
@@ -237,7 +275,7 @@ fn main() {
             // The quick terminal: a second window, hidden, that loads its page once the main one is up
             // (see `quick::create_hidden_after_ready`), so it is ready when something shows it. The
             // plain smoke runs check the main window alone and leave it out.
-            if !smoke && !smoke_deeplink {
+            if !smoke && !smoke_deeplink && persist_run.is_none() {
                 quick::create_hidden_after_ready(app);
             }
             // The global shortcut of the quick terminal: only a normal start registers one. A chord
@@ -272,6 +310,9 @@ fn main() {
             if let Some(run) = perf_run.clone() {
                 perf::arm(app, run);
             }
+            if let Some(run) = persist_run.clone() {
+                smoke_persist::arm(app, run);
+            }
             perf::mark("setup-end");
             Ok(())
         })
@@ -292,13 +333,21 @@ fn main() {
         let handle = app.handle().clone();
         app.once("app-ready", move |_| {
             handle.state::<AppState>().close_prespawn();
+            // Every pane has had its shell by now (the ones it had before the app was closed taken
+            // over, new ones for the rest): what the daemon still holds belongs to no pane. This
+            // can wait on the daemon, so it does not hold the event up.
+            let handle = handle.clone();
+            std::thread::spawn(move || {
+                handle.state::<AppState>().reap_orphans();
+            });
         });
     }
 
     app.run(|handle, event| {
-        // No terminal session may outlive the app.
         if let RunEvent::Exit = event {
-            handle.state::<AppState>().sessions.shutdown();
+            // The shells of the panes outlive the app when the settings keep them and they live in
+            // the daemon; every other session ends with it.
+            handle.state::<AppState>().end_sessions_on_exit();
             if let Some(target) = handle.try_state::<smoke::DeepLinkTarget>() {
                 target.remove_state_dir();
             }

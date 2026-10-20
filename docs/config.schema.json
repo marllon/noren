@@ -551,6 +551,18 @@
       },
       "additionalProperties": false,
       "description": "The AI, off until you turn it on: providers (Ollama on this computer, and any you add) and which of them each function uses. Noren never runs what the AI suggests."
+    },
+    "sessions": {
+      "type": "object",
+      "properties": {
+        "keepOnClose": {
+          "description": "On: closing the window leaves the shells of your panes running in the background (in the session daemon, norend) and opening Noren again gives each pane its shell back, with what it printed meanwhile. Off: closing the window ends every shell, as it always did. Shells that no pane comes back for are ended when Noren opens.",
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Whether the shells of your panes outlive the window."
     }
   },
   "additionalProperties": false,

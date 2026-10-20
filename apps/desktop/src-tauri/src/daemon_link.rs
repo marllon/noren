@@ -47,7 +47,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use noren_core::daemon::{
-    ClientError, ClientEvent, ClientEvents, DaemonClient, Endpoint, ErrorCode,
+    ClientError, ClientEvent, ClientEvents, DaemonClient, Endpoint, ErrorCode, SessionInfo,
 };
 use noren_core::{ExitInfo, PtyError, SessionEvent, SessionId, SessionManager, SpawnSpec};
 use tokio::runtime::{Builder, Handle, Runtime};
@@ -308,6 +308,45 @@ impl Sessions {
         }
     }
 
+    /// Whether the sessions live in the daemon, and so can outlive the app.
+    pub fn in_daemon(&self) -> bool {
+        matches!(&*self.backend, Backend::Daemon(_))
+    }
+
+    /// Every session the daemon holds, whoever started it: the ones this run started, the ones an
+    /// earlier run left, and the ones that ended and were not released yet. Empty when the sessions
+    /// live in this process.
+    pub fn list(&self) -> Result<Vec<SessionInfo>, SessionError> {
+        match &*self.backend {
+            Backend::Process { .. } => Ok(Vec::new()),
+            Backend::Daemon(link) => link.list(),
+        }
+    }
+
+    /// Whether this run started or took over the session and has not killed it.
+    pub fn owns(&self, id: SessionId) -> bool {
+        match &*self.backend {
+            Backend::Process { manager, .. } => manager.process_id(id).is_some(),
+            Backend::Daemon(link) => lock(&link.owned).contains(&id.0),
+        }
+    }
+
+    /// Takes over a session of the daemon that an earlier run started and that is still there: its
+    /// buffer (what it printed meanwhile) goes to `on_event` first, then everything it prints, then
+    /// its end, exactly as for a session of [`Self::spawn`], and it counts as this run's from here on
+    /// (`kill` ends it, `session_count` counts it). The same rules apply to `on_event`.
+    pub fn reattach<F>(&self, id: SessionId, on_event: F) -> Result<(), SessionError>
+    where
+        F: FnMut(SessionEvent<'_>) + Send + 'static,
+    {
+        match &*self.backend {
+            Backend::Process { .. } => Err(SessionError::new(
+                "the sessions do not run in a daemon, so none outlives the app",
+            )),
+            Backend::Daemon(link) => link.reattach(id, Box::new(on_event)),
+        }
+    }
+
     /// Sessions of this app that were started and not yet killed (an ended one counts until it is).
     pub fn session_count(&self) -> usize {
         match &*self.backend {
@@ -330,6 +369,18 @@ impl Sessions {
         match &*self.backend {
             Backend::Process { manager, .. } => manager.shutdown(),
             Backend::Daemon(link) => link.shutdown(),
+        }
+    }
+
+    /// Ends the sessions of the app that are not in `keep` and lets go of the ones that are, which go
+    /// on running in the daemon for a later run to take over ([`Self::reattach`]). This is what the
+    /// app does on its way out when the shells of its panes are to outlive it. Sessions that live in
+    /// this process cannot outlive it, so there it ends them all; and a run that owns its daemon
+    /// ([`DaemonSettings::stop_on_shutdown`]) stops it, as [`Self::shutdown`] does.
+    pub fn detach(&self, keep: &[SessionId]) {
+        match &*self.backend {
+            Backend::Process { manager, .. } => manager.shutdown(),
+            Backend::Daemon(link) => link.detach(keep),
         }
     }
 
@@ -662,17 +713,68 @@ impl Link {
             .collect()
     }
 
+    fn list(&self) -> Result<Vec<SessionInfo>, SessionError> {
+        let conn = self.live_connection()?;
+        Ok(self.call(async move { conn.client.list().await })??)
+    }
+
+    /// Attaches to a session of the daemon this run did not start: the task that reads the events
+    /// does the attach (as for a new session), so the buffer reaches the sink before anything after
+    /// it.
+    fn reattach(&self, id: SessionId, sink: Sink) -> Result<(), SessionError> {
+        let conn = self.live_connection()?;
+        self.call(async move {
+            let (done, attached) = oneshot::channel();
+            let sent = conn.attaches.send(Attach {
+                session: id,
+                sink,
+                done,
+            });
+            match sent {
+                Ok(()) => attached.await.unwrap_or(Err(ClientError::Closed)),
+                Err(_) => Err(ClientError::Closed),
+            }
+        })??;
+        lock(&self.owned).insert(id.0);
+        Ok(())
+    }
+
     fn shutdown(&self) {
-        let Ok(conn) = self.live_connection() else {
+        if self.live_connection().is_err() {
             return;
-        };
+        }
         if self.settings.stop_on_shutdown {
             if let Err(error) = self.stop_daemon() {
                 eprintln!("warning: could not stop the session daemon: {error}");
             }
             return;
         }
-        let ids: Vec<u64> = lock(&self.owned).iter().copied().collect();
+        self.end_owned(&HashSet::new());
+    }
+
+    fn detach(&self, keep: &[SessionId]) {
+        if self.live_connection().is_err() {
+            return;
+        }
+        if self.settings.stop_on_shutdown {
+            // The daemon of this run goes with it: nothing is left for a later run to take over.
+            self.shutdown();
+            return;
+        }
+        let keep: HashSet<u64> = keep.iter().map(|id| id.0).collect();
+        self.end_owned(&keep);
+    }
+
+    /// Kills the sessions of this run that are not in `keep`, and forgets all of them.
+    fn end_owned(&self, keep: &HashSet<u64>) {
+        let Ok(conn) = self.live_connection() else {
+            return;
+        };
+        let ids: Vec<u64> = lock(&self.owned)
+            .iter()
+            .copied()
+            .filter(|id| !keep.contains(id))
+            .collect();
         let ended = self.call_within(
             async move {
                 for id in ids {
@@ -1556,6 +1658,197 @@ mod tests {
         // The daemon itself is still there for the next client.
         assert!(sessions.daemon_listens());
         assert!(list_daemon(&endpoint).is_empty());
+    }
+
+    // ---- leaving shells in the daemon and taking them over (NOR-F14-02b) ----
+
+    #[test]
+    fn leaving_keeps_the_sessions_asked_for_running_and_ends_the_others() {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let endpoint = unique_endpoint();
+        let daemon = start_daemon(&endpoint);
+        let sessions = sessions(settings(&endpoint, Some(missing_program())));
+        let (stays, stays_output) = start_shell(&sessions);
+        let (_goes, goes_output) = start_shell(&sessions);
+        let pid = sessions.process_ids(&[stays])[0]
+            .1
+            .expect("a live shell has a pid");
+        assert_eq!(daemon.session_count(), 2);
+
+        sessions.detach(&[stays]);
+
+        goes_output.wait_for_exit();
+        let listed = list_daemon(&endpoint);
+        assert_eq!(listed.len(), 1, "only the one asked for is left");
+        assert_eq!(listed[0].session, stays);
+        assert_eq!(listed[0].pid, Some(pid), "the same process");
+        assert!(listed[0].exit.is_none(), "still running");
+        assert!(process_exists(pid));
+        assert!(
+            lock(&stays_output.exit).is_none(),
+            "the one left was not told it ended"
+        );
+        assert_eq!(sessions.session_count(), 0, "this run no longer holds it");
+
+        // Clean up after the check: the session is the daemon's now, and killing it works from here.
+        sessions.kill(stays).expect("release it");
+        wait_until_gone(pid);
+    }
+
+    #[test]
+    fn a_later_run_takes_over_a_session_an_earlier_one_left_with_what_it_printed() {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let endpoint = unique_endpoint();
+        let daemon = start_daemon(&endpoint);
+
+        let first = sessions(settings(&endpoint, Some(missing_program())));
+        let (id, output) = start_shell(&first);
+        first
+            .write(id, &echo_command("noren-left-behind"))
+            .expect("write");
+        output.wait_for_line("noren-left-behind");
+        let pid = first.process_ids(&[id])[0].1.expect("pid");
+        first.detach(&[id]);
+        // The first run is gone; its connection closes with it.
+        drop(first);
+
+        let second = sessions(settings(&endpoint, Some(missing_program())));
+        let listed = second.list().expect("the daemon lists what it holds");
+        assert_eq!(listed.len(), 1);
+        assert_eq!((listed[0].session, listed[0].pid), (id, Some(pid)));
+        assert!(!second.owns(id), "not this run's until it takes it over");
+        assert_eq!(second.session_count(), 0);
+
+        let taken = Recorder::default();
+        second.reattach(id, taken.sink()).expect("take it over");
+        assert!(second.owns(id));
+        assert_eq!(second.session_count(), 1);
+        // What it printed while no app was attached comes first ...
+        taken.wait_for_line("noren-left-behind");
+        // ... and it is the same shell, answering.
+        second
+            .write(id, &echo_command("noren-answers-again"))
+            .expect("write");
+        taken.wait_for_line("noren-answers-again");
+        assert_eq!(second.process_ids(&[id])[0].1, Some(pid));
+        assert_eq!(daemon.session_count(), 1, "nothing was started");
+
+        // From here on it is an ordinary session of this run: its end is reported, once.
+        second.kill(id).expect("kill");
+        taken.wait_for_exit();
+        assert!(!taken.after_exit.load(Ordering::SeqCst));
+        assert_eq!(second.session_count(), 0);
+        assert_eq!(daemon.session_count(), 0);
+    }
+
+    #[test]
+    fn a_session_that_is_not_in_the_daemon_cannot_be_taken_over() {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let endpoint = unique_endpoint();
+        let _daemon = start_daemon(&endpoint);
+        let sessions = sessions(settings(&endpoint, Some(missing_program())));
+        let refusal = sessions
+            .reattach(SessionId(987_654), |_| {})
+            .expect_err("no such session");
+        assert!(!refusal.to_string().is_empty());
+        assert!(!sessions.owns(SessionId(987_654)));
+        assert_eq!(sessions.session_count(), 0);
+    }
+
+    #[test]
+    fn sessions_in_this_process_hold_nothing_for_a_later_run() {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let sessions = Sessions::new(Host::InProcess);
+        assert!(!sessions.in_daemon());
+        assert_eq!(sessions.list().expect("list"), Vec::new());
+        let refusal = sessions
+            .reattach(SessionId(1), |_| {})
+            .expect_err("nothing outlives this process");
+        assert!(
+            refusal.to_string().contains("do not run in a daemon"),
+            "{refusal}"
+        );
+
+        let (id, output) = start_shell(&sessions);
+        assert!(sessions.owns(id));
+        // There is no daemon to leave it in: leaving ends every session.
+        sessions.detach(&[id]);
+        output.wait_for_exit();
+        assert!(!sessions.owns(id));
+    }
+
+    #[test]
+    fn a_run_that_owns_its_daemon_stops_it_when_it_leaves() {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let endpoint = unique_endpoint();
+        let mut own = settings(&endpoint, Some(norend_binary()));
+        own.stop_on_shutdown = true;
+        let sessions = sessions(own);
+        let Placement::Daemon {
+            norend_pid: Some(norend),
+            ..
+        } = sessions.placement()
+        else {
+            panic!("expected a norend this run started");
+        };
+        let (id, output) = start_shell(&sessions);
+        let pid = sessions.process_ids(&[id])[0].1.expect("pid");
+
+        // Leaving is a way out, but the smoke runs own their daemon: nothing is left behind for them.
+        sessions.detach(&[id]);
+        output.wait_for_exit();
+        wait_until_gone(norend);
+        wait_until_gone(pid);
+        assert!(
+            !sessions.daemon_listens(),
+            "the daemon of the run was stopped"
+        );
+    }
+
+    #[test]
+    fn a_shell_left_in_a_norend_the_app_started_is_there_for_the_next_run() {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let endpoint = unique_endpoint();
+        let first = sessions(settings(&endpoint, Some(norend_binary())));
+        let Placement::Daemon {
+            norend_pid: Some(norend),
+            ..
+        } = first.placement()
+        else {
+            panic!("expected a norend this run started");
+        };
+        let (id, output) = start_shell(&first);
+        first
+            .write(id, &echo_command("noren-survives-the-app"))
+            .expect("write");
+        output.wait_for_line("noren-survives-the-app");
+        let pid = first.process_ids(&[id])[0].1.expect("pid");
+
+        first.detach(&[id]);
+        drop(first);
+
+        // The app that started both is gone, and both go on.
+        assert!(process_exists(norend), "norend outlives the app");
+        assert!(process_exists(pid), "and so does the shell");
+
+        // The next run finds that daemon (it would not start one: there is no norend for it to try).
+        let second = sessions(settings(&endpoint, Some(missing_program())));
+        assert!(matches!(
+            second.placement(),
+            Placement::Daemon {
+                norend_pid: None,
+                ..
+            }
+        ));
+        let taken = Recorder::default();
+        second.reattach(id, taken.sink()).expect("take it over");
+        taken.wait_for_line("noren-survives-the-app");
+        assert_eq!(second.process_ids(&[id])[0].1, Some(pid), "the same shell");
+
+        second.stop_daemon().expect("stop the daemon");
+        wait_until_gone(norend);
+        wait_until_gone(pid);
+        assert!(!second.daemon_listens());
     }
 
     // ---- a daemon that has to be started ----

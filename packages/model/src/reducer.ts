@@ -5,9 +5,11 @@ import {
   createBrowserPane,
   createEmptySpace,
   createPane,
+  createPreviewPane,
   createTab,
   type EmptySpaceOptions,
 } from "./factories";
+import { previewPathProblem } from "./file-preview";
 import { neighborPane } from "./geometry";
 import {
   countPanes,
@@ -1130,11 +1132,19 @@ function splitPane(
   if (url !== undefined && (typeof url !== "string" || browserUrlProblem(url) !== undefined)) {
     return ws;
   }
+  // A preview pane is the same: no folder to hand on, and a path it may hold.
+  const { path } = action;
+  if (path !== undefined && (typeof path !== "string" || previewPathProblem(path) !== undefined)) {
+    return ws;
+  }
+  if (url !== undefined && path !== undefined) return ws;
   const id = idPool(ws, ctx)();
   const fresh =
     url !== undefined
       ? createBrowserPane(id, url)
-      : createPane(id, profileId, present(action.cwd) ?? source.cwd);
+      : path !== undefined
+        ? createPreviewPane(id, path)
+        : createPane(id, profileId, present(action.cwd) ?? source.cwd);
   const layout = insertBeside(located.item.layout, source.id, action.dir, action.side, {
     kind: "pane",
     pane: fresh,

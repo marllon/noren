@@ -158,6 +158,12 @@ export const en = {
     "This file is too large to preview. A preview shows text up to {textLimit} and pictures up to {imageLimit}.",
   "preview.refused.unreadable": "The file could not be read: {reason}",
   "preview.refused.unreadableBare": "The file could not be read.",
+  // Ctrl+click on a path of the output that opens nothing
+  "preview.open.noFolder": "That path is relative and this pane has no folder to read it against.",
+  "preview.open.network":
+    "That path is on the network, and network and device paths are not previewed.",
+  "preview.open.invalid": "That path cannot be previewed.",
+  "preview.open.limit": "A tab holds at most {max} panes, so the preview was not opened.",
 
   // Moving things with the keyboard or the pointer
   "drag.instructions":

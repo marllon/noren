@@ -19,6 +19,7 @@ import { parseOsc7 } from "./osc7";
 import { decidePaste, insertableText } from "./paste";
 import { watchFirstPrompt } from "./first-prompt";
 import { perfMark, reportPromptShown } from "./perf-probe";
+import { pathLinksOfRow } from "./terminal-paths";
 import { isTranslucent } from "./theme";
 
 /** What a right click does: copy the selection or paste, always paste, or leave the native menu. */
@@ -168,6 +169,14 @@ interface TerminalViewProps {
    * of a link asks (`requestExternalLink`).
    */
   onOpenLink?(url: string): boolean;
+  /**
+   * Called with a file path of the output (as written: it may be relative) that was Ctrl+clicked
+   * (Cmd+clicked on a Mac). The paths are underlined where this is given; a click without Ctrl does
+   * nothing, and no click ever hands a path to another program.
+   */
+  onOpenPath?(path: string): void;
+  /** The folder of the pane now, which a relative path of the output is read against. */
+  currentCwd?(): string | undefined;
 }
 
 /** Pause between the WebGL contexts that views out of sight get ahead of their first show. */
@@ -231,6 +240,8 @@ export function TerminalView({
   onOutput,
   onInput,
   onOpenLink,
+  onOpenPath,
+  currentCwd,
 }: TerminalViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -242,6 +253,8 @@ export function TerminalView({
   const onOutputRef = useRef(onOutput);
   const onInputRef = useRef(onInput);
   const onOpenLinkRef = useRef(onOpenLink);
+  const onOpenPathRef = useRef(onOpenPath);
+  const currentCwdRef = useRef(currentCwd);
   const onSessionStartRef = useRef(onSessionStart);
   const activeRef = useRef(active);
   const themeRef = useRef(theme);
@@ -260,6 +273,8 @@ export function TerminalView({
     onOutputRef.current = onOutput;
     onInputRef.current = onInput;
     onOpenLinkRef.current = onOpenLink;
+    onOpenPathRef.current = onOpenPath;
+    currentCwdRef.current = currentCwd;
     onSessionStartRef.current = onSessionStart;
     activeRef.current = active;
     themeRef.current = theme;
@@ -341,6 +356,29 @@ export function TerminalView({
     term.loadAddon(new Unicode11Addon());
     // The default handler of the addon would call `window.open` at once.
     term.loadAddon(new WebLinksAddon(activateLink));
+    // The file paths of the output are links too, after the addresses so that wherever the two meet
+    // the address wins (the text of an address is not read as a path in any case). They are found in
+    // the text on screen and nothing is read from a disk; a click opens nothing unless Ctrl is held.
+    term.registerLinkProvider({
+      provideLinks: (row, callback) => {
+        if (onOpenPathRef.current === undefined) {
+          callback(undefined);
+          return;
+        }
+        const links = pathLinksOfRow(term.buffer.active, row - 1, currentCwdRef.current?.());
+        callback(
+          links.length === 0
+            ? undefined
+            : links.map((link) => ({
+                range: link.range,
+                text: link.text,
+                activate: (event: MouseEvent) => {
+                  if (event.ctrlKey || event.metaKey) onOpenPathRef.current?.(link.path);
+                },
+              })),
+        );
+      },
+    });
     term.loadAddon(new SearchAddon());
     const serialize = new SerializeAddon();
     term.loadAddon(serialize);

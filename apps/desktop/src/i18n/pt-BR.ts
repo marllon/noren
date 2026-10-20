@@ -163,6 +163,12 @@ export const ptBR: Dictionary = {
   "preview.refused.tooLargeBare":
     "Este arquivo é grande demais para a prévia. Ela mostra texto até {textLimit} e imagens até {imageLimit}.",
   "preview.refused.unreadable": "Não foi possível ler o arquivo: {reason}",
+  "preview.open.noFolder":
+    "Esse caminho é relativo e este painel não tem pasta para lê-lo a partir dela.",
+  "preview.open.network":
+    "Esse caminho está na rede, e caminhos de rede e de dispositivo não têm prévia.",
+  "preview.open.invalid": "Esse caminho não pode ter prévia.",
+  "preview.open.limit": "Uma aba tem no máximo {max} painéis, então a prévia não foi aberta.",
   "preview.refused.unreadableBare": "Não foi possível ler o arquivo.",
 
   // Moving things with the keyboard or the pointer

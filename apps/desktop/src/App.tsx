@@ -7,6 +7,7 @@ import {
   aiIsOn,
   browserUrlProblem,
   layoutPanes,
+  resolveOutputPath,
   scrollbackAllowed,
   treeGroups,
   withMod,
@@ -60,7 +61,7 @@ import { AskPanel } from "./AskPanel";
 import { BrowserPane } from "./BrowserPane";
 import { browserTitle } from "./browser-address";
 import { PreviewPane } from "./PreviewPane";
-import { previewTitle } from "./preview-view";
+import { openPathNotice, previewLimitNotice, previewTitle } from "./preview-view";
 import { askOffNotice, shellNameOf } from "./ask-panel";
 import type { AskSources, ExplainRequest } from "./ask-panel";
 import { CommandAskDialog } from "./CommandAskDialog";
@@ -388,6 +389,8 @@ interface PaneTerminalProps {
   onReady(paneId: Id, handle: TerminalHandle): void;
   /** A link of the output was Ctrl+clicked: true when it opened beside the pane. */
   onOpenLink(url: string): boolean;
+  /** A file path of the output was Ctrl+clicked (as written, it may be relative). */
+  onOpenPath(path: string): void;
 }
 
 /**
@@ -404,6 +407,7 @@ function PaneTerminal({
   colors,
   onReady,
   onOpenLink,
+  onOpenPath,
 }: PaneTerminalProps) {
   const { profileId, cwd, env } = sessionStartOptions(space, pane);
   // Font, cursor, scrollback and bell: the settings of the file and the zoom of this window.
@@ -457,6 +461,8 @@ function PaneTerminal({
       onSessionStart={(id) => store.getState().attachSession(pane.id, String(id))}
       onReady={(handle) => onReady(pane.id, handle)}
       onOpenLink={onOpenLink}
+      onOpenPath={onOpenPath}
+      currentCwd={() => paneRef.current.cwd}
       onCwd={recordFolder}
       {...(onExplain !== undefined ? { onExplain } : {})}
       onInput={() => {
@@ -490,6 +496,8 @@ interface ItemViewProps {
   onPaneMenu(paneId: Id, point: MenuPoint): void;
   /** A link of the output of a pane was Ctrl+clicked: true when it opened beside the pane. */
   onOpenBrowser(paneId: Id, url: string): boolean;
+  /** A file path of the output of a pane was Ctrl+clicked: a preview opens beside it, or a notice says why not. */
+  onOpenPreview(paneId: Id, path: string): void;
 }
 
 /** The layout of one tab: its panes as nested resizable panels, a terminal in each. */
@@ -504,6 +512,7 @@ function ItemView({
   onReady,
   onPaneMenu,
   onOpenBrowser,
+  onOpenPreview,
 }: ItemViewProps) {
   const dispatch = useStore(store, (state) => state.dispatch);
   const { paneHeaders } = useLayout();
@@ -558,6 +567,7 @@ function ItemView({
           colors={colors}
           onReady={onReady}
           onOpenLink={(url) => onOpenBrowser(pane.id, url)}
+          onOpenPath={(path) => onOpenPreview(pane.id, path)}
         />
       );
     },
@@ -1150,6 +1160,45 @@ function Shell({ store }: { store: WorkspaceStore }) {
         }
       }
       return false;
+    },
+    [store, showNotice],
+  );
+  /**
+   * A file path of the output of `paneId` was Ctrl+clicked: a preview pane opens beside it, and the
+   * keyboard stays with the pane the person was typing in. A relative path is read against the folder
+   * the pane is in now. A path the preview does not open (a folder on the network, say) or a tab with
+   * no room says so in a notice and makes no pane; nothing is read from the disk here, the pane reads
+   * its own file when it is drawn.
+   */
+  const openPreviewBeside = useCallback(
+    (paneId: Id, written: string): void => {
+      const state = store.getState();
+      for (const s of state.workspace.spaces) {
+        for (const item of Object.values(s.items)) {
+          const panes = layoutPanes(item.layout);
+          const source = panes.find((pane) => pane.id === paneId);
+          if (source === undefined) continue;
+          const resolved = resolveOutputPath(written, source.cwd);
+          if (!resolved.ok) {
+            showNotice(openPathNotice(resolved.problem));
+            return;
+          }
+          if (panes.length >= DEFAULT_MAX_PANES) {
+            showNotice(previewLimitNotice(DEFAULT_MAX_PANES));
+            return;
+          }
+          state.dispatch({
+            type: "pane/split",
+            itemId: item.id,
+            paneId,
+            dir: "row",
+            side: "after",
+            path: resolved.path,
+          });
+          state.dispatch({ type: "pane/focus", itemId: item.id, paneId });
+          return;
+        }
+      }
     },
     [store, showNotice],
   );
@@ -2170,6 +2219,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
                           setOverlay({ kind: "pane-menu", paneId, point })
                         }
                         onOpenBrowser={openBrowserBeside}
+                        onOpenPreview={openPreviewBeside}
                       />
                     ))}
                   </div>

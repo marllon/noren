@@ -281,6 +281,72 @@ describe("the reducer with a preview pane in the workspace", () => {
     expect(added[0]?.cwd).toBeUndefined();
   });
 
+  it("splits a terminal pane into a preview pane beside it when given a path", () => {
+    const base = createDefaultWorkspace({ newId: createSequentialIds("d") });
+    const item = firstItem(base);
+    const only = layoutPanes(item.layout)[0];
+    if (!only) throw new Error("no pane");
+    const next = applyChecked(base, {
+      type: "pane/split",
+      itemId: item.id,
+      paneId: only.id,
+      dir: "row",
+      side: "after",
+      path: PATH,
+    });
+    const panes = layoutPanes(firstItem(next).layout);
+    expect(panes).toHaveLength(2);
+    expect(panes[0]?.id).toBe(only.id);
+    expect(panes[1]).toMatchObject({ type: "preview", path: PATH, profileId: DEFAULT_PROFILE_ID });
+    expect(panes[1]?.sessionId).toBeUndefined();
+    expect(panes[1]?.cwd).toBeUndefined();
+    // The new pane takes focus in the model, as any split does; the shell gives it back.
+    expect(firstItem(next).focusedPaneId).toBe(panes[1]?.id);
+  });
+
+  it.each([
+    ["a relative path", "notes.md"],
+    ["an empty path", ""],
+    ["a path on the network", "\\\\server\\share\\a.md"],
+    ["a path with a control character", "/home/me/a\u0000.md"],
+    ["a path of another kind than text", 7 as unknown as string],
+  ])("does not split into a preview pane for %s", (_what, path) => {
+    const { ws, terminalId } = withPreviewPane();
+    const { ctx } = testContext();
+    const next = reduce(
+      ws,
+      {
+        type: "pane/split",
+        itemId: firstItem(ws).id,
+        paneId: terminalId,
+        dir: "row",
+        side: "after",
+        path,
+      },
+      ctx,
+    );
+    expect(next).toBe(ws);
+  });
+
+  it("does not split into a pane that is a browser and a preview at once", () => {
+    const { ws, terminalId } = withPreviewPane();
+    const { ctx } = testContext();
+    const next = reduce(
+      ws,
+      {
+        type: "pane/split",
+        itemId: firstItem(ws).id,
+        paneId: terminalId,
+        dir: "row",
+        side: "after",
+        path: PATH,
+        url: "https://example.org/",
+      },
+      ctx,
+    );
+    expect(next).toBe(ws);
+  });
+
   it("does not turn a preview pane into a browser pane by pointing it at a page", () => {
     const { ws, previewId } = withPreviewPane();
     const { ctx } = testContext();

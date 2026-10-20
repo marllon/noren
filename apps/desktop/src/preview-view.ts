@@ -4,7 +4,13 @@ import {
   formatJson,
   previewFileName,
 } from "@noren/model";
-import type { Backend, FilePreview, PreviewImageMime, PreviewRefusal } from "@noren/model";
+import type {
+  Backend,
+  FilePreview,
+  OutputPathProblem,
+  PreviewImageMime,
+  PreviewRefusal,
+} from "@noren/model";
 import { t } from "./i18n";
 
 // What a preview pane draws, decided apart from React: the state of the read, and for each answer of
@@ -113,3 +119,18 @@ export function contentOf(state: PreviewState): PreviewContent {
 export function previewTitle(path: string | undefined): string {
   return path === undefined ? t("preview.pane") : previewFileName(path);
 }
+
+/** What the notice says when a Ctrl+clicked path of the output opens no preview, and why. */
+export function openPathNotice(problem: OutputPathProblem): string {
+  switch (problem) {
+    case "no-folder":
+      return t("preview.open.noFolder");
+    case "network":
+      return t("preview.open.network");
+    case "invalid":
+      return t("preview.open.invalid");
+  }
+}
+
+/** What the notice says when a tab has no room for the preview of a path. */
+export const previewLimitNotice = (max: number): string => t("preview.open.limit", { max });

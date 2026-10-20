@@ -200,7 +200,9 @@ export type Action =
    * pane takes focus and ends zoom. It inherits `profileId` and `cwd` from the split pane unless
    * given. Over `maxPanes` is invalid. With `url` the new pane is a browser pane showing that page
    * (see `createBrowserPane`), with no shell and no folder: an address `browserUrlProblem` refuses
-   * changes nothing.
+   * changes nothing. With `path` it is a preview pane showing that file (`createPreviewPane`), also
+   * with no shell and no folder, and a path `previewPathProblem` refuses changes nothing; `url` and
+   * `path` together change nothing either.
    */
   | {
       type: "pane/split";
@@ -211,6 +213,7 @@ export type Action =
       profileId?: string;
       cwd?: string;
       url?: string;
+      path?: string;
     }
   /**
    * Points a browser pane at another page. An address `browserUrlProblem` refuses, a pane that is

@@ -344,6 +344,48 @@ describe("workspace store", () => {
     expect(backend.callsTo("kill").map((call) => call.args[0])).toEqual([79]);
   });
 
+  it("a tab left with only a preview pane is named after the file", async () => {
+    const { store } = await openStore(new FakeBackend());
+    const state = store.getState();
+    const itemId = activeItemIdOf(state);
+    const item = itemId === undefined ? undefined : activeSpaceOf(state.workspace).items[itemId];
+    const terminal = item && layoutPanes(item.layout)[0];
+    if (!item || !terminal) throw new Error("no tab");
+    state.dispatch({
+      type: "pane/split",
+      itemId: item.id,
+      paneId: terminal.id,
+      dir: "row",
+      side: "after",
+      path: "/home/me/notes.md",
+    });
+    // The terminal is still there to name the tab.
+    const before = activeSpaceOf(store.getState().workspace).items[item.id];
+    expect(before?.title).not.toBe("notes.md");
+    store.getState().dispatch({ type: "pane/close", itemId: item.id, paneId: terminal.id });
+    expect(activeSpaceOf(store.getState().workspace).items[item.id]?.title).toBe("notes.md");
+  });
+
+  it("a tab whose title the user chose keeps it when only a preview pane is left", async () => {
+    const { store } = await openStore(new FakeBackend());
+    const state = store.getState();
+    const itemId = activeItemIdOf(state);
+    const item = itemId === undefined ? undefined : activeSpaceOf(state.workspace).items[itemId];
+    const terminal = item && layoutPanes(item.layout)[0];
+    if (!item || !terminal) throw new Error("no tab");
+    state.dispatch({ type: "item/rename", itemId: item.id, title: "Mine" });
+    state.dispatch({
+      type: "pane/split",
+      itemId: item.id,
+      paneId: terminal.id,
+      dir: "row",
+      side: "after",
+      path: "/home/me/notes.md",
+    });
+    store.getState().dispatch({ type: "pane/close", itemId: item.id, paneId: terminal.id });
+    expect(activeSpaceOf(store.getState().workspace).items[item.id]?.title).toBe("Mine");
+  });
+
   it("an action the reducer rejects changes and saves nothing", async () => {
     const backend = new FakeBackend();
     const { store } = await openStore(backend);

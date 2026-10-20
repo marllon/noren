@@ -28,6 +28,7 @@ import type {
 } from "@noren/model";
 import { createStore } from "zustand/vanilla";
 import { autoTitleAction } from "./auto-title";
+import { speakingPane } from "./pane-info";
 import type { StoreApi } from "zustand/vanilla";
 
 /** What the new-space dialog collects. A missing field leaves the default of the model. */
@@ -373,6 +374,17 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
         // A title the user cleared goes back to what the shell asks for, without waiting for it.
         if (action.type === "item/rename" && (action.source ?? "user") === "user") {
           retitle(action.itemId);
+        }
+        // A tab left with a preview pane for all that it has to say (its shell pane was closed or
+        // taken out) has no shell to rename it, so it is named after the file now.
+        if (action.type === "pane/close" || action.type === "pane/detach") {
+          const ids = [action.itemId];
+          const moved = action.type === "pane/detach" ? findItemOfPane(after, action.paneId) : "";
+          if (moved !== undefined && moved !== "") ids.push(moved);
+          for (const id of ids) {
+            const item = findItem(after, id);
+            if (item && speakingPane(item)?.type === "preview") retitle(id);
+          }
         }
       },
 

@@ -2,7 +2,15 @@ import { FakeBackend, MAX_PREVIEW_IMAGE_BYTES, MAX_PREVIEW_TEXT_BYTES } from "@n
 import type { FilePreview } from "@noren/model";
 import { afterEach, describe, expect, it } from "vitest";
 import { setLanguage } from "./i18n";
-import { contentOf, formatBytes, loadPreview, previewTitle, refusalText } from "./preview-view";
+import {
+  contentOf,
+  formatBytes,
+  loadPreview,
+  openPathNotice,
+  previewLimitNotice,
+  previewTitle,
+  refusalText,
+} from "./preview-view";
 import type { PreviewState } from "./preview-view";
 
 afterEach(() => setLanguage("en"));
@@ -186,5 +194,29 @@ describe("the title of a preview pane", () => {
     expect(previewTitle(undefined)).toBe("File preview");
     setLanguage("pt-BR");
     expect(previewTitle(undefined)).toBe("Prévia de arquivo");
+  });
+});
+
+describe("the notices of a path of the output that opens no preview", () => {
+  it.each([
+    ["no-folder", "That path is relative and this pane has no folder to read it against."],
+    ["network", "That path is on the network, and network and device paths are not previewed."],
+    ["invalid", "That path cannot be previewed."],
+  ] as const)("says why for %s, in both languages", (problem, english) => {
+    expect(openPathNotice(problem)).toBe(english);
+    setLanguage("pt-BR");
+    const portuguese = openPathNotice(problem);
+    expect(portuguese).not.toBe(english);
+    expect(portuguese).toMatch(/caminho/);
+  });
+
+  it("says how many panes a tab holds", () => {
+    expect(previewLimitNotice(4)).toBe(
+      "A tab holds at most 4 panes, so the preview was not opened.",
+    );
+    setLanguage("pt-BR");
+    expect(previewLimitNotice(4)).toBe(
+      "Uma aba tem no máximo 4 painéis, então a prévia não foi aberta.",
+    );
   });
 });

@@ -98,6 +98,11 @@ const arbBrowserUrl = fc.oneof(
   { weight: 4, arbitrary: fc.constantFrom("https://example.com/", "http://localhost:3000/a?b#c") },
   { weight: 1, arbitrary: fc.constantFrom("file:///C:/x", "javascript:alert(1)", "", "https://") },
 );
+/** A file a preview pane may show, or a path it may not (the reducer must refuse those). */
+const arbPreviewPath = fc.oneof(
+  { weight: 4, arbitrary: fc.constantFrom("/home/user/notes.md", "C:\\Projects\\noren\\a.png") },
+  { weight: 1, arbitrary: fc.constantFrom("notes.md", "", "\\\\server\\share\\a.md", "C:a.md") },
+);
 /** Reaches both ends and a little past them. */
 const arbIndex = fc.integer({ min: -1, max: 8 });
 
@@ -409,6 +414,7 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
             profileId: arbProfile,
             cwd: arbCwd,
             url: arbBrowserUrl,
+            path: arbPreviewPath,
           },
           { requiredKeys: ["type", "itemId", "paneId", "dir", "side"] },
         ),

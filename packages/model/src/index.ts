@@ -411,6 +411,8 @@ export type {
   PreviewRefusalReason,
   PreviewTextKind,
 } from "./file-preview";
+export { findOutputPaths, resolveOutputPath } from "./output-paths";
+export type { OutputPathMatch, OutputPathProblem, ResolvedOutputPath } from "./output-paths";
 export { DEFAULT_AI_REPLY, FAKE_LINK_MAX_ATTEMPTS, FakeBackend } from "./fake-backend";
 export type {
   FakeAiMethod,

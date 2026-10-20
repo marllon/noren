@@ -277,6 +277,12 @@ impl DaemonClient {
         }
     }
 
+    /// Asks the daemon to stop. It answers first, then ends every session and exits, so this
+    /// client sees `Ok` and then the end of its connection (and so does every other client).
+    pub async fn shutdown(&self) -> Result<(), ClientError> {
+        self.request(Request::Shutdown).await?.into_ok()
+    }
+
     /// Sends a request and waits for the answer with the same id. An answer that is an error is
     /// turned into [`ClientError::Server`].
     async fn request(&self, request: Request) -> Result<Response, ClientError> {

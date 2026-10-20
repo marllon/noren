@@ -1,0 +1,21 @@
+[package]
+name = "norend"
+description = "The Noren session daemon: keeps terminal sessions alive while windows come and go."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+noren-core = { path = "../noren-core" }
+# Waits for Ctrl+C (and SIGTERM on Unix, Ctrl+Break and console close on Windows) so the daemon
+# can stop cleanly instead of being cut: `tokio::signal` is the one portable way to be told that
+# without a new crate. Only `rt` (a current-thread runtime for the wait) and `signal` are turned
+# on here; the daemon in `noren-core` already runs its own runtime. 1.53.3, MIT (already in the
+# tree; `signal` uses signal-hook-registry, MIT OR Apache-2.0, already in the tree through Tauri).
+tokio = { version = "1.53.3", features = ["rt", "signal"] }
+
+[dev-dependencies]
+# The tests are clients of the daemon process they start, so they need the runtime the client
+# library runs on; `time` for the timeouts, `macros` for `#[tokio::test]`.
+tokio = { version = "1.53.3", features = ["rt", "time", "macros"] }

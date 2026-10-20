@@ -961,6 +961,32 @@ async fn shutting_down_kills_every_session_and_joins_the_threads() {
 }
 
 #[tokio::test]
+async fn a_shutdown_request_is_answered_then_the_connection_ends_and_the_owner_is_told() {
+    within(async {
+        let mut daemon = start(ServerConfig::default());
+        let asked = daemon.shutdown_requested();
+        assert!(!asked.is_requested());
+        let (other, mut other_events) = connect(&daemon).await;
+        let (client, _events) = connect(&daemon).await;
+
+        client.shutdown().await.expect("the daemon answers Ok");
+        tokio::time::timeout(STEP, asked.wait())
+            .await
+            .expect("the owner is told");
+        assert!(asked.is_requested());
+        // The daemon waits for its owner: it still serves until `shutdown` is called.
+        assert!(other.list().await.is_ok());
+        assert!(client.list().await.is_err(), "that connection is closed");
+
+        daemon.shutdown();
+        assert!(other_events.recv().await.is_none());
+        assert!(matches!(other.list().await, Err(ClientError::Closed)));
+        assert!(DaemonClient::connect(daemon.endpoint()).await.is_err());
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn dropping_the_daemon_also_shuts_it_down() {
     within(async {
         let daemon = start(ServerConfig::default());

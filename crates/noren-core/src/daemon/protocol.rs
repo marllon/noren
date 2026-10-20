@@ -30,7 +30,10 @@
 //! ## Changing it
 //!
 //! Adding, removing or changing a message, a field or a tag changes the protocol: raise
-//! [`PROTOCOL_VERSION`]. The daemon and the client of one version accept only that version.
+//! [`PROTOCOL_VERSION`] by one, and add the new version and what it changed to the list on that
+//! constant and to `docs/DAEMON.md`. The daemon and the client of one version accept only that
+//! version, so a new request is never sent to a daemon that does not know it: the handshake fails
+//! first, by name, instead of the request failing as an unknown tag.
 
 use std::fmt;
 use std::path::PathBuf;
@@ -38,7 +41,10 @@ use std::path::PathBuf;
 use crate::pty::{ExitInfo, SessionId, SpawnSpec};
 
 /// The version of this protocol. The daemon refuses a client that speaks another one.
-pub const PROTOCOL_VERSION: u32 = 1;
+///
+/// 1: the first version (hello, create, write, resize, attach, detach, kill, list).
+/// 2: adds the `Shutdown` request, which a client sends to stop the daemon (`norend`).
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// Largest payload of one frame. A reader refuses a frame that announces more, and a writer
 /// refuses to build one.
@@ -67,6 +73,7 @@ mod tag {
     pub const DETACH: u8 = 0x14;
     pub const KILL: u8 = 0x15;
     pub const LIST: u8 = 0x16;
+    pub const SHUTDOWN: u8 = 0x17;
 
     pub const WELCOME: u8 = 0x81;
     pub const CONNECTION_ERROR: u8 = 0x82;
@@ -234,6 +241,9 @@ pub enum Request {
     Kill { session: SessionId },
     /// The sessions the daemon holds.
     List,
+    /// Ask the daemon to stop: it answers [`Response::Ok`], then ends every session and exits.
+    /// (Version 2.) Any client of the user may ask; the endpoint is closed to everyone else.
+    Shutdown,
 }
 
 /// What the client says: the greeting, then requests.
@@ -380,6 +390,11 @@ impl ClientMessage {
                     w.u32(*id);
                     w.finish()
                 }
+                Request::Shutdown => {
+                    let mut w = Writer::new(tag::SHUTDOWN);
+                    w.u32(*id);
+                    w.finish()
+                }
             },
         }
     }
@@ -445,6 +460,7 @@ impl ClientMessage {
                 })
             })?,
             tag::LIST => request(&mut r, |_| Ok(Request::List))?,
+            tag::SHUTDOWN => request(&mut r, |_| Ok(Request::Shutdown))?,
             other => return Err(ProtocolError::UnknownTag(other)),
         };
         r.finish()?;
@@ -887,6 +903,7 @@ mod tests {
             request(Request::Detach { session }),
             request(Request::Kill { session }),
             request(Request::List),
+            request(Request::Shutdown),
         ]
     }
 

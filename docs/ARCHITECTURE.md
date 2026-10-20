@@ -18,7 +18,8 @@ noren/
   apps/desktop/                 Tauri 2 app
     src/                        React 19 + TypeScript interface
     src-tauri/                  thin Rust layer: commands, events, window, menus, global shortcuts
-  crates/noren-core/            Rust library without Tauri: PTY, profiles, config, persistence, git, AI client
+  crates/noren-core/            Rust library without Tauri: PTY, profiles, config, persistence, git, AI client, session daemon (server and client)
+  crates/norend/                the session daemon as a program (see DAEMON.md)
   packages/model/               pure TypeScript: data model, operations, invariants, Backend interface, FakeBackend
   e2e/                          Playwright in web mode (FakeBackend)
   docs/                         ARCHITECTURE, THEMING, CONFIG, PERF (English)

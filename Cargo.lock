@@ -2544,6 +2544,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "norend"
+version = "0.1.0"
+dependencies = [
+ "noren-core",
+ "tokio",
+]
+
+[[package]]
 name = "notify"
 version = "8.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4672,6 +4680,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",

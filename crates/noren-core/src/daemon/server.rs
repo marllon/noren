@@ -27,7 +27,9 @@
 //! ## Shutting down
 //!
 //! [`Daemon::shutdown`] stops accepting, closes every connection, kills every session and joins
-//! every session thread and the daemon thread; the socket file is removed.
+//! every session thread and the daemon thread; the socket file is removed. A client may ask for
+//! it with the `Shutdown` request: the daemon answers `Ok`, closes that connection, and fires
+//! [`ShutdownRequested`], but leaves calling `shutdown` to its owner.
 
 use std::collections::HashMap;
 use std::io;
@@ -146,6 +148,13 @@ impl Daemon {
         &self.endpoint
     }
 
+    /// A handle that fires when a client sends the `Shutdown` request. The daemon does not stop
+    /// by itself then: the owner waits on the handle and calls [`Daemon::shutdown`] (that is
+    /// what `norend` does), so it can also stop for other reasons (a signal) the same way.
+    pub fn shutdown_requested(&self) -> ShutdownRequested {
+        ShutdownRequested(self.state.shutdown_requested.clone())
+    }
+
     /// Sessions the daemon holds now.
     pub fn session_count(&self) -> usize {
         lock(&self.state.sessions).len()
@@ -164,6 +173,22 @@ impl Daemon {
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
+    }
+}
+
+/// Fires when a client asked the daemon to stop. Cheap to clone.
+#[derive(Debug, Clone)]
+pub struct ShutdownRequested(CancellationToken);
+
+impl ShutdownRequested {
+    /// Whether a client already asked.
+    pub fn is_requested(&self) -> bool {
+        self.0.is_cancelled()
+    }
+
+    /// Completes once a client has asked (at once if one already did).
+    pub async fn wait(&self) {
+        self.0.cancelled().await;
     }
 }
 
@@ -243,6 +268,8 @@ struct ServerState {
     next_session: AtomicU64,
     next_connection: AtomicU64,
     closing: AtomicBool,
+    /// Cancelled when a client sent `Shutdown`; whoever owns the [`Daemon`] decides what to do.
+    shutdown_requested: CancellationToken,
 }
 
 struct DaemonSession {
@@ -262,6 +289,7 @@ impl ServerState {
             next_session: AtomicU64::new(1),
             next_connection: AtomicU64::new(1),
             closing: AtomicBool::new(false),
+            shutdown_requested: CancellationToken::new(),
         }
     }
 
@@ -650,6 +678,7 @@ where
 
     // `true` when the client was told why the conversation ended: the writer must send that
     // before the connection closes.
+    let mut asked_to_stop = false;
     let refused = loop {
         let frame = tokio::select! {
             () = connection.closed.cancelled() => break false,
@@ -664,6 +693,17 @@ where
             }
         };
         match ClientMessage::decode(&payload) {
+            Ok(ClientMessage::Request {
+                id,
+                request: Request::Shutdown,
+            }) => {
+                // The answer is written before the owner is told, so the client that asked sees
+                // `Ok` and then the end of the connection, never the end alone.
+                connection.respond(id, Response::Ok).await;
+                connection.send(Outgoing::Close).await;
+                asked_to_stop = true;
+                break true;
+            }
             Ok(ClientMessage::Request { id, request }) => {
                 if !handle_request(&state, &connection, id, request).await {
                     break false;
@@ -695,6 +735,9 @@ where
         writer_task.abort();
     }
     connection.closed.cancel();
+    if asked_to_stop {
+        state.shutdown_requested.cancel();
+    }
 }
 
 /// The conversation after the handshake: `false` when the connection is gone.
@@ -736,6 +779,11 @@ async fn handle_request(
             unit(blocking(move || state.kill(session)).await)
         }
         Request::List => Response::Sessions(state.list()),
+        // Taken before this function (it needs the connection to end); never reaches here.
+        Request::Shutdown => Response::Error(ErrorBody::new(
+            ErrorCode::Internal,
+            "Shutdown was not handled by the connection",
+        )),
     };
     connection.respond(id, response).await
 }

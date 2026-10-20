@@ -27,8 +27,8 @@
 //!
 //! ## What is not here
 //!
-//! The daemon does not start itself, has no executable of its own yet, and the app does not use
-//! it: those are the next steps. A session buffer is bytes, not the state of a terminal: after it
+//! The daemon does not start itself and the app does not use it yet; the executable that runs it
+//! is the `norend` crate (see `docs/DAEMON.md`). A session buffer is bytes, not the state of a terminal: after it
 //! wrapped, a replay can begin in the middle of an escape sequence, and a program on the
 //! alternate screen is not redrawn by it. The client does not check who owns the pipe it opens on
 //! Windows (the name carries the user's SID and the daemon creates the first instance, so another
@@ -53,7 +53,7 @@ pub use protocol::{
 pub use ring::ByteRing;
 pub use server::{
     DEFAULT_BUFFER_BYTES, DEFAULT_CLIENT_QUEUE_FRAMES, DEFAULT_HANDSHAKE_TIMEOUT,
-    DEFAULT_MAX_SESSIONS, Daemon, ServerConfig,
+    DEFAULT_MAX_SESSIONS, Daemon, ServerConfig, ShutdownRequested,
 };
 
 /// Locks a mutex, taking the data back from a thread that panicked while holding it.

@@ -51,6 +51,12 @@ export interface CreateSessionOptions {
   paneId?: string;
 }
 
+/** What `Backend.attachSession` can be asked besides taking the output over. */
+export interface AttachSessionOptions {
+  /** Deliver what the session printed before, ahead of what it prints next (see `attachSession`). */
+  replay?: boolean;
+}
+
 /** How a session ended. */
 export interface SessionExit {
   id: SessionId;
@@ -145,8 +151,16 @@ export interface Backend {
    * while this is being asked is held for the first `onOutput` subscriber. Rejects when no live
    * session has the id (never started, or already ended). A session taken over this way has no pane
    * (see `CreateSessionOptions.paneId`), so it does not outlive the app.
+   *
+   * With `options.replay` the terminal that is about to be drawn for the session is not an empty one
+   * that has seen nothing (a window that just got the tab, the main window getting it back): what
+   * the session printed before, as far back as its host keeps it (the session daemon keeps a
+   * megabyte), is delivered to the first `onOutput` subscriber before anything the shell prints
+   * from then on, with nothing missing and nothing repeated. A host that keeps nothing (the shells
+   * that run inside the app, a shell on another machine) delivers only what comes next, as without
+   * the option.
    */
-  attachSession(id: SessionId): Promise<void>;
+  attachSession(id: SessionId, options?: AttachSessionOptions): Promise<void>;
   /**
    * Gives the pane `paneId` the shell it had before the app was closed, when the settings keep
    * sessions and the session daemon still holds it: from then on `onOutput(id)` delivers what the

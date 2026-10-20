@@ -79,6 +79,39 @@ impl OutputRoute {
         old
     }
 
+    /// Makes `channel` the destination of everything sent from now on, after it has been handed
+    /// `replay` (what the session printed before, which the new page has not seen). It counts as a
+    /// change of page, like [`Self::replace`]. Both happen under the one lock, so nothing sent
+    /// meanwhile gets ahead of the replay or is lost between the two. Returns the channel it
+    /// replaces, which gets nothing more.
+    pub fn replace_with_replay(
+        &self,
+        channel: Channel<InvokeResponseBody>,
+        replay: &[u8],
+    ) -> Channel<InvokeResponseBody> {
+        let mut inner = self.lock();
+        let old = std::mem::replace(&mut inner.channel, channel);
+        inner.channels += 1;
+        inner.delivered = 0;
+        if let Some(tail) = &mut inner.tail {
+            tail.bytes.clear();
+        }
+        if !replay.is_empty()
+            && inner
+                .channel
+                .send(InvokeResponseBody::Raw(replay.to_vec()))
+                .is_ok()
+        {
+            inner.delivered += 1;
+            if let Some(tail) = &mut inner.tail {
+                tail.bytes.extend_from_slice(replay);
+                let excess = tail.bytes.len().saturating_sub(tail.limit);
+                tail.bytes.drain(..excess);
+            }
+        }
+        old
+    }
+
     /// Makes `channel` the destination of everything sent from now on, after it has been handed the
     /// `backlog` (what was kept for it, in order). The channel counts as the first one: this is a
     /// session that waited for its page, not one that changed page. Both happen under the one lock,
@@ -189,6 +222,41 @@ mod tests {
             vec![b"one".to_vec(), b"two".to_vec(), b"three".to_vec()]
         );
         assert_eq!((route.channels(), route.delivered()), (1, 3));
+    }
+
+    #[test]
+    fn a_replaced_channel_gets_the_replay_first_then_the_rest_and_counts_as_a_change_of_page() {
+        let (old, old_rx) = listening();
+        let (page, page_rx) = listening();
+        let route = OutputRoute::new(old);
+        route.send(b"early");
+        route.record_tail(64);
+        drop(route.replace_with_replay(page, b"what it printed"));
+        route.send(b" and then");
+
+        assert_eq!(chunks(&old_rx), vec![b"early".to_vec()]);
+        assert_eq!(
+            chunks(&page_rx),
+            vec![b"what it printed".to_vec(), b" and then".to_vec()]
+        );
+        assert_eq!((route.channels(), route.delivered()), (2, 2));
+        assert_eq!(route.tail(), b"what it printed and then");
+    }
+
+    #[test]
+    fn an_empty_replay_sends_nothing_and_a_refused_one_is_not_counted() {
+        let (old, _old_rx) = listening();
+        let (page, page_rx) = listening();
+        let route = OutputRoute::new(old);
+        drop(route.replace_with_replay(page, b""));
+        assert!(chunks(&page_rx).is_empty());
+        assert_eq!((route.channels(), route.delivered()), (2, 0));
+
+        let (other, _other_rx) = listening();
+        let route = OutputRoute::new(other);
+        let failing = Channel::new(|_body: InvokeResponseBody| Err(tauri::Error::WindowNotFound));
+        drop(route.replace_with_replay(failing, b"lost"));
+        assert_eq!(route.delivered(), 0);
     }
 
     #[test]

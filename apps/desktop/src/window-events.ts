@@ -77,7 +77,7 @@ export async function followTakes(
         wanted === undefined ? "the event does not carry a list of sessions" : undefined;
       for (const id of wanted ?? []) {
         try {
-          await backend.attachSession(id);
+          await backend.attachSession(id, { replay: true });
           taken.push(id);
         } catch (error) {
           reason = error instanceof Error ? error.message : String(error);

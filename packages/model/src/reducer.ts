@@ -1689,10 +1689,21 @@ function clearUnread(
 
 /**
  * The panes on screen have nothing unread: showing a tab (or a space, or a pane that zoom hid)
- * is reading it. Runs after every action that changed the workspace, so no action has to know.
+ * is reading it. The main window shows the tab of the active space and every other window the tab
+ * of its own space, each is looked at, so each is read (finding 241). Runs after every action that
+ * changed the workspace, so no action has to know.
  */
 function clearViewed(ws: Workspace): Workspace {
-  const space = findSpace(ws, ws.activeSpaceId);
+  let next = ws;
+  for (const spaceId of [ws.activeSpaceId, ...workspaceWindows(ws).map((w) => w.spaceId)]) {
+    next = clearViewedIn(next, spaceId);
+  }
+  return next;
+}
+
+/** The panes the space `spaceId` has on screen, read; the same workspace when none is marked. */
+function clearViewedIn(ws: Workspace, spaceId: Id): Workspace {
+  const space = findSpace(ws, spaceId);
   const item = space && shownItem(space);
   if (!space || !item || !visiblePanes(item).some(isMarked)) return ws;
   const seen = new Set(visiblePanes(item).map((pane) => pane.id));

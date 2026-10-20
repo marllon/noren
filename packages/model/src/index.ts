@@ -3,6 +3,7 @@ import "./zod-config";
 export const MODEL_PACKAGE_NAME = "@noren/model";
 
 export type {
+  AttachSessionOptions,
   Backend,
   CreateSessionOptions,
   AgentHit,

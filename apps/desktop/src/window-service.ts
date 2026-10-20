@@ -5,10 +5,15 @@ import {
   windowCanShowTab,
   workspaceWindows,
 } from "@noren/model";
-import type { Backend, Id, Space, Unsubscribe, Workspace } from "@noren/model";
+import type { Action, Backend, Id, Space, Unsubscribe, Workspace } from "@noren/model";
 import type { QuickEvents } from "./quick";
+import { sessionStartOptions } from "./workspace-store";
 import type { WorkspaceStore } from "./workspace-store";
 import { followWindowPages } from "./window-sync";
+
+/** The size a shell of a tab opened from a window starts with, until the terminal of the window fits it. */
+const NEW_TAB_COLS = 80;
+const NEW_TAB_ROWS = 24;
 
 // The windows of the app as the main window, which owns the workspace, drives them: the workspace
 // says which windows there are and which space each shows (`Workspace.windows`), the backend makes
@@ -201,12 +206,93 @@ export async function returnWindowTabs(
   const space = store.getState().workspace.spaces.find((s) => s.id === window.spaceId);
   if (space !== undefined && window.returnSpaceId !== undefined) {
     for (const id of sessionsOfSpace(space)) {
-      await backend.attachSession(id).catch(() => undefined);
+      await backend.attachSession(id, { replay: true }).catch(() => undefined);
     }
   }
   store.getState().dispatch({ type: "window/return", windowId });
   await backend.closeWindow(windowId).catch(() => undefined);
   return { ok: true, windowId };
+}
+
+/**
+ * Opens a tab in the space of the window, for a window that asked for one: the workspace gets the
+ * tab (`item/create`, in the space of the window, with its profile, folder and environment), the
+ * shell of its pane is started here, where the shells of the app are started and the pane is told
+ * its session, and the page of the window takes the output of that shell over (the same
+ * processes under the same ids, as for a tab moved there). A shell that cannot start, or a window
+ * that does not take it, closes the tab again, so the workspace and the window never disagree.
+ * Never throws.
+ */
+export async function openTabInWindow(
+  store: WorkspaceStore,
+  backend: Pick<Backend, "createSession" | "moveTabToWindow">,
+  windowId: Id,
+): Promise<WindowResult> {
+  const window = findWindow(store.getState().workspace, windowId);
+  const before = store.getState().workspace.spaces.find((s) => s.id === window?.spaceId);
+  if (window === undefined || before === undefined) return { ok: false, reason: "no such window" };
+  const known = new Set(Object.keys(before.items));
+  store.getState().dispatch({ type: "item/create", spaceId: window.spaceId });
+  const space = store.getState().workspace.spaces.find((s) => s.id === window.spaceId);
+  const itemId = Object.keys(space?.items ?? {}).find((id) => !known.has(id));
+  const item = itemId === undefined ? undefined : space?.items[itemId];
+  const pane = item === undefined ? undefined : layoutPanes(item.layout)[0];
+  if (space === undefined || itemId === undefined || pane === undefined) {
+    return { ok: false, reason: "the tab could not be made" };
+  }
+  const closeAgain = (): void => store.getState().dispatch({ type: "item/close", itemId });
+  let session: number;
+  try {
+    session = await backend.createSession({
+      ...sessionStartOptions(space, pane),
+      paneId: pane.id,
+      cols: NEW_TAB_COLS,
+      rows: NEW_TAB_ROWS,
+    });
+  } catch (error) {
+    closeAgain();
+    return { ok: false, reason: reasonOf(error) };
+  }
+  // The pane is told its session (the shell is ended instead when the pane closed meanwhile).
+  store.getState().attachSession(pane.id, String(session));
+  try {
+    await backend.moveTabToWindow(windowId, [session]);
+  } catch (error) {
+    closeAgain();
+    return { ok: false, reason: reasonOf(error) };
+  }
+  return { ok: true, windowId };
+}
+
+/**
+ * Carries out a request a window made that the main window checked (see `actionOfWindowRequest`).
+ * A new tab starts its shell (`openTabInWindow`); closing a tab ends its shells (the store does,
+ * for every pane an action drops) and, when it was the last tab of the window, closes the window
+ * (`returnWindowTabs`: a window made for a tab goes away with the space made for it, one on a space
+ * of the user is closed and keeps the space); everything else is an action of the workspace. Never
+ * throws.
+ */
+export async function runWindowAction(
+  store: WorkspaceStore,
+  backend: Pick<Backend, "createSession" | "moveTabToWindow" | "attachSession" | "closeWindow">,
+  windowId: Id,
+  action: Action,
+): Promise<void> {
+  try {
+    if (action.type === "item/create") {
+      await openTabInWindow(store, backend, windowId);
+      return;
+    }
+    store.getState().dispatch(action);
+    if (action.type !== "item/close") return;
+    const window = findWindow(store.getState().workspace, windowId);
+    const space = store.getState().workspace.spaces.find((s) => s.id === window?.spaceId);
+    if (window !== undefined && space !== undefined && Object.keys(space.items).length === 0) {
+      await returnWindowTabs(store, backend, windowId);
+    }
+  } catch {
+    // A request that could not be carried out changes nothing more.
+  }
 }
 
 /**
@@ -263,11 +349,18 @@ export function startWindows(
   store: WorkspaceStore,
   backend: Pick<
     Backend,
-    "openWindow" | "moveTabToWindow" | "attachSession" | "closeWindow" | "onWindowClosed"
+    | "openWindow"
+    | "moveTabToWindow"
+    | "attachSession"
+    | "closeWindow"
+    | "onWindowClosed"
+    | "createSession"
   >,
   events: QuickEvents,
 ): Unsubscribe {
-  const stopPages = followWindowPages(store, events);
+  const stopPages = followWindowPages(store, events, (windowId, action) =>
+    runWindowAction(store, backend, windowId, action),
+  );
   const stopClosed = followWindowClosed(store, backend);
   void bringUpWindows(store, backend);
   return () => {

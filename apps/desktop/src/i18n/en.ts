@@ -530,7 +530,6 @@ export const en = {
   // The other windows of the app: the tabs moved to them (NOR-F15-04a)
   "window.title": "Noren window",
   "window.waiting": "No tab here yet.",
-  "window.tabs": "Tabs of this window",
   "window.noShell": "This pane has no shell.",
   "window.paneElsewhere": "This pane is shown in the main window.",
   "window.preview": "Window preview",

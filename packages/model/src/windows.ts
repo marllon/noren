@@ -87,7 +87,7 @@ export function spaceIsShown(
 /**
  * Whether the tab can be shown by a window besides the main one: every pane of it is a terminal.
  * The page of such a window draws terminals only; the web view of a browser pane, the preview and
- * the diff stay with the main window until the windows draw those too (NOR-F15-04c), so a tab with
+ * the diff stay with the main window until the windows draw those too (NOR-F15-04d), so a tab with
  * one of them stays where it is.
  */
 export function windowCanShowTab(item: Pick<Item, "layout">): boolean {

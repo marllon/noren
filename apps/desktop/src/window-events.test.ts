@@ -117,7 +117,9 @@ describe("followTakes", () => {
 
     await events.emit(WINDOW_TAKE_EVENT, { windowId: "w1", request: 7, ids: [id] });
     await settle();
-    expect(backend.callsTo("attachSession").map((call) => call.args)).toEqual([[id]]);
+    expect(backend.callsTo("attachSession").map((call) => call.args)).toEqual([
+      [id, { replay: true }],
+    ]);
     expect(taken).toEqual([[id]]);
     // The answer carries the number of the request it answers.
     expect(heard.at(-1)).toEqual({
@@ -162,7 +164,10 @@ describe("followTakes", () => {
       },
     });
     // It stopped at the first refusal: the session after it was not tried.
-    expect(backend.callsTo("attachSession").map((call) => call.args)).toEqual([[live], [999]]);
+    expect(backend.callsTo("attachSession").map((call) => call.args)).toEqual([
+      [live, { replay: true }],
+      [999, { replay: true }],
+    ]);
   });
 
   it("refuses an event whose list of sessions is not one, and answers it", async () => {

@@ -364,12 +364,18 @@ function checkPaneDelta(ws: Workspace, next: Workspace, action: Action, where: (
   }
 }
 
-/** The panes the active space shows are not unread, whatever the action that just ran. */
+/**
+ * The panes on screen are not unread, whatever the action that just ran: the ones the active space
+ * shows in the main window, and the ones the space of each other window shows in that window.
+ */
 function checkNothingUnreadOnScreen(ws: Workspace, where: () => string): void {
-  const space = ws.spaces.find((s) => s.id === ws.activeSpaceId);
-  const item = space && shownItem(space);
-  if (item && visiblePanes(item).some((pane) => pane.unread || pane.bell)) {
-    throw new Error(`${where()}: a pane on screen is unread`);
+  const shown = [ws.activeSpaceId, ...(ws.windows ?? []).map((window) => window.spaceId)];
+  for (const spaceId of shown) {
+    const space = ws.spaces.find((s) => s.id === spaceId);
+    const item = space && shownItem(space);
+    if (item && visiblePanes(item).some((pane) => pane.unread || pane.bell)) {
+      throw new Error(`${where()}: a pane on screen is unread`);
+    }
   }
 }
 
@@ -649,7 +655,7 @@ describe("reducer properties", () => {
   it(
     "property: sequences keep every invariant on workspaces that already have windows",
     () => {
-      playSequences(SMALL_RUNS, undefined, { windows: true });
+      playSequences(SMALL_RUNS, undefined, { windows: true, browserPanes: true });
     },
     SEQUENCE_TIMEOUT_MS,
   );

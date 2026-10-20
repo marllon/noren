@@ -5,6 +5,7 @@ import { memoryQuickEvents } from "./quick";
 import type { QuickEvents } from "./quick";
 import { WINDOW_READY_EVENT } from "./window-events";
 import {
+  MAX_WINDOW_TABS,
   WINDOW_ACTION_EVENT,
   WINDOW_STATE_EVENT,
   actionOfWindowRequest,
@@ -160,18 +161,24 @@ describe("actionOfWindowRequest", () => {
       ).toBeUndefined();
     };
     for (const type of [
-      "item/close",
       "pane/close",
       "pane/split",
       "space/delete",
       "window/close",
       "window/return",
-      "item/move",
+      "item/pin",
+      "item/rename",
+      "item/favorite",
+      "group/create",
       "pane/set-url",
       "space/activate",
+      "item/reopen",
+      "item/join",
     ]) {
       refused({ type, itemId: tab, paneId: "p", spaceId: space.id, windowId: window.id });
     }
+    // Moving a tab asks for a place; without one there is nothing to carry out.
+    refused({ type: "item/move", itemId: tab });
     // A tab the space of the window does not hold, and the space of another window.
     refused({ type: "pane/focus", itemId: mainTab, paneId: "p" });
     refused({ type: "space/set-active-item", spaceId: ws.activeSpaceId, itemId: tab });
@@ -199,7 +206,306 @@ describe("actionOfWindowRequest", () => {
   });
 });
 
+describe("actionOfWindowRequest: opening, closing and moving tabs", () => {
+  const request = (windowId: string, action: unknown) => ({ windowId, action });
+
+  /** A window whose space has three tabs, one in a group, and a second window on another space. */
+  async function crowded() {
+    const { store, backend, window, space, tab } = await withWindow();
+    const second = tabIds(store)[0];
+    if (second === undefined) throw new Error("a tab was expected");
+    const other = await moveItemToNewWindow(store, backend, second, "Other");
+    if (!other.ok) throw new Error(other.reason);
+    for (let n = 0; n < 2; n++) {
+      store.getState().dispatch({ type: "item/create", spaceId: space.id });
+    }
+    store.getState().dispatch({ type: "group/create", spaceId: space.id, name: "Work" });
+    const ws = store.getState().workspace;
+    const mine = ws.spaces.find((s) => s.id === space.id);
+    const theirs = ws.windows?.find((w) => w.id === other.windowId);
+    const group = mine?.tree.find((node) => node.kind === "group");
+    const itemIds = Object.keys(mine?.items ?? {});
+    return { store, ws, window, space: mine ?? space, tab, group, itemIds, other: theirs };
+  }
+
+  it("a new tab is asked for with the space of the window, and made in no other", async () => {
+    const { ws, window, space, other } = await crowded();
+    expect(
+      actionOfWindowRequest(request(window.id, { type: "item/create", spaceId: space.id }), ws),
+    ).toEqual({ type: "item/create", spaceId: space.id });
+    // Another space, the space of another window, or none: nothing is made.
+    for (const spaceId of [ws.activeSpaceId, other?.spaceId, "nope", undefined, 7]) {
+      expect(
+        actionOfWindowRequest(request(window.id, { type: "item/create", spaceId }), ws),
+        String(spaceId),
+      ).toBeUndefined();
+    }
+  });
+
+  it("a window that holds as many tabs as it may asks for no more", async () => {
+    const { store, window, space } = await withWindow();
+    for (let n = 0; n < MAX_WINDOW_TABS; n++) {
+      store.getState().dispatch({ type: "item/create", spaceId: space.id });
+    }
+    const ws = store.getState().workspace;
+    expect(Object.keys(ws.spaces.find((s) => s.id === space.id)?.items ?? {}).length).toBe(
+      MAX_WINDOW_TABS + 1,
+    );
+    expect(
+      actionOfWindowRequest(request(window.id, { type: "item/create", spaceId: space.id }), ws),
+    ).toBeUndefined();
+  });
+
+  it("closes a tab of the space of the window, and only that one", async () => {
+    const { ws, window, tab, other } = await crowded();
+    expect(
+      actionOfWindowRequest(request(window.id, { type: "item/close", itemId: tab }), ws),
+    ).toEqual({ type: "item/close", itemId: tab });
+    // A tab of the main window, a tab of another window, one that does not exist.
+    const mainTab = ws.spaces
+      .find((s) => s.id === ws.activeSpaceId)
+      ?.tree.find((node) => node.kind === "item")?.id;
+    const theirTab = Object.keys(ws.spaces.find((s) => s.id === other?.spaceId)?.items ?? {})[0];
+    for (const itemId of [mainTab, theirTab, "ghost", undefined, 3]) {
+      expect(
+        actionOfWindowRequest(request(window.id, { type: "item/close", itemId }), ws),
+        String(itemId),
+      ).toBeUndefined();
+    }
+  });
+
+  it("moves a tab inside the space of the window, the action never naming a space", async () => {
+    const { ws, window, tab, group } = await crowded();
+    const ask = (placement: unknown, extra: object = {}) =>
+      actionOfWindowRequest(
+        request(window.id, { type: "item/move", itemId: tab, placement, ...extra }),
+        ws,
+      );
+    expect(ask({ to: "tree", index: 2 })).toEqual({
+      type: "item/move",
+      itemId: tab,
+      placement: { to: "tree", index: 2 },
+    });
+    expect(ask({ to: "tree" })).toEqual({
+      type: "item/move",
+      itemId: tab,
+      placement: { to: "tree" },
+    });
+    expect(ask({ to: "pinned", index: 0 })).toEqual({
+      type: "item/move",
+      itemId: tab,
+      placement: { to: "pinned", index: 0 },
+    });
+    expect(group?.id).toBeTruthy();
+    expect(ask({ to: "tree", groupId: group?.id, index: 0 })).toEqual({
+      type: "item/move",
+      itemId: tab,
+      placement: { to: "tree", groupId: group?.id, index: 0 },
+    });
+    // A request that names another space still moves inside this one: the field is dropped.
+    expect(ask({ to: "tree", index: 1 }, { spaceId: ws.activeSpaceId })).toEqual({
+      type: "item/move",
+      itemId: tab,
+      placement: { to: "tree", index: 1 },
+    });
+  });
+
+  it("refuses a place that is not one: another list, a group that is not there, a number that is not a place", async () => {
+    const { ws, window, tab, group } = await crowded();
+    const mainGroup = "n-not-a-group";
+    const refused = (placement: unknown): void => {
+      expect(
+        actionOfWindowRequest(
+          request(window.id, { type: "item/move", itemId: tab, placement }),
+          ws,
+        ),
+        JSON.stringify(placement),
+      ).toBeUndefined();
+    };
+    for (const placement of [
+      undefined,
+      null,
+      "tree",
+      3,
+      {},
+      { to: "favorites" },
+      { to: "space", spaceId: ws.activeSpaceId },
+      { to: "tree", groupId: mainGroup },
+      { to: "tree", groupId: 7 },
+      { to: "pinned", groupId: group?.id },
+      { to: "tree", index: -1 },
+      { to: "tree", index: 1.5 },
+      { to: "tree", index: Number.NaN },
+      { to: "tree", index: Number.POSITIVE_INFINITY },
+      { to: "tree", index: 1_000_000 },
+      { to: "tree", index: "1" },
+    ]) {
+      refused(placement);
+    }
+  });
+
+  it("whatever a page sends, an action that gets through names only the space and the tabs of the window", async () => {
+    // Not a dependency of this app: fast-check lives in @noren/model, so walk made-up requests
+    // instead, from a generator with a fixed seed (the same requests every run).
+    const { ws, window, space, itemIds, other } = await crowded();
+    let seed = 0x2f6e2b1;
+    const next = (): number => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 2 ** 32;
+    };
+    const pick = <T>(values: readonly T[]): T => values[Math.floor(next() * values.length)] as T;
+    const foreign = [
+      ws.activeSpaceId,
+      other?.spaceId,
+      other?.id,
+      ...Object.keys(ws.spaces.find((s) => s.id === other?.spaceId)?.items ?? {}),
+      ...Object.keys(ws.spaces.find((s) => s.id === ws.activeSpaceId)?.items ?? {}),
+    ].filter((id): id is string => id !== undefined);
+    const names: readonly unknown[] = [
+      ...itemIds,
+      ...foreign,
+      space.id,
+      window.id,
+      "ghost",
+      "",
+      "__proto__",
+      null,
+      undefined,
+      0,
+      1,
+      -1,
+      1.5,
+      Number.NaN,
+    ];
+    const maybe = (make: () => unknown): unknown => (next() < 0.6 ? make() : undefined);
+    const placementOf = (): unknown =>
+      maybe(() => ({
+        to: pick(["tree", "pinned", "space", "other"]),
+        groupId: maybe(() => pick(names)),
+        index: maybe(() => (next() < 0.5 ? pick(names) : Math.floor(next() * 10))),
+        spaceId: maybe(() => pick(names)),
+      }));
+    const types = [
+      "item/create",
+      "item/close",
+      "item/move",
+      "space/set-active-item",
+      "pane/focus",
+      "pane/resize",
+      "item/pin",
+      "space/delete",
+      "window/close",
+      "item/join",
+    ];
+    let accepted = 0;
+    const mainItems = Object.keys(ws.spaces.find((s) => s.id === ws.activeSpaceId)?.items ?? {});
+    for (let n = 0; n < 6000; n++) {
+      const windowId = next() < 0.8 ? window.id : pick(names);
+      const body: Record<string, unknown> = {
+        type: pick(types),
+        itemId: maybe(() => pick(names)),
+        spaceId: maybe(() => pick(names)),
+        paneId: maybe(() => pick(names)),
+        windowId: maybe(() => pick(names)),
+        path: maybe(() => (next() < 0.5 ? pick(names) : [Math.floor(next() * 3)])),
+        sizes: maybe(() => (next() < 0.5 ? pick(names) : [Math.floor(next() * 100), 50])),
+        placement: placementOf(),
+      };
+      const result = actionOfWindowRequest({ windowId, action: body }, ws);
+      if (result === undefined) continue;
+      accepted += 1;
+      const seen = JSON.stringify(body);
+      // Only for a window the workspace has, and only about what that window shows (the other
+      // window of the workspace may ask about its own tabs, never about these).
+      const asked = ws.windows?.find((w) => w.id === windowId);
+      expect(asked, seen).toBeDefined();
+      const shown = ws.spaces.find((s) => s.id === asked?.spaceId);
+      expect(shown, seen).toBeDefined();
+      const itemsShown = Object.keys(shown?.items ?? {});
+      expect(
+        [
+          "item/create",
+          "item/close",
+          "item/move",
+          "space/set-active-item",
+          "pane/focus",
+          "pane/resize",
+        ],
+        seen,
+      ).toContain(result.type);
+      if ("spaceId" in result && result.spaceId !== undefined) {
+        expect(result.spaceId, seen).toBe(shown?.id);
+      }
+      if ("itemId" in result) expect(itemsShown, seen).toContain(result.itemId);
+      if (result.type === "item/move") expect(result, seen).not.toHaveProperty("spaceId");
+      // Never one of the tabs of the main window, whoever asks.
+      if ("itemId" in result) expect(mainItems, seen).not.toContain(result.itemId);
+    }
+    // The walk reached the accepted side too, so the checks above ran on something.
+    expect(accepted).toBeGreaterThan(50);
+  });
+});
+
 describe("followWindowPages", () => {
+  it("hands the checked action of a window to the runner it is given, with the window", async () => {
+    const { store, window, space, tab } = await withWindow();
+    const { events } = recordingEvents();
+    const ran: { windowId: string; action: unknown }[] = [];
+    const stop = followWindowPages(store, events, (windowId, action) => {
+      ran.push({ windowId, action });
+    });
+    await settle();
+    await events.emit(WINDOW_ACTION_EVENT, {
+      windowId: window.id,
+      action: { type: "item/create", spaceId: space.id },
+    });
+    await events.emit(WINDOW_ACTION_EVENT, {
+      windowId: window.id,
+      action: { type: "item/close", itemId: tab },
+    });
+    // Not for this window's space, and not an action a window may ask for: not handed on.
+    await events.emit(WINDOW_ACTION_EVENT, {
+      windowId: window.id,
+      action: { type: "item/create", spaceId: store.getState().workspace.activeSpaceId },
+    });
+    await events.emit(WINDOW_ACTION_EVENT, {
+      windowId: window.id,
+      action: { type: "space/delete", spaceId: space.id },
+    });
+    await settle();
+    expect(ran).toEqual([
+      { windowId: window.id, action: { type: "item/create", spaceId: space.id } },
+      { windowId: window.id, action: { type: "item/close", itemId: tab } },
+    ]);
+    // The runner does the work, not the follower: nothing was dispatched.
+    expect(
+      store.getState().workspace.spaces.find((s) => s.id === space.id)?.items[tab],
+    ).toBeDefined();
+    stop();
+  });
+
+  it("a runner that throws, or rejects, leaves nothing unhandled and the next request is still heard", async () => {
+    const { store, window, space } = await withWindow();
+    const { events } = recordingEvents();
+    let calls = 0;
+    const stop = followWindowPages(store, events, () => {
+      calls += 1;
+      if (calls === 1) throw new Error("boom");
+      if (calls === 2) return Promise.reject(new Error("later"));
+      return undefined;
+    });
+    await settle();
+    for (let n = 0; n < 3; n++) {
+      await events.emit(WINDOW_ACTION_EVENT, {
+        windowId: window.id,
+        action: { type: "item/create", spaceId: space.id },
+      });
+    }
+    await settle();
+    expect(calls).toBe(3);
+    stop();
+  });
+
   it("sends a window its space when its page says it is ready, and again each time the space changes", async () => {
     const { store, window, space } = await withWindow();
     const { events, heard } = recordingEvents();

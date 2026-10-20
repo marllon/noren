@@ -1,15 +1,21 @@
 import { treeItemIds } from "@noren/model";
-import type { Backend, Id, Item, Pane, Space } from "@noren/model";
+import type { Action, Backend, Id, Item, Pane, Space } from "@noren/model";
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { createBackend } from "./backend";
+import { ContextMenu } from "./ContextMenu";
 import { useT } from "./i18n";
 import { tauriQuickEvents } from "./quick";
 import type { QuickEvents } from "./quick";
+import { SidebarTree } from "./SidebarTree";
+import { visibleRows } from "./sidebar-tree";
+import type { MenuPoint } from "./SpaceMenu";
 import { SplitLayout } from "./SplitLayout";
 import type { SplitLayoutContext } from "./SplitLayout";
 import { TerminalView } from "./TerminalView";
 import type { TerminalHandle } from "./TerminalView";
 import { applyTheme, terminalTheme, themeForScheme } from "./theme";
+import { TreeDnd } from "./TreeDnd";
 import { WINDOW_READY_EVENT, followTakes } from "./window-events";
 import { WINDOW_ACTION_EVENT, WINDOW_STATE_EVENT, spaceOfWindowState } from "./window-sync";
 import type { WindowAction } from "./window-sync";
@@ -27,6 +33,9 @@ interface WindowAppProps {
 
 /** How long the page waits for its space before it says it is ready again. */
 const READY_AGAIN_MS = 1000;
+
+/** How wide the sidebar of a window is (px): the tabs of one space, narrower than the main window's. */
+const SIDEBAR_WIDTH = 168;
 
 let ownBackend: Backend | undefined;
 /** The backend of a page that is only this window (made once, when the page needs it). */
@@ -125,17 +134,28 @@ function WindowItem({ backend, item, shown, taken, colors, ask, onTerminal }: Wi
   );
 }
 
+/** What the tree of the sidebar can ask of a window: a drop that moves a tab inside the space. */
+function moveRequestOf(action: Action): WindowAction | undefined {
+  if (action.type !== "item/move" || action.spaceId !== undefined) return undefined;
+  return action.placement === undefined
+    ? undefined
+    : { type: "item/move", itemId: action.itemId, placement: action.placement };
+}
+
 /**
- * The page of a window besides the main one: it draws the space the window shows, with the tabs of
- * the space and the splits of terminals of each tab. It does not read the workspace, the settings or
- * the saved state (the main window owns them, and is the only page that writes `state.json`), so it
- * cannot write over them. The space comes from the main window as an event (`window-state`, see
- * `window-sync.ts`) each time it changes, and the few changes this page can make (show another tab,
- * focus a pane, resize a split) go back to the main window as `window-action` events, which checks
- * and runs them. A tab moved here arrives as an event from the Rust side (`window-take-sessions`):
- * the page takes over the output of its sessions (`attachSession`, the same processes under the
- * same ids), and a terminal is drawn for a pane only once its session is taken. The browser, preview
- * and diff panes, the sidebar and the unread marks of the window are the next task (NOR-F15-04c).
+ * The page of a window besides the main one: it draws the space the window shows, with the sidebar
+ * of its tabs (the same tree the main window has: click to show a tab, drag to put the tabs in
+ * order, Delete or the menu to close one, and the button for a new tab) and the splits of terminals
+ * of the tab on screen. It does not read the workspace, the settings or the saved state (the main
+ * window owns them, and is the only page that writes `state.json`), so it cannot write over them.
+ * The space comes from the main window as an event (`window-state`, see `window-sync.ts`) each time
+ * it changes, and the changes this page can make (show another tab, focus a pane, resize a split,
+ * open, close or move a tab) go back to the main window as `window-action` events, which checks and
+ * runs them: a new tab is a shell that the main window starts and this page then takes over. A tab
+ * moved here arrives as an event from the Rust side (`window-take-sessions`): the page takes over
+ * the output of its sessions (`attachSession`, the same processes under the same ids, with what
+ * they printed before so the terminal is not drawn blank), and a terminal is drawn for a pane only
+ * once its session is taken. The browser, preview and diff panes are the next task (NOR-F15-04d).
  */
 export function WindowApp({
   windowId,
@@ -151,6 +171,7 @@ export function WindowApp({
   const colors = useMemo(() => terminalTheme(theme), [theme]);
   const [taken, setTaken] = useState<ReadonlySet<number>>(() => new Set());
   const [space, setSpace] = useState<Space>();
+  const [menu, setMenu] = useState<{ itemId: Id; point: MenuPoint } | null>(null);
 
   useEffect(() => {
     applyTheme(document.documentElement, theme);
@@ -215,48 +236,112 @@ export function WindowApp({
 
   const tabs = space === undefined ? [] : tabsOf(space);
   const shownId = space === undefined ? undefined : shownTabOf(space);
+  const style =
+    space === undefined ? undefined : ({ "--nr-space-color": space.color } as CSSProperties);
   return (
-    <div className="app window-app" data-nr-part="window-app" data-nr-window={windowId}>
+    <div
+      className="app window-app"
+      data-nr-part="window-app"
+      data-nr-window={windowId}
+      {...(style !== undefined ? { style } : {})}
+    >
       <div className="window-bar">
         <span className="window-title" data-nr-part="window-title">
           {space?.name ?? t("window.title")}
         </span>
       </div>
-      {space !== undefined && tabs.length > 0 && (
-        <div className="window-tabs" role="tablist" aria-label={t("window.tabs")}>
-          {tabs.map((item, index) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              className="window-tab"
-              data-nr-part="window-tab"
-              data-nr-item={item.id}
-              aria-selected={item.id === shownId}
-              onClick={() =>
-                ask({ type: "space/set-active-item", spaceId: space.id, itemId: item.id })
-              }
+      <div className="app-body" data-nr-side="left" data-nr-density="comfortable">
+        {space !== undefined && (
+          <TreeDnd
+            spaces={[space]}
+            favorites={[]}
+            space={space}
+            rows={visibleRows(space)}
+            onAction={(action) => {
+              const request = moveRequestOf(action);
+              if (request !== undefined) ask(request);
+            }}
+            paneItemId={undefined}
+            onPaneDrop={() => undefined}
+            onPaneSwap={() => undefined}
+          >
+            <aside
+              className="sidebar window-sidebar"
+              data-nr-part="window-sidebar"
+              aria-label={t("window.sidebar")}
+              style={{ width: SIDEBAR_WIDTH }}
             >
-              {item.title ?? t("tree.tabDefault", { n: index + 1 })}
-            </button>
-          ))}
+              <SidebarTree
+                space={space}
+                rows={visibleRows(space)}
+                activeId={shownId}
+                selected={[]}
+                editing={null}
+                onItemClick={(itemId) =>
+                  ask({ type: "space/set-active-item", spaceId: space.id, itemId })
+                }
+                onPaneClick={(itemId, paneId) => {
+                  ask({ type: "space/set-active-item", spaceId: space.id, itemId });
+                  ask({ type: "pane/focus", itemId, paneId });
+                }}
+                onItemMenu={(itemId, point) => setMenu({ itemId, point })}
+                onGroupMenu={() => undefined}
+                onToggleGroup={() => undefined}
+                onCloseItems={(itemIds) => {
+                  for (const itemId of itemIds) ask({ type: "item/close", itemId });
+                }}
+                onUngroup={() => undefined}
+                onStartEdit={() => undefined}
+                onCommitEdit={() => undefined}
+                onCancelEdit={() => undefined}
+              />
+              <div className="sidebar-foot">
+                <button
+                  type="button"
+                  className="new-tab"
+                  data-nr-part="window-new-tab"
+                  onClick={() => ask({ type: "item/create", spaceId: space.id })}
+                >
+                  {t("window.newTab")}
+                </button>
+              </div>
+            </aside>
+          </TreeDnd>
+        )}
+        <div className="main">
+          <div className="window-content" data-nr-part="window-content">
+            {tabs.length === 0 && <p className="window-waiting">{t("window.waiting")}</p>}
+            {tabs.map((item) => (
+              <WindowItem
+                key={item.id}
+                backend={backend}
+                item={item}
+                shown={item.id === shownId}
+                taken={taken}
+                colors={colors}
+                ask={ask}
+                {...(onTerminal !== undefined ? { onTerminal } : {})}
+              />
+            ))}
+          </div>
         </div>
-      )}
-      <div className="window-content" data-nr-part="window-content">
-        {tabs.length === 0 && <p className="window-waiting">{t("window.waiting")}</p>}
-        {tabs.map((item) => (
-          <WindowItem
-            key={item.id}
-            backend={backend}
-            item={item}
-            shown={item.id === shownId}
-            taken={taken}
-            colors={colors}
-            ask={ask}
-            {...(onTerminal !== undefined ? { onTerminal } : {})}
-          />
-        ))}
       </div>
+      {menu !== null && (
+        <ContextMenu
+          label={t("menu.tab")}
+          point={menu.point}
+          entries={[
+            {
+              label: t("menu.close"),
+              onSelect: () => {
+                ask({ type: "item/close", itemId: menu.itemId });
+                setMenu(null);
+              },
+            },
+          ]}
+          onClose={() => setMenu(null)}
+        />
+      )}
     </div>
   );
 }

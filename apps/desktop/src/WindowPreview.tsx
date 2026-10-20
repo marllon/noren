@@ -7,6 +7,7 @@ import { windowPreviewEvents } from "./quick";
 import type { TerminalHandle } from "./TerminalView";
 import { WindowApp } from "./WindowApp";
 import { windowPreviewHost } from "./window-preview-host";
+import { WINDOW_ACTION_EVENT } from "./window-sync";
 
 /** What the e2e tests read on the window panels (`window.__norenWindows`). */
 export interface WindowPreviewHook {
@@ -16,6 +17,11 @@ export interface WindowPreviewHook {
   lines(windowId: string, paneId?: string): string[];
   /** The person closes the window with the close button of its frame. */
   closeByPerson(windowId: string): void;
+  /**
+   * Sends the main window a `window-action` as the page of `windowId` would, with `action` as given
+   * (the tests send what a page that is wrong, or not ours, could send, to see it refused).
+   */
+  ask(windowId: string, action: unknown): void;
 }
 
 declare global {
@@ -57,6 +63,9 @@ export function WindowPreview() {
       },
       closeByPerson: (windowId) => {
         if (backend instanceof FakeBackend) backend.closeWindowByPerson(windowId);
+      },
+      ask: (windowId, action) => {
+        windowPreviewEvents.emit(WINDOW_ACTION_EVENT, { windowId, action }).catch(() => undefined);
       },
     };
     return () => {

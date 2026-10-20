@@ -19,6 +19,7 @@ import type {
   AiErrorKind,
   AiProviderConfig,
   AiProviderInfo,
+  AttachSessionOptions,
   Backend,
   BackgroundImageFile,
   BrowserBounds,
@@ -302,15 +303,21 @@ export class TauriBackend implements Backend {
     return id;
   }
 
-  async attachSession(id: SessionId): Promise<void> {
+  async attachSession(id: SessionId, options?: AttachSessionOptions): Promise<void> {
     await this.#listenForExits();
 
     // The stream is not kept until the Rust side moved the output here: a rejected call (the session
-    // is gone) leaves nothing behind. What arrives in between is held by the stream.
+    // is gone) leaves nothing behind. What arrives in between is held by the stream, and with
+    // `replay` what the session printed before comes first (the Rust side sends it ahead of the
+    // output that follows, from the buffer the session daemon keeps).
     const stream = new OutputStream();
     const channel = this.#bridge.createChannel<ArrayBuffer>();
     channel.onmessage = (message) => stream.push(new Uint8Array(message));
-    await this.#bridge.invoke("session_attach", { id, onOutput: channel });
+    await this.#bridge.invoke("session_attach", {
+      id,
+      onOutput: channel,
+      ...(options?.replay === true ? { replay: true } : {}),
+    });
     this.#streams.set(id, stream);
 
     const early = this.#earlyExits.get(id);

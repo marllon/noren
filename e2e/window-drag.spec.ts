@@ -28,7 +28,9 @@ type HookWindow = Window & { __norenTest?: Hook; __norenWindows?: WindowsHook };
 
 const WEB_STATE_KEY = "noren.web.state";
 
-const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
+// The sidebar of the main window: a window panel has a tree with the same name of its own.
+const list = (page: Page) =>
+  page.locator('[data-nr-part="sidebar"]').getByRole("tree", { name: "Tabs", exact: true });
 const row = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
 const spaceButton = (page: Page, name: string) =>
   page.getByRole("navigation", { name: "Spaces", exact: true }).getByRole("button", {
@@ -37,6 +39,11 @@ const spaceButton = (page: Page, name: string) =>
   });
 const panels = (page: Page): Locator => page.locator('[data-nr-part="window-preview"]');
 const notice = (page: Page): Locator => page.locator('[data-nr-part="pane-notice"]');
+/** The row of a tab in the sidebar of a window (its tree of tabs is the main window's own). */
+const windowRow = (panel: Locator, name: string): Locator =>
+  panel
+    .getByRole("tree", { name: "Tabs", exact: true })
+    .getByRole("treeitem", { name, exact: true });
 
 /** The rows top to bottom as `name@depth`, groups included. */
 async function rows(page: Page): Promise<string[]> {
@@ -118,8 +125,8 @@ test("letting go of a tab beyond the edge of the page makes a window that shows 
   await expect(panels(page)).toHaveCount(1);
   const panel = panels(page).first();
   await expect(panel.locator('[data-nr-part="window-title"]')).toHaveText("scratch");
-  const tab = panel.getByRole("tab", { name: "scratch", exact: true });
-  await expect(tab).toHaveAttribute("aria-selected", "true");
+  const tab = windowRow(panel, "scratch");
+  await expect(tab).toHaveAttribute("aria-current", "true");
   await expect(panel.locator('[data-nr-part="window-terminal"] .xterm')).toBeVisible();
 
   // The tab left the space it came from; the main window is on the same space with the rest.
@@ -284,10 +291,7 @@ test("the window comes back after a reload, with its tab, and the tab stays out 
   expect(await windowIds(page)).toEqual([before]);
   const panel = panels(page).first();
   await expect(panel.locator('[data-nr-part="window-title"]')).toHaveText("scratch");
-  await expect(panel.getByRole("tab", { name: "scratch", exact: true })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  await expect(windowRow(panel, "scratch")).toHaveAttribute("aria-current", "true");
   await expect(panel.locator('[data-nr-part="window-terminal"] .xterm')).toBeVisible();
   await expect(row(page, "scratch")).toHaveCount(0);
   expect(await rows(page)).toEqual(START.slice(0, -1));
@@ -405,8 +409,11 @@ test("a tab with a browser pane stays in the main window and says why", async ({
   await expect(row(page, "with web")).toBeVisible();
   expect((await saved(page)).windows).toBeUndefined();
 
-  // The palette command says the same.
+  // The palette command says the same, for the tab on screen: the click that shows it must not be
+  // one the drag library swallows right after a drop.
+  await clicksReachThePage(page);
   await row(page, "with web").click();
+  await expect(row(page, "with web")).toHaveAttribute("aria-current", "true");
   await page.keyboard.press("Control+Shift+P");
   await page.keyboard.type("Move tab to new");
   await page.keyboard.press("Enter");
@@ -536,23 +543,16 @@ test("what the window asks for is carried out by the main window: another tab, a
   await page.goto("/?window-preview");
   await expect(panels(page)).toHaveCount(1);
   const panel = panels(page).first();
-  const tabs = panel.getByRole("tab");
-  await expect(tabs).toHaveCount(2);
-  await expect(panel.getByRole("tab", { name: "one", exact: true })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  await expect(panel.locator('[data-nr-part="item"]')).toHaveCount(2);
+  await expect(windowRow(panel, "one")).toHaveAttribute("aria-current", "true");
   // Every tab keeps its terminals mounted; the one on screen is the first.
   await expect(panel.locator('[data-nr-part="window-terminal"] .xterm')).toHaveCount(3);
   await expect(panel.locator('[data-nr-part="window-item"][data-nr-item="w2"]')).toBeHidden();
 
   // Pressing the other tab asks the main window to show it: the saved state says so, and the
   // page, which draws what it is sent, shows it.
-  await panel.getByRole("tab", { name: "two", exact: true }).click();
-  await expect(panel.getByRole("tab", { name: "two", exact: true })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  await windowRow(panel, "two").click();
+  await expect(windowRow(panel, "two")).toHaveAttribute("aria-current", "true");
   await expect(panel.locator('[data-nr-part="window-item"][data-nr-item="w2"]')).toBeVisible();
   await expect(panel.locator('[data-nr-part="window-item"][data-nr-item="w1"]')).toBeHidden();
   await expect

@@ -136,7 +136,7 @@ impl AppState {
         }
         // This run already shows it (the interface asked twice): only the output moves.
         if self.route(id.0).is_some() {
-            return attach_session(self, id.0, output).ok().map(|()| id);
+            return attach_session(self, id.0, output, false).ok().map(|()| id);
         }
         match launch_existing(app, self, id, output) {
             Ok(id) => Some(id),

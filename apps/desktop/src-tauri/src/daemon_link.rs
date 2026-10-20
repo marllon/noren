@@ -443,6 +443,34 @@ impl Sessions {
         }
     }
 
+    /// Whether the host of the session keeps what it printed, so [`Self::replay`] has something to
+    /// send: the daemon on this machine does (a megabyte of it); the sessions that run inside the
+    /// app, and the ones on another machine, do not.
+    pub fn keeps_output(&self, id: SessionId) -> bool {
+        !is_remote(id) && matches!(&*self.backend, Backend::Daemon(_))
+    }
+
+    /// Fetches what the daemon kept of a session this run listens to and hands it to `deliver`,
+    /// from the thread that carries the output of the sessions, ahead of everything the session
+    /// prints from then on: nothing is missing between the two and nothing is repeated. This is how
+    /// a page that takes a running session over shows what it printed before. `deliver` is called
+    /// once, with the bytes (empty when the session printed nothing), before this returns `Ok`; on
+    /// `Err` it was not called. Fails for a session that is not attached here or that ended, and
+    /// when the sessions do not live in a daemon ([`Self::keeps_output`]).
+    pub fn replay(&self, id: SessionId, deliver: ReplaySink) -> Result<(), SessionError> {
+        if is_remote(id) {
+            return Err(SessionError::new(
+                "a session on another machine keeps nothing to send again",
+            ));
+        }
+        match &*self.backend {
+            Backend::Process { .. } => Err(SessionError::new(
+                "the sessions do not run in a daemon, so none keeps what it printed",
+            )),
+            Backend::Daemon(link) => link.replay(id, deliver),
+        }
+    }
+
     /// Sessions of this app that were started and not yet killed (an ended one counts until it is).
     pub fn session_count(&self) -> usize {
         let local = match &*self.backend {
@@ -570,7 +598,8 @@ struct Conn {
     client: Arc<DaemonClient>,
     /// Writes and resizes. Attached to nothing, so no event ever comes back on it.
     input: DaemonClient,
-    attaches: async_mpsc::UnboundedSender<Attach>,
+    /// What the reader task is asked to do (every attach and every replay goes through it).
+    attaches: async_mpsc::UnboundedSender<Task>,
     /// Set by the reader when the connection ended; nothing works on it after that.
     lost: Arc<AtomicBool>,
 }
@@ -580,6 +609,25 @@ struct Attach {
     session: SessionId,
     sink: Sink,
     done: oneshot::Sender<Result<(), ClientError>>,
+}
+
+/// What the app hands the reader task to run with the bytes the daemon kept of a session (see
+/// [`Sessions::replay`]). It runs on that task, between the output the session had printed and the
+/// output it prints next, so it must not wait for anything.
+pub(crate) type ReplaySink = Box<dyn FnOnce(Vec<u8>) + Send>;
+
+/// A request to the reader task: ask the daemon for the buffer of a session this connection is
+/// attached to and hand it to `deliver`, with nothing missing and nothing repeated.
+struct Replay {
+    session: SessionId,
+    deliver: ReplaySink,
+    done: oneshot::Sender<Result<(), SessionError>>,
+}
+
+/// What the reader task is asked to do.
+enum Task {
+    Attach(Attach),
+    Replay(Replay),
 }
 
 impl Link {
@@ -772,11 +820,11 @@ impl Link {
         let session = self.call(async move {
             let created = conn.client.create(&spec).await?;
             let (done, attached) = oneshot::channel();
-            let sent = conn.attaches.send(Attach {
+            let sent = conn.attaches.send(Task::Attach(Attach {
                 session: created.session,
                 sink,
                 done,
-            });
+            }));
             let attached = match sent {
                 Ok(()) => attached.await.unwrap_or(Err(ClientError::Closed)),
                 Err(_) => Err(ClientError::Closed),
@@ -846,11 +894,11 @@ impl Link {
         let conn = self.live_connection()?;
         self.call(async move {
             let (done, attached) = oneshot::channel();
-            let sent = conn.attaches.send(Attach {
+            let sent = conn.attaches.send(Task::Attach(Attach {
                 session: id,
                 sink,
                 done,
-            });
+            }));
             match sent {
                 Ok(()) => attached.await.unwrap_or(Err(ClientError::Closed)),
                 Err(_) => Err(ClientError::Closed),
@@ -858,6 +906,26 @@ impl Link {
         })??;
         lock(&self.owned).insert(id.0);
         Ok(())
+    }
+
+    /// Asks the task that reads the connection to fetch the buffer the daemon keeps of a session
+    /// this run listens to, and to hand it to `deliver` (see [`Sessions::replay`]).
+    fn replay(&self, id: SessionId, deliver: ReplaySink) -> Result<(), SessionError> {
+        let conn = self.live_connection()?;
+        self.call(async move {
+            let (done, replayed) = oneshot::channel();
+            let sent = conn.attaches.send(Task::Replay(Replay {
+                session: id,
+                deliver,
+                done,
+            }));
+            match sent {
+                Ok(()) => replayed
+                    .await
+                    .unwrap_or_else(|_| Err(SessionError::from(ClientError::Closed))),
+                Err(_) => Err(SessionError::from(ClientError::Closed)),
+            }
+        })?
     }
 
     fn shutdown(&self) {
@@ -1103,30 +1171,22 @@ async fn open_connection(endpoint: &Endpoint) -> Result<Conn, ClientError> {
 async fn read_events(
     client: Arc<DaemonClient>,
     mut events: ClientEvents,
-    mut requests: async_mpsc::UnboundedReceiver<Attach>,
+    mut requests: async_mpsc::UnboundedReceiver<Task>,
     lost: Arc<AtomicBool>,
 ) {
     let mut sinks: HashMap<SessionId, Sink> = HashMap::new();
     loop {
         tokio::select! {
             request = requests.recv() => match request {
-                Some(request) => attach(&client, &mut sinks, request).await,
+                Some(Task::Attach(request)) => attach(&client, &mut sinks, request).await,
+                Some(Task::Replay(request)) => {
+                    replay(&client, &mut events, &mut sinks, request).await;
+                }
                 // The app let go of the connection.
                 None => break,
             },
             event = events.recv() => match event {
-                Some(ClientEvent::Output { session, data }) => {
-                    if let Some(sink) = sinks.get_mut(&session)
-                        && !call_sink(sink, SessionEvent::Output(&data))
-                    {
-                        sinks.remove(&session);
-                    }
-                }
-                Some(ClientEvent::Exit { session, info }) => {
-                    if let Some(mut sink) = sinks.remove(&session) {
-                        call_sink(&mut sink, SessionEvent::Exit(info));
-                    }
-                }
+                Some(event) => deliver(&mut sinks, event),
                 None => break,
             },
         }
@@ -1139,6 +1199,87 @@ async fn read_events(
             signal: None,
         };
         call_sink(&mut sink, SessionEvent::Exit(gone));
+    }
+}
+
+/// Hands an event of the connection to the sink of its session.
+fn deliver(sinks: &mut HashMap<SessionId, Sink>, event: ClientEvent) {
+    match event {
+        ClientEvent::Output { session, data } => {
+            if let Some(sink) = sinks.get_mut(&session)
+                && !call_sink(sink, SessionEvent::Output(&data))
+            {
+                sinks.remove(&session);
+            }
+        }
+        ClientEvent::Exit { session, info } => {
+            if let Some(mut sink) = sinks.remove(&session) {
+                call_sink(&mut sink, SessionEvent::Exit(info));
+            }
+        }
+    }
+}
+
+/// Asks the daemon for the buffer of a session this connection already listens to and hands it to
+/// `request.deliver`, so a page that takes the session over can show what it printed before.
+///
+/// An attach of a session that is attached answers with the buffer and keeps the attachment, but
+/// what the daemon sent before the answer is still in the queue of events behind it, and the buffer
+/// holds it too: handed to the new page after the buffer it would be repeated. So the session is
+/// detached first (the daemon sends it nothing more, and everything it had sent is in the queue by
+/// the time the answer arrives), the queue is emptied into the sinks (the page that has the
+/// session until now gets the last of what it prints, as it would have), and only then it is
+/// attached again: what the queue holds from then on was sent after the buffer was taken. The
+/// buffer goes to `deliver`, which moves the output to the new page, and everything after it
+/// arrives as events, with nothing missing and nothing repeated.
+async fn replay(
+    client: &DaemonClient,
+    events: &mut ClientEvents,
+    sinks: &mut HashMap<SessionId, Sink>,
+    request: Replay,
+) {
+    let Replay {
+        session,
+        deliver: hand_over,
+        done,
+    } = request;
+    if !sinks.contains_key(&session) {
+        // It ended already (its exit was delivered), or this connection never listened to it.
+        let _ = done.send(Err(SessionError::new(format!(
+            "session {} is not attached here",
+            session.0
+        ))));
+        return;
+    }
+    if let Err(error) = client.detach(session).await {
+        let _ = done.send(Err(error.into()));
+        return;
+    }
+    while let Some(event) = events.try_recv() {
+        deliver(sinks, event);
+    }
+    match client.attach(session).await {
+        Ok(attached) => {
+            hand_over(attached.replay);
+            let _ = done.send(Ok(()));
+            if let Some(info) = attached.exit
+                && let Some(mut sink) = sinks.remove(&session)
+            {
+                call_sink(&mut sink, SessionEvent::Exit(info));
+            }
+        }
+        Err(error) => {
+            // It was detached and cannot be attached again: nothing more will come for it, so it
+            // is over for the app, as when the connection is lost.
+            if let Some(mut sink) = sinks.remove(&session) {
+                let gone = ExitInfo {
+                    code: 1,
+                    signal: None,
+                };
+                call_sink(&mut sink, SessionEvent::Exit(gone));
+            }
+            let _ = done.send(Err(error.into()));
+        }
     }
 }
 
@@ -1953,6 +2094,401 @@ mod tests {
         assert!(!taken.after_exit.load(Ordering::SeqCst));
         assert_eq!(second.session_count(), 0);
         assert_eq!(daemon.session_count(), 0);
+    }
+
+    /// Where the output of a session goes, which a test changes as a page that takes the session
+    /// over does: `full` is everything the session printed, `page` what the page it goes to now has.
+    #[derive(Clone, Default)]
+    struct Switch {
+        full: Arc<Mutex<Vec<u8>>>,
+        page: Arc<Mutex<Vec<u8>>>,
+        exit: Arc<Mutex<Option<ExitInfo>>>,
+        /// How long the sink takes to hand over a chunk: a slow page lets the events pile up in the
+        /// queue behind the one the reader task is busy with, as they do while a page is busy.
+        slow: Duration,
+    }
+
+    impl Switch {
+        fn sink(&self) -> impl FnMut(SessionEvent<'_>) + Send + 'static {
+            let switch = self.clone();
+            move |event| match event {
+                SessionEvent::Output(bytes) => {
+                    thread::sleep(switch.slow);
+                    lock(&switch.full).extend_from_slice(bytes);
+                    lock(&switch.page).extend_from_slice(bytes);
+                }
+                SessionEvent::Exit(info) => *lock(&switch.exit) = Some(info),
+            }
+        }
+
+        /// What `Sessions::replay` is given: the new page starts with the buffer.
+        fn new_page(&self) -> ReplaySink {
+            let page = Arc::clone(&self.page);
+            Box::new(move |kept| {
+                let mut page = lock(&page);
+                page.clear();
+                page.extend_from_slice(&kept);
+            })
+        }
+
+        fn page_text(&self) -> String {
+            visible(&String::from_utf8_lossy(&lock(&self.page)))
+        }
+
+        fn wait_for_page_line(&self, line: &str) {
+            let deadline = Instant::now() + Duration::from_secs(40);
+            loop {
+                if self
+                    .page_text()
+                    .split(['\r', '\n'])
+                    .any(|l| l.trim() == line)
+                {
+                    return;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "no line {line:?} on the page; it has {:?}",
+                    self.page_text()
+                );
+                thread::sleep(Duration::from_millis(30));
+            }
+        }
+
+        fn wait_for_exit(&self) {
+            let deadline = Instant::now() + Duration::from_secs(60);
+            while lock(&self.exit).is_none() {
+                assert!(Instant::now() < deadline, "the session did not end");
+                thread::sleep(Duration::from_millis(30));
+            }
+        }
+    }
+
+    /// A command that prints `count` numbered lines as fast as it can, then ends.
+    #[cfg(windows)]
+    fn numbered_lines_spec(count: u32) -> SpawnSpec {
+        SpawnSpec {
+            program: "cmd.exe".to_owned(),
+            args: vec![
+                "/C".to_owned(),
+                format!("for /L %i in (1,1,{count}) do @echo noren-line-%i-end"),
+            ],
+            ..shell_spec()
+        }
+    }
+    #[cfg(not(windows))]
+    fn numbered_lines_spec(count: u32) -> SpawnSpec {
+        SpawnSpec {
+            program: "sh".to_owned(),
+            args: vec![
+                "-c".to_owned(),
+                format!(
+                    "i=1; while [ $i -le {count} ]; do echo noren-line-$i-end; i=$((i+1)); done"
+                ),
+            ],
+            ..shell_spec()
+        }
+    }
+
+    #[test]
+    fn a_replay_gives_the_page_what_the_session_printed_before_then_what_it_prints_next() {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let endpoint = unique_endpoint();
+        let _daemon = start_daemon(&endpoint);
+        let sessions = sessions(settings(&endpoint, Some(missing_program())));
+        assert!(sessions.keeps_output(SessionId(1)));
+
+        let output = Switch::default();
+        let id = sessions
+            .spawn(shell_spec(), output.sink())
+            .expect("start a shell");
+        sessions
+            .write(id, &echo_command("noren-before-the-move"))
+            .expect("write");
+        let deadline = Instant::now() + Duration::from_secs(40);
+        while !output.page_text().contains("noren-before-the-move") {
+            assert!(Instant::now() < deadline, "the shell never answered");
+            thread::sleep(Duration::from_millis(30));
+        }
+
+        // A new page takes it over: it starts with everything the session printed, not blank.
+        sessions.replay(id, output.new_page()).expect("replay");
+        let started_with = output.page_text();
+        assert!(
+            started_with.contains("noren-before-the-move"),
+            "{started_with:?}"
+        );
+        assert_eq!(
+            *lock(&output.page),
+            *lock(&output.full),
+            "the page has the whole output, once"
+        );
+
+        // ... and what comes next follows it, after it.
+        sessions
+            .write(id, &echo_command("noren-after-the-move"))
+            .expect("write");
+        output.wait_for_page_line("noren-after-the-move");
+        assert_eq!(*lock(&output.page), *lock(&output.full));
+        let text = output.page_text();
+        assert!(
+            text.find("noren-before-the-move") < text.find("noren-after-the-move"),
+            "{text:?}"
+        );
+
+        // The shell is the same one, still alone in its place: nothing was started.
+        sessions.kill(id).expect("kill");
+        output.wait_for_exit();
+        assert_eq!(sessions.session_count(), 0);
+    }
+
+    #[test]
+    fn a_replay_while_the_session_prints_loses_nothing_and_repeats_nothing() {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let endpoint = unique_endpoint();
+        let _daemon = start_daemon(&endpoint);
+        let sessions = sessions(settings(&endpoint, Some(missing_program())));
+
+        // A slow page: the output piles up in the queue of events while it is busy, so the events
+        // the daemon sent before it answered the attach are in the queue when the answer arrives.
+        let output = Switch {
+            slow: Duration::from_millis(2),
+            ..Switch::default()
+        };
+        let id = sessions
+            .spawn(numbered_lines_spec(6000), output.sink())
+            .expect("start the printer");
+        // Taken over once it is in full swing.
+        let deadline = Instant::now() + Duration::from_secs(40);
+        while lock(&output.full).len() < 2000 {
+            assert!(Instant::now() < deadline, "the session printed nothing");
+            thread::sleep(Duration::from_millis(2));
+        }
+        sessions
+            .replay(id, output.new_page())
+            .expect("the session still prints, so it is attached");
+        assert!(
+            lock(&output.exit).is_none(),
+            "the replay was asked for while the session still printed"
+        );
+        output.wait_for_exit();
+
+        // The page ends up with exactly what the session printed, byte for byte: what it had
+        // printed before the move came in the replay, and the rest as it came.
+        let page = lock(&output.page).clone();
+        let full = lock(&output.full).clone();
+        assert!(
+            page.len() > 6000 * 10,
+            "the printer printed less than expected"
+        );
+        assert_eq!(page.len(), full.len(), "a byte was lost or repeated");
+        assert_eq!(page, full);
+        assert!(
+            visible(&String::from_utf8_lossy(&page)).contains("noren-line-6000-end"),
+            "the last line is there"
+        );
+    }
+
+    /// Sends one message of a daemon played by a test.
+    async fn say(
+        stream: &mut (impl tokio::io::AsyncWrite + Unpin),
+        message: noren_core::daemon::ServerMessage,
+    ) {
+        let frame = message.to_frame().expect("a frame");
+        noren_core::daemon::write_frame(stream, &frame)
+            .await
+            .expect("write to the client");
+    }
+
+    fn output(data: &[u8]) -> noren_core::daemon::ServerMessage {
+        noren_core::daemon::ServerMessage::Output {
+            session: SessionId(1),
+            data: data.to_vec(),
+        }
+    }
+
+    /// The order of things a daemon cannot be made to do on purpose: output that was sent just
+    /// before the request that reached it is read, so it reaches the client ahead of the answer.
+    /// The scripted daemon holds one session that has printed `AB`, and prints `C` at the instant
+    /// it gets a `Detach` or an `Attach` from a client that is attached, and `D` after the answer
+    /// to an `Attach`. Whatever the client does, the stream it ends up showing is `ABCD`.
+    #[test]
+    fn a_replay_is_not_followed_by_the_output_it_already_holds() {
+        use noren_core::daemon::{
+            ClientMessage, PROTOCOL_VERSION, Request, Response, ServerMessage, read_frame,
+        };
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("a runtime");
+        runtime.block_on(async {
+            let (client_side, mut daemon_side) = tokio::io::duplex(64 * 1024);
+            let daemon = tokio::spawn(async move {
+                let hello = read_frame(&mut daemon_side).await.expect("hello");
+                assert!(matches!(
+                    ClientMessage::decode(&hello),
+                    Ok(ClientMessage::Hello { .. })
+                ));
+                say(
+                    &mut daemon_side,
+                    ServerMessage::Welcome {
+                        version: PROTOCOL_VERSION,
+                    },
+                )
+                .await;
+                let mut printed = b"AB".to_vec();
+                let mut attached = false;
+                let mut attaches = 0;
+                while let Ok(frame) = read_frame(&mut daemon_side).await {
+                    let Ok(ClientMessage::Request { id, request }) = ClientMessage::decode(&frame)
+                    else {
+                        panic!("a request was expected");
+                    };
+                    match request {
+                        Request::Detach { .. } => {
+                            if attached {
+                                printed.extend_from_slice(b"C");
+                                say(&mut daemon_side, output(b"C")).await;
+                            }
+                            attached = false;
+                            say(
+                                &mut daemon_side,
+                                ServerMessage::Response {
+                                    id,
+                                    response: Response::Ok,
+                                },
+                            )
+                            .await;
+                        }
+                        Request::Attach { .. } => {
+                            attaches += 1;
+                            if attached {
+                                printed.extend_from_slice(b"C");
+                                say(&mut daemon_side, output(b"C")).await;
+                            }
+                            attached = true;
+                            say(
+                                &mut daemon_side,
+                                ServerMessage::Response {
+                                    id,
+                                    response: Response::Attached {
+                                        replay: if attaches == 1 {
+                                            Vec::new()
+                                        } else {
+                                            printed.clone()
+                                        },
+                                        exit: None,
+                                    },
+                                },
+                            )
+                            .await;
+                            if attaches == 1 {
+                                say(&mut daemon_side, output(b"AB")).await;
+                            } else {
+                                printed.extend_from_slice(b"D");
+                                say(&mut daemon_side, output(b"D")).await;
+                            }
+                        }
+                        other => panic!("the script does not expect {other:?}"),
+                    }
+                }
+            });
+
+            let (client, events) = DaemonClient::connect_stream(client_side)
+                .await
+                .expect("connect");
+            let (tasks, requests) = async_mpsc::unbounded_channel();
+            let lost = Arc::new(AtomicBool::new(false));
+            let reader = tokio::spawn(read_events(
+                Arc::new(client),
+                events,
+                requests,
+                Arc::clone(&lost),
+            ));
+
+            let page = Switch::default();
+            let (done, attached) = oneshot::channel();
+            tasks
+                .send(Task::Attach(Attach {
+                    session: SessionId(1),
+                    sink: Box::new(page.sink()),
+                    done,
+                }))
+                .expect("the reader listens");
+            attached.await.expect("answered").expect("attached");
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while *lock(&page.full) != b"AB" {
+                assert!(Instant::now() < deadline, "the first output never came");
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+
+            // A second page takes the session over.
+            let (done, replayed) = oneshot::channel();
+            tasks
+                .send(Task::Replay(Replay {
+                    session: SessionId(1),
+                    deliver: page.new_page(),
+                    done,
+                }))
+                .expect("the reader listens");
+            replayed.await.expect("answered").expect("replayed");
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while *lock(&page.full) != b"ABCD" {
+                assert!(
+                    Instant::now() < deadline,
+                    "the output never came: {:?}",
+                    String::from_utf8_lossy(&lock(&page.full))
+                );
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            // The new page has the buffer (which holds `C`) and then `D`: each once, in order.
+            assert_eq!(String::from_utf8_lossy(&lock(&page.page)), "ABCD");
+
+            drop(tasks);
+            reader.await.expect("the reader ends");
+            daemon.abort();
+        });
+    }
+
+    #[test]
+    fn a_replay_is_refused_for_a_session_that_ended_or_is_not_here_and_for_sessions_in_this_process()
+     {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let endpoint = unique_endpoint();
+        let _daemon = start_daemon(&endpoint);
+        let sessions = sessions(settings(&endpoint, Some(missing_program())));
+
+        let nothing = Switch::default();
+        let refusal = sessions
+            .replay(SessionId(987_654), nothing.new_page())
+            .expect_err("no such session");
+        assert!(refusal.to_string().contains("not attached"), "{refusal}");
+
+        let (id, output) = start_shell(&sessions);
+        sessions.kill(id).expect("kill");
+        output.wait_for_exit();
+        let ended = sessions
+            .replay(id, nothing.new_page())
+            .expect_err("it ended");
+        assert!(!ended.to_string().is_empty());
+        assert!(lock(&nothing.page).is_empty(), "the page was not touched");
+
+        // In this process there is no daemon, so no buffer.
+        let local = Sessions::new(Host::InProcess);
+        assert!(!local.keeps_output(SessionId(1)));
+        let (local_id, local_output) = start_shell(&local);
+        let refusal = local
+            .replay(local_id, nothing.new_page())
+            .expect_err("nothing is kept here");
+        assert!(
+            refusal.to_string().contains("do not run in a daemon"),
+            "{refusal}"
+        );
+        local.kill(local_id).expect("kill");
+        local_output.wait_for_exit();
+        // A session of another machine keeps nothing here either.
+        assert!(!sessions.keeps_output(SessionId(crate::remote::REMOTE_ID_BASE)));
     }
 
     #[test]

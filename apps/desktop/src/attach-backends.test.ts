@@ -107,6 +107,25 @@ describe("TauriBackend.attachSession", () => {
     expect(fake.log).toEqual(["listen session-exit", "invoke session_attach"]);
   });
 
+  it("asks for the replay only when the caller does, and the first chunks it holds are the old ones", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    await backend.attachSession(7, { replay: true });
+    await backend.attachSession(8, { replay: false });
+    await backend.attachSession(9, {});
+    expect(fake.invocations.map((call) => call.args)).toEqual([
+      { id: 7, onOutput: fake.channels[0], replay: true },
+      { id: 8, onOutput: fake.channels[1] },
+      { id: 9, onOutput: fake.channels[2] },
+    ]);
+    // What the Rust side sends first is the replay; the terminal gets it before anything after.
+    fake.channels[0]?.onmessage(bytes(111, 108, 100));
+    fake.channels[0]?.onmessage(bytes(110, 101, 119));
+    const heard: Uint8Array[] = [];
+    backend.onOutput(7, (data) => heard.push(data));
+    expect(text(heard)).toBe("oldnew");
+  });
+
   it("delivers what the session prints from then on through onOutput, holding the first chunks", async () => {
     const fake = fakeBridge();
     const backend = new TauriBackend(fake.bridge);

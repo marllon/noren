@@ -537,7 +537,6 @@ export const ptBR: Dictionary = {
   // As outras janelas do app: as abas levadas para elas (NOR-F15-04a)
   "window.title": "Janela do Noren",
   "window.waiting": "Nenhuma aba aqui ainda.",
-  "window.tabs": "Abas desta janela",
   "window.noShell": "Este painel não tem um shell.",
   "window.paneElsewhere": "Este painel aparece na janela principal.",
   "window.preview": "Prévia da janela",

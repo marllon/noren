@@ -589,28 +589,66 @@ fn route_session<R: Runtime>(
 /// there and no longer to the channel that had it. The shell is not touched, it is the same process
 /// under the same id; this is how a session opened in the quick window is handed to the main one.
 /// Fails when no live session has the id.
+///
+/// With `replay`, and when the session lives in the daemon, `output` gets what the daemon kept of
+/// what the session printed before first, then everything it prints (a page that draws a new
+/// terminal for the session has seen none of it); the daemon is asked on the thread that carries
+/// the output of the sessions, so no byte is shown twice or lost between the two (see
+/// [`Sessions::replay`]). A session that is not in the daemon, or a daemon that cannot answer, is
+/// moved as without `replay`.
 pub fn attach_session(
     state: &AppState,
     id: u64,
     output: Channel<InvokeResponseBody>,
+    replay: bool,
 ) -> Result<(), String> {
     let route = state
         .route(id)
         .ok_or_else(|| format!("unknown session {id}"))?;
+    if replay && state.sessions.keeps_output(SessionId(id)) {
+        // The channel waits here until the output thread has the buffer, which is the moment it
+        // changes hands; if the daemon cannot give the buffer it is still here.
+        let waiting = Arc::new(Mutex::new(Some(output)));
+        let hand_over = {
+            let waiting = Arc::clone(&waiting);
+            let route = Arc::clone(&route);
+            Box::new(move |kept: Vec<u8>| {
+                let channel = waiting.lock().unwrap_or_else(|e| e.into_inner()).take();
+                if let Some(channel) = channel {
+                    drop(route.replace_with_replay(channel, &kept));
+                }
+            })
+        };
+        if state.sessions.replay(SessionId(id), hand_over).is_ok() {
+            return Ok(());
+        }
+        let channel = waiting.lock().unwrap_or_else(|e| e.into_inner()).take();
+        return match channel {
+            Some(channel) => {
+                drop(route.replace(channel));
+                Ok(())
+            }
+            // It was handed over before the answer failed to come back.
+            None => Ok(()),
+        };
+    }
     drop(route.replace(output));
     Ok(())
 }
 
 /// Takes over the output of a live session that another window started (see [`attach_session`]).
 /// The session has no pane, so it does not outlive the app (a shell from the quick window that was
-/// promoted to a tab is not kept).
+/// promoted to a tab is not kept). `replay` asks for what the session printed before to come
+/// first (the pages of the other windows, which draw a new terminal for a session that has been
+/// running, ask for it).
 #[tauri::command(rename_all = "camelCase")]
 pub async fn session_attach(
     state: State<'_, AppState>,
     id: u64,
     on_output: Channel<InvokeResponseBody>,
+    replay: Option<bool>,
 ) -> Result<(), String> {
-    attach_session(&state, id, on_output)
+    attach_session(&state, id, on_output, replay.unwrap_or(false))
 }
 
 /// Takes the settings of the interface for the shells of the panes: `keep` is
@@ -2785,7 +2823,7 @@ mod tests {
         let pid_before = wait_for_pid(&in_old);
 
         let (new, in_new) = collecting();
-        attach_session(&state, id, new).expect("attach");
+        attach_session(&state, id, new, false).expect("attach");
         // Nothing was in flight past the replacement: what the old channel has is all it will have.
         let old_final = received(&in_old);
         assert_eq!(route.channels(), 2);
@@ -2820,6 +2858,87 @@ mod tests {
         state.sessions.kill(SessionId(id)).expect("kill");
     }
 
+    /// How many times the shell answered [`PID_COMMAND`] in `output` (the typed line carries no
+    /// number, so only the answers count).
+    fn answers(output: &Received, pid: u32) -> usize {
+        let text = crate::smoke::strip_ansi(&String::from_utf8_lossy(&received(output)));
+        text.matches(&format!("noren-pid-{pid}-end")).count()
+    }
+
+    #[test]
+    fn a_session_in_the_daemon_taken_over_with_the_replay_shows_what_it_printed_before_once() {
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (daemon, name) = a_daemon();
+        let app = tauri::test::mock_app();
+        let state = a_run_on(&name, None, false);
+        let (id, pid) = start_pane_shell(&app, &state, None);
+        let route = state.route(id).expect("a live session has a route");
+
+        // Without the option the page gets what comes next only, as before.
+        let (plain, plain_heard) = collecting();
+        attach_session(&state, id, plain, false).expect("move the output");
+        assert!(received(&plain_heard).is_empty(), "nothing old came along");
+
+        // With it, the page that draws a new terminal gets what the shell printed before, first.
+        let (page, heard) = collecting();
+        attach_session(&state, id, page, true).expect("take it over with the replay");
+        assert_eq!(wait_for_pid(&heard), pid, "what it printed before came");
+        assert_eq!(route.channels(), 3, "the page changed twice");
+        assert_eq!(answers(&heard, pid), 1, "and it came once");
+
+        // After it, what the shell prints now, on the same channel, behind it.
+        state
+            .sessions
+            .write(SessionId(id), PID_COMMAND)
+            .expect("write again");
+        let deadline = std::time::Instant::now() + Duration::from_secs(40);
+        while answers(&heard, pid) < 2 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the shell did not answer again"
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert_eq!(answers(&heard, pid), 2);
+        assert_eq!(
+            answers(&plain_heard, pid),
+            0,
+            "the channel it left got nothing more"
+        );
+        assert_eq!(daemon.session_count(), 1, "nothing was started");
+        state.sessions.kill(SessionId(id)).expect("kill");
+    }
+
+    #[test]
+    fn a_replay_asked_for_a_session_in_this_process_moves_it_without_one() {
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let state = state_with_shell();
+        let app = tauri::test::mock_app();
+        let (old, in_old) = collecting();
+        let (id, _) =
+            create_session(app.handle(), &state, None, None, None, 80, 24, old).expect("start");
+        state
+            .sessions
+            .write(SessionId(id), PID_COMMAND)
+            .expect("write");
+        let pid = wait_for_pid(&in_old);
+
+        let (page, heard) = collecting();
+        attach_session(&state, id, page, true).expect("it moves, with nothing to replay");
+        assert!(received(&heard).is_empty(), "this process keeps nothing");
+        assert_eq!(state.route(id).expect("route").channels(), 2);
+        state
+            .sessions
+            .write(SessionId(id), PID_COMMAND)
+            .expect("write again");
+        assert_eq!(wait_for_pid(&heard), pid);
+        state.sessions.kill(SessionId(id)).expect("kill");
+    }
+
     #[test]
     fn a_session_that_ended_has_no_route_left_and_cannot_be_taken_over() {
         let state = state_with_shell();
@@ -2832,7 +2951,7 @@ mod tests {
         assert!(state.route(id).is_none(), "the route went with the session");
 
         let (late, in_late) = collecting();
-        let refusal = attach_session(&state, id, late).expect_err("the session is gone");
+        let refusal = attach_session(&state, id, late, false).expect_err("the session is gone");
         assert!(refusal.contains("unknown session"), "{refusal}");
         assert!(received(&in_late).is_empty());
     }
@@ -2986,7 +3105,7 @@ mod tests {
     fn a_session_that_never_existed_cannot_be_taken_over() {
         let state = state_with_shell();
         let (channel, _) = collecting();
-        let refusal = attach_session(&state, 99, channel).expect_err("no such session");
+        let refusal = attach_session(&state, 99, channel, false).expect_err("no such session");
         assert_eq!(refusal, "unknown session 99");
     }
 
@@ -3426,7 +3545,7 @@ mod tests {
         assert_eq!(wait_for_pid(&heard), pid, "the buffer came back");
         // ... and it is the same process, answering.
         let (second_output, second_received) = collecting();
-        attach_session(&second, id, second_output).expect("move the output");
+        attach_session(&second, id, second_output, false).expect("move the output");
         second.sessions.write(got, PID_COMMAND).expect("write");
         assert_eq!(wait_for_pid(&second_received), pid);
 

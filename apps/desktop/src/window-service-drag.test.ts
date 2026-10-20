@@ -166,6 +166,10 @@ describe("returnWindowTabs", () => {
     const before = liveSessionIds(store.getState().workspace);
     expect(await returnWindowTabs(store, backend, windowId)).toEqual({ ok: true, windowId });
     expect(backend.callsTo("attachSession").map((call) => call.args[0])).toEqual(sessions);
+    // The terminals of the main window are drawn new for the tab: they ask for what it printed.
+    expect(backend.callsTo("attachSession").map((call) => call.args[1])).toEqual(
+      sessions.map(() => ({ replay: true })),
+    );
     expect(backend.windows()).toEqual([]);
     const ws = store.getState().workspace;
     expect(ws.windows).toBeUndefined();

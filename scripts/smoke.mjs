@@ -18,8 +18,10 @@
 // page, and a shell that was running was moved to it: the same session id and the same shell process,
 // nothing started or ended, its output now reaching the second window and no longer the old channel;
 // a window the app closes leaves the shell alone and one the person closes is reported, NOR-F15-04a;
-// the page of the window also draws the space the main window sends it, its tab and a terminal for the
-// session, and a click on the tab reaches the main window as a request, NOR-F15-04b).
+// the page of the window also draws the space the main window sends it, its sidebar with its tab and
+// a terminal for the session, and a click on the tab reaches the main window as a request, NOR-F15-04b;
+// so does a click on New tab, and the terminal of the window starts with what the shell printed before
+// the move, which the daemon kept, NOR-F15-04c).
 // Every run must also print "SMOKE global shortcut none registered": no smoke mode registers the
 // global shortcut of the quick terminal (the run fails if the app holds one), and "SMOKE tray icon
 // none": no smoke mode shows the tray icon of a normal start (NOR-F14-02c).
@@ -221,9 +223,11 @@ runSmoke(
     "SMOKE second window stayed on its page",
     "opened as the tab to move",
     "moved to the second window",
+    "output printed before the move reached the second window (replay)",
     "still alive after the move, same shell pid",
-    "SMOKE second window drew the space it was sent: its tab and a terminal for the session it was given",
+    "SMOKE second window drew the space it was sent: its sidebar with its tab and a terminal for the session it was given",
     "SMOKE second window asked the main window to show its tab (window-action)",
+    "SMOKE second window asked the main window for a new tab (window-action)",
     "SMOKE second window hidden",
     "SMOKE second window closed by the app, session",
     "SMOKE a window closed by the person was reported as closed",

@@ -66,5 +66,6 @@ open = "5"
 # above, no new crate.
 tauri = { version = "2", features = ["test"] }
 # `#[tokio::test]` for the AI command tests, which drive an async client against a server on
-# 127.0.0.1. Already in the tree through Tauri and noren-core; 1.53.3, MIT.
-tokio = { version = "1.53.3", features = ["rt", "time", "macros"] }
+# 127.0.0.1, and a stream in memory (`io-util`) for the daemon the replay tests play themselves.
+# Already in the tree through Tauri and noren-core; 1.53.3, MIT.
+tokio = { version = "1.53.3", features = ["rt", "time", "macros", "io-util"] }

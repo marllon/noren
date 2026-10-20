@@ -15,9 +15,12 @@
 //!    (`session_attach` under its own capability) and answers. The shell is the same session under the
 //!    same id and the same process, nothing was started or ended, the output of the old channel
 //!    stopped and what the shell prints now reaches the channel of the page. The run then plays the
-//!    main window and sends the page the space it shows (`window-state`): the page draws its tab and a
-//!    terminal for the session, and a click on the tab reaches the main window as a request
-//!    (`window-action`, NOR-F15-04b);
+//!    main window and sends the page the space it shows (`window-state`): the page draws the sidebar
+//!    with its tab and a terminal for the session, and a click on the tab, and one on the button for a
+//!    new tab, reach the main window as requests (`window-action`, NOR-F15-04b and 04c). What the
+//!    shell printed before the move is what the terminal of the page starts with: the page asks for
+//!    it (`session_attach` with `replay`) and the daemon sends it ahead of the output that follows
+//!    (NOR-F15-04c);
 //! 4. a window the app closes is gone and a shell that was in it is not touched, and a window the
 //!    person closes (the run closes it the way the close button does) is told with `window-closed`.
 //!
@@ -179,7 +182,8 @@ fn dom_probe(window_id: &str) -> String {
         r#"(() => {{
   const internals = window.__TAURI_INTERNALS__;
   const look = () => ({{
-    tabs: document.querySelectorAll('[data-nr-part="window-tab"]').length,
+    tabs: document.querySelectorAll('[data-nr-part="window-sidebar"] [data-nr-part="item"]').length,
+    newTab: document.querySelectorAll('[data-nr-part="window-new-tab"]').length,
     terminals: document.querySelectorAll('[data-nr-part="window-terminal"]').length,
     xterms: document.querySelectorAll('[data-nr-part="window-terminal"] .xterm').length,
     title: (document.querySelector('[data-nr-part="window-title"]') || {{}}).textContent || "",
@@ -199,11 +203,19 @@ fn dom_probe(window_id: &str) -> String {
     )
 }
 
-/// The script that presses the tab button of the page, as a click of the person would.
+/// The script that presses the tab button of the sidebar of the page, as a click of the person would.
 fn click_tab_probe() -> &'static str {
     r#"(() => {
-  const tab = document.querySelector('[data-nr-part="window-tab"]');
+  const tab = document.querySelector('[data-nr-part="window-sidebar"] [data-nr-part="item"]');
   if (tab) tab.click();
+})();"#
+}
+
+/// The script that presses the button for a new tab of the page.
+fn click_new_tab_probe() -> &'static str {
+    r#"(() => {
+  const button = document.querySelector('[data-nr-part="window-new-tab"]');
+  if (button) button.click();
 })();"#
 }
 
@@ -427,6 +439,13 @@ fn run(app: &AppHandle, inbox: &mut Inbox, deadline: Instant) -> Result<u64, Str
     }
     let origin_bytes = in_origin.load(Ordering::SeqCst);
 
+    // The page asked for what the shell printed before (the daemon keeps it): the new channel got
+    // it ahead of everything else, so the terminal of the window is not drawn blank.
+    wait_for_route_line(&route, BEFORE, "replayed to the second window", deadline)?;
+    print_line(&format!(
+        "SMOKE session {id} output printed before the move reached the second window (replay)"
+    ));
+
     // Alive, the same process, and what it prints now reaches the window and no longer the old page.
     write(AFTER)?;
     wait_for_route_line(&route, AFTER, "after the move", deadline)?;
@@ -459,16 +478,17 @@ fn run(app: &AppHandle, inbox: &mut Inbox, deadline: Instant) -> Result<u64, Str
         probe_report(payload, WINDOW_ID, "dom")
     })?;
     let tabs = dom.get("tabs").and_then(Value::as_u64).unwrap_or(0);
+    let new_tab = dom.get("newTab").and_then(Value::as_u64).unwrap_or(0);
     let terminals = dom.get("terminals").and_then(Value::as_u64).unwrap_or(0);
     let xterms = dom.get("xterms").and_then(Value::as_u64).unwrap_or(0);
     let title = dom.get("title").and_then(Value::as_str).unwrap_or("");
-    if tabs != 1 || terminals != 1 || xterms != 1 || title != "Smoke window" {
+    if tabs != 1 || new_tab != 1 || terminals != 1 || xterms != 1 || title != "Smoke window" {
         return Err(format!(
-            "the second window drew {tabs} tabs, {terminals} terminals and {xterms} xterm views titled {title:?} for the one tab and session it was given"
+            "the second window drew {tabs} tabs, {new_tab} new tab buttons, {terminals} terminals and {xterms} xterm views titled {title:?} for the one tab and session it was given"
         ));
     }
     print_line(
-        "SMOKE second window drew the space it was sent: its tab and a terminal for the session it was given",
+        "SMOKE second window drew the space it was sent: its sidebar with its tab and a terminal for the session it was given",
     );
 
     // A change the window asks for reaches the main window as an event: pressing its tab button.
@@ -489,6 +509,25 @@ fn run(app: &AppHandle, inbox: &mut Inbox, deadline: Instant) -> Result<u64, Str
         },
     )?;
     print_line("SMOKE second window asked the main window to show its tab (window-action)");
+
+    // And a new tab: the page asks the main window, which starts the shell (the run plays the main
+    // window and only listens).
+    window
+        .eval(click_new_tab_probe())
+        .map_err(|e| format!("could not press New tab in the second window: {e}"))?;
+    inbox.wait(
+        ACTION_EVENT,
+        "the new tab request of the second window",
+        deadline,
+        |payload| {
+            let action = payload.get("action")?;
+            (payload.get("windowId").and_then(Value::as_str) == Some(WINDOW_ID)
+                && action.get("type").and_then(Value::as_str) == Some("item/create")
+                && action.get("spaceId").and_then(Value::as_str) == Some(SPACE_ID))
+            .then_some(())
+        },
+    )?;
+    print_line("SMOKE second window asked the main window for a new tab (window-action)");
 
     check_label_hidden(app, &label)?;
     check_window_hidden(app)?;
@@ -645,9 +684,12 @@ mod tests {
     }
 
     #[test]
-    fn the_click_probe_presses_the_tab_button_the_page_draws() {
-        assert!(click_tab_probe().contains(r#"[data-nr-part="window-tab"]"#));
+    fn the_click_probes_press_the_buttons_the_sidebar_of_the_page_draws() {
+        assert!(click_tab_probe().contains(r#"[data-nr-part="window-sidebar"]"#));
+        assert!(click_tab_probe().contains(r#"[data-nr-part="item"]"#));
         assert!(click_tab_probe().contains(".click()"));
+        assert!(click_new_tab_probe().contains(r#"[data-nr-part="window-new-tab"]"#));
+        assert!(click_new_tab_probe().contains(".click()"));
     }
 
     #[test]

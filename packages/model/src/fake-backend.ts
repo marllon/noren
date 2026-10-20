@@ -18,6 +18,7 @@ import type {
 import type { AgentEntry } from "./agents";
 import type {
   AgentHit,
+  AttachSessionOptions,
   Backend,
   CreateSessionOptions,
   GitInfo,
@@ -224,6 +225,9 @@ export interface FakeSshTarget {
 
 /** How many attempts the fake connection of a session makes before it gives up (`retrySession`). */
 export const FAKE_LINK_MAX_ATTEMPTS = 20;
+
+/** How much of what a fake session printed `attachSession` can replay (what the real daemon keeps). */
+export const FAKE_REPLAY_BYTES = 1024 * 1024;
 
 /** Splits a command line on spaces, honoring single and double quotes. */
 function tokenize(line: string): string[] {
@@ -857,6 +861,8 @@ export class FakeBackend implements Backend {
   /** The agent each session has under its shell, as `setSessionAgent` said. */
   readonly #sessionAgents = new Map<SessionId, string>();
   readonly #streams = new Map<SessionId, OutputStream>();
+  /** What each session printed, as far back as the host keeps it (see `FAKE_REPLAY_BYTES`). */
+  readonly #printed = new Map<SessionId, { chunks: Uint8Array[]; bytes: number }>();
   /** What the sessions of the profiles of the user were asked to run. */
   readonly #launched = new Map<SessionId, { program: string; args: string[] }>();
   /** The SSH profile of each session that has one. */
@@ -1126,8 +1132,8 @@ export class FakeBackend implements Backend {
       throw new RangeError("cols and rows must be positive integers");
     }
     const id = this.#nextId++;
-    const stream = new OutputStream();
-    this.#streams.set(id, stream);
+    this.#streams.set(id, new OutputStream());
+    this.#printed.set(id, { chunks: [], bytes: 0 });
     // A profile of the user starts in its own folder unless the session names one. A shell on
     // another machine gets only what its profile says: the folder and the environment of the call
     // belong to this machine, so they are not sent (a folder left out is the remote home).
@@ -1146,7 +1152,11 @@ export class FakeBackend implements Backend {
       host: this.#host,
       home: this.#home,
       clock: this.clock,
-      emit: (bytes) => stream.push(bytes),
+      emit: (bytes) => {
+        this.#keepPrinted(id, bytes);
+        // The stream the session has now: a page that took the session over has a stream of its own.
+        this.#streams.get(id)?.push(bytes);
+      },
       exited: (code) => this.#notifyExit({ id, code }),
     });
     this.#sessions.set(id, session);
@@ -1162,12 +1172,31 @@ export class FakeBackend implements Backend {
 
   /**
    * The fake has one process and one stream per session whichever window asks, so taking a session
-   * over changes nothing about where its output goes; it only checks that the session is alive, as
-   * the real one does, and is on record in `calls`.
+   * over changes nothing about where its output goes; it checks that the session is alive, as the
+   * real one does, and is on record in `calls` (the options too, when given). With `replay` the
+   * session gets a new stream, as a page that takes it over has, which holds what the session
+   * printed so far (up to `FAKE_REPLAY_BYTES`) for its first subscriber, and everything printed
+   * after goes there: the stream the session had gets nothing more.
    */
-  async attachSession(id: SessionId): Promise<void> {
-    this.#record("attachSession", id);
+  async attachSession(id: SessionId, options?: AttachSessionOptions): Promise<void> {
+    if (options === undefined) this.#record("attachSession", id);
+    else this.#record("attachSession", id, { ...options });
     this.#alive(id);
+    if (options?.replay !== true) return;
+    const stream = new OutputStream();
+    for (const chunk of this.#printed.get(id)?.chunks ?? []) stream.push(chunk.slice());
+    this.#streams.set(id, stream);
+  }
+
+  /** Keeps what a session printed, dropping the oldest chunks past `FAKE_REPLAY_BYTES`. */
+  #keepPrinted(id: SessionId, bytes: Uint8Array): void {
+    const kept = this.#printed.get(id);
+    if (kept === undefined) return;
+    kept.chunks.push(bytes.slice());
+    kept.bytes += bytes.length;
+    while (kept.bytes > FAKE_REPLAY_BYTES && kept.chunks.length > 1) {
+      kept.bytes -= kept.chunks.shift()?.length ?? 0;
+    }
   }
 
   /**

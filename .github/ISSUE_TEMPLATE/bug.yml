@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in Noren does not work as it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Noren is pre-alpha, so bugs are expected. Do not paste secrets, API keys or private output: look at what you copy first.
+  - type: input
+    id: version
+    attributes:
+      label: Noren version
+      description: The version in the installer name or in the About screen, for example 0.1.0. Say "from source" and the commit if you built it yourself.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: Name and build, for example Windows 11 23H2, Ubuntu 24.04.
+    validations:
+      required: true
+  - type: input
+    id: shell
+    attributes:
+      label: Shell
+      description: The shell profile of the tab, for example PowerShell 7, Windows PowerShell 5.1, bash 5.2, zsh, cmd.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a space with two tabs
+        2. Drag one tab onto the edge of the other
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead. Screenshots or a short recording help.
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Relevant parts of config.jsonc (without secrets), mods in use, or whether it also happens in the web demo.
+    validations:
+      required: false

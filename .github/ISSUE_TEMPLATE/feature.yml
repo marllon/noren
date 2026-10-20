@@ -1,0 +1,44 @@
+name: Feature request
+description: Suggest something Noren could do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the public roadmap in docs/ROADMAP.md first: the idea may already be planned.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: How it could work, from the point of view of someone using Noren.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Workarounds, settings, mods or other ways to get there.
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Sidebar, spaces and groups
+        - Splits and panes
+        - Command palette and shortcuts
+        - Themes and mods
+        - Shell integration
+        - AI (optional)
+        - Settings and config
+        - Other
+    validations:
+      required: false

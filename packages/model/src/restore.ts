@@ -6,6 +6,7 @@ import type { InvariantOptions } from "./invariants";
 import { layoutPanes } from "./sessions";
 import { parseState, workspaceWithoutSessions } from "./state";
 import type { Id, LayoutNode, Pane, Space, Workspace } from "./types";
+import type { SavedPaneCommand } from "./agent-resume";
 
 export interface RestoreOptions extends InvariantOptions {
   /** Size of the new sessions. The view fits them to the real size once it shows. Default 80x24. */
@@ -37,6 +38,12 @@ export interface RestoreResult {
    * only repeat it.
    */
   reattachedPaneIds: Id[];
+  /**
+   * The command line each pane that got a session (new or old) was running when the state was
+   * saved: the only trace of an agent that survives a restart of the machine, since the rest of the
+   * pane is made new. `planAgentResume` turns it into the resume commands.
+   */
+  savedCommands: SavedPaneCommand[];
 }
 
 type RestoreBackend = Pick<
@@ -80,12 +87,12 @@ export async function restoreWorkspace(
     }
   }
 
-  const { workspace, failedPaneIds, reattachedPaneIds } = await startSessions(
+  const { workspace, failedPaneIds, reattachedPaneIds, savedCommands } = await startSessions(
     base,
     backend,
     options,
   );
-  return { workspace, source, ...extra, failedPaneIds, reattachedPaneIds };
+  return { workspace, source, ...extra, failedPaneIds, reattachedPaneIds, savedCommands };
 }
 
 /** Gives a shell to every pane of the spaces' items and returns the workspace holding them. */
@@ -93,16 +100,26 @@ async function startSessions(
   ws: Workspace,
   backend: RestoreSessions,
   options: RestoreOptions,
-): Promise<{ workspace: Workspace; failedPaneIds: Id[]; reattachedPaneIds: Id[] }> {
+): Promise<{
+  workspace: Workspace;
+  failedPaneIds: Id[];
+  reattachedPaneIds: Id[];
+  savedCommands: SavedPaneCommand[];
+}> {
   const started = new Map<Id, Pane>();
   const failedPaneIds: Id[] = [];
   const reattachedPaneIds: Id[] = [];
+  const savedCommands: SavedPaneCommand[] = [];
   for (const space of ws.spaces) {
     for (const item of Object.values(space.items)) {
       for (const pane of layoutPanes(item.layout)) {
         const { pane: next, reattached } = await startPane(pane, space, backend, options);
         if (next.sessionId === undefined) failedPaneIds.push(pane.id);
         if (reattached) reattachedPaneIds.push(pane.id);
+        const command = pane.runningCommand?.text;
+        if (next.sessionId !== undefined && command !== undefined && command.trim() !== "") {
+          savedCommands.push({ paneId: pane.id, text: command });
+        }
         started.set(pane.id, next);
       }
     }
@@ -126,6 +143,7 @@ async function startSessions(
     },
     failedPaneIds,
     reattachedPaneIds,
+    savedCommands,
   };
 }
 

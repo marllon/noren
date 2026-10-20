@@ -20,6 +20,11 @@ export const MAX_AGENT_NAME_CHARS = 64;
 /** Most patterns an agent may list for one state, and the longest pattern, in characters. */
 export const MAX_AGENT_PATTERNS = 16;
 export const MAX_AGENT_PATTERN_CHARS = 200;
+/** Longest resume command line, in characters. */
+export const MAX_AGENT_RESUME_CHARS = 200;
+/** C0 control characters and DEL: a command line typed into a shell has none. */
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 /** How long an agent may be silent before it counts as idle: default, shortest and longest, in seconds. */
 export const DEFAULT_AGENT_SILENCE_SECONDS = 8;
 export const MIN_AGENT_SILENCE_SECONDS = 1;
@@ -121,6 +126,18 @@ export const AgentEntrySchema = z
           'Package names that identify the agent when it is started through a runner (node, npx, bunx, python, uv, pipx...): the runner counts as the agent when one of its arguments is the package, as in "npx pkg" or "python -m pkg".',
       }),
     patterns: AgentPatternsSchema.optional(),
+    resume: z
+      .string()
+      .max(MAX_AGENT_RESUME_CHARS, { message: `At most ${MAX_AGENT_RESUME_CHARS} characters` })
+      .refine((line) => line.trim() !== "", { message: "A resume command cannot be blank" })
+      .refine((line) => !CONTROL_CHARACTERS.test(line), {
+        message: "A resume command is one line of text: no line breaks or control characters",
+      })
+      .optional()
+      .meta({
+        description:
+          'The full command line that takes the agent up where it stopped, such as "claude --continue". Noren types it, once, in a new shell of a tab that had this agent running when the machine restarted, and only when agents.resumeOnRestore is on. Without it the agent is not resumed.',
+      }),
     silenceSeconds: z
       .number()
       .min(MIN_AGENT_SILENCE_SECONDS)
@@ -192,6 +209,7 @@ export const DEFAULT_AGENT_CATALOG: AgentCatalog = [
   {
     id: "claude",
     executables: ["claude"],
+    resume: "claude --continue",
     patterns: {
       working: ["esc to interrupt"],
       waiting: ["do you want to (proceed|make this edit|create|run)", "\\b1\\. yes\\b"],
@@ -233,9 +251,14 @@ export const MIN_AGENT_SCAN_SECONDS = 1;
 /** Agent detection is on unless the settings say it is not. */
 export const DEFAULT_AGENTS_ENABLED = true;
 
+/** Resuming agents after a restart is off unless the settings turn it on: it types a command for you. */
+export const DEFAULT_RESUME_ON_RESTORE = false;
+
 /** What the settings say about agents, with the defaults filled in. */
 export interface AgentSettings {
   enabled: boolean;
+  /** Whether a tab that had an agent running when the machine restarted gets its resume command. */
+  resumeOnRestore: boolean;
   catalog: AgentCatalog;
   /** Milliseconds between two looks at the process tree. */
   scanIntervalMs: number;
@@ -252,6 +275,7 @@ export function agentSettingsOf(
   section:
     | {
         enabled?: boolean | undefined;
+        resumeOnRestore?: boolean | undefined;
         catalog?: AgentCatalog | undefined;
         scanSeconds?: number | undefined;
         silenceSeconds?: number | undefined;
@@ -263,6 +287,7 @@ export function agentSettingsOf(
     typeof seconds === "number" && Number.isFinite(seconds) && seconds >= MIN_AGENT_SCAN_SECONDS;
   return {
     enabled: section?.enabled ?? DEFAULT_AGENTS_ENABLED,
+    resumeOnRestore: section?.resumeOnRestore ?? DEFAULT_RESUME_ON_RESTORE,
     catalog: section?.catalog ?? DEFAULT_AGENT_CATALOG,
     scanIntervalMs: Math.round((usable ? seconds : DEFAULT_AGENT_SCAN_SECONDS) * 1000),
     silenceMs: silenceMsOf(section?.silenceSeconds),

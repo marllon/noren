@@ -341,6 +341,11 @@
           "default": true,
           "type": "boolean"
         },
+        "resumeOnRestore": {
+          "description": "On: after the machine restarts, a tab that had an agent running (one whose catalog entry has a resume command, such as claude --continue) gets a new shell in its folder and that command is typed in it once, at the first prompt. Off: the tab only gets its shell back.",
+          "default": false,
+          "type": "boolean"
+        },
         "catalog": {
           "maxItems": 64,
           "type": "array",
@@ -410,6 +415,11 @@
                 },
                 "additionalProperties": false,
                 "description": "Regular expressions (case-insensitive, ^ and $ match at each line) tried on what the agent prints, with colors and cursor moves removed."
+              },
+              "resume": {
+                "description": "The full command line that takes the agent up where it stopped, such as \"claude --continue\". Noren types it, once, in a new shell of a tab that had this agent running when the machine restarted, and only when agents.resumeOnRestore is on. Without it the agent is not resumed.",
+                "type": "string",
+                "maxLength": 200
               },
               "silenceSeconds": {
                 "description": "Seconds without output after which this agent counts as idle. Replaces agents.silenceSeconds for this agent.",

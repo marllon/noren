@@ -774,6 +774,8 @@ export const en = {
     "CLI agents: which programs count as an agent, how often Noren looks for one under your shells, and how the state of an agent (working, waiting for you, idle) is told. An agent shows as an icon on its tab.",
   "field.agents.enabled":
     "Off: Noren never looks at the processes of your terminals and shows no agent icon.",
+  "field.agents.resumeOnRestore":
+    "On: after the machine restarts, a tab that had an agent running (one whose catalog entry has a resume command, such as claude --continue) gets a new shell in its folder and that command is typed in it once, at the first prompt. Off: the tab only gets its shell back.",
   "field.agents.catalog":
     "The CLI agents Noren recognizes in a tab, by the command being run and by the programs running under the shell. Replaces the built-in list when present, so copy the entries you want to keep.",
   "field.agents.catalog.item": "A CLI agent Noren recognizes in a tab.",
@@ -790,6 +792,8 @@ export const en = {
     "Output that means the agent is asking you something (a permission question, a choice). The tab shows it as waiting for you. Without it, common yes/no questions count.",
   "field.agents.catalog.item.patterns.idle":
     "Output that means the agent finished and is ready for your next message (its input prompt). Without it, silence is what makes the agent idle.",
+  "field.agents.catalog.item.resume":
+    'The full command line that takes the agent up where it stopped, such as "claude --continue". Noren types it, once, in a new shell of a tab that had this agent running when the machine restarted, and only when agents.resumeOnRestore is on. Without it the agent is not resumed.',
   "field.agents.catalog.item.silenceSeconds":
     "Seconds without output after which this agent counts as idle. Replaces agents.silenceSeconds for this agent.",
   "field.agents.scanSeconds":

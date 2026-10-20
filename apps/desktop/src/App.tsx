@@ -157,6 +157,7 @@ import { noteArchiveActivity } from "./auto-archive-service";
 import { Library } from "./Library";
 import type { LibraryEntry } from "./library-entries";
 import { GONE_FROM_LIBRARY_NOTICE, NOTHING_CLOSED_NOTICE, reopenClosed } from "./reopen-closed";
+import { resumeService } from "./resume-service";
 import { restoredScrollbackOf } from "./scrollback-restore";
 import { noteTerminalActivity, registerTerminalSnapshot } from "./scrollback-service";
 import type { TerminalDrawing, TerminalHandle } from "./TerminalView";
@@ -402,8 +403,12 @@ function PaneTerminal({ store, space, pane, active, first, colors, onReady }: Pa
       onReady={(handle) => onReady(pane.id, handle)}
       onCwd={recordFolder}
       {...(onExplain !== undefined ? { onExplain } : {})}
-      onInput={() => noteAgentInput(pane)}
+      onInput={() => {
+        resumeService.cancel(pane.id);
+        noteAgentInput(pane);
+      }}
       onOutput={(bytes) => {
+        resumeService.feed(pane.id, bytes);
         tracker.feed(bytes);
         feedAgentOutput(pane, bytes);
         noteTerminalActivity(pane.id);

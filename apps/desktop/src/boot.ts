@@ -1,6 +1,8 @@
-import { FakeBackend, SystemNotifier, scrollbackAllowed } from "@noren/model";
+import { FakeBackend, SystemNotifier, agentSettingsOf, scrollbackAllowed } from "@noren/model";
 import type { Backend } from "@noren/model";
 import { startAgentScanner } from "./agent-service";
+import { armAgentResumes } from "./resume-restore";
+import { resumeService } from "./resume-service";
 import { restoreKeepingSessions, withoutReattachedSnapshots } from "./boot-sessions";
 import { setAgentStateClock } from "./agent-state-store";
 import { archiveClock, startAutoArchive } from "./auto-archive-service";
@@ -96,6 +98,14 @@ export async function bootWorkspace(
       defaults: { newId, clock },
     });
     perfMark("boot-restore");
+    // A pane that had an agent running when the state was saved and got a new shell (the machine
+    // restarted) is handed the resume command of that agent, only when the user turned it on.
+    armAgentResumes({
+      restored,
+      settings: agentSettingsOf(configManager.state.config.agents),
+      backend: target,
+      service: resumeService,
+    });
     // The scrollback saved before: read now, so the terminal of each pane can write it, dimmed and
     // above the new shell, when it mounts. A snapshot that cannot be read leaves the pane without it.
     // A pane that got its old shell back has what it printed from the shell itself, so its snapshot

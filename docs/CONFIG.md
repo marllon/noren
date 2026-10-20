@@ -107,6 +107,9 @@ Every setting is optional. Unknown settings are an error, so a typo does not go 
     "enabled": true, // false: never put a tab in the archive on its own
     "afterHours": 12, // hours a tab is left alone before it is archived; a fraction is fine
   },
+  "agents": {
+    "resumeOnRestore": false, // true: after a restart of the machine, a tab that had a catalog agent gets its "resume" command typed, see ARCHITECTURE.md
+  },
   "sessions": {
     "keepOnClose": true, // false: closing the window ends every shell, see Sessions below
   },

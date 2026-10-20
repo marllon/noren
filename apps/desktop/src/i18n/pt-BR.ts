@@ -779,6 +779,8 @@ export const ptBR: Dictionary = {
     "Agentes de CLI: quais programas contam como agente, com que frequência o Noren procura um sob os seus shells e como se descobre o estado de um agente (trabalhando, esperando você, ocioso). Um agente aparece como um ícone na aba.",
   "field.agents.enabled":
     "Desligado: o Noren nunca olha os processos dos seus terminais e não mostra o ícone de agente.",
+  "field.agents.resumeOnRestore":
+    "Ligado: depois que a máquina reinicia, uma aba que tinha um agente rodando (um cuja entrada do catálogo tem comando de retomada, como claude --continue) ganha um shell novo na sua pasta e esse comando é digitado nele uma vez, no primeiro prompt. Desligado: a aba só ganha o shell de volta.",
   "field.agents.catalog":
     "Os agentes de CLI que o Noren reconhece numa aba, pelo comando em execução e pelos programas que rodam sob o shell. Substitui a lista embutida quando presente, então copie as entradas que quiser manter.",
   "field.agents.catalog.item": "Um agente de CLI que o Noren reconhece numa aba.",
@@ -795,6 +797,8 @@ export const ptBR: Dictionary = {
     "Saída que significa que o agente está perguntando algo a você (uma permissão, uma escolha). A aba mostra como esperando você. Sem isto, perguntas comuns de sim/não contam.",
   "field.agents.catalog.item.patterns.idle":
     "Saída que significa que o agente terminou e está pronto para a sua próxima mensagem (o prompt de entrada). Sem isto, é o silêncio que deixa o agente ocioso.",
+  "field.agents.catalog.item.resume":
+    'A linha de comando completa que retoma o agente de onde ele parou, como "claude --continue". O Noren a digita, uma vez, num shell novo de uma aba que tinha este agente rodando quando a máquina reiniciou, e só com agents.resumeOnRestore ligado. Sem ela, o agente não é retomado.',
   "field.agents.catalog.item.silenceSeconds":
     "Segundos sem saída depois dos quais este agente conta como ocioso. Substitui agents.silenceSeconds para este agente.",
   "field.agents.scanSeconds":

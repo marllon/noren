@@ -13,6 +13,7 @@ import {
   DEFAULT_AGENTS_ENABLED,
   DEFAULT_AGENT_SCAN_SECONDS,
   DEFAULT_AGENT_SILENCE_SECONDS,
+  DEFAULT_RESUME_ON_RESTORE,
   MAX_AGENT_SILENCE_SECONDS,
   MIN_AGENT_SCAN_SECONDS,
   MIN_AGENT_SILENCE_SECONDS,
@@ -260,6 +261,11 @@ const agentsSchema = z
       z.boolean(),
       "Off: Noren never looks at the processes of your terminals and shows no agent icon.",
       DEFAULT_AGENTS_ENABLED,
+    ),
+    resumeOnRestore: setting(
+      z.boolean(),
+      "On: after the machine restarts, a tab that had an agent running (one whose catalog entry has a resume command, such as claude --continue) gets a new shell in its folder and that command is typed in it once, at the first prompt. Off: the tab only gets its shell back.",
+      DEFAULT_RESUME_ON_RESTORE,
     ),
     catalog: AgentCatalogSchema.optional(),
     scanSeconds: setting(

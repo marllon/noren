@@ -44,6 +44,7 @@ describe("agents in config.jsonc", () => {
     const settings = agentSettingsOf(agentsOf("{}"));
     expect(settings).toEqual({
       enabled: true,
+      resumeOnRestore: false,
       catalog: DEFAULT_AGENT_CATALOG,
       scanIntervalMs: 3000,
       silenceMs: 8000,

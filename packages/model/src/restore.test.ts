@@ -274,6 +274,54 @@ describe("restoreWorkspace and commands", () => {
   });
 });
 
+describe("restoreWorkspace and the commands saved with the panes (NOR-F14-03)", () => {
+  it("hands back the command each pane was running, for the panes that got a session", async () => {
+    const saved = richWorkspace();
+    paneById(saved, "p1").runningCommand = { text: "claude --model x" };
+    paneById(saved, "p2").runningCommand = {};
+    paneById(saved, "p3").runningCommand = { text: "   " };
+    const backend = new FakeBackend({ profiles: BASH, state: serializeWorkspace(saved) });
+    const result = await restoreWorkspace(backend);
+    expect(result.savedCommands).toEqual([{ paneId: "p1", text: "claude --model x" }]);
+    // The new shells carry no command: it belongs to the shell that is gone.
+    for (const pane of allPanes(result.workspace))
+      expect(pane).not.toHaveProperty("runningCommand");
+  });
+
+  it("has no saved command for a pane whose shell could not start, or when nothing was saved", async () => {
+    const saved = richWorkspace();
+    paneById(saved, "p3").runningCommand = { text: "claude" };
+    const backend = new FakeBackend({ profiles: BASH, state: serializeWorkspace(saved) });
+    const create = backend.createSession.bind(backend);
+    backend.createSession = (options: CreateSessionOptions) =>
+      options.paneId === "p3" ? Promise.reject(new Error("no shell")) : create(options);
+    expect((await restoreWorkspace(backend)).savedCommands).toEqual([]);
+
+    const fresh = await restoreWorkspace(new FakeBackend({ profiles: BASH }));
+    expect(fresh.savedCommands).toEqual([]);
+  });
+
+  it("lists a pane that got its old shell back too, so the plan can leave it alone", async () => {
+    const saved = richWorkspace();
+    paneById(saved, "p1").runningCommand = { text: "claude" };
+    const backend = new FakeBackend({ profiles: BASH, state: serializeWorkspace(saved) });
+    backend.holdSessionForPane("p1", await backend.createSession({ cols: 80, rows: 24 }));
+    const result = await restoreWorkspace(backend);
+    expect(result.reattachedPaneIds).toEqual(["p1"]);
+    expect(result.savedCommands).toEqual([{ paneId: "p1", text: "claude" }]);
+  });
+
+  it("loads a state saved before the option existed: no running command anywhere", async () => {
+    const backend = new FakeBackend({
+      profiles: BASH,
+      state: serializeWorkspace(richWorkspace()),
+    });
+    const result = await restoreWorkspace(backend);
+    expect(result.source).toBe("saved");
+    expect(result.savedCommands).toEqual([]);
+  });
+});
+
 describe("restoreWorkspace and the shells the backend kept (NOR-F14-02b)", () => {
   /** A backend whose session daemon kept a shell for each pane in `kept` (a new session per id). */
   async function backendKeeping(

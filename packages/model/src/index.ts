@@ -233,6 +233,8 @@ export type {
   ConfigRemove,
   ConfigValue,
 } from "./config-edit";
+export { planAgentResume } from "./agent-resume";
+export type { AgentResume, SavedPaneCommand } from "./agent-resume";
 export {
   AGENT_ID_PATTERN,
   AGENT_PATTERN_FLAGS,
@@ -243,8 +245,10 @@ export {
   DEFAULT_AGENT_CATALOG,
   DEFAULT_AGENT_SCAN_SECONDS,
   DEFAULT_AGENT_SILENCE_SECONDS,
+  DEFAULT_RESUME_ON_RESTORE,
   DEFAULT_WAITING_PATTERNS,
   MAX_AGENT_ENTRIES,
+  MAX_AGENT_RESUME_CHARS,
   MAX_AGENT_NAMES,
   MAX_AGENT_NAME_CHARS,
   MAX_AGENT_PATTERNS,

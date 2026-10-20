@@ -10,6 +10,7 @@ pub mod git;
 pub mod integration;
 pub mod link;
 pub mod mods;
+pub mod preview;
 pub mod profiles;
 pub mod project;
 pub mod pty;
@@ -42,6 +43,10 @@ pub use link::{LinkError, MAX_LINK_BYTES, check_external_link};
 pub use mods::{
     MAX_MOD_BYTES, MAX_MODS, MODS_DIR_NAME, ModError, ModFile, ModStore, ModWatcher,
     is_valid_mod_file_name,
+};
+pub use preview::{
+    FilePreview, MAX_PREVIEW_IMAGE_BYTES, MAX_PREVIEW_PATH, MAX_PREVIEW_TEXT_BYTES, PreviewImage,
+    PreviewRefusal, TextKind, read_file_preview, sniff_preview_image, text_kind_of,
 };
 pub use profiles::{
     MAX_USER_PROFILES, Platform, ProbeEnv, Profile, ProfileSet, RESERVED_PROFILE_ID, SshProfile,

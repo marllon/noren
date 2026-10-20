@@ -34,6 +34,23 @@ export function createBrowserPane(id: Id, url: string): Pane {
   };
 }
 
+/**
+ * A pane that shows the file at `path`. It has no shell: no session, the default profile (so a
+ * terminal pane split from it starts the default shell), and no folder. The path is the caller's to
+ * check (`previewPathProblem`).
+ */
+export function createPreviewPane(id: Id, path: string): Pane {
+  return {
+    id,
+    type: "preview",
+    profileId: DEFAULT_PROFILE_ID,
+    path,
+    status: "idle",
+    unread: false,
+    bell: false,
+  };
+}
+
 /** A tab: one item with one pane, focused. */
 export function createTab(itemId: Id, pane: Pane, lastActivityAt: number): Item {
   return {

@@ -306,7 +306,7 @@ export { ManualClock } from "./clock";
 export type { Clock } from "./clock";
 export { createDefaultWorkspace } from "./default-workspace";
 export type { DefaultWorkspaceOptions } from "./default-workspace";
-export { DEFAULT_PROFILE_ID, createBrowserPane } from "./factories";
+export { DEFAULT_PROFILE_ID, createBrowserPane, createPreviewPane } from "./factories";
 export { createSequentialIds } from "./ids";
 export type { IdGenerator } from "./ids";
 export { SIZE_SUM_TOLERANCE, checkInvariants } from "./invariants";
@@ -385,6 +385,32 @@ export {
   isBrowserUrl,
 } from "./browser";
 export type { BrowserBounds } from "./browser";
+export {
+  MAX_PREVIEW_IMAGE_BYTES,
+  MAX_PREVIEW_PATH,
+  MAX_PREVIEW_TEXT_BYTES,
+  PREVIEW_IMAGE_MIMES,
+  PREVIEW_REFUSALS,
+  PREVIEW_SIGNATURE_BYTES,
+  classifyPreviewPath,
+  decodeFilePreview,
+  formatJson,
+  isPreviewPath,
+  previewFileName,
+  previewOf,
+  previewPathProblem,
+  previewTextKind,
+  sniffPreviewImage,
+} from "./file-preview";
+export type {
+  FilePreview,
+  PreviewEntry,
+  PreviewImageMime,
+  PreviewPathKind,
+  PreviewRefusal,
+  PreviewRefusalReason,
+  PreviewTextKind,
+} from "./file-preview";
 export { DEFAULT_AI_REPLY, FAKE_LINK_MAX_ATTEMPTS, FakeBackend } from "./fake-backend";
 export type {
   FakeAiMethod,

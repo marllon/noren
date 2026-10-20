@@ -85,12 +85,13 @@ export interface CommandInfo {
 
 /**
  * The pane that speaks for a tab: the one with the keyboard, or the first terminal pane when that one
- * is a browser pane, which has no folder, branch, command or program to name the tab after.
+ * is a browser or a preview pane, which have no folder, branch, command or program to name the tab
+ * after.
  */
 export function speakingPane(item: Item): Pane | undefined {
   const panes = layoutPanes(item.layout);
   const focused = panes.find((pane) => pane.id === item.focusedPaneId) ?? panes[0];
-  return focused?.type === "browser"
+  return focused !== undefined && focused.type !== "terminal"
     ? (panes.find((pane) => pane.type === "terminal") ?? focused)
     : focused;
 }

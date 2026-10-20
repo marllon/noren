@@ -1,3 +1,4 @@
+import { previewFileName } from "@noren/model";
 import type { Action, Item, Pane } from "@noren/model";
 import { shortCwd, speakingPane } from "./pane-info";
 
@@ -44,11 +45,12 @@ export function folderTitle(cwd: string | undefined, home?: string): string | un
 
 /**
  * The title a pane gives its tab by itself: the program it is running, else the last part of its
- * folder, else none. A running command whose line the shell did not tell gives no name, so the
- * folder is used.
+ * folder, else none (a preview pane names a tab after its file). A running command whose line the
+ * shell did not tell gives no name, so the folder is used.
  */
 export function paneAutoTitle(pane: Pane | undefined, home?: string): string | undefined {
   if (pane === undefined) return undefined;
+  if (pane.type === "preview" && pane.path !== undefined) return previewFileName(pane.path);
   return commandName(pane.runningCommand?.text) ?? folderTitle(pane.cwd, home);
 }
 

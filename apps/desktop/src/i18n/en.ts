@@ -136,6 +136,29 @@ export const en = {
   "browser.problem.other": "This address cannot be shown: {reason}",
   "browser.openFailed": "The page could not be shown: {reason}",
 
+  // A pane that shows a file
+  "pane.preview": "file preview",
+  "preview.pane": "File preview",
+  "preview.path": "Path of the file",
+  "preview.content": "Contents of {name}",
+  "preview.loading": "Reading the file…",
+  "preview.empty": "This file is empty.",
+  "preview.imageAlt": "{name}",
+  "preview.jsonInvalid": "This file is not valid JSON. It is shown as plain text.",
+  "preview.failed": "The file could not be read: {reason}",
+  "preview.refused.relative": "The path is not a full path to a file on this computer.",
+  "preview.refused.network": "Network and device paths are not previewed.",
+  "preview.refused.invalid": "The path is empty, too long or has a control character.",
+  "preview.refused.directory": "This is a folder, not a file.",
+  "preview.refused.missing": "There is no file at this path.",
+  "preview.refused.binary": "This looks like a binary file, so it is not previewed.",
+  "preview.refused.tooLarge":
+    "This file is {size}. A preview shows text up to {textLimit} and pictures up to {imageLimit}.",
+  "preview.refused.tooLargeBare":
+    "This file is too large to preview. A preview shows text up to {textLimit} and pictures up to {imageLimit}.",
+  "preview.refused.unreadable": "The file could not be read: {reason}",
+  "preview.refused.unreadableBare": "The file could not be read.",
+
   // Moving things with the keyboard or the pointer
   "drag.instructions":
     "To move this item, press Space. Use the up and down arrow keys to choose a place, Space to drop it there, or Escape to cancel.",

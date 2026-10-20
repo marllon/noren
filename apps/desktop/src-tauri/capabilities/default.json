@@ -48,6 +48,7 @@
     "allow-mod-watch",
     "allow-window-effect-set",
     "allow-background-image-read",
+    "allow-file-preview-read",
     "allow-fonts-list-monospace",
     "allow-link-open",
     "allow-browser-open",

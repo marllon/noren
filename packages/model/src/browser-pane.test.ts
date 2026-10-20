@@ -162,11 +162,11 @@ describe("persistence of a browser pane", () => {
   it("refuses a file whose pane is of a type the app does not know", () => {
     const { ws, browserId } = withBrowserPane();
     const text = serializeWorkspace(
-      replacePane(ws, browserId, (pane) => ({ ...pane, type: "preview" as Pane["type"] })),
+      replacePane(ws, browserId, (pane) => ({ ...pane, type: "agent" as Pane["type"] })),
     );
     const parsed = parseState(text);
     expect(parsed.ok).toBe(false);
-    if (!parsed.ok) expect(parsed.reason).toContain('"terminal" or "browser"');
+    if (!parsed.ok) expect(parsed.reason).toContain('"terminal", "browser" or "preview"');
   });
 
   it("refuses a file whose address is not text", () => {

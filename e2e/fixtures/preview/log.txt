@@ -1,0 +1,4 @@
+build started
+  step 1 ok
+  step 2 <b>not bold</b> & "quoted"
+build finished in 3.2s

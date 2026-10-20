@@ -199,6 +199,7 @@ fn main() {
             bridge::mod_watch,
             bridge::window_effect_set,
             bridge::background_image_read,
+            bridge::file_preview_read,
             bridge::fonts_list_monospace,
             link::link_open,
             browser_pane::browser_open,

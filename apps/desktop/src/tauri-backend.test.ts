@@ -281,6 +281,86 @@ describe("TauriBackend", () => {
     );
   });
 
+  describe("readFilePreview", () => {
+    /** The frame the shell answers with: header length, JSON header, body. */
+    const frame = (header: unknown, body: number[] = []): ArrayBuffer => {
+      const head = [...new TextEncoder().encode(JSON.stringify(header))];
+      const length = [
+        (head.length >> 24) & 255,
+        (head.length >> 16) & 255,
+        (head.length >> 8) & 255,
+        head.length & 255,
+      ];
+      return new Uint8Array([...length, ...head, ...body]).buffer;
+    };
+    const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2];
+
+    it("asks file_preview_read for the path and reads text, a picture and a refusal from the frame", async () => {
+      const answers: Record<string, ArrayBuffer> = {
+        "/a/notes.md": frame({ kind: "markdown" }, [...new TextEncoder().encode("# hi")]),
+        "/a/pixel.png": frame({ kind: "image", mime: "image/png" }, PNG),
+        "/a/gone.md": frame({ kind: "refused", reason: "missing" }),
+        "/a/big.txt": frame({ kind: "refused", reason: "too-large", size: 2097152 }),
+      };
+      const fake = fakeBridge({}, { file_preview_read: (args) => answers[String(args?.["path"])] });
+      const backend = new TauriBackend(fake.bridge);
+      expect(await backend.readFilePreview("/a/notes.md")).toEqual({
+        kind: "markdown",
+        text: "# hi",
+      });
+      expect(await backend.readFilePreview("/a/pixel.png")).toEqual({
+        kind: "image",
+        mime: "image/png",
+        bytes: new Uint8Array(PNG),
+      });
+      expect(await backend.readFilePreview("/a/gone.md")).toEqual({
+        kind: "refused",
+        reason: "missing",
+      });
+      expect(await backend.readFilePreview("/a/big.txt")).toEqual({
+        kind: "refused",
+        reason: "too-large",
+        size: 2097152,
+      });
+      expect(fake.callsTo("file_preview_read").map((c) => c.args)).toEqual([
+        { path: "/a/notes.md" },
+        { path: "/a/pixel.png" },
+        { path: "/a/gone.md" },
+        { path: "/a/big.txt" },
+      ]);
+    });
+
+    it("reads a plain list of numbers too, for a bridge with no binary channel", async () => {
+      const bytes = [...new Uint8Array(frame({ kind: "text" }, [104, 105]))];
+      const fake = fakeBridge({ file_preview_read: bytes });
+      expect(await new TauriBackend(fake.bridge).readFilePreview("/a/x.txt")).toEqual({
+        kind: "text",
+        text: "hi",
+      });
+    });
+
+    it("rejects a frame it cannot read and a picture that is not what the header says", async () => {
+      const bad = [
+        new Uint8Array([1, 2]).buffer,
+        frame({ kind: "video" }),
+        frame({ kind: "image", mime: "image/gif" }, PNG),
+        frame({ kind: "refused", reason: "because" }),
+      ];
+      for (const answer of bad) {
+        const fake = fakeBridge({ file_preview_read: answer });
+        await expect(new TauriBackend(fake.bridge).readFilePreview("/a/x")).rejects.toThrow();
+      }
+    });
+
+    it("lets a failure of the command reach the caller", async () => {
+      const fake = fakeBridge();
+      fake.failing.add("file_preview_read");
+      await expect(new TauriBackend(fake.bridge).readFilePreview("/a/x")).rejects.toThrow(
+        "file_preview_read failed",
+      );
+    });
+  });
+
   it("includes the signal when there is one", async () => {
     const fake = fakeBridge({ session_create: 5 });
     const backend = new TauriBackend(fake.bridge);

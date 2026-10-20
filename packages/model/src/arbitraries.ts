@@ -1,5 +1,5 @@
 import * as fc from "fast-check";
-import { createBrowserPane } from "./factories";
+import { createBrowserPane, createPreviewPane } from "./factories";
 import {
   DEFAULT_MAX_PANES,
   type ArchivedItem,
@@ -410,7 +410,11 @@ export interface WorkspaceArbitraryOptions {
   maxPanes?: number;
   /** Make every third pane a browser pane (no session, an address). Off by default. */
   browserPanes?: boolean;
+  /** Make every third pane a preview pane (no session, a file path). Off by default. */
+  previewPanes?: boolean;
 }
+
+const PREVIEW_PATHS = ["/home/user/notes.md", "C:\\Projects\\noren\\data.json", "D:/pics/a.png"];
 
 const BROWSER_URLS = [
   "https://example.com/",
@@ -420,19 +424,21 @@ const BROWSER_URLS = [
 
 /**
  * The workspace with every third pane (counting spaces, then closed, then archived items, in
- * order) made a browser pane under the same id. It draws nothing at random, so the workspaces an
- * arbitrary generates are the same ones with and without it, apart from these panes.
+ * order, those whose place is `offset` of 3) made by `make` under the same id. It draws nothing at
+ * random, so the workspaces an arbitrary generates are the same ones with and without it, apart from
+ * these panes.
  */
-function withBrowserPanes(ws: Workspace): Workspace {
+function withReplacedPanes(
+  ws: Workspace,
+  offset: number,
+  make: (id: Id, index: number) => Pane,
+): Workspace {
   let count = 0;
   const layout = (node: LayoutNode): LayoutNode => {
     if (node.kind === "split") return { ...node, children: node.children.map(layout) };
     const index = count++;
-    if (index % 3 !== 1) return node;
-    return {
-      kind: "pane",
-      pane: createBrowserPane(node.pane.id, BROWSER_URLS[index % BROWSER_URLS.length] ?? ""),
-    };
+    if (index % 3 !== offset) return node;
+    return { kind: "pane", pane: make(node.pane.id, index) };
   };
   const item = (it: Item): Item => ({ ...it, layout: layout(it.layout) });
   return {
@@ -454,7 +460,17 @@ function withBrowserPanes(ws: Workspace): Workspace {
 export function arbWorkspace(options: WorkspaceArbitraryOptions = {}): fc.Arbitrary<Workspace> {
   const maxPanes = Math.max(1, options.maxPanes ?? DEFAULT_MAX_PANES);
   return arbWorkspaceShape(maxPanes).map((shape) => {
-    const ws = new Builder().workspace(shape);
-    return options.browserPanes === true ? withBrowserPanes(ws) : ws;
+    let ws = new Builder().workspace(shape);
+    if (options.browserPanes === true) {
+      ws = withReplacedPanes(ws, 1, (id, index) =>
+        createBrowserPane(id, BROWSER_URLS[index % BROWSER_URLS.length] ?? ""),
+      );
+    }
+    if (options.previewPanes === true) {
+      ws = withReplacedPanes(ws, 2, (id, index) =>
+        createPreviewPane(id, PREVIEW_PATHS[index % PREVIEW_PATHS.length] ?? ""),
+      );
+    }
+    return ws;
   });
 }

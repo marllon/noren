@@ -9,6 +9,7 @@ import type { AgentEntry } from "./agents";
 import type { AiBackend } from "./ai";
 import type { BackgroundImageFile } from "./background";
 import type { BrowserBounds } from "./browser";
+import type { FilePreview } from "./file-preview";
 import type { Id } from "./types";
 import type { UserProfile } from "./user-profile-schema";
 import type { WindowEffect, WindowEffectReport, WindowScheme } from "./window-effect";
@@ -391,4 +392,14 @@ export interface Backend {
   setBrowserPaneBounds(paneId: Id, bounds: BrowserBounds): Promise<void>;
   /** Closes the web view of the pane `paneId`. A pane with none is not an error. */
   closeBrowserPane(paneId: Id): Promise<void>;
+  /**
+   * Reads the file at `path` for a preview pane: markdown, JSON or plain text as text (at most
+   * `MAX_PREVIEW_TEXT_BYTES`), or a png, jpeg, gif or webp picture as bytes (at most
+   * `MAX_PREVIEW_IMAGE_BYTES`; the first bytes decide, not the name). A file that cannot be shown
+   * is not an error: the answer is `{ kind: "refused", reason }` (`PREVIEW_REFUSALS`: a path that is
+   * not a full local path, a folder, nothing there, a binary file, too large, unreadable), so the
+   * pane can say why. The call rejects only when the shell itself fails. Nothing is fetched from the
+   * network and nothing is written.
+   */
+  readFilePreview(path: string): Promise<FilePreview>;
 }

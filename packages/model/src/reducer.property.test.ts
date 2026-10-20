@@ -360,24 +360,35 @@ function checkNothingUnreadOnScreen(ws: Workspace, where: () => string): void {
 
 /**
  * Plays `STEPS` random actions per run on random workspaces. `maxPanes` goes both to the
- * generated workspaces and to the reducer; absent means the default of 4. `browserPanes` makes
- * every third pane of the generated workspaces a browser pane.
+ * generated workspaces and to the reducer; absent means the default of 4. `browserPanes` and
+ * `previewPanes` make every third pane of the generated workspaces a browser or a preview pane.
  */
-function playSequences(numRuns: number, maxPanes?: number, browserPanes = false): void {
+function playSequences(
+  numRuns: number,
+  maxPanes?: number,
+  kinds: { browserPanes?: boolean; previewPanes?: boolean } = {},
+): void {
   const generated = new Map<ActionType, number>();
   const applied = new Map<ActionType, number>();
   let noops = 0;
   let overLimit = 0;
+  let previewsSeen = 0;
   const limit = maxPanes ?? DEFAULT_MAX_PANES;
 
   fc.assert(
     fc.property(
       arbWorkspace({
         ...(maxPanes === undefined ? {} : { maxPanes }),
-        ...(browserPanes ? { browserPanes } : {}),
+        ...(kinds.browserPanes === true ? { browserPanes: true } : {}),
+        ...(kinds.previewPanes === true ? { previewPanes: true } : {}),
       }),
       fc.gen(),
       (initial, gen) => {
+        for (const space of initial.spaces) {
+          for (const item of Object.values(space.items)) {
+            previewsSeen += layoutPanes(item.layout).filter((p) => p.type === "preview").length;
+          }
+        }
         const { ctx: base, clock } = testContext();
         const ctx = maxPanes === undefined ? base : { ...base, maxPanes };
         let ws = deepFreeze(initial);
@@ -464,6 +475,8 @@ function playSequences(numRuns: number, maxPanes?: number, browserPanes = false)
   expect(noops).toBeGreaterThan(0);
   expect(overLimit).toBeGreaterThan(0);
   expect([...generated.values()].reduce((sum, n) => sum + n, 0)).toBe(numRuns * STEPS);
+  // A run asked to have preview panes must have had them to play with.
+  if (kinds.previewPanes === true) expect(previewsSeen).toBeGreaterThan(0);
 }
 
 describe("reducer properties", () => {
@@ -479,7 +492,23 @@ describe("reducer properties", () => {
   it(
     "property: sequences keep every invariant on workspaces with browser panes",
     () => {
-      playSequences(SMALL_RUNS, undefined, true);
+      playSequences(SMALL_RUNS, undefined, { browserPanes: true });
+    },
+    SEQUENCE_TIMEOUT_MS,
+  );
+
+  it(
+    "property: sequences keep every invariant on workspaces with preview panes",
+    () => {
+      playSequences(SMALL_RUNS, undefined, { previewPanes: true });
+    },
+    SEQUENCE_TIMEOUT_MS,
+  );
+
+  it(
+    "property: sequences keep every invariant on workspaces with browser and preview panes",
+    () => {
+      playSequences(SMALL_RUNS, undefined, { browserPanes: true, previewPanes: true });
     },
     SEQUENCE_TIMEOUT_MS,
   );

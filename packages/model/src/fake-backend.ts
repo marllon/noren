@@ -42,6 +42,8 @@ import {
   type BrowserBounds,
 } from "./browser";
 import { externalLinkProblem } from "./external-link";
+import { previewOf } from "./file-preview";
+import type { FilePreview, PreviewEntry } from "./file-preview";
 import { MAX_MOD_BYTES, MAX_MODS, isValidModFileName } from "./mods";
 import { OutputStream } from "./output-stream";
 import { MAX_SCROLLBACK_BYTES, isScrollbackPaneId } from "./scrollback";
@@ -123,6 +125,11 @@ export interface FakeBackendOptions {
   windowEffects?: readonly WindowEffect[];
   /** Picture files by path (as `readBackgroundImage` is asked for them). */
   images?: Record<string, Uint8Array>;
+  /**
+   * The files and folders of this fake computer, by full path, for `readFilePreview`: the bytes of
+   * a file, or `"directory"`. A path that is not here is not there.
+   */
+  files?: Record<string, Uint8Array | "directory">;
   /** The monospaced font families this fake computer has. Defaults to the ones the terminal falls back to. */
   monospaceFonts?: readonly string[];
   /**
@@ -833,6 +840,7 @@ export class FakeBackend implements Backend {
   readonly #windowEffects: Set<WindowEffect>;
   #appliedEffect: WindowEffect = "none";
   readonly #images = new Map<string, Uint8Array>();
+  readonly #files = new Map<string, Uint8Array | "directory">();
   #monospaceFonts: readonly string[];
   #modListFailure: Error | undefined;
   #scrollbackFailure: Error | undefined;
@@ -868,6 +876,9 @@ export class FakeBackend implements Backend {
     this.#windowEffects = new Set(options.windowEffects ?? []);
     for (const [path, bytes] of Object.entries(options.images ?? {})) {
       this.#images.set(path, bytes);
+    }
+    for (const [path, entry] of Object.entries(options.files ?? {})) {
+      this.#files.set(path, entry);
     }
     this.#monospaceFonts = options.monospaceFonts ?? DEFAULT_MONOSPACE_FONTS;
     this.#ai = new FakeAi(
@@ -1751,6 +1762,36 @@ export class FakeBackend implements Backend {
   async closeBrowserPane(paneId: Id): Promise<void> {
     this.#record("closeBrowserPane", paneId);
     this.#browserPanes.delete(paneId);
+  }
+
+  async readFilePreview(path: string): Promise<FilePreview> {
+    this.#record("readFilePreview", path);
+    return previewOf(path, this.#files.get(path));
+  }
+
+  /**
+   * Puts the file `path` in place with `content` (text is stored as UTF-8; `null` removes it), as a
+   * person saving a file would. Not a `Backend` call, so it is not recorded. A backend that keeps
+   * the files somewhere else (the web one) overrides `putFile` to keep them there.
+   */
+  setFile(path: string, content: Uint8Array | string | null): void {
+    if (content === null) this.putFile(path, undefined);
+    else this.putFile(path, typeof content === "string" ? encodeUtf8(content) : content);
+  }
+
+  /** Makes `path` a folder, which a preview refuses. Not a `Backend` call. */
+  setDirectory(path: string): void {
+    this.putFile(path, "directory");
+  }
+
+  /** What is at `path` on this fake computer now. */
+  fileAt(path: string): PreviewEntry {
+    return this.#files.get(path);
+  }
+
+  protected putFile(path: string, entry: Uint8Array | "directory" | undefined): void {
+    if (entry === undefined) this.#files.delete(path);
+    else this.#files.set(path, entry);
   }
 
   /** Where the web view of the pane is and what it shows; `undefined` when it has none. */

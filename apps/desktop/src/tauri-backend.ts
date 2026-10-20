@@ -1,6 +1,12 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { AI_ERROR_KINDS, OutputStream, fontNameList, sniffImageMime } from "@noren/model";
+import {
+  AI_ERROR_KINDS,
+  OutputStream,
+  decodeFilePreview,
+  fontNameList,
+  sniffImageMime,
+} from "@noren/model";
 import type {
   AgentEntry,
   AgentHit,
@@ -15,6 +21,7 @@ import type {
   BackgroundImageFile,
   BrowserBounds,
   CreateSessionOptions,
+  FilePreview,
   GitInfo,
   Id,
   ModFile,
@@ -546,6 +553,16 @@ export class TauriBackend implements Backend {
 
   async closeBrowserPane(paneId: Id): Promise<void> {
     await this.#bridge.invoke("browser_close", { paneId });
+  }
+
+  async readFilePreview(path: string): Promise<FilePreview> {
+    // One raw frame (a picture is megabytes); a plain list of numbers is read too, for a bridge
+    // that has no binary channel. A file that is not shown is an answer; only a frame that cannot
+    // be read, or a failure of the command itself, rejects.
+    const answer = await this.#bridge.invoke<ArrayBuffer | number[]>("file_preview_read", { path });
+    return decodeFilePreview(
+      answer instanceof ArrayBuffer ? new Uint8Array(answer) : Uint8Array.from(answer),
+    );
   }
 
   /** Stops listening to `session-exit` and `config-changed`. Sessions still running will keep their ids until killed. */

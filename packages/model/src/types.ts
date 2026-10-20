@@ -120,25 +120,34 @@ export interface RunningCommand {
   text?: string;
 }
 
-/** What a pane shows: a shell, or a web page. */
-export type PaneType = "terminal" | "browser";
+/** What a pane shows: a shell, a web page, or a file. */
+export type PaneType = "terminal" | "browser" | "preview";
 
 export interface Pane {
   id: Id;
   type: PaneType;
-  /** The session of a terminal pane. A browser pane never has one (`browser-has-session`). */
+  /**
+   * The session of a terminal pane. A browser pane and a preview pane never have one
+   * (`browser-has-session`, `preview-has-session`).
+   */
   sessionId?: Id;
   /**
-   * The shell profile of a terminal pane. A browser pane has no shell and holds the default
-   * profile, so a terminal pane made from it (a split) starts the default shell.
+   * The shell profile of a terminal pane. A browser pane and a preview pane have no shell and hold
+   * the default profile, so a terminal pane made from one (a split) starts the default shell.
    */
   profileId: string;
   /**
    * The page of a browser pane: an `http://` or `https://` address (`browserUrlProblem`). Present on
-   * every browser pane and on no terminal pane. The web view that shows it belongs to the running
-   * app and is made again from this address at the start.
+   * every browser pane and on no other. The web view that shows it belongs to the running app and is
+   * made again from this address at the start.
    */
   url?: string;
+  /**
+   * The file of a preview pane: a full path on this computer (`previewPathProblem`). Present on
+   * every preview pane and on no other. The file is read again when the pane is shown, so what the
+   * pane shows is what the file holds then, not what it held when the path was saved.
+   */
+  path?: string;
   /** Folder of the shell; a shell with the Noren integration reports it at every prompt. */
   cwd?: string;
   /**

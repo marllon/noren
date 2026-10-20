@@ -1048,6 +1048,19 @@ pub async fn background_image_read(
         .map_err(|e| e.to_string())
 }
 
+/// The file at `path` as the preview pane shows it, as one raw frame (a picture is megabytes, and
+/// JSON would make a list of numbers of it): the header length, a JSON header and the body, see
+/// [`noren_core::FilePreview::to_frame`]. A file that cannot be shown is an answer (a frame whose
+/// header says why), not an error. `read_file_preview` checks the path and the file; the read runs
+/// off the async workers.
+#[tauri::command]
+pub async fn file_preview_read(path: String) -> Result<tauri::ipc::Response, String> {
+    tauri::async_runtime::spawn_blocking(move || noren_core::read_file_preview(&path).to_frame())
+        .await
+        .map(tauri::ipc::Response::new)
+        .map_err(|e| format!("could not read the file: {e}"))
+}
+
 /// The monospaced font families installed on this machine, once each and in alphabetical order.
 /// It only reads the system font folders (the smoke run may call it as well); a family name that is
 /// not the name of a font is left out, so the list is safe to show and to write into the settings.
@@ -2213,6 +2226,7 @@ mod tests {
             )))
             .invoke_handler(tauri::generate_handler![
                 background_image_read,
+                file_preview_read,
                 fonts_list_monospace,
                 window_effect_set,
                 scrollback_save,
@@ -2319,6 +2333,78 @@ mod tests {
             let text = refusal.as_str().unwrap_or_default();
             assert!(text.contains(words), "{path}: {refusal}");
         }
+    }
+
+    /// Splits the frame a preview answers with into its JSON header and its body.
+    fn preview_frame(answer: InvokeResponseBody) -> (serde_json::Value, Vec<u8>) {
+        let InvokeResponseBody::Raw(frame) = answer else {
+            panic!("a JSON answer for a preview: the frame is raw bytes");
+        };
+        let length = u32::from_be_bytes(frame[..4].try_into().expect("a length")) as usize;
+        let header = serde_json::from_slice(&frame[4..4 + length]).expect("a JSON header");
+        (header, frame[4 + length..].to_vec())
+    }
+
+    fn preview_of(path: &str, folder: &Path) -> (serde_json::Value, Vec<u8>) {
+        preview_frame(
+            call_command(
+                "file_preview_read",
+                serde_json::json!({ "path": path }),
+                folder,
+            )
+            .expect("an answer, even for a file that is not shown"),
+        )
+    }
+
+    #[test]
+    fn the_page_reads_a_file_for_a_preview_through_the_command_as_one_raw_frame() {
+        let dir = TempDir::new("preview-command");
+        let markdown = dir.0.join("notes.md");
+        std::fs::write(&markdown, "# Notes\n\nbody").expect("write");
+        let picture = dir.0.join("pixel.png");
+        std::fs::write(&picture, PNG_BYTES).expect("write");
+        let data = dir.0.join("data.json");
+        std::fs::write(&data, r#"{"a":1}"#).expect("write");
+
+        let (header, body) = preview_of(&markdown.display().to_string(), &dir.0);
+        assert_eq!(header, serde_json::json!({ "kind": "markdown" }));
+        assert_eq!(body, b"# Notes\n\nbody");
+
+        let (header, body) = preview_of(&data.display().to_string(), &dir.0);
+        assert_eq!(header, serde_json::json!({ "kind": "json" }));
+        assert_eq!(body, br#"{"a":1}"#);
+
+        let (header, body) = preview_of(&picture.display().to_string(), &dir.0);
+        assert_eq!(
+            header,
+            serde_json::json!({ "kind": "image", "mime": "image/png" })
+        );
+        assert_eq!(body, PNG_BYTES);
+    }
+
+    #[test]
+    fn the_preview_command_answers_a_refusal_with_its_reason_and_not_an_error() {
+        let dir = TempDir::new("preview-refused");
+        let binary = dir.0.join("prog.bin");
+        std::fs::write(&binary, b"MZ\0\x01").expect("write");
+        let big = dir.0.join("big.txt");
+        std::fs::write(&big, vec![b'a'; 1024 * 1024 + 1]).expect("write");
+        for (path, reason) in [
+            (binary.display().to_string(), "binary"),
+            (big.display().to_string(), "too-large"),
+            (dir.0.display().to_string(), "directory"),
+            (dir.0.join("none.md").display().to_string(), "missing"),
+            ("notes.md".to_owned(), "relative"),
+            ("\\\\server\\share\\a.md".to_owned(), "network"),
+            (String::new(), "invalid"),
+        ] {
+            let (header, body) = preview_of(&path, &dir.0);
+            assert_eq!(header["kind"], "refused", "{path}");
+            assert_eq!(header["reason"], reason, "{path}");
+            assert!(body.is_empty(), "{path}");
+        }
+        let (header, _) = preview_of(&big.display().to_string(), &dir.0);
+        assert_eq!(header["size"], 1024 * 1024 + 1);
     }
 
     #[test]

@@ -343,12 +343,14 @@ function checkLayout(value: unknown, path: string, depth: number): void {
 function checkPane(value: unknown, path: string): void {
   const pane = obj(value, path);
   str(pane["id"], `${path}.id`);
-  if (pane["type"] !== "terminal" && pane["type"] !== "browser") {
-    throw new ShapeError(`${path}.type`, '"terminal" or "browser"');
+  if (pane["type"] !== "terminal" && pane["type"] !== "browser" && pane["type"] !== "preview") {
+    throw new ShapeError(`${path}.type`, '"terminal", "browser" or "preview"');
   }
   optional(pane, "sessionId", path, str);
-  // Whether the address is one a browser pane may show is for the invariants to say.
+  // Whether the address is one a browser pane may show, and the path one a preview pane may read,
+  // is for the invariants to say.
   optional(pane, "url", path, str);
+  optional(pane, "path", path, str);
   str(pane["profileId"], `${path}.profileId`);
   optional(pane, "cwd", path, str);
   optional(pane, "gitBranch", path, str);

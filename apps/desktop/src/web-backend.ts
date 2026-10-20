@@ -69,6 +69,14 @@ export const WEB_WINDOW_EFFECTS_KEY = "noren.web.window-effects";
 export const WEB_IMAGES_KEY = "noren.web.images";
 
 /**
+ * Key of the files and folders a preview pane can read in web mode (what `readFilePreview` finds at
+ * a full path): a JSON object from the path to the base64 of the file, or to `null` for a folder.
+ * The e2e tests seed it before the page loads with fixture files; a file placed with the `setFile`
+ * hook is kept here too, so a reload finds it again.
+ */
+export const WEB_FILES_KEY = "noren.web.files";
+
+/**
  * Key of the models of the Ollama this page pretends to have installed, in web mode: a JSON list of
  * model names (`["llama3"]`). Without it there is no Ollama here, which is what most computers are.
  * The e2e tests seed it before the page loads.
@@ -185,6 +193,36 @@ export function seededImages(
   }
 }
 
+/**
+ * The files seeded under `WEB_FILES_KEY` (path to bytes, or `"directory"`), or `undefined` when
+ * there is no usable seed.
+ */
+export function seededFiles(
+  storage: Pick<Storage, "getItem">,
+): Record<string, Uint8Array | "directory"> | undefined {
+  try {
+    const raw = storage.getItem(WEB_FILES_KEY);
+    if (raw === null) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    const files: Record<string, Uint8Array | "directory"> = {};
+    for (const [path, entry] of Object.entries(value)) {
+      if (entry === null) {
+        files[path] = "directory";
+      } else if (typeof entry === "string") {
+        try {
+          files[path] = bytesOfBase64(entry);
+        } catch {
+          // Not base64: that file is left out.
+        }
+      }
+    }
+    return files;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The models seeded under `WEB_AI_OLLAMA_KEY`, or `undefined` when there is no usable seed (no Ollama). */
 export function seededOllamaModels(storage: Pick<Storage, "getItem">): string[] | undefined {
   try {
@@ -268,6 +306,7 @@ export class WebBackend extends FakeBackend {
     const userThemes = seededUserThemes(storage);
     const mods = seededMods(storage);
     const images = seededImages(storage);
+    const files = seededFiles(storage);
     const scrollback = seededScrollback(storage);
     const ollamaModels = seededOllamaModels(storage);
     super({
@@ -275,6 +314,7 @@ export class WebBackend extends FakeBackend {
       ...(userThemes !== undefined ? { userThemes } : {}),
       ...(mods !== undefined ? { mods } : {}),
       ...(images !== undefined ? { images } : {}),
+      ...(files !== undefined ? { files } : {}),
       ...(scrollback !== undefined ? { scrollback } : {}),
       ...(ollamaModels !== undefined ? { ollamaModels } : {}),
       windowEffects: seededWindowEffects(storage),
@@ -305,6 +345,24 @@ export class WebBackend extends FakeBackend {
       // Storage is blocked or full: the memory copy still serves this page load.
     }
     super.putImage(path, bytes);
+  }
+
+  /** Like the fake one, and kept under `WEB_FILES_KEY` so a reload finds the same files. */
+  protected override putFile(path: string, entry: Uint8Array | "directory" | undefined): void {
+    try {
+      const others = Object.entries(seededFiles(this.#storage) ?? {}).filter(
+        ([known]) => known !== path,
+      );
+      const files = Object.fromEntries(
+        [...others, ...(entry === undefined ? [] : [[path, entry] as const])].map(
+          ([name, data]) => [name, data === "directory" ? null : base64OfBytes(data)],
+        ),
+      );
+      this.#storage.setItem(WEB_FILES_KEY, JSON.stringify(files));
+    } catch {
+      // Storage is blocked or full: the memory copy still serves this page load.
+    }
+    super.putFile(path, entry);
   }
 
   /** Like the fake one, and kept under `WEB_THEMES_KEY` so a reload finds the same files. */

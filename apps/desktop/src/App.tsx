@@ -59,6 +59,8 @@ import { tauriBridge } from "./tauri-backend";
 import { AskPanel } from "./AskPanel";
 import { BrowserPane } from "./BrowserPane";
 import { browserTitle } from "./browser-address";
+import { PreviewPane } from "./PreviewPane";
+import { previewTitle } from "./preview-view";
 import { askOffNotice, shellNameOf } from "./ask-panel";
 import type { AskSources, ExplainRequest } from "./ask-panel";
 import { CommandAskDialog } from "./CommandAskDialog";
@@ -273,6 +275,8 @@ export interface NorenTestHook {
   browserViews(): { paneId: string; url: string; bounds: BrowserBounds }[];
   /** Every call about a web view of a pane the backend got, in order, with the pane it was for. */
   browserCalls(): { method: string; paneId: string }[];
+  /** The path of every file the backend was asked to read for a preview pane, in order. */
+  previewReads(): string[];
   /** Every command line the backend was asked to run in a short process (stop commands), in order. */
   commandRuns(): { cwd: string; command: string }[];
   /** Makes the next short commands end with this exit code (0 by default). */
@@ -519,6 +523,7 @@ function ItemView({
     },
     paneTitle: (pane) => {
       if (pane.type === "browser") return browserTitle(pane.url);
+      if (pane.type === "preview") return previewTitle(pane.path);
       const cwd = pane.cwd ?? space.defaults.cwd;
       const short = cwd !== undefined ? shortCwd(cwd, home) : "";
       return short !== "" ? short : t("pane.title");
@@ -539,6 +544,9 @@ function ItemView({
           />
         );
       }
+      // A preview pane has no shell either: it reads its file and draws it in the page.
+      if (pane.type === "preview")
+        return <PreviewPane key={pane.id} backend={backend} pane={pane} />;
       return (
         <PaneTerminal
           key={pane.id}
@@ -1499,6 +1507,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
           fake.calls
             .filter((call) => call.method.endsWith("BrowserPane"))
             .map((call) => ({ method: call.method, paneId: String(call.args[0]) })),
+        previewReads: () => fake.callsTo("readFilePreview").map((call) => String(call.args[0])),
         commandRuns: () => fake.commands.map(({ cwd, command }) => ({ cwd, command })),
         failCommands: (code) => fake.setCommandExitCode(code),
         actionsReads: () => fake.callsTo("readActionsFile").length,

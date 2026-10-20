@@ -140,6 +140,31 @@ export const ptBR: Dictionary = {
   "browser.problem.other": "Este endereço não pode ser mostrado: {reason}",
   "browser.openFailed": "Não foi possível mostrar a página: {reason}",
 
+  // A pane that shows a file
+  "pane.preview": "prévia de arquivo",
+  "preview.pane": "Prévia de arquivo",
+  "preview.path": "Caminho do arquivo",
+  "preview.content": "Conteúdo de {name}",
+  "preview.loading": "Lendo o arquivo…",
+  "preview.empty": "Este arquivo está vazio.",
+  "preview.imageAlt": "{name}",
+  "preview.jsonInvalid":
+    "Este arquivo não é um JSON válido. Ele está sendo mostrado como texto simples.",
+  "preview.failed": "Não foi possível ler o arquivo: {reason}",
+  "preview.refused.relative": "O caminho não é um caminho completo de um arquivo neste computador.",
+  "preview.refused.network": "Caminhos de rede e de dispositivo não têm prévia.",
+  "preview.refused.invalid":
+    "O caminho está vazio, é longo demais ou tem um caractere de controle.",
+  "preview.refused.directory": "Isto é uma pasta, não um arquivo.",
+  "preview.refused.missing": "Não há arquivo neste caminho.",
+  "preview.refused.binary": "Parece um arquivo binário, por isso não tem prévia.",
+  "preview.refused.tooLarge":
+    "Este arquivo tem {size}. A prévia mostra texto até {textLimit} e imagens até {imageLimit}.",
+  "preview.refused.tooLargeBare":
+    "Este arquivo é grande demais para a prévia. Ela mostra texto até {textLimit} e imagens até {imageLimit}.",
+  "preview.refused.unreadable": "Não foi possível ler o arquivo: {reason}",
+  "preview.refused.unreadableBare": "Não foi possível ler o arquivo.",
+
   // Moving things with the keyboard or the pointer
   "drag.instructions":
     "Para mover este item, aperte Espaço. Use as setas para cima e para baixo para escolher o lugar, Espaço para soltá-lo ali ou Esc para cancelar.",

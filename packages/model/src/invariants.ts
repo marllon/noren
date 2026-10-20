@@ -1,4 +1,5 @@
 import { browserUrlProblem } from "./browser";
+import { previewPathProblem } from "./file-preview";
 import {
   DEFAULT_MAX_PANES,
   MAX_CLOSED,
@@ -22,6 +23,10 @@ export type ViolationCode =
   | "browser-url-invalid"
   | "browser-has-session"
   | "terminal-has-url"
+  | "preview-path-invalid"
+  | "preview-has-session"
+  | "preview-has-url"
+  | "pane-has-path"
   | "active-space-missing"
   | "active-item-missing"
   | "item-key-mismatch"
@@ -95,20 +100,40 @@ function run(ws: Workspace, maxPanes: number, out: Violation[]): void {
   };
   const sessions = new Map<Id, string>();
 
-  // A browser pane shows an http or https page and has no shell; a terminal pane has no page.
+  // A browser pane shows an http or https page and a preview pane a file, and neither has a shell;
+  // a terminal pane has no page and no file, and only a preview pane has a path.
   const checkPaneKind = (pane: Pane, path: string): void => {
-    if (pane.type !== "browser") {
-      if (pane.url !== undefined) {
-        add("terminal-has-url", path, `terminal pane ${pane.id} has an address`);
+    if (pane.type !== "browser" && pane.url !== undefined) {
+      add(
+        pane.type === "preview" ? "preview-has-url" : "terminal-has-url",
+        path,
+        `${pane.type} pane ${pane.id} has an address`,
+      );
+    }
+    if (pane.type !== "preview" && pane.path !== undefined) {
+      add("pane-has-path", path, `${pane.type} pane ${pane.id} has a file path`);
+    }
+    if (pane.type === "preview") {
+      const problem = pane.path === undefined ? "it has none" : previewPathProblem(pane.path);
+      if (problem !== undefined) {
+        add("preview-path-invalid", path, `preview pane ${pane.id} has no usable path: ${problem}`);
       }
-      return;
+      if (pane.sessionId !== undefined) {
+        add("preview-has-session", path, `preview pane ${pane.id} holds session ${pane.sessionId}`);
+      }
     }
-    const problem = pane.url === undefined ? "it has none" : browserUrlProblem(pane.url);
-    if (problem !== undefined) {
-      add("browser-url-invalid", path, `browser pane ${pane.id} has no usable address: ${problem}`);
-    }
-    if (pane.sessionId !== undefined) {
-      add("browser-has-session", path, `browser pane ${pane.id} holds session ${pane.sessionId}`);
+    if (pane.type === "browser") {
+      const problem = pane.url === undefined ? "it has none" : browserUrlProblem(pane.url);
+      if (problem !== undefined) {
+        add(
+          "browser-url-invalid",
+          path,
+          `browser pane ${pane.id} has no usable address: ${problem}`,
+        );
+      }
+      if (pane.sessionId !== undefined) {
+        add("browser-has-session", path, `browser pane ${pane.id} holds session ${pane.sessionId}`);
+      }
     }
   };
 

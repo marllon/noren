@@ -78,24 +78,34 @@ Tips:
 - Never run a dev server as part of an automated step; tests that need a server start and stop it
   themselves.
 
-## Daily-use build (Windows)
+## Building installers (Windows)
 
 ```sh
 pnpm desktop:build
 ```
 
-This runs `tauri build` in release mode and produces one NSIS installer. The first run compiles
-the release profile (a few minutes) and the Tauri bundler downloads NSIS and one plugin DLL from
-GitHub; later runs reuse them. The target is set for Windows only in
-`apps/desktop/src-tauri/tauri.windows.conf.json` (no MSI).
+This runs `tauri build` in release mode and produces two installers, an NSIS `.exe` and an MSI.
+The first run compiles the release profile (a few minutes); the Tauri bundler downloads NSIS and
+one plugin DLL for the `.exe`, and the WiX 3 binaries for the `.msi`, from GitHub on first use;
+later runs reuse them. The targets per platform are set in `bundle.targets`: `nsis` and `msi` in
+`apps/desktop/src-tauri/tauri.windows.conf.json`, `appimage` and `deb` in `tauri.conf.json` (used
+on Linux). There is no macOS target yet.
 
-The installer is written to `target/release/bundle/nsis/Noren_0.0.1-dev_x64-setup.exe` (about
-2.1 MiB). `target/` is ignored by git; never commit it. The version is `0.0.1-dev`
-(`package.json`, `apps/desktop/package.json`, `tauri.conf.json` and the workspace `Cargo.toml`
-must stay in step). The build is not signed, so Windows SmartScreen may warn on first run.
+The installers are written under the Cargo target directory (`target/` at the repository root
+unless `CARGO_TARGET_DIR` says otherwise), which is ignored by git; never commit them:
 
-Install: run the `.exe` (per-user, no administrator rights), or `Noren_0.0.1-dev_x64-setup.exe /S`
-for a silent install. The app goes to `%LOCALAPPDATA%\Noren` and appears in Start and in
+| Installer | Path                                                   | Size (0.1.0) |
+| --------- | ------------------------------------------------------ | ------------ |
+| NSIS      | `target/release/bundle/nsis/Noren_0.1.0_x64-setup.exe` | 3.13 MiB     |
+| MSI       | `target/release/bundle/msi/Noren_0.1.0_x64_en-US.msi`  | 4.55 MiB     |
+
+The version is `0.1.0` and must stay in step in `package.json`, `apps/desktop/package.json`,
+`packages/model/package.json`, `tauri.conf.json`, the workspace `Cargo.toml` and `Cargo.lock`. It
+must be a plain `major.minor.patch`: the MSI format rejects pre-release suffixes such as `-dev`.
+The builds are not signed, so Windows SmartScreen may warn on first run.
+
+Install (NSIS): run the `.exe` (per-user, no administrator rights), or
+`Noren_0.1.0_x64-setup.exe /S` for a silent install. The app goes to `%LOCALAPPDATA%\Noren` and appears in Start and in
 Settings > Apps.
 
 Uninstall: Settings > Apps > Noren, or `%LOCALAPPDATA%\Noren\uninstall.exe` (`/S` for silent).
@@ -119,6 +129,36 @@ fallback with its reason; a system that cannot paint it still passes.
 Both paths were checked on disk: the WebView folder after an install, and `state.json` after a
 release build saved a state (the folder does not exist until the first save). Deleting both folders
 resets the app to a fresh install.
+
+## Release workflow
+
+`.github/workflows/release.yml` starts only when a maintainer pushes a tag `v*` (for example
+`v0.1.0`); it has no other trigger. It runs on the self-hosted runner (`[self-hosted, linux, noren]`,
+the only runner of this repository) and uses no sudo or apt: the toolchain, the Tauri system
+libraries and the GitHub CLI (`gh`) are expected on the machine. There is no Windows or macOS job.
+
+Steps of the single `linux` job:
+
+1. Check that the tag is `v` plus the `version` in `tauri.conf.json`, so a tag cannot ship
+   artifacts with another version in their names.
+2. `pnpm install --frozen-lockfile`, then `pnpm desktop:build`, which builds the AppImage and the
+   deb (`bundle.targets` in `tauri.conf.json`). The Tauri bundler downloads its AppImage tooling
+   from GitHub on first use, so the runner needs outbound network for that.
+3. `gh release create <tag> --draft` with both files attached. The release is always a draft:
+   nothing is public until a maintainer reviews it and publishes it by hand on GitHub.
+
+Cutting a release, in order:
+
+1. Bump the version everywhere (see above) and move the `[Unreleased]` notes of `CHANGELOG.md` under
+   the new version.
+2. Run `pnpm verify`, `pnpm e2e` and `pnpm desktop:build` on the Windows machine; the NSIS and MSI
+   installers come from this last step.
+3. Push the tag. When the workflow finishes, open the draft release on GitHub, add the two Windows
+   installers by hand, and publish.
+
+`pnpm workflows:check` validates every file in `.github/workflows` (YAML syntax, the runner label
+`[self-hosted, linux, noren]` on every job, no sudo, apt or hosted runner label, and the tag and
+draft contract of `release.yml`).
 
 ## Security audits
 

@@ -2509,7 +2509,7 @@ dependencies = [
 
 [[package]]
 name = "noren"
-version = "0.0.1-dev"
+version = "0.1.0"
 dependencies = [
  "noren-core",
  "open",
@@ -2527,7 +2527,7 @@ dependencies = [
 
 [[package]]
 name = "noren-core"
-version = "0.0.1-dev"
+version = "0.1.0"
 dependencies = [
  "fontdb",
  "futures-util",

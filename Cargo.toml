@@ -3,6 +3,6 @@ members = ["crates/*", "apps/desktop/src-tauri"]
 resolver = "3"
 
 [workspace.package]
-version = "0.0.1-dev"
+version = "0.1.0"
 edition = "2024"
 license = "MIT"

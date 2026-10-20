@@ -1,0 +1,59 @@
+# Changelog
+
+All notable changes to Noren are recorded here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
+[Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+## [0.1.0] - Unreleased
+
+First MVP. Noren is a terminal organized like a modern browser. Windows is the first platform
+(NSIS and MSI installers); the Linux build is an AppImage and a deb. The build is not signed and
+has no automatic updater yet.
+
+### Added
+
+- **Terminal core**: real PTY sessions through `portable-pty` with batched reads, xterm.js with the
+  WebGL renderer, shell profiles detected on the machine (PowerShell, cmd, bash, zsh and others),
+  and a typed backend interface with a fake backend for tests.
+- **Spaces, groups and tabs**: a workspace model with checked invariants; spaces with their own
+  icon, color, theme and background image; a space wheel and git identity per space; groups, pinned
+  tabs and favorites (a grid) with their origin and a "reset" action.
+- **Sidebar**: a tree of spaces, groups and tabs with a second line of live metadata (folder, git
+  branch, last command), unread marks and a bell, drag and drop between groups, spaces, pinned and
+  favorites, and side, width, density and compact settings.
+- **Layout modes**: sidebar or top tabs, switchable from settings and from the command palette.
+- **Splits**: panes inside any tab, split by shortcut or by dragging, swap and detach panes, pane
+  headers with zoom, and splits shown in the sidebar.
+- **Command palette and shortcuts**: tabs, spaces, actions, profiles, recent folders and themes in
+  one palette; a shortcut registry with a screen to review and rebind them; a most-recently-used
+  switcher and a search across every tab.
+- **Shell integration**: OSC parsing and integration scripts for PowerShell, bash, zsh and cmd for
+  live folder, branch, last command and tab title; command marks; system notifications for
+  finished commands in background tabs.
+- **Project actions**: an `actions.json` in a project lists commands that run from the interface;
+  `noren://` links open a folder in Noren (the installer registers the scheme).
+- **Customization**: a commented `config.jsonc` with hot reload and a published JSON schema;
+  a settings screen (appearance, shortcuts, notifications, terminal, profiles, auto-archive, AI);
+  eight built-in themes, a theme per space, and import of color schemes and shell profiles from
+  other terminals; user CSS mods; window material (Mica on Windows) and background images; fonts
+  and terminal options.
+- **Session life**: restore of tabs with scrollback after a restart, reopen closed tabs, auto-archive
+  with a library that searches inside terminal content, peek at a tab without opening it, and a
+  quick terminal window with a global shortcut that can be promoted to a normal tab.
+- **Optional AI, local by default**: pluggable providers with keys kept in the system keychain,
+  a preview of exactly what is sent (secrets redacted) before anything leaves the machine, an Ask
+  panel, and explain-error and explain-command. Nothing runs without a user action.
+- **Accessibility and languages**: the sidebar is an ARIA tree driven by the keyboard, visible
+  focus rings, reduced motion, and no serious axe-core violation on the main screens; the interface
+  speaks English and Brazilian Portuguese and follows the system language.
+
+### Security
+
+- Strict content security policy (no eval, no remote content), minimal Tauri capabilities per
+  window, links open only as http(s) after a confirmation, and file names from mods, themes and
+  backgrounds are checked against path escapes. See `docs/SECURITY_REVIEW.md`.
+
+[Unreleased]: https://github.com/marllon/noren/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/marllon/noren/releases/tag/v0.1.0

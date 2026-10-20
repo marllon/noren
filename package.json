@@ -1,6 +1,6 @@
 {
   "name": "noren",
-  "version": "0.0.1-dev",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.28.2",
@@ -16,6 +16,7 @@
     "rust:check": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace",
     "smoke": "node scripts/smoke.mjs",
     "desktop:build": "pnpm --filter @noren/desktop exec tauri build",
+    "workflows:check": "node scripts/check-workflows.mjs",
     "licenses:check": "node scripts/check-licenses.mjs && cargo deny check licenses",
     "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm rust:check",
     "e2e": "pnpm --filter @noren/desktop build && playwright test -c e2e/playwright.config.ts --grep-invert @visual",

@@ -1,6 +1,7 @@
 import { FakeBackend, SystemNotifier, agentSettingsOf, scrollbackAllowed } from "@noren/model";
 import type { Backend } from "@noren/model";
 import { startAgentScanner } from "./agent-service";
+import { startSessionLinks } from "./session-link-store";
 import { armAgentResumes } from "./resume-restore";
 import { resumeService } from "./resume-service";
 import { restoreKeepingSessions, withoutReattachedSnapshots } from "./boot-sessions";
@@ -88,6 +89,8 @@ export async function bootWorkspace(
     // shell, since a saved pane may name one of them; the list is then the machine's and the user's.
     await startProfiles(target, configManager);
     perfMark("boot-profiles");
+    // The connection of each shell on another machine (SSH profiles) reaches the tabs from here on.
+    startSessionLinks(target);
     if (getProfiles().length === 0) {
       return { ok: false, error: "No shell was found on this machine." };
     }

@@ -10,7 +10,17 @@ import {
   treeGroups,
   withMod,
 } from "@noren/model";
-import type { AgentRow, GroupNode, Id, Item, Pane, Space } from "@noren/model";
+import type {
+  AgentRow,
+  FakeSshTarget,
+  GroupNode,
+  Id,
+  Item,
+  Pane,
+  SessionLink,
+  SessionLinkState,
+  Space,
+} from "@noren/model";
 import type { ITheme } from "@xterm/xterm";
 import type { ChangeEvent } from "react";
 import {
@@ -42,6 +52,7 @@ import { formatChord } from "./shortcuts-screen";
 import { followQuickPromotions, promoteQuickSession } from "./quick-promote";
 import type { PromoteResult } from "./quick-promote";
 import { quickPreviewEnabled, quickPreviewEvents, tauriQuickEvents } from "./quick";
+import { retryFailedLinks } from "./session-link-store";
 import { tauriBridge } from "./tauri-backend";
 import { AskPanel } from "./AskPanel";
 import { askOffNotice, shellNameOf } from "./ask-panel";
@@ -207,6 +218,23 @@ export interface NorenTestHook {
    * the program and arguments of the profile, and the folder the session started in.
    */
   userProfileSessions(): { profileId: string; program: string; args: string[]; cwd: string }[];
+  /**
+   * The sessions of the profiles of kind ssh, in order of start: the session, the profile, the
+   * machine the profile names (nothing of the folder or the environment the window passed) and
+   * where its connection stands.
+   */
+  sshSessions(): {
+    id: number;
+    profileId: string;
+    ssh: FakeSshTarget;
+    link: SessionLinkState;
+  }[];
+  /** Breaks or mends the connection of every live session of an SSH profile, one event each. */
+  setProfileLink(profileId: string, link: Omit<SessionLink, "id">): void;
+  /** Breaks or mends the connection of one session of an SSH profile. */
+  setSessionLink(id: number, link: Omit<SessionLink, "id">): void;
+  /** The sessions the window asked the backend to connect again (Try again), in order. */
+  retriedSessions(): number[];
   /** Ids of the panes of the active tab, in layout order. */
   paneIds(): string[];
   /** Id of the focused pane of the active tab. */
@@ -1470,6 +1498,24 @@ function Shell({ store }: { store: WorkspaceStore }) {
             .callsTo("resize")
             .filter((call) => call.args[0] === id)
             .map((call) => ({ cols: Number(call.args[1]), rows: Number(call.args[2]) })),
+        sshSessions: () => {
+          const started = fake.callsTo("createSession").length;
+          const sessions = [];
+          for (let id = 1; id <= started; id++) {
+            const info = fake.session(id);
+            if (info?.ssh === undefined) continue;
+            sessions.push({
+              id,
+              profileId: info.profileId,
+              ssh: info.ssh,
+              link: info.link?.state ?? "connected",
+            });
+          }
+          return sessions;
+        },
+        setProfileLink: (profileId, link) => fake.setProfileLink(profileId, link),
+        setSessionLink: (id, link) => fake.setSessionLink(id, link),
+        retriedSessions: () => fake.callsTo("retrySession").map((call) => Number(call.args[0])),
         userProfileSessions: () => {
           const started = fake.callsTo("createSession").length;
           const sessions = [];
@@ -1697,6 +1743,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
     onStartEdit: setEditing,
     onCommitEdit,
     onCancelEdit,
+    // Try again on a tab whose connection to its shell on another machine gave up.
+    onRetryLink: (itemId: Id) => {
+      const item = space.items[itemId];
+      if (item !== undefined) void retryFailedLinks(backend, item);
+    },
   };
 
   const close = () => setOverlay(null);

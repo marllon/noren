@@ -470,8 +470,61 @@ body {
 }
 
 .tab-badge[data-nr-indicator="failed"],
-.tab-badge[data-nr-indicator="bell"] {
+.tab-badge[data-nr-indicator="bell"],
+.tab-badge[data-nr-indicator="link"] {
   color: var(--nr-accent);
+}
+
+/*
+ * A tab whose shell is on another machine and whose connection is down: a line under the tab in the
+ * sidebar (a sentence, and the Try again button once the connection gave up), a few words in the tab
+ * of the top bar. Reconnecting spins, failed does not, and the words differ, so the state never
+ * rests on color alone. Only a tab of an SSH profile ever has them.
+ */
+.tab-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 0 10px 2px;
+  color: var(--nr-text);
+  font-size: 11px;
+}
+
+.tab-link-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-retry {
+  flex: none;
+  padding: 1px 8px;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) * 0.6);
+  background: transparent;
+  color: var(--nr-text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.link-retry:hover {
+  background: color-mix(in srgb, var(--nr-text) 12%, transparent);
+}
+
+.bar-tab-link {
+  flex: none;
+  color: var(--nr-text);
+  font-size: 11px;
+}
+
+.bar-slot[data-nr-link-state="failed"] {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 /*

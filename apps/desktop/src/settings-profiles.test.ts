@@ -4,6 +4,7 @@ import type { Config, UserProfile } from "@noren/model";
 import { planSave, shownSettings } from "./settings-screen";
 import {
   argsOfText,
+  isSshRow,
   newProfileId,
   planProfiles,
   profileRowsOf,
@@ -11,7 +12,7 @@ import {
   withProfileEdited,
   withoutProfile,
 } from "./settings-profiles";
-import type { ProfileRow } from "./settings-profiles";
+import type { ProfileField, ProfileRow } from "./settings-profiles";
 
 const FILE = `// My settings, keep this line.
 {
@@ -275,35 +276,91 @@ describe("planProfiles", () => {
 });
 
 describe("a profile of kind ssh in the file", () => {
-  // The screen has no boxes for the host, the key and the rest yet: such a profile is written in
-  // the file by hand, and the screen must not show it as a shell with no program, make Save refuse
-  // for that, rewrite it or drop it.
   const WITH_SSH = `{
   "profiles": [
     { "id": "dev", "name": "Dev", "program": "pwsh.exe" },
     // the build machine
-    { "kind": "ssh", "id": "build", "name": "Build", "host": "build.example.org", "port": 2222 },
+    {
+      "kind": "ssh",
+      "id": "build",
+      "name": "Build",
+      "host": "build.example.org",
+      "port": 2222,
+      "identityFile": "C:\\\\keys\\\\id_ed25519",
+    },
     { "id": "ops", "name": "Ops", "program": "bash" }
   ]
 }
 `;
 
-  it("has no row, so the screen lists only the shells", () => {
-    expect(profileRowsOf(config(WITH_SSH)).map((row) => row.key)).toEqual(["dev", "ops"]);
+  const sshRows = (): ProfileRow[] => profileRowsOf(config(WITH_SSH));
+
+  it("has a row of its own with the boxes of the machine, next to the shells", () => {
+    expect(sshRows().map((row) => row.key)).toEqual(["dev", "build", "ops"]);
+    expect(sshRows()[1]).toEqual({
+      key: "build",
+      saved: true,
+      kind: "ssh",
+      name: "Build",
+      host: "build.example.org",
+      user: "",
+      port: "2222",
+      identityFile: "C:\\keys\\id_ed25519",
+      knownHostsFile: "",
+      program: "",
+      args: "",
+      cwd: "",
+    });
+    expect(isSshRow(sshRows()[1] as ProfileRow)).toBe(true);
+    expect(isSshRow(sshRows()[0] as ProfileRow)).toBe(false);
   });
 
-  it("is neither changed nor removed when the shells around it are edited or removed", () => {
-    const edited = withProfileEdited(profileRowsOf(config(WITH_SSH)), "ops", { program: "zsh" });
-    const result = saved(WITH_SSH, withoutProfile(edited, "dev"));
-    expect(result.profiles).toEqual([
-      { kind: "ssh", id: "build", name: "Build", host: "build.example.org", port: 2222 },
-      { id: "ops", name: "Ops", program: "zsh" },
-    ]);
+  it("is as the file has it when nothing was touched", () => {
+    expect(planProfiles(config(WITH_SSH), sshRows()).changes).toEqual([]);
+  });
+
+  it("is changed box by box, keeping the comments, and an emptied optional box leaves the file", () => {
+    const edited = withProfileEdited(sshRows(), "build", {
+      host: "10.0.0.7",
+      user: "deploy",
+      port: "",
+      identityFile: "",
+      knownHostsFile: "C:\\keys\\known_hosts",
+      program: "bash",
+      args: "-l\n-i",
+      cwd: "/srv/app",
+    });
+    const result = saved(WITH_SSH, edited);
+    expect(result.profiles[1]).toEqual({
+      kind: "ssh",
+      id: "build",
+      name: "Build",
+      host: "10.0.0.7",
+      user: "deploy",
+      knownHostsFile: "C:\\keys\\known_hosts",
+      program: "bash",
+      args: ["-l", "-i"],
+      cwd: "/srv/app",
+    });
     expect(result.text).toContain("// the build machine");
+    expect(result.profiles[0]).toEqual({ id: "dev", name: "Dev", program: "pwsh.exe" });
+  });
+
+  it("is removed with its row, the shells around it staying", () => {
+    const result = saved(WITH_SSH, withoutProfile(sshRows(), "build"));
+    expect(result.profiles.map((profile) => profile.id)).toEqual(["dev", "ops"]);
+  });
+
+  it("is not edited through a stale row of the other kind that has its id", () => {
+    const stale = [{ key: "build", saved: true, name: "B", program: "b", args: "", cwd: "" }];
+    expect(planProfiles(config(WITH_SSH), stale).changes).toEqual([
+      { path: ["profiles", 2], remove: true },
+      { path: ["profiles", 0], remove: true },
+    ]);
   });
 
   it("keeps its id away from a new profile", () => {
-    const draft = withProfileEdited(withNewProfile(profileRowsOf(config(WITH_SSH))), "new-1", {
+    const draft = withProfileEdited(withNewProfile(sshRows()), "new-1", {
       name: "Build",
       program: "sh",
     });
@@ -312,13 +369,113 @@ describe("a profile of kind ssh in the file", () => {
       { id: "build-2", name: "Build", program: "sh" },
     ]);
   });
+});
 
-  it("is not edited through a stale row that has its id (the shells with no row go, it stays)", () => {
-    const stale = [{ key: "build", saved: true, name: "B", program: "b", args: "", cwd: "" }];
-    expect(planProfiles(config(WITH_SSH), stale).changes).toEqual([
-      { path: ["profiles", 2], remove: true },
-      { path: ["profiles", 0], remove: true },
-    ]);
+describe("a new profile of kind ssh", () => {
+  const filled = (patch: Partial<Record<ProfileField, string>> = {}): ProfileRow[] =>
+    withProfileEdited(withNewProfile(rows(), "ssh"), "new-1", {
+      name: "Build Box",
+      host: "build.example.org",
+      ...patch,
+    });
+
+  it("starts as an empty row of kind ssh with the boxes of the machine", () => {
+    expect(withNewProfile(rows(), "ssh")[2]).toEqual({
+      key: "new-1",
+      saved: false,
+      kind: "ssh",
+      name: "",
+      program: "",
+      args: "",
+      cwd: "",
+      host: "",
+      user: "",
+      port: "",
+      identityFile: "",
+      knownHostsFile: "",
+    });
+    // The shell row is what it was: no boxes of a machine.
+    expect(withNewProfile(rows())[2]).not.toHaveProperty("host");
+  });
+
+  it("is left out while empty, and written with only the boxes that have something", () => {
+    expect(planProfiles(config(FILE), withNewProfile(rows(), "ssh")).changes).toEqual([]);
+    const out = saved(FILE, filled());
+    expect(out.profiles.at(-1)).toEqual({
+      kind: "ssh",
+      id: "build-box",
+      name: "Build Box",
+      host: "build.example.org",
+    });
+    expect(out.text).toContain("// My settings, keep this line.");
+  });
+
+  it("is written with every box, the port as a number, and no program when none was typed", () => {
+    const out = saved(
+      FILE,
+      filled({
+        user: " deploy ",
+        port: "2222",
+        identityFile: "C:\\keys\\id_ed25519",
+        knownHostsFile: "C:\\keys\\known_hosts",
+        program: "bash",
+        args: "-l",
+        cwd: "/srv/app",
+      }),
+    );
+    expect(out.profiles.at(-1)).toEqual({
+      kind: "ssh",
+      id: "build-box",
+      name: "Build Box",
+      host: "build.example.org",
+      user: "deploy",
+      port: 2222,
+      identityFile: "C:\\keys\\id_ed25519",
+      knownHostsFile: "C:\\keys\\known_hosts",
+      program: "bash",
+      args: ["-l"],
+      cwd: "/srv/app",
+    });
+  });
+
+  it("is refused by the schema, box by box, and nothing of it is written", () => {
+    const cases: [Partial<Record<ProfileField, string>>, ProfileField][] = [
+      [{ host: "" }, "host"],
+      [{ host: "-oProxyCommand=x" }, "host"],
+      [{ host: "has space" }, "host"],
+      [{ user: "-x" }, "user"],
+      [{ port: "abc" }, "port"],
+      [{ port: "22.5" }, "port"],
+      [{ port: "0" }, "port"],
+      [{ port: "70000" }, "port"],
+      [{ identityFile: "key\u0001" }, "identityFile"],
+      [{ knownHostsFile: "a\nb" }, "knownHostsFile"],
+      [{ name: "   " }, "name"],
+    ];
+    for (const [patch, field] of cases) {
+      const plan = planProfiles(config(FILE), filled(patch));
+      expect(plan.problems["new-1"]?.[field], JSON.stringify(patch)).toBeDefined();
+      expect(plan.changes, JSON.stringify(patch)).toEqual([]);
+    }
+    expect(planProfiles(config(FILE), filled({ port: "abc" })).problems["new-1"]?.port).toBe(
+      "Must be a whole number",
+    );
+  });
+
+  it("holds a saved row to the same checks, and writes none of it while a box is wrong", () => {
+    const text = `{ "profiles": [{ "kind": "ssh", "id": "box", "name": "Box", "host": "h", "port": 22 }] }`;
+    const bad = withProfileEdited(profileRowsOf(config(text)), "box", { host: "", user: "ok" });
+    const plan = planProfiles(config(text), bad);
+    expect(Object.keys(plan.problems["box"] ?? {})).toEqual(["host"]);
+    expect(plan.changes).toEqual([]);
+    expect(planSave(config(text), { profiles: bad }).profileProblems["box"]?.host).toBeDefined();
+  });
+
+  it("has no box for a password, a passphrase or the text of a key", () => {
+    const row = withNewProfile([], "ssh")[0] as ProfileRow;
+    expect(Object.keys(row).filter((key) => /pass|secret|private/i.test(key))).toEqual([]);
+    const written = saved("{}", filled()).profiles[0] as Record<string, unknown>;
+    expect(Object.keys(written).filter((key) => /pass|secret|private/i.test(key))).toEqual([]);
   });
 });
 

@@ -48,7 +48,7 @@ import {
   shownSettings,
 } from "./settings-screen";
 import type { SettingsDraft } from "./settings-screen";
-import { withNewProfile, withProfileEdited, withoutProfile } from "./settings-profiles";
+import { isSshRow, withNewProfile, withProfileEdited, withoutProfile } from "./settings-profiles";
 import type { ProfileField, ProfileRow } from "./settings-profiles";
 import { aiProviderIds, fontChoice } from "./settings-sections";
 import type { AiTargetDraft } from "./settings-sections";
@@ -604,8 +604,63 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                               wide
                               onChange={(name) => editProfile(row.key, { name })}
                             />
+                            {isSshRow(row) && (
+                              <>
+                                <NumberBox
+                                  label={t("settings.profileHost")}
+                                  field="profiles.item.host"
+                                  value={row.host ?? ""}
+                                  problem={problems?.host}
+                                  text
+                                  wide
+                                  onChange={(host) => editProfile(row.key, { host })}
+                                />
+                                <NumberBox
+                                  label={t("settings.profileUser")}
+                                  field="profiles.item.user"
+                                  value={row.user ?? ""}
+                                  problem={problems?.user}
+                                  text
+                                  wide
+                                  onChange={(user) => editProfile(row.key, { user })}
+                                />
+                                <NumberBox
+                                  label={t("settings.profilePort")}
+                                  field="profiles.item.port"
+                                  value={row.port ?? ""}
+                                  problem={problems?.port}
+                                  onChange={(port) => editProfile(row.key, { port })}
+                                />
+                                <NumberBox
+                                  label={t("settings.profileIdentityFile")}
+                                  field="profiles.item.identityFile"
+                                  value={row.identityFile ?? ""}
+                                  problem={problems?.identityFile}
+                                  text
+                                  wide
+                                  onChange={(identityFile) =>
+                                    editProfile(row.key, { identityFile })
+                                  }
+                                />
+                                <NumberBox
+                                  label={t("settings.profileKnownHostsFile")}
+                                  field="profiles.item.knownHostsFile"
+                                  value={row.knownHostsFile ?? ""}
+                                  problem={problems?.knownHostsFile}
+                                  text
+                                  wide
+                                  onChange={(knownHostsFile) =>
+                                    editProfile(row.key, { knownHostsFile })
+                                  }
+                                />
+                              </>
+                            )}
                             <NumberBox
-                              label={t("settings.profileProgram")}
+                              label={t(
+                                isSshRow(row)
+                                  ? "settings.profileRemoteProgram"
+                                  : "settings.profileProgram",
+                              )}
                               field="profiles.item.program"
                               value={row.program}
                               problem={problems?.program}
@@ -621,7 +676,9 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                               onChange={(args) => editProfile(row.key, { args })}
                             />
                             <NumberBox
-                              label={t("settings.profileCwd")}
+                              label={t(
+                                isSshRow(row) ? "settings.profileRemoteCwd" : "settings.profileCwd",
+                              )}
                               field="profiles.item.cwd"
                               value={row.cwd}
                               problem={problems?.cwd}
@@ -651,7 +708,17 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                 >
                   {t("settings.profileAdd")}
                 </button>
+                <button
+                  type="button"
+                  className="settings-link"
+                  onClick={() => changeProfiles((rows) => withNewProfile(rows, "ssh"))}
+                >
+                  {t("settings.profileAddSsh")}
+                </button>
                 <p className="settings-hint">{t("settings.profilesHint")}</p>
+                {shown.profiles.some(isSshRow) && (
+                  <p className="settings-hint">{t("settings.profilesSshHint")}</p>
+                )}
               </section>
               <section className="settings-section" aria-label={t("settings.shortcuts")}>
                 <h3>{t("settings.shortcuts")}</h3>

@@ -1,5 +1,5 @@
 import { layoutPanes, treeItemIds } from "@noren/model";
-import type { AgentState, GroupNode, Item, Pane, Space } from "@noren/model";
+import type { AgentState, GroupNode, Item, Pane, SessionLink, Space } from "@noren/model";
 import { t } from "./i18n";
 
 const ELLIPSIS = "…";
@@ -124,6 +124,11 @@ export function commandWords(info: CommandInfo): string {
   return parts.join(", ");
 }
 
+/** The connection of a tab whose shell is on another machine, while it is not up. */
+export type ItemLink = Pick<SessionLink, "attempt" | "maxAttempts" | "reason"> & {
+  state: "reconnecting" | "failed";
+};
+
 /** What the sidebar shows for a tab, taken from the panes of its layout. */
 export interface ItemSummary {
   /** Folder of the focused pane, falling back to `defaultCwd`; `undefined` when neither is set. */
@@ -145,6 +150,8 @@ export interface ItemSummary {
   failed?: number | null;
   unread: boolean;
   bell: boolean;
+  /** The connection of the tab to its shell on another machine, when it is down (a failure outranks a retry). */
+  link?: ItemLink;
 }
 
 /**
@@ -156,6 +163,7 @@ export function summarizeItem(
   defaultCwd?: string,
   agentOf?: (pane: Pane) => string | undefined,
   agentStateOf?: (pane: Pane) => AgentState | undefined,
+  linkOf?: (pane: Pane) => SessionLink | undefined,
 ): ItemSummary {
   const panes = layoutPanes(item.layout);
   const focused: Pane | undefined =
@@ -171,6 +179,7 @@ export function summarizeItem(
     agent === undefined || agentStateOf === undefined
       ? undefined
       : mostPressing(panes, agentStateOf);
+  const link = linkOf === undefined ? undefined : worstLink(panes, linkOf);
   return {
     ...(cwd !== undefined && cwd.trim() !== "" ? { cwd } : {}),
     ...(focused?.gitBranch !== undefined && focused.gitBranch !== ""
@@ -183,7 +192,28 @@ export function summarizeItem(
     ...(failed ? { failed: failed.exitCode ?? null } : {}),
     unread: panes.some((pane) => pane.unread),
     bell: panes.some((pane) => pane.bell),
+    ...(link !== undefined ? { link } : {}),
   };
+}
+
+/** The connection that needs the person most among the panes of a tab: one that failed, else one retrying. */
+function worstLink(
+  panes: readonly Pane[],
+  linkOf: (pane: Pane) => SessionLink | undefined,
+): ItemLink | undefined {
+  let found: ItemLink | undefined;
+  for (const pane of panes) {
+    const link = linkOf(pane);
+    if (link === undefined || link.state === "connected") continue;
+    if (found !== undefined && !(link.state === "failed" && found.state !== "failed")) continue;
+    found = {
+      state: link.state,
+      ...(link.attempt !== undefined ? { attempt: link.attempt } : {}),
+      ...(link.maxAttempts !== undefined ? { maxAttempts: link.maxAttempts } : {}),
+      ...(link.reason !== undefined ? { reason: link.reason } : {}),
+    };
+  }
+  return found;
 }
 
 /** The state that needs the person most: waiting for you, then working, then idle. */
@@ -245,9 +275,35 @@ export function marksWords(marks: UnreadMarks): string[] {
   return [...(marks.unread ? [unreadLabel()] : []), ...(marks.bell ? [bellLabel()] : [])];
 }
 
+/**
+ * The connection of a tab in a sentence. While it retries it says what the person needs to know:
+ * what they type is not sent (the backend refuses a write with no connection and keeps nothing).
+ */
+export function linkText(link: ItemLink): string {
+  if (link.state === "failed") {
+    return link.reason !== undefined
+      ? t("pane.link.failed", { reason: link.reason })
+      : t("pane.link.failedBare");
+  }
+  const sentence =
+    link.attempt !== undefined && link.maxAttempts !== undefined
+      ? t("pane.link.reconnecting", { attempt: link.attempt, max: link.maxAttempts })
+      : t("pane.link.reconnectingBare");
+  return link.reason !== undefined ? `${sentence} ${link.reason}` : sentence;
+}
+
+/** The connection of a tab in a few words, for a tab with little room. */
+export function linkShort(link: ItemLink): string {
+  if (link.state === "failed") return t("pane.link.failedShort");
+  return link.attempt !== undefined && link.maxAttempts !== undefined
+    ? t("pane.link.reconnectingShort", { attempt: link.attempt, max: link.maxAttempts })
+    : t("pane.link.reconnectingShortBare");
+}
+
 /** The indicators of a summary in words, in the order the sidebar draws them. */
 export function indicatorLabels(summary: ItemSummary): string[] {
   return [
+    ...(summary.link !== undefined ? [linkText(summary.link)] : []),
     ...(summary.agent !== undefined
       ? [
           summary.agentState !== undefined

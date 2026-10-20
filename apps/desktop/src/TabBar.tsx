@@ -3,11 +3,12 @@ import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
 import type { GroupNode, Id, Space } from "@noren/model";
 import { useAgentOfPane } from "./agent-store";
 import { useAgentStateOfPane } from "./agent-state-store";
+import { useLinkOfPane } from "./session-link-store";
 import { menuPoint } from "./ContextMenu";
 import { tabCount, useT } from "./i18n";
-import { indicatorLabels, summarizeItem } from "./pane-info";
+import { indicatorLabels, linkShort, linkText, summarizeItem } from "./pane-info";
 import type { ClickModifiers } from "./sidebar-tree";
-import { InlineName, TabBadges } from "./SidebarTree";
+import { InlineName, RetryLinkButton, TabBadges } from "./SidebarTree";
 import type { Editing } from "./SidebarTree";
 import type { MenuPoint } from "./SpaceMenu";
 import { barFocusTarget, barNodes } from "./tab-bar";
@@ -28,6 +29,8 @@ interface TabBarProps {
   onCommitEdit(editing: Editing, value: string, restoreFocus: boolean): void;
   onCancelEdit(): void;
   onNewTab(): void;
+  /** Try again on a tab whose connection to its shell failed: connect its sessions once more. */
+  onRetryLink?(itemId: Id): void;
 }
 
 /**
@@ -49,10 +52,12 @@ export function TabBar({
   onCommitEdit,
   onCancelEdit,
   onNewTab,
+  onRetryLink,
 }: TabBarProps) {
   const t = useT();
   const agentOf = useAgentOfPane();
   const agentStateOf = useAgentStateOfPane();
+  const linkOf = useLinkOfPane();
   const order = spaceItemIds(space);
   const modifiersOf = (event: MouseEvent): ClickModifiers => ({
     toggle: event.ctrlKey || event.metaKey,
@@ -150,11 +155,11 @@ export function TabBar({
       );
     }
     const isActive = node.id === activeId;
-    const summary = summarizeItem(item, space.defaults.cwd, agentOf, agentStateOf);
+    const summary = summarizeItem(item, space.defaults.cwd, agentOf, agentStateOf, linkOf);
     const words = indicatorLabels(summary);
     const descriptionId = `bar-info-${node.id}`;
     return (
-      <li key={node.id} role="none" className="bar-slot">
+      <li key={node.id} role="none" className="bar-slot" data-nr-link-state={summary.link?.state}>
         <button
           type="button"
           role="tab"
@@ -183,7 +188,21 @@ export function TabBar({
             {label}
           </span>
           <TabBadges summary={summary} />
+          {summary.link !== undefined && (
+            <span
+              className="bar-tab-link"
+              data-nr-part="item-link"
+              data-nr-link-state={summary.link.state}
+              aria-hidden="true"
+              title={linkText(summary.link)}
+            >
+              {linkShort(summary.link)}
+            </span>
+          )}
         </button>
+        {summary.link?.state === "failed" && onRetryLink !== undefined && (
+          <RetryLinkButton tab={label} onRetry={() => onRetryLink(node.id)} />
+        )}
         {words.length > 0 && (
           <span id={descriptionId} className="sr-only">
             {words.join(". ")}

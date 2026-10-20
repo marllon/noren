@@ -1,5 +1,13 @@
 import { treeGroups } from "@noren/model";
-import type { AgentState, GroupNode, Item, LayoutNode, Pane, Space } from "@noren/model";
+import type {
+  AgentState,
+  GroupNode,
+  Item,
+  LayoutNode,
+  Pane,
+  SessionLink,
+  Space,
+} from "@noren/model";
 import { describe, expect, it } from "vitest";
 import {
   agentStateLabel,
@@ -9,6 +17,8 @@ import {
   formatDuration,
   groupMarks,
   indicatorLabels,
+  linkShort,
+  linkText,
   marksWords,
   shortCwd,
   spaceMarks,
@@ -409,5 +419,96 @@ describe("the marks of a group and of a space", () => {
     expect(marksWords({ unread: false, bell: false })).toEqual([]);
     expect(marksWords({ unread: true, bell: false })).toEqual(["Unread output"]);
     expect(marksWords({ unread: true, bell: true })).toEqual(["Unread output", "Bell"]);
+  });
+});
+
+describe("summarizeItem with the connection of a shell on another machine", () => {
+  const links: Record<string, SessionLink> = {
+    p2: { id: 2, state: "reconnecting", attempt: 3, maxAttempts: 10, reason: "Connection reset" },
+    p3: { id: 3, state: "failed", reason: "Permission denied (publickey)." },
+    p4: { id: 4, state: "connected" },
+  };
+  const linkOf = (p: Pane): SessionLink | undefined => links[p.id];
+  const split = (a: Pane, b: Pane): Item =>
+    item({ kind: "split", dir: "row", sizes: [50, 50], children: [leaf(a), leaf(b)] }, a.id);
+
+  it("has no link unless it is told how to find one, and none for a shell that is up", () => {
+    expect(summarizeItem(item(leaf(pane("p2")), "p2"))).not.toHaveProperty("link");
+    expect(
+      summarizeItem(item(leaf(pane("p1")), "p1"), undefined, undefined, undefined, linkOf),
+    ).not.toHaveProperty("link");
+    expect(
+      summarizeItem(item(leaf(pane("p4")), "p4"), undefined, undefined, undefined, linkOf),
+    ).not.toHaveProperty("link");
+  });
+
+  it("takes the state, the attempt and the reason of the pane", () => {
+    const summary = summarizeItem(
+      item(leaf(pane("p2")), "p2"),
+      undefined,
+      undefined,
+      undefined,
+      linkOf,
+    );
+    expect(summary.link).toEqual({
+      state: "reconnecting",
+      attempt: 3,
+      maxAttempts: 10,
+      reason: "Connection reset",
+    });
+  });
+
+  it("shows the failure over a retry when the panes of a split disagree, in either order", () => {
+    for (const tab of [split(pane("p2"), pane("p3")), split(pane("p3"), pane("p2"))]) {
+      expect(summarizeItem(tab, undefined, undefined, undefined, linkOf).link?.state).toBe(
+        "failed",
+      );
+    }
+    expect(
+      summarizeItem(split(pane("p4"), pane("p2")), undefined, undefined, undefined, linkOf).link
+        ?.state,
+    ).toBe("reconnecting");
+  });
+
+  it("says what is happening, and for a retry that what is typed is not sent", () => {
+    expect(linkText({ state: "reconnecting", attempt: 3, maxAttempts: 10 })).toBe(
+      "Reconnecting, attempt 3 of 10. What you type is not sent.",
+    );
+    expect(linkText({ state: "reconnecting" })).toBe("Reconnecting. What you type is not sent.");
+    expect(
+      linkText({ state: "reconnecting", attempt: 1, maxAttempts: 5, reason: "Timed out" }),
+    ).toBe("Reconnecting, attempt 1 of 5. What you type is not sent. Timed out");
+    expect(linkText({ state: "failed", reason: "Host key changed" })).toBe(
+      "Connection failed: Host key changed",
+    );
+    expect(linkText({ state: "failed" })).toBe("Connection failed.");
+    expect(linkShort({ state: "reconnecting", attempt: 3, maxAttempts: 10 })).toBe(
+      "Reconnecting 3/10",
+    );
+    expect(linkShort({ state: "reconnecting" })).toBe("Reconnecting");
+    expect(linkShort({ state: "failed", reason: "x" })).toBe("Failed");
+  });
+
+  it("puts it first in the words of the indicators, in English and in Portuguese", () => {
+    const summary = summarizeItem(
+      item(leaf(pane("p2")), "p2"),
+      undefined,
+      undefined,
+      undefined,
+      linkOf,
+    );
+    expect(indicatorLabels(summary)[0]).toBe(
+      "Reconnecting, attempt 3 of 10. What you type is not sent. Connection reset",
+    );
+    setLanguage("pt-BR");
+    try {
+      expect(linkText({ state: "reconnecting", attempt: 3, maxAttempts: 10 })).toBe(
+        "Reconectando, tentativa 3 de 10. O que você digitar não é enviado.",
+      );
+      expect(linkText({ state: "failed", reason: "x" })).toBe("A conexão falhou: x");
+      expect(linkShort({ state: "failed" })).toBe("Falhou");
+    } finally {
+      setLanguage("en");
+    }
   });
 });

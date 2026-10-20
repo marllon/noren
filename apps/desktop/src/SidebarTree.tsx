@@ -7,12 +7,14 @@ import {
   GitBranch,
   LoaderCircle,
   Pin,
+  WifiOff,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { layoutPanes } from "@noren/model";
 import { useAgentOfPane } from "./agent-store";
 import { useAgentStateOfPane } from "./agent-state-store";
+import { useLinkOfPane } from "./session-link-store";
 import type { GroupNode, Id, Item, Space } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
 import { PeekPopover, peekId, usePeek } from "./Peek";
@@ -28,13 +30,14 @@ import {
   failureLabel,
   groupMarks,
   indicatorLabels,
+  linkText,
   marksWords,
   runningLabel,
   shortCwd,
   summarizeItem,
   unreadLabel,
 } from "./pane-info";
-import type { CommandInfo, ItemSummary, UnreadMarks } from "./pane-info";
+import type { CommandInfo, ItemLink, ItemSummary, UnreadMarks } from "./pane-info";
 import type { MenuPoint } from "./SpaceMenu";
 import { menuTargets } from "./sidebar-tree";
 import type { ClickModifiers, TreeRow } from "./sidebar-tree";
@@ -85,6 +88,8 @@ interface SidebarTreeProps {
   onCancelEdit(): void;
   /** The last lines of the tab's terminal, for the peek that opens when the pointer rests on it. */
   onPeek?(itemId: Id): Promise<readonly string[]> | readonly string[];
+  /** Try again on a tab whose connection to its shell failed: connect its sessions once more. */
+  onRetryLink?(itemId: Id): void;
 }
 
 /** What a row of the tree needs to be a treeitem the keyboard can reach (see `tree-keys.ts`). */
@@ -142,6 +147,20 @@ export function TabBadges({ summary }: { summary: ItemSummary }) {
           <span className="agent-dot" />
         </span>
       )}
+      {summary.link !== undefined && (
+        <span
+          className="tab-badge"
+          data-nr-indicator="link"
+          data-nr-link-state={summary.link.state}
+          title={linkText(summary.link)}
+        >
+          {summary.link.state === "failed" ? (
+            <WifiOff size={12} aria-hidden="true" />
+          ) : (
+            <LoaderCircle size={12} className="spin" aria-hidden="true" />
+          )}
+        </span>
+      )}
       {summary.running && (
         <span className="tab-badge" data-nr-indicator="running" title={runningLabel()}>
           <LoaderCircle size={12} className="spin" aria-hidden="true" />
@@ -154,6 +173,43 @@ export function TabBadges({ summary }: { summary: ItemSummary }) {
       )}
       <MarkBadges marks={summary} />
     </span>
+  );
+}
+
+/**
+ * The button that connects a tab's sessions again after the connection failed. It sits next to the
+ * tab, never inside its button, and its name says which tab it is for.
+ */
+export function RetryLinkButton({ tab, onRetry }: { tab: string; onRetry(): void }) {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      className="link-retry"
+      data-nr-part="item-link-retry"
+      aria-label={t("pane.link.retryTab", { tab })}
+      onClick={onRetry}
+    >
+      {t("pane.link.retry")}
+    </button>
+  );
+}
+
+/**
+ * Under a tab whose connection is down: what is happening in a sentence (for a retry, that what is
+ * typed is not sent) and, once it failed, the button to try again. The tab's description says the
+ * same to assistive technology, so the sentence is hidden from it here.
+ */
+function LinkNotice({ link, tab, onRetry }: { link: ItemLink; tab: string; onRetry?(): void }) {
+  return (
+    <div className="tab-link" data-nr-part="item-link" data-nr-link-state={link.state}>
+      <span className="tab-link-text" aria-hidden="true" title={linkText(link)}>
+        {linkText(link)}
+      </span>
+      {link.state === "failed" && onRetry !== undefined && (
+        <RetryLinkButton tab={tab} onRetry={onRetry} />
+      )}
+    </div>
   );
 }
 
@@ -345,10 +401,12 @@ export function SidebarTree({
   onCommitEdit,
   onCancelEdit,
   onPeek,
+  onRetryLink,
 }: SidebarTreeProps) {
   const t = useT();
   const agentOf = useAgentOfPane();
   const agentStateOf = useAgentStateOfPane();
+  const linkOf = useLinkOfPane();
   const order = spaceItemIds(space);
   const peek = usePeek(onPeek ?? noPeek);
   // A peek whose tab left the list (closed, moved to another space) goes with it.
@@ -556,7 +614,7 @@ export function SidebarTree({
       );
     }
     const isActive = row.id === activeId;
-    const summary = summarizeItem(item, space.defaults.cwd, agentOf, agentStateOf);
+    const summary = summarizeItem(item, space.defaults.cwd, agentOf, agentStateOf, linkOf);
     const cwdText = summary.cwd !== undefined ? shortCwd(summary.cwd, home) : "";
     const hasMeta = cwdText !== "" || summary.gitBranch !== undefined;
     // The button is named by the title alone; the rest is read as its description.
@@ -653,6 +711,13 @@ export function SidebarTree({
               <ChevronRight size={14} aria-hidden="true" />
             )}
           </button>
+        )}
+        {summary.link !== undefined && (
+          <LinkNotice
+            link={summary.link}
+            tab={label}
+            {...(onRetryLink !== undefined ? { onRetry: () => onRetryLink(row.id) } : {})}
+          />
         )}
         {words.length > 0 && (
           <span id={descriptionId} className="sr-only">

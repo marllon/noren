@@ -17,6 +17,13 @@ export const MAX_AGENT_ENTRIES = 64;
 export const MAX_AGENT_NAMES = 16;
 /** Longest id or name in a catalog, in characters. */
 export const MAX_AGENT_NAME_CHARS = 64;
+/** Most patterns an agent may list for one state, and the longest pattern, in characters. */
+export const MAX_AGENT_PATTERNS = 16;
+export const MAX_AGENT_PATTERN_CHARS = 200;
+/** How long an agent may be silent before it counts as idle: default, shortest and longest, in seconds. */
+export const DEFAULT_AGENT_SILENCE_SECONDS = 8;
+export const MIN_AGENT_SILENCE_SECONDS = 1;
+export const MAX_AGENT_SILENCE_SECONDS = 3600;
 
 /** An id: lower case letters, digits, `-` and `_`. It is the name the interface shows. */
 export const AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
@@ -26,6 +33,55 @@ const EXECUTABLE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/;
 const PACKAGE_PATTERN = /^@?[A-Za-z0-9][A-Za-z0-9._+-]*(\/[A-Za-z0-9][A-Za-z0-9._+-]*)?$/;
 
 const NAME_LIMIT = { message: `At most ${MAX_AGENT_NAME_CHARS} characters` };
+
+/** Flags every pattern is compiled with: case does not matter, `^` and `$` match at each line. */
+export const AGENT_PATTERN_FLAGS = "im";
+
+/** The regular expression a pattern text stands for, or `undefined` when it is not one. */
+export function compileAgentPattern(source: string): RegExp | undefined {
+  try {
+    return new RegExp(source, AGENT_PATTERN_FLAGS);
+  } catch {
+    return undefined;
+  }
+}
+
+const patternList = (description: string) =>
+  z
+    .array(
+      z
+        .string()
+        .min(1, { message: "A pattern cannot be empty" })
+        .max(MAX_AGENT_PATTERN_CHARS, {
+          message: `At most ${MAX_AGENT_PATTERN_CHARS} characters`,
+        })
+        .refine((source) => compileAgentPattern(source) !== undefined, {
+          message: "Not a valid regular expression",
+        }),
+    )
+    .max(MAX_AGENT_PATTERNS)
+    .optional()
+    .meta({ description });
+
+/** The words of the output that tell what an agent is doing, as regular expressions. */
+export const AgentPatternsSchema = z
+  .strictObject({
+    working: patternList(
+      "Output that means the agent is working (a status line such as a spinner with its interrupt hint). Wins over idle, and is beaten by waiting.",
+    ),
+    waiting: patternList(
+      "Output that means the agent is asking you something (a permission question, a choice). The tab shows it as waiting for you. Without it, common yes/no questions count.",
+    ),
+    idle: patternList(
+      "Output that means the agent finished and is ready for your next message (its input prompt). Without it, silence is what makes the agent idle.",
+    ),
+  })
+  .meta({
+    description:
+      "Regular expressions (case-insensitive, ^ and $ match at each line) tried on what the agent prints, with colors and cursor moves removed.",
+  });
+
+export type AgentPatterns = z.infer<typeof AgentPatternsSchema>;
 
 /** One agent of the catalog. */
 export const AgentEntrySchema = z
@@ -63,6 +119,16 @@ export const AgentEntrySchema = z
       .meta({
         description:
           'Package names that identify the agent when it is started through a runner (node, npx, bunx, python, uv, pipx...): the runner counts as the agent when one of its arguments is the package, as in "npx pkg" or "python -m pkg".',
+      }),
+    patterns: AgentPatternsSchema.optional(),
+    silenceSeconds: z
+      .number()
+      .min(MIN_AGENT_SILENCE_SECONDS)
+      .max(MAX_AGENT_SILENCE_SECONDS)
+      .optional()
+      .meta({
+        description:
+          "Seconds without output after which this agent counts as idle. Replaces agents.silenceSeconds for this agent.",
       }),
   })
   .meta({ description: "A CLI agent Noren recognizes in a tab." });
@@ -106,13 +172,53 @@ export const AgentCatalogSchema = z
 
 export type AgentCatalog = z.infer<typeof AgentCatalogSchema>;
 
-/** The agents Noren knows without being told, named by their executable. */
+/**
+ * The questions any program asks the same way, tried for an agent whose entry lists no `waiting`
+ * patterns of its own: a yes/no choice, "press enter to continue", "do you want to proceed".
+ */
+export const DEFAULT_WAITING_PATTERNS: readonly string[] = [
+  "[\\[(](y/n|yes/no)[\\])]",
+  "\\([yn]\\)es\\s*/\\s*\\([yn]\\)o",
+  "press (enter|return) to continue",
+  "do you want to (proceed|continue)\\?",
+];
+
+/**
+ * The agents Noren knows without being told, named by their executable. The patterns are the
+ * words each prints at a state change (a status line, a permission question, the input prompt); a
+ * program that words them differently is one entry in `config.jsonc` away.
+ */
 export const DEFAULT_AGENT_CATALOG: AgentCatalog = [
-  { id: "claude", executables: ["claude"] },
-  { id: "codex", executables: ["codex"] },
+  {
+    id: "claude",
+    executables: ["claude"],
+    patterns: {
+      working: ["esc to interrupt"],
+      waiting: ["do you want to (proceed|make this edit|create|run)", "\\b1\\. yes\\b"],
+      idle: ["\\? for shortcuts"],
+    },
+  },
+  {
+    id: "codex",
+    executables: ["codex"],
+    patterns: {
+      working: ["esc to interrupt"],
+      waiting: ["would you like to run the following command", "allow command\\?"],
+      idle: ["send a message|ask codex"],
+    },
+  },
   { id: "gemini", executables: ["gemini"] },
   { id: "opencode", executables: ["opencode"] },
-  { id: "aider", executables: ["aider"], packages: ["aider"] },
+  {
+    id: "aider",
+    executables: ["aider"],
+    packages: ["aider"],
+    patterns: {
+      working: ["^(sending|streaming|tokens:|applied edit)"],
+      waiting: ["\\(y\\)es/\\(n\\)o", "\\[(yes|no)\\]:\\s*$"],
+      idle: ["^(architect|ask|code|help)?\\s*> ?$"],
+    },
+  },
   { id: "goose", executables: ["goose"] },
   { id: "crush", executables: ["crush"] },
   { id: "amp", executables: ["amp"] },
@@ -133,6 +239,8 @@ export interface AgentSettings {
   catalog: AgentCatalog;
   /** Milliseconds between two looks at the process tree. */
   scanIntervalMs: number;
+  /** Milliseconds of silence after which an agent counts as idle, unless its entry says otherwise. */
+  silenceMs: number;
 }
 
 /**
@@ -146,6 +254,7 @@ export function agentSettingsOf(
         enabled?: boolean | undefined;
         catalog?: AgentCatalog | undefined;
         scanSeconds?: number | undefined;
+        silenceSeconds?: number | undefined;
       }
     | undefined,
 ): AgentSettings {
@@ -156,7 +265,18 @@ export function agentSettingsOf(
     enabled: section?.enabled ?? DEFAULT_AGENTS_ENABLED,
     catalog: section?.catalog ?? DEFAULT_AGENT_CATALOG,
     scanIntervalMs: Math.round((usable ? seconds : DEFAULT_AGENT_SCAN_SECONDS) * 1000),
+    silenceMs: silenceMsOf(section?.silenceSeconds),
   };
+}
+
+/** Milliseconds for a silence in seconds; a value outside the limits (or not a number) is the default. */
+export function silenceMsOf(seconds: number | undefined): number {
+  const usable =
+    typeof seconds === "number" &&
+    Number.isFinite(seconds) &&
+    seconds >= MIN_AGENT_SILENCE_SECONDS &&
+    seconds <= MAX_AGENT_SILENCE_SECONDS;
+  return Math.round((usable ? seconds : DEFAULT_AGENT_SILENCE_SECONDS) * 1000);
 }
 
 /** Programs that start other programs: their own name says nothing, their arguments do. */

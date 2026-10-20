@@ -1,6 +1,7 @@
-import { SystemNotifier, restoreWorkspace, scrollbackAllowed } from "@noren/model";
+import { FakeBackend, SystemNotifier, restoreWorkspace, scrollbackAllowed } from "@noren/model";
 import type { Backend } from "@noren/model";
 import { startAgentScanner } from "./agent-service";
+import { setAgentStateClock } from "./agent-state-store";
 import { archiveClock, startAutoArchive } from "./auto-archive-service";
 import { createBackend, insideTauri } from "./backend";
 import { startBackgroundImages } from "./background-image-store";
@@ -125,6 +126,9 @@ export async function bootWorkspace(
     startAutoArchive({ store, clock: archiveClock(target) });
     // The agents under the shells of the tabs, from the process tree, on an interval.
     startAgentScanner({ store, backend: target });
+    // The silence that turns a working agent idle is measured on the clock of the fake shell in
+    // web mode (a test moves it), and on real time in the app.
+    setAgentStateClock(target instanceof FakeBackend ? target.clock : realClock);
     // In the app, closing the window waits for the page to save (the unload events below are not
     // enough: a call made while the window is torn down may never leave). The snapshots are started
     // first, which notes the files on the panes, so the state flushed with them has the notes.

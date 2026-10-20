@@ -69,7 +69,7 @@ import {
 import type { ClickModifiers, Selection } from "./sidebar-tree";
 import { sidebarMode } from "./layout";
 import { useLanguage, t, tabCount } from "./i18n";
-import { nothingUnreadNotice, shortCwd } from "./pane-info";
+import { agentStateLabel, nothingUnreadNotice, shortCwd } from "./pane-info";
 import { peekLinesOfItem } from "./peek-source";
 import { configManager, useConfigState } from "./config-store";
 import { runLayoutCommand } from "./layout-actions";
@@ -142,6 +142,14 @@ import { useModFiles } from "./mods-store";
 import { importSchemeFile } from "./scheme-import";
 import { useProfiles, useProfilesProblem } from "./profiles-store";
 import { currentAgentScanner } from "./agent-service";
+import {
+  feedAgentOutput,
+  forgetAgentState,
+  noteAgentInput,
+  noteAgentNotification,
+  useAgentStateOfPane,
+} from "./agent-state-store";
+import { agentOfPane } from "./agent-store";
 import { noteArchiveActivity } from "./auto-archive-service";
 import { Library } from "./Library";
 import type { LibraryEntry } from "./library-entries";
@@ -345,13 +353,27 @@ function PaneTerminal({ store, space, pane, active, first, colors, onReady }: Pa
   // The scrollback saved before this window opened, written by the terminal before the new shell
   // prints (only a pane restored from a saved state has any).
   const [restored] = useState(() => restoredScrollbackOf(pane.id));
+  // The tracker below lives as long as the pane and was made with the first `pane`; this is the
+  // latest one, which says what runs in it now.
+  const paneRef = useRef(pane);
+  useEffect(() => {
+    paneRef.current = pane;
+  });
   const [tracker] = useState(
     () =>
       new PaneLocationTracker({
         gitInfo: (folder) => backend.gitInfo(folder),
         onLocation: (location) => store.getState().setPaneLocation(pane.id, location),
-        onCommand: (event) => store.getState().setPaneCommand(pane.id, event),
-        onAttention: (event) => store.getState().notifyPane(pane.id, event),
+        onCommand: (event) => {
+          store.getState().setPaneCommand(pane.id, event);
+          // A command that ended takes the agent it started with it, and what it was doing.
+          if (event.kind === "end") forgetAgentState(pane.id);
+        },
+        onAttention: (event) => {
+          store.getState().notifyPane(pane.id, event);
+          // A notification from an agent (OSC 9, OSC 777) means it wants you.
+          if (event.kind === "notification") noteAgentNotification(paneRef.current);
+        },
         // The fake shell of web mode runs on a clock the tests move, so a command lasts as long
         // as they say.
         clock: backend instanceof FakeBackend ? backend.clock : realClock,
@@ -374,8 +396,10 @@ function PaneTerminal({ store, space, pane, active, first, colors, onReady }: Pa
       onReady={(handle) => onReady(pane.id, handle)}
       onCwd={recordFolder}
       {...(onExplain !== undefined ? { onExplain } : {})}
+      onInput={() => noteAgentInput(pane)}
       onOutput={(bytes) => {
         tracker.feed(bytes);
+        feedAgentOutput(pane, bytes);
         noteTerminalActivity(pane.id);
         noteArchiveActivity(pane.id);
       }}
@@ -413,12 +437,20 @@ function ItemView({
 }: ItemViewProps) {
   const dispatch = useStore(store, (state) => state.dispatch);
   const { paneHeaders } = useLayout();
+  const agentStateOf = useAgentStateOfPane();
   const context: SplitLayoutContext = {
     focusedPaneId: item.focusedPaneId,
     framed: item.layout.kind === "split",
     zoomedPaneId: item.zoomedPaneId,
     dropEnabled: shown,
     headers: paneHeaders,
+    paneAgent: (pane) => {
+      const state = agentStateOf(pane);
+      const name = agentOfPane(pane);
+      return state !== undefined && name !== undefined
+        ? { state, label: agentStateLabel(name, state) }
+        : undefined;
+    },
     paneTitle: (pane) => {
       const cwd = pane.cwd ?? space.defaults.cwd;
       const short = cwd !== undefined ? shortCwd(cwd, home) : "";

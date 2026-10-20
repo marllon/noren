@@ -151,6 +151,11 @@ interface TerminalViewProps {
    * first chunks are the ones the session printed before the view subscribed.
    */
   onOutput?(bytes: Uint8Array): void;
+  /**
+   * Called when the person presses a key in the terminal (not for what the terminal itself sends
+   * back to the program, such as a reply to a query, and not for a paste).
+   */
+  onInput?(): void;
 }
 
 /** Pause between the WebGL contexts that views out of sight get ahead of their first show. */
@@ -211,6 +216,7 @@ export function TerminalView({
   onCwd,
   onExplain,
   onOutput,
+  onInput,
 }: TerminalViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -220,6 +226,7 @@ export function TerminalView({
   const onCwdRef = useRef(onCwd);
   const onExplainRef = useRef(onExplain);
   const onOutputRef = useRef(onOutput);
+  const onInputRef = useRef(onInput);
   const onSessionStartRef = useRef(onSessionStart);
   const activeRef = useRef(active);
   const themeRef = useRef(theme);
@@ -236,6 +243,7 @@ export function TerminalView({
     onCwdRef.current = onCwd;
     onExplainRef.current = onExplain;
     onOutputRef.current = onOutput;
+    onInputRef.current = onInput;
     onSessionStartRef.current = onSessionStart;
     activeRef.current = active;
     themeRef.current = theme;
@@ -438,6 +446,7 @@ export function TerminalView({
       if (path !== undefined) onCwdRef.current?.(path);
       return true;
     });
+    const keySub = term.onKey(() => onInputRef.current?.());
     const dataSub = term.onData((data) => {
       if (sessionId !== undefined) backend.write(sessionId, data).catch(() => undefined);
     });
@@ -598,6 +607,7 @@ export function TerminalView({
       host.removeEventListener("paste", onNativePaste, true);
       host.removeEventListener("contextmenu", onContextMenu);
       dataSub.dispose();
+      keySub.dispose();
       cwdHandler.dispose();
       resizeSub.dispose();
       for (const cleanup of cleanups) cleanup();

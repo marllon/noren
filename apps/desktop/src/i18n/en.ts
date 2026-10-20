@@ -98,6 +98,9 @@ export const en = {
   "pane.lastCommand": "Last command {command}",
   "pane.lastCommandBare": "Last command",
   "pane.agentLabel": "Agent {name}",
+  "pane.agentState.working": "Agent {name} is working",
+  "pane.agentState.waiting": "Agent {name} is waiting for you",
+  "pane.agentState.idle": "Agent {name} is idle",
   "pane.runningLabel": "Running",
   "pane.unreadLabel": "Unread output",
   "pane.bellLabel": "Bell",
@@ -725,7 +728,7 @@ export const en = {
   "field.archive.afterHours":
     "How many hours a tab is left alone before it goes to the archive: with no command running, no output, nothing unread and not on screen. Pinned tabs and favorites are never archived. A fraction is fine (0.5 is half an hour).",
   "field.agents":
-    "CLI agents: which programs count as an agent, and how often Noren looks for one under your shells. An agent shows as an icon on its tab.",
+    "CLI agents: which programs count as an agent, how often Noren looks for one under your shells, and how the state of an agent (working, waiting for you, idle) is told. An agent shows as an icon on its tab.",
   "field.agents.enabled":
     "Off: Noren never looks at the processes of your terminals and shows no agent icon.",
   "field.agents.catalog":
@@ -736,8 +739,20 @@ export const en = {
     'File names of the program, without folder, ".exe" or ".cmd" (case does not matter): "claude" matches claude, Claude.exe and claude.cmd, and not claudette.',
   "field.agents.catalog.item.packages":
     'Package names that identify the agent when it is started through a runner (node, npx, bunx, python, uv, pipx...): the runner counts as the agent when one of its arguments is the package, as in "npx pkg" or "python -m pkg".',
+  "field.agents.catalog.item.patterns":
+    "Regular expressions (case-insensitive, ^ and $ match at each line) tried on what the agent prints, with colors and cursor moves removed.",
+  "field.agents.catalog.item.patterns.working":
+    "Output that means the agent is working (a status line such as a spinner with its interrupt hint). Wins over idle, and is beaten by waiting.",
+  "field.agents.catalog.item.patterns.waiting":
+    "Output that means the agent is asking you something (a permission question, a choice). The tab shows it as waiting for you. Without it, common yes/no questions count.",
+  "field.agents.catalog.item.patterns.idle":
+    "Output that means the agent finished and is ready for your next message (its input prompt). Without it, silence is what makes the agent idle.",
+  "field.agents.catalog.item.silenceSeconds":
+    "Seconds without output after which this agent counts as idle. Replaces agents.silenceSeconds for this agent.",
   "field.agents.scanSeconds":
     "How many seconds between two looks at the process tree of the terminals, to find an agent that was not started from the prompt.",
+  "field.agents.silenceSeconds":
+    "How many seconds an agent may print nothing before its tab shows it as idle. An agent entry can set its own.",
   "field.ai":
     "The AI, off until you turn it on: providers (Ollama on this computer, and any you add) and which of them each function uses. Noren never runs what the AI suggests.",
   "field.ai.enabled":

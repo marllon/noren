@@ -1,4 +1,4 @@
-import type { Id, LayoutNode, Pane, SplitNode } from "@noren/model";
+import type { AgentState, Id, LayoutNode, Pane, SplitNode } from "@noren/model";
 import { Ellipsis, Maximize2, Minimize2, SquareArrowOutUpRight, X } from "lucide-react";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
@@ -30,6 +30,11 @@ export interface SplitLayoutContext {
   headers: boolean;
   /** The text of a pane's header. */
   paneTitle(pane: Pane): string;
+  /**
+   * What the agent of a pane is doing, in words for assistive technology, or `undefined` for a
+   * pane without an agent. The pane draws a ring in the color of the state.
+   */
+  paneAgent?(pane: Pane): { state: AgentState; label: string } | undefined;
   renderPane(pane: Pane): ReactNode;
   onFocusPane(paneId: Id): void;
   onZoomPane(paneId: Id): void;
@@ -190,6 +195,7 @@ function PaneFrame({ pane, context }: { pane: Pane; context: SplitLayoutContext 
   // The zoom is only a style: the other panes stay where they are in the tree, hidden, so no
   // terminal is unmounted or moved (a moved terminal remounts and loses its screen).
   const zoomState = zoom === undefined ? undefined : zoom === pane.id ? "zoomed" : "hidden";
+  const agent = context.paneAgent?.(pane);
   return (
     <div
       ref={drop.ref}
@@ -198,6 +204,7 @@ function PaneFrame({ pane, context }: { pane: Pane; context: SplitLayoutContext 
       data-pane-id={pane.id}
       data-nr-focused={context.framed && zoom === undefined ? String(focused) : undefined}
       data-nr-zoom={zoomState}
+      data-nr-agent-state={agent?.state}
       // Capture: the terminal handles its own mouse events, and the click must still count.
       onMouseDownCapture={() => {
         if (!focused) context.onFocusPane(pane.id);
@@ -212,6 +219,14 @@ function PaneFrame({ pane, context }: { pane: Pane; context: SplitLayoutContext 
         />
       ) : null}
       {context.renderPane(pane)}
+      {agent !== undefined && (
+        <>
+          <span className="pane-agent-ring" data-nr-part="pane-agent-ring" aria-hidden="true" />
+          <span className="sr-only" role="status" data-nr-part="pane-agent-state">
+            {agent.label}
+          </span>
+        </>
+      )}
       {drop.swap && (
         <span className="pane-swap-zone" data-nr-part="pane-swap-zone" aria-hidden="true" />
       )}

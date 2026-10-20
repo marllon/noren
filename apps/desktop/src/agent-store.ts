@@ -49,6 +49,20 @@ export function setTreeAgents(next: ReadonlyMap<Id, string>): void {
   notify();
 }
 
+/** The agent the running command of a pane names; `undefined` for none, or with agents off. */
+export function commandAgentOfPane(pane: Pane): string | undefined {
+  const settings = agentSettingsOf(configManager.state.config.agents);
+  if (!settings.enabled) return undefined;
+  return detectAgentByCommand(pane.runningCommand?.text, settings.catalog);
+}
+
+/** The agent the last look at the process tree found under the shell of a pane; `undefined` for none. */
+export function treeAgentOfPane(paneId: Id): string | undefined {
+  return agentSettingsOf(configManager.state.config.agents).enabled
+    ? treeAgents.get(paneId)
+    : undefined;
+}
+
 /** The agent of a pane now: its running command, else what the process tree showed; `undefined` for none. */
 export function agentOfPane(pane: Pane): string | undefined {
   const settings = agentSettingsOf(configManager.state.config.agents);

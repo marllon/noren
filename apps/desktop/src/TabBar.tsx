@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Pin, Plus } from "lucide-react";
 import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
 import type { GroupNode, Id, Space } from "@noren/model";
 import { useAgentOfPane } from "./agent-store";
+import { useAgentStateOfPane } from "./agent-state-store";
 import { menuPoint } from "./ContextMenu";
 import { tabCount, useT } from "./i18n";
 import { indicatorLabels, summarizeItem } from "./pane-info";
@@ -51,6 +52,7 @@ export function TabBar({
 }: TabBarProps) {
   const t = useT();
   const agentOf = useAgentOfPane();
+  const agentStateOf = useAgentStateOfPane();
   const order = spaceItemIds(space);
   const modifiersOf = (event: MouseEvent): ClickModifiers => ({
     toggle: event.ctrlKey || event.metaKey,
@@ -148,7 +150,7 @@ export function TabBar({
       );
     }
     const isActive = node.id === activeId;
-    const summary = summarizeItem(item, space.defaults.cwd, agentOf);
+    const summary = summarizeItem(item, space.defaults.cwd, agentOf, agentStateOf);
     const words = indicatorLabels(summary);
     const descriptionId = `bar-info-${node.id}`;
     return (

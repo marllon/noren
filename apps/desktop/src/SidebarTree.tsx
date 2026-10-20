@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { layoutPanes } from "@noren/model";
 import { useAgentOfPane } from "./agent-store";
+import { useAgentStateOfPane } from "./agent-state-store";
 import type { GroupNode, Id, Item, Space } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
 import { PeekPopover, peekId, usePeek } from "./Peek";
@@ -20,6 +21,7 @@ import type { PaneEntry } from "./item-panes";
 import { tabCount, t, useT } from "./i18n";
 import {
   agentLabel,
+  agentStateLabel,
   bellLabel,
   commandWords,
   exitText,
@@ -128,6 +130,16 @@ export function TabBadges({ summary }: { summary: ItemSummary }) {
       {summary.agent !== undefined && (
         <span className="tab-badge" data-nr-indicator="agent" title={agentLabel(summary.agent)}>
           <Bot size={12} aria-hidden="true" />
+        </span>
+      )}
+      {summary.agent !== undefined && summary.agentState !== undefined && (
+        <span
+          className="tab-badge"
+          data-nr-indicator="agent-state"
+          data-nr-agent-state={summary.agentState}
+          title={agentStateLabel(summary.agent, summary.agentState)}
+        >
+          <span className="agent-dot" />
         </span>
       )}
       {summary.running && (
@@ -336,6 +348,7 @@ export function SidebarTree({
 }: SidebarTreeProps) {
   const t = useT();
   const agentOf = useAgentOfPane();
+  const agentStateOf = useAgentStateOfPane();
   const order = spaceItemIds(space);
   const peek = usePeek(onPeek ?? noPeek);
   // A peek whose tab left the list (closed, moved to another space) goes with it.
@@ -543,7 +556,7 @@ export function SidebarTree({
       );
     }
     const isActive = row.id === activeId;
-    const summary = summarizeItem(item, space.defaults.cwd, agentOf);
+    const summary = summarizeItem(item, space.defaults.cwd, agentOf, agentStateOf);
     const cwdText = summary.cwd !== undefined ? shortCwd(summary.cwd, home) : "";
     const hasMeta = cwdText !== "" || summary.gitBranch !== undefined;
     // The button is named by the title alone; the rest is read as its description.

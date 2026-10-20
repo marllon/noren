@@ -1,7 +1,8 @@
 import { treeGroups } from "@noren/model";
-import type { GroupNode, Item, LayoutNode, Pane, Space } from "@noren/model";
+import type { AgentState, GroupNode, Item, LayoutNode, Pane, Space } from "@noren/model";
 import { describe, expect, it } from "vitest";
 import {
+  agentStateLabel,
   commandInfo,
   commandWords,
   failureLabel,
@@ -13,6 +14,7 @@ import {
   spaceMarks,
   summarizeItem,
 } from "./pane-info";
+import { setLanguage } from "./i18n";
 
 describe("shortCwd", () => {
   it("turns the home folder into ~ and keeps what follows it", () => {
@@ -123,6 +125,40 @@ describe("summarizeItem with agents", () => {
   it("names the agent in the words of the indicators", () => {
     const summary = summarizeItem(item(leaf(pane("p2")), "p2"), undefined, agentOf);
     expect(indicatorLabels(summary)).toEqual(["Agent codex"]);
+  });
+
+  describe("and their state", () => {
+    const states: Record<string, AgentState> = { p2: "working", p3: "waiting" };
+    const stateOf = (p: Pane): AgentState | undefined => states[p.id];
+
+    it("has no state unless it is told how to find one, nor for a tab without an agent", () => {
+      const tab = item(leaf(pane("p2")), "p2");
+      expect(summarizeItem(tab, undefined, agentOf)).not.toHaveProperty("agentState");
+      expect(
+        summarizeItem(item(leaf(pane("p1")), "p1"), undefined, agentOf, stateOf),
+      ).not.toHaveProperty("agentState");
+    });
+
+    it("takes the state of the agent, and the most pressing one among the panes of a split", () => {
+      expect(
+        summarizeItem(item(leaf(pane("p2")), "p2"), undefined, agentOf, stateOf).agentState,
+      ).toBe("working");
+      const tab = split(pane("p2"), pane("p3"), "p2");
+      expect(summarizeItem(tab, undefined, agentOf, stateOf).agentState).toBe("waiting");
+    });
+
+    it("says the state in the words of the indicators, in English and in Portuguese", () => {
+      const summary = summarizeItem(item(leaf(pane("p3")), "p3"), undefined, agentOf, stateOf);
+      expect(indicatorLabels(summary)).toEqual(["Agent claude is waiting for you"]);
+      setLanguage("pt-BR");
+      try {
+        expect(indicatorLabels(summary)).toEqual(["O agente claude está esperando você"]);
+        expect(agentStateLabel("claude", "working")).toBe("O agente claude está trabalhando");
+        expect(agentStateLabel("claude", "idle")).toBe("O agente claude está ocioso");
+      } finally {
+        setLanguage("en");
+      }
+    });
   });
 });
 

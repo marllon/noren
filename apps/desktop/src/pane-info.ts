@@ -1,5 +1,5 @@
 import { layoutPanes, treeItemIds } from "@noren/model";
-import type { GroupNode, Item, Pane, Space } from "@noren/model";
+import type { AgentState, GroupNode, Item, Pane, Space } from "@noren/model";
 import { t } from "./i18n";
 
 const ELLIPSIS = "…";
@@ -132,6 +132,11 @@ export interface ItemSummary {
   gitBranch?: string;
   /** The CLI agent in the tab: the one in the focused pane, else in the first pane that has one. */
   agent?: string;
+  /**
+   * What the agents of the tab are doing: the most pressing state among its panes that have an
+   * agent (waiting for you, then working, then idle). Absent when the tab has no agent.
+   */
+  agentState?: AgentState;
   /** A command is running in some pane. */
   running: boolean;
   /** The command of the focused pane: the one running now, else the last one. */
@@ -150,6 +155,7 @@ export function summarizeItem(
   item: Item,
   defaultCwd?: string,
   agentOf?: (pane: Pane) => string | undefined,
+  agentStateOf?: (pane: Pane) => AgentState | undefined,
 ): ItemSummary {
   const panes = layoutPanes(item.layout);
   const focused: Pane | undefined =
@@ -161,12 +167,17 @@ export function summarizeItem(
     agentOf === undefined
       ? undefined
       : ((focused && agentOf(focused)) ?? panes.map(agentOf).find((id) => id !== undefined));
+  const agentState =
+    agent === undefined || agentStateOf === undefined
+      ? undefined
+      : mostPressing(panes, agentStateOf);
   return {
     ...(cwd !== undefined && cwd.trim() !== "" ? { cwd } : {}),
     ...(focused?.gitBranch !== undefined && focused.gitBranch !== ""
       ? { gitBranch: focused.gitBranch }
       : {}),
     ...(agent !== undefined ? { agent } : {}),
+    ...(agentState !== undefined ? { agentState } : {}),
     running: panes.some((pane) => pane.status === "running" || pane.runningCommand !== undefined),
     ...(command !== undefined ? { command } : {}),
     ...(failed ? { failed: failed.exitCode ?? null } : {}),
@@ -175,8 +186,23 @@ export function summarizeItem(
   };
 }
 
+/** The state that needs the person most: waiting for you, then working, then idle. */
+const STATE_URGENCY: readonly AgentState[] = ["waiting", "working", "idle"];
+
+function mostPressing(
+  panes: readonly Pane[],
+  stateOf: (pane: Pane) => AgentState | undefined,
+): AgentState | undefined {
+  const states = panes.map(stateOf);
+  return STATE_URGENCY.find((state) => states.includes(state));
+}
+
 /** Tooltip of the agent icon: the plain name of the agent, as the catalog has it. */
 export const agentLabel = (name: string): string => t("pane.agentLabel", { name });
+
+/** The agent and what it is doing, in words: `Agent helper is waiting for you`. */
+export const agentStateLabel = (name: string, state: AgentState): string =>
+  t(`pane.agentState.${state}`, { name });
 
 /** Tooltip of the running indicator. */
 export const runningLabel = (): string => t("pane.runningLabel");
@@ -222,7 +248,13 @@ export function marksWords(marks: UnreadMarks): string[] {
 /** The indicators of a summary in words, in the order the sidebar draws them. */
 export function indicatorLabels(summary: ItemSummary): string[] {
   return [
-    ...(summary.agent !== undefined ? [agentLabel(summary.agent)] : []),
+    ...(summary.agent !== undefined
+      ? [
+          summary.agentState !== undefined
+            ? agentStateLabel(summary.agent, summary.agentState)
+            : agentLabel(summary.agent),
+        ]
+      : []),
     ...(summary.running ? [runningLabel()] : []),
     ...(summary.failed !== undefined ? [failureLabel(summary.failed)] : []),
     ...(summary.unread ? [unreadLabel()] : []),

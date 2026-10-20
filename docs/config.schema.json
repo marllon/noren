@@ -373,6 +373,49 @@
                   "maxLength": 64,
                   "pattern": "^@?[A-Za-z0-9][A-Za-z0-9._+-]*(\\/[A-Za-z0-9][A-Za-z0-9._+-]*)?$"
                 }
+              },
+              "patterns": {
+                "type": "object",
+                "properties": {
+                  "working": {
+                    "description": "Output that means the agent is working (a status line such as a spinner with its interrupt hint). Wins over idle, and is beaten by waiting.",
+                    "maxItems": 16,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  },
+                  "waiting": {
+                    "description": "Output that means the agent is asking you something (a permission question, a choice). The tab shows it as waiting for you. Without it, common yes/no questions count.",
+                    "maxItems": 16,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  },
+                  "idle": {
+                    "description": "Output that means the agent finished and is ready for your next message (its input prompt). Without it, silence is what makes the agent idle.",
+                    "maxItems": 16,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                },
+                "additionalProperties": false,
+                "description": "Regular expressions (case-insensitive, ^ and $ match at each line) tried on what the agent prints, with colors and cursor moves removed."
+              },
+              "silenceSeconds": {
+                "description": "Seconds without output after which this agent counts as idle. Replaces agents.silenceSeconds for this agent.",
+                "type": "number",
+                "minimum": 1,
+                "maximum": 3600
               }
             },
             "required": ["id", "executables"],
@@ -386,10 +429,17 @@
           "default": 3,
           "type": "number",
           "minimum": 1
+        },
+        "silenceSeconds": {
+          "description": "How many seconds an agent may print nothing before its tab shows it as idle. An agent entry can set its own.",
+          "default": 8,
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3600
         }
       },
       "additionalProperties": false,
-      "description": "CLI agents: which programs count as an agent, and how often Noren looks for one under your shells. An agent shows as an icon on its tab."
+      "description": "CLI agents: which programs count as an agent, how often Noren looks for one under your shells, and how the state of an agent (working, waiting for you, idle) is told. An agent shows as an icon on its tab."
     },
     "ai": {
       "type": "object",

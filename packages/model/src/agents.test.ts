@@ -46,6 +46,7 @@ describe("agents in config.jsonc", () => {
       enabled: true,
       catalog: DEFAULT_AGENT_CATALOG,
       scanIntervalMs: 3000,
+      silenceMs: 8000,
     });
   });
 

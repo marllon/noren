@@ -100,6 +100,9 @@ export const ptBR: Dictionary = {
   "pane.lastCommand": "Último comando {command}",
   "pane.lastCommandBare": "Último comando",
   "pane.agentLabel": "Agente {name}",
+  "pane.agentState.working": "O agente {name} está trabalhando",
+  "pane.agentState.waiting": "O agente {name} está esperando você",
+  "pane.agentState.idle": "O agente {name} está ocioso",
   "pane.runningLabel": "Em execução",
   "pane.unreadLabel": "Saída não lida",
   "pane.bellLabel": "Sino",
@@ -729,7 +732,7 @@ export const ptBR: Dictionary = {
   "field.archive.afterHours":
     "Quantas horas uma aba fica parada antes de ir para o arquivo: sem comando em execução, sem saída, sem nada não lido e fora da tela. Abas fixadas e favoritos nunca são arquivados. Uma fração vale (0,5 é meia hora).",
   "field.agents":
-    "Agentes de CLI: quais programas contam como agente e com que frequência o Noren procura um sob os seus shells. Um agente aparece como um ícone na aba.",
+    "Agentes de CLI: quais programas contam como agente, com que frequência o Noren procura um sob os seus shells e como se descobre o estado de um agente (trabalhando, esperando você, ocioso). Um agente aparece como um ícone na aba.",
   "field.agents.enabled":
     "Desligado: o Noren nunca olha os processos dos seus terminais e não mostra o ícone de agente.",
   "field.agents.catalog":
@@ -740,8 +743,20 @@ export const ptBR: Dictionary = {
     'Nomes de arquivo do programa, sem pasta, ".exe" ou ".cmd" (maiúsculas não importam): "claude" casa com claude, Claude.exe e claude.cmd, e não com claudette.',
   "field.agents.catalog.item.packages":
     'Nomes de pacote que identificam o agente quando ele é iniciado por um executor (node, npx, bunx, python, uv, pipx...): o executor conta como o agente quando um dos argumentos é o pacote, como em "npx pkg" ou "python -m pkg".',
+  "field.agents.catalog.item.patterns":
+    "Expressões regulares (sem diferenciar maiúsculas; ^ e $ valem em cada linha) testadas no que o agente imprime, sem cores nem movimentos do cursor.",
+  "field.agents.catalog.item.patterns.working":
+    "Saída que significa que o agente está trabalhando (uma linha de status, como um indicador de progresso com a dica de interromper). Vale mais que ocioso e perde para esperando.",
+  "field.agents.catalog.item.patterns.waiting":
+    "Saída que significa que o agente está perguntando algo a você (uma permissão, uma escolha). A aba mostra como esperando você. Sem isto, perguntas comuns de sim/não contam.",
+  "field.agents.catalog.item.patterns.idle":
+    "Saída que significa que o agente terminou e está pronto para a sua próxima mensagem (o prompt de entrada). Sem isto, é o silêncio que deixa o agente ocioso.",
+  "field.agents.catalog.item.silenceSeconds":
+    "Segundos sem saída depois dos quais este agente conta como ocioso. Substitui agents.silenceSeconds para este agente.",
   "field.agents.scanSeconds":
     "Quantos segundos entre duas olhadas na árvore de processos dos terminais, para achar um agente que não foi iniciado pelo prompt.",
+  "field.agents.silenceSeconds":
+    "Quantos segundos um agente pode ficar sem imprimir nada antes de a aba mostrá-lo como ocioso. Uma entrada de agente pode definir o seu próprio valor.",
   "field.ai":
     "A IA, desligada até você ligá-la: provedores (o Ollama deste computador e os que você adicionar) e qual deles cada função usa. O Noren nunca executa o que a IA sugere.",
   "field.ai.enabled":

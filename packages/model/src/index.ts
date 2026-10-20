@@ -232,22 +232,43 @@ export type {
 } from "./config-edit";
 export {
   AGENT_ID_PATTERN,
+  AGENT_PATTERN_FLAGS,
   AgentCatalogSchema,
   AgentEntrySchema,
+  AgentPatternsSchema,
   DEFAULT_AGENTS_ENABLED,
   DEFAULT_AGENT_CATALOG,
   DEFAULT_AGENT_SCAN_SECONDS,
+  DEFAULT_AGENT_SILENCE_SECONDS,
+  DEFAULT_WAITING_PATTERNS,
   MAX_AGENT_ENTRIES,
   MAX_AGENT_NAMES,
   MAX_AGENT_NAME_CHARS,
+  MAX_AGENT_PATTERNS,
+  MAX_AGENT_PATTERN_CHARS,
+  MAX_AGENT_SILENCE_SECONDS,
   MIN_AGENT_SCAN_SECONDS,
+  MIN_AGENT_SILENCE_SECONDS,
   agentSettingsOf,
+  compileAgentPattern,
   detectAgentByCommand,
   mentionsPackage,
   programName,
   resolveAgent,
+  silenceMsOf,
 } from "./agents";
-export type { AgentCatalog, AgentEntry, AgentSettings } from "./agents";
+export type { AgentCatalog, AgentEntry, AgentPatterns, AgentSettings } from "./agents";
+export {
+  AGENT_ECHO_WINDOW_MS,
+  AGENT_STATES,
+  AgentStateTracker,
+  advanceAgentState,
+  compileAgentRules,
+  settleAgentState,
+  startAgentState,
+} from "./agent-state";
+export type { AgentRules, AgentSignal, AgentState, AgentStateMemory } from "./agent-state";
+export { TerminalTextStripper } from "./terminal-text";
 export {
   ARCHIVE_CHECK_INTERVAL_MS,
   DEFAULT_ARCHIVE_AFTER_HOURS,

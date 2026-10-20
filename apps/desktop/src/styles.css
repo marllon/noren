@@ -474,6 +474,84 @@ body {
   color: var(--nr-accent);
 }
 
+/*
+ * What an agent is doing, on its tab (the dot) and on its pane (the ring): working is the accent and
+ * moves, waiting for you is the text color (the strongest against the background), solid, with a
+ * halo, idle is the muted color, thin and hollow. The theme has no warning color, so the states
+ * differ in shape and motion as well as in color, and the same words are in the text for assistive
+ * technology.
+ */
+.tab-badge[data-nr-agent-state="working"],
+.pane-frame[data-nr-agent-state="working"] {
+  --agent-color: var(--nr-accent);
+}
+
+.tab-badge[data-nr-agent-state="waiting"],
+.pane-frame[data-nr-agent-state="waiting"] {
+  --agent-color: var(--nr-text);
+}
+
+.tab-badge[data-nr-agent-state="idle"],
+.pane-frame[data-nr-agent-state="idle"] {
+  --agent-color: var(--nr-muted);
+}
+
+.agent-dot {
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--agent-color);
+}
+
+.tab-badge[data-nr-agent-state="working"] .agent-dot {
+  animation: nr-agent-pulse 1.4s ease-in-out infinite;
+}
+
+.tab-badge[data-nr-agent-state="waiting"] .agent-dot {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--agent-color) 40%, transparent);
+}
+
+.tab-badge[data-nr-agent-state="idle"] .agent-dot {
+  background: transparent;
+  border: 1.5px solid var(--agent-color);
+}
+
+.pane-agent-ring {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  border: 2px solid var(--agent-color);
+  pointer-events: none;
+}
+
+.pane-frame[data-nr-agent-state="working"] > .pane-agent-ring {
+  animation: nr-agent-pulse 1.4s ease-in-out infinite;
+}
+
+.pane-frame[data-nr-agent-state="waiting"] > .pane-agent-ring {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--agent-color) 40%, transparent);
+}
+
+.pane-frame[data-nr-agent-state="idle"] > .pane-agent-ring {
+  border-width: 1px;
+  opacity: 0.5;
+}
+
+@keyframes nr-agent-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-badge[data-nr-agent-state="working"] .agent-dot,
+  .pane-frame[data-nr-agent-state="working"] > .pane-agent-ring {
+    animation: none;
+  }
+}
+
 .unread-dot {
   width: 8px;
   height: 8px;

@@ -12,7 +12,10 @@ import {
   AgentCatalogSchema,
   DEFAULT_AGENTS_ENABLED,
   DEFAULT_AGENT_SCAN_SECONDS,
+  DEFAULT_AGENT_SILENCE_SECONDS,
+  MAX_AGENT_SILENCE_SECONDS,
   MIN_AGENT_SCAN_SECONDS,
+  MIN_AGENT_SILENCE_SECONDS,
 } from "./agents";
 import { DEFAULT_ARCHIVE_AFTER_HOURS, DEFAULT_ARCHIVE_ENABLED } from "./archive";
 import { MAX_BACKGROUND_BLUR, MAX_BACKGROUND_PATH, backgroundImageProblem } from "./background";
@@ -253,10 +256,15 @@ const agentsSchema = z
       "How many seconds between two looks at the process tree of the terminals, to find an agent that was not started from the prompt.",
       DEFAULT_AGENT_SCAN_SECONDS,
     ),
+    silenceSeconds: setting(
+      z.number().min(MIN_AGENT_SILENCE_SECONDS).max(MAX_AGENT_SILENCE_SECONDS),
+      "How many seconds an agent may print nothing before its tab shows it as idle. An agent entry can set its own.",
+      DEFAULT_AGENT_SILENCE_SECONDS,
+    ),
   })
   .meta({
     description:
-      "CLI agents: which programs count as an agent, and how often Noren looks for one under your shells. An agent shows as an icon on its tab.",
+      "CLI agents: which programs count as an agent, how often Noren looks for one under your shells, and how the state of an agent (working, waiting for you, idle) is told. An agent shows as an icon on its tab.",
   });
 
 const MOD_NAME_MESSAGE =

@@ -274,6 +274,54 @@ describe("planProfiles", () => {
   });
 });
 
+describe("a profile of kind ssh in the file", () => {
+  // The screen has no boxes for the host, the key and the rest yet: such a profile is written in
+  // the file by hand, and the screen must not show it as a shell with no program, make Save refuse
+  // for that, rewrite it or drop it.
+  const WITH_SSH = `{
+  "profiles": [
+    { "id": "dev", "name": "Dev", "program": "pwsh.exe" },
+    // the build machine
+    { "kind": "ssh", "id": "build", "name": "Build", "host": "build.example.org", "port": 2222 },
+    { "id": "ops", "name": "Ops", "program": "bash" }
+  ]
+}
+`;
+
+  it("has no row, so the screen lists only the shells", () => {
+    expect(profileRowsOf(config(WITH_SSH)).map((row) => row.key)).toEqual(["dev", "ops"]);
+  });
+
+  it("is neither changed nor removed when the shells around it are edited or removed", () => {
+    const edited = withProfileEdited(profileRowsOf(config(WITH_SSH)), "ops", { program: "zsh" });
+    const result = saved(WITH_SSH, withoutProfile(edited, "dev"));
+    expect(result.profiles).toEqual([
+      { kind: "ssh", id: "build", name: "Build", host: "build.example.org", port: 2222 },
+      { id: "ops", name: "Ops", program: "zsh" },
+    ]);
+    expect(result.text).toContain("// the build machine");
+  });
+
+  it("keeps its id away from a new profile", () => {
+    const draft = withProfileEdited(withNewProfile(profileRowsOf(config(WITH_SSH))), "new-1", {
+      name: "Build",
+      program: "sh",
+    });
+    const append = planProfiles(config(WITH_SSH), draft).changes.find((c) => "append" in c);
+    expect(append && "append" in append ? append.append : []).toEqual([
+      { id: "build-2", name: "Build", program: "sh" },
+    ]);
+  });
+
+  it("is not edited through a stale row that has its id (the shells with no row go, it stays)", () => {
+    const stale = [{ key: "build", saved: true, name: "B", program: "b", args: "", cwd: "" }];
+    expect(planProfiles(config(WITH_SSH), stale).changes).toEqual([
+      { path: ["profiles", 2], remove: true },
+      { path: ["profiles", 0], remove: true },
+    ]);
+  });
+});
+
 describe("planSave with the profiles", () => {
   it("joins them to the other sections, and reports their problems apart", () => {
     const draft = withProfileEdited(rows(), "dev", { name: "" });

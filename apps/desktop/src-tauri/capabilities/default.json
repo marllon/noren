@@ -22,6 +22,7 @@
     "allow-session-write",
     "allow-session-resize",
     "allow-session-kill",
+    "allow-session-retry",
     "allow-state-load",
     "allow-state-save",
     "allow-state-quarantine",

@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { AI_ERROR_KINDS, decodeUtf8 } from "@noren/model";
-import type { AiChatEvent, AiChatMessage, AiChatRequest, SessionExit } from "@noren/model";
+import type {
+  AiChatEvent,
+  AiChatMessage,
+  AiChatRequest,
+  SessionExit,
+  SessionLink,
+} from "@noren/model";
 import { AI_END_GRACE_MS, TauriBackend } from "./tauri-backend";
 import type { ChannelLike, TauriBridge } from "./tauri-backend";
 
@@ -52,6 +58,7 @@ function fakeBridge(
     log,
     unlistened: () => unlistened,
     emitExit: (payload: unknown) => handlers.get("session-exit")?.({ payload }),
+    emitLink: (payload: unknown) => handlers.get("session-link")?.({ payload }),
     emitConfig: (payload: unknown) => handlers.get("config-changed")?.({ payload }),
     callsTo: (command: string) => invocations.filter((i) => i.command === command),
   };
@@ -178,6 +185,70 @@ describe("TauriBackend", () => {
     fake.emitExit({ id, code: 3, signal: null });
     expect(exits).toEqual([{ id: 5, code: 3 }]);
     expect(fake.callsTo("session_kill").map((c) => c.args)).toEqual([{ id: 5 }]);
+  });
+
+  it("hands the SSH profile of the user over as written and lists its kind", async () => {
+    const profiles = [
+      {
+        kind: "ssh" as const,
+        id: "build-box",
+        name: "Build box",
+        host: "build.example.org",
+        user: "deploy",
+        port: 2222,
+        identityFile: "C:\\keys\\id_ed25519",
+        knownHostsFile: "C:\\keys\\known_hosts",
+      },
+    ];
+    const listed = [{ id: "build-box", name: "Build box", default: false, kind: "ssh" }];
+    const fake = fakeBridge({ profiles_list: listed });
+    const backend = new TauriBackend(fake.bridge);
+    await backend.setUserProfiles(profiles);
+    expect(fake.callsTo("profiles_set_user").map((c) => c.args)).toEqual([{ profiles }]);
+    await expect(backend.listProfiles()).resolves.toEqual(listed);
+  });
+
+  it("turns session-link into onSessionLink, leaving out what the state does not carry", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    const heard: SessionLink[] = [];
+    const stop = backend.onSessionLink((link) => heard.push(link));
+    await Promise.resolve();
+    fake.emitLink({
+      id: 4,
+      state: "reconnecting",
+      attempt: 2,
+      maxAttempts: 20,
+      retryInMs: 1000,
+      reason: "Connection reset by peer",
+    });
+    fake.emitLink({ id: 4, state: "connected", attempt: null, reason: null });
+    fake.emitLink({ id: 4, state: "failed", reason: "Permission denied (publickey)" });
+    expect(heard).toEqual([
+      {
+        id: 4,
+        state: "reconnecting",
+        attempt: 2,
+        maxAttempts: 20,
+        retryInMs: 1000,
+        reason: "Connection reset by peer",
+      },
+      { id: 4, state: "connected" },
+      { id: 4, state: "failed", reason: "Permission denied (publickey)" },
+    ]);
+    stop();
+    fake.emitLink({ id: 4, state: "connected" });
+    expect(heard).toHaveLength(3);
+    expect(fake.log.filter((line) => line === "listen session-link")).toHaveLength(1);
+  });
+
+  it("asks for a retry with session_retry, and lets the refusal reach the caller", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    await expect(backend.retrySession(9)).resolves.toBeUndefined();
+    expect(fake.callsTo("session_retry").map((c) => c.args)).toEqual([{ id: 9 }]);
+    fake.failing.add("session_retry");
+    await expect(backend.retrySession(9)).rejects.toThrow("session_retry failed");
   });
 
   it("includes the signal when there is one", async () => {

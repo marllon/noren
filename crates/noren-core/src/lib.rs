@@ -44,8 +44,9 @@ pub use mods::{
     is_valid_mod_file_name,
 };
 pub use profiles::{
-    MAX_USER_PROFILES, Platform, ProbeEnv, Profile, ProfileSet, RESERVED_PROFILE_ID, SystemEnv,
-    UserProfile, UserProfileError, detect_profiles, detect_system_profiles, expand_env_vars,
+    MAX_USER_PROFILES, Platform, ProbeEnv, Profile, ProfileSet, RESERVED_PROFILE_ID, SshProfile,
+    SystemEnv, UserProfile, UserProfileError, detect_profiles, detect_system_profiles,
+    expand_env_vars,
 };
 pub use project::{ACTIONS_FILE_PATH, ShortRunError, read_project_file, run_short};
 pub use pty::{ExitInfo, PtyError, SessionEvent, SessionId, SessionManager, SpawnSpec};

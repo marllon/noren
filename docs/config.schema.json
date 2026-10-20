@@ -242,44 +242,130 @@
       "maxItems": 200,
       "type": "array",
       "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "maxLength": 64,
-            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-            "description": "The id of the profile, such as \"dev-shell\". Unique among the profiles."
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "description": "What the profile opens: \"shell\" (the default) starts a program on this machine, \"ssh\" opens a shell in a norend on another machine through ssh.",
+                "type": "string",
+                "const": "shell"
+              },
+              "id": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                "description": "The id of the profile, such as \"dev-shell\". Unique among the profiles."
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 100,
+                "pattern": "\\S",
+                "description": "The name shown in the command palette."
+              },
+              "program": {
+                "type": "string",
+                "maxLength": 1024,
+                "pattern": "\\S",
+                "description": "The program that starts the shell, such as \"pwsh.exe\" or a full path. %NAME% is replaced by the environment variable NAME when a session starts. In an SSH profile it runs on the other machine, nothing in it is replaced, and when left out it is the login shell of the user there."
+              },
+              "args": {
+                "description": "The arguments of the program, one item each.",
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 4096
+                }
+              },
+              "cwd": {
+                "description": "The folder a session of this profile starts in, unless the space or the tab names one. %NAME% is replaced by the environment variable NAME. In an SSH profile it is a folder on the other machine, taken as written, and when left out the home folder of the user there.",
+                "type": "string",
+                "maxLength": 1024,
+                "pattern": "\\S"
+              }
+            },
+            "required": ["id", "name", "program"],
+            "additionalProperties": false
           },
-          "name": {
-            "type": "string",
-            "maxLength": 100,
-            "pattern": "\\S",
-            "description": "The name shown in the command palette."
-          },
-          "program": {
-            "type": "string",
-            "maxLength": 1024,
-            "pattern": "\\S",
-            "description": "The program that starts the shell, such as \"pwsh.exe\" or a full path. %NAME% is replaced by the environment variable NAME when a session starts."
-          },
-          "args": {
-            "description": "The arguments of the program, one item each.",
-            "maxItems": 200,
-            "type": "array",
-            "items": {
-              "type": "string",
-              "maxLength": 4096
-            }
-          },
-          "cwd": {
-            "description": "The folder a session of this profile starts in, unless the space or the tab names one. %NAME% is replaced by the environment variable NAME.",
-            "type": "string",
-            "maxLength": 1024,
-            "pattern": "\\S"
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "ssh",
+                "description": "What the profile opens: \"shell\" (the default) starts a program on this machine, \"ssh\" opens a shell in a norend on another machine through ssh."
+              },
+              "id": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                "description": "The id of the profile, such as \"dev-shell\". Unique among the profiles."
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 100,
+                "pattern": "\\S",
+                "description": "The name shown in the command palette."
+              },
+              "host": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.:][A-Za-z0-9_.:-]*$",
+                "description": "The machine to reach with ssh: a host name or an address (letters, digits, \".\", \"-\", \"_\" and \":\")."
+              },
+              "user": {
+                "description": "The user to log in as. When left out ssh decides: its own configuration, then the name of the user on this machine.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.][A-Za-z0-9_.-]*$"
+              },
+              "port": {
+                "description": "The port of the ssh server. 22, or what the ssh configuration says, when left out.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              },
+              "identityFile": {
+                "description": "The private key to log in with, as a path; only this key is offered. When left out ssh tries its own keys and the agent. A key with a passphrase works only through an agent: Noren never asks for a passphrase and stores none. %NAME% is replaced by the environment variable NAME.",
+                "type": "string",
+                "maxLength": 1024,
+                "pattern": "\\S"
+              },
+              "knownHostsFile": {
+                "description": "The file with the keys of the hosts you trust, as a path. When left out the known_hosts file of the user is used. A host that is not in the file is refused, never accepted on the first visit. %NAME% is replaced by the environment variable NAME.",
+                "type": "string",
+                "maxLength": 1024,
+                "pattern": "\\S"
+              },
+              "program": {
+                "description": "The program that starts the shell, such as \"pwsh.exe\" or a full path. %NAME% is replaced by the environment variable NAME when a session starts. In an SSH profile it runs on the other machine, nothing in it is replaced, and when left out it is the login shell of the user there.",
+                "type": "string",
+                "maxLength": 1024,
+                "pattern": "\\S"
+              },
+              "args": {
+                "description": "The arguments of the program, one item each.",
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 4096
+                }
+              },
+              "cwd": {
+                "description": "The folder a session of this profile starts in, unless the space or the tab names one. %NAME% is replaced by the environment variable NAME. In an SSH profile it is a folder on the other machine, taken as written, and when left out the home folder of the user there.",
+                "type": "string",
+                "maxLength": 1024,
+                "pattern": "\\S"
+              }
+            },
+            "required": ["kind", "id", "name", "host"],
+            "additionalProperties": false
           }
-        },
-        "required": ["id", "name", "program"],
-        "additionalProperties": false,
+        ],
         "description": "A shell profile of your own."
       },
       "description": "Shell profiles of your own, listed in the command palette after the ones Noren finds on the machine. An id the machine already has is refused when the profiles are loaded."

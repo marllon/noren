@@ -24,6 +24,8 @@ import type {
   ModFile,
   SessionExit,
   SessionId,
+  SessionLink,
+  SessionLinkState,
   ShellProfile,
   Unsubscribe,
   Worktree,
@@ -39,8 +41,8 @@ import { OutputStream } from "./output-stream";
 import { MAX_SCROLLBACK_BYTES, isScrollbackPaneId } from "./scrollback";
 import { fontNameList } from "./terminal-options";
 import { THEME_ID_PATTERN } from "./theme";
-import { profilesProblem } from "./user-profile-schema";
-import type { UserProfile } from "./user-profile-schema";
+import { isSshProfile, profilesProblem } from "./user-profile-schema";
+import type { SshUserProfile, UserProfile } from "./user-profile-schema";
 import { decodeUtf8, encodeUtf8 } from "./utf8";
 import { WINDOW_EFFECT_LABELS } from "./window-effect";
 import { branchProblem, worktreeDestination } from "./worktree";
@@ -152,7 +154,23 @@ export interface FakeSessionInfo {
   /** The program and arguments of a profile of the user; absent for the profiles the backend was built with. */
   program?: string;
   args?: string[];
+  /** The machine of a session of an SSH profile, as the profile named it; absent for a local shell. */
+  ssh?: FakeSshTarget;
+  /** The connection of a session of an SSH profile (`connected` until `setSessionLink` says otherwise). */
+  link?: SessionLink;
 }
+
+/** The machine an SSH profile names: what a real backend would hand to `ssh`. */
+export interface FakeSshTarget {
+  host: string;
+  user?: string;
+  port?: number;
+  identityFile?: string;
+  knownHostsFile?: string;
+}
+
+/** How many attempts the fake connection of a session makes before it gives up (`retrySession`). */
+export const FAKE_LINK_MAX_ATTEMPTS = 20;
 
 /** Splits a command line on spaces, honoring single and double quotes. */
 function tokenize(line: string): string[] {
@@ -737,6 +755,13 @@ class FakeAi implements AiBackend {
  * - the profiles of the user (`setUserProfiles`) are checked as the real backend checks them and
  *   listed after the profiles it was built with; a session of one starts in its `cwd` unless the call
  *   names a folder, and `session(id)` tells the `program` and `args` it was asked to run
+ * - a profile of kind `ssh` is listed with `kind: "ssh"`, and a session of one is a shell "on the
+ *   other machine": the `cwd` and `env` of the call are ignored (a remote shell gets only what the
+ *   profile says, as in the real backend), `session(id).ssh` says the machine, and its connection
+ *   (`onSessionLink`) is up until a test breaks it with `setSessionLink` (one session) or
+ *   `setProfileLink` (every live session of a profile, as a broken `ssh` breaks them all at once).
+ *   `retrySession` on a connection that is not up moves it to `reconnecting`, attempt 1; it never
+ *   comes back by itself, the test decides when
  * - the AI (`ai`) has a fake Ollama (`ollamaModels`, `setOllamaModels`; none unless it is given
  *   models), the providers handed over with `ai.configure` (checked as the real backend checks
  *   them) and a fake keychain: `ai.setKey` keeps the key, `ai.providers` says only `hasKey`, and
@@ -765,6 +790,11 @@ export class FakeBackend implements Backend {
   readonly #streams = new Map<SessionId, OutputStream>();
   /** What the sessions of the profiles of the user were asked to run. */
   readonly #launched = new Map<SessionId, { program: string; args: string[] }>();
+  /** The SSH profile of each session that has one. */
+  readonly #remote = new Map<SessionId, SshUserProfile>();
+  /** The connection of each session of an SSH profile, as last told. */
+  readonly #links = new Map<SessionId, SessionLink>();
+  readonly #linkListeners = new Set<(link: SessionLink) => void>();
   readonly #exitListeners = new Set<(exit: SessionExit) => void>();
   readonly #calls: FakeCall[] = [];
   readonly #quarantined: string[] = [];
@@ -938,6 +968,8 @@ export class FakeBackend implements Backend {
     const session = this.#sessions.get(id);
     if (!session) return undefined;
     const launched = this.#launched.get(id);
+    const remote = this.#remote.get(id);
+    const link = this.#links.get(id);
     return {
       id,
       profileId: session.profileId,
@@ -948,6 +980,20 @@ export class FakeBackend implements Backend {
       alive: session.alive,
       ...(session.exitCode !== undefined ? { exitCode: session.exitCode } : {}),
       ...(launched !== undefined ? { program: launched.program, args: [...launched.args] } : {}),
+      ...(remote !== undefined
+        ? {
+            ssh: {
+              host: remote.host,
+              ...(remote.user !== undefined ? { user: remote.user } : {}),
+              ...(remote.port !== undefined ? { port: remote.port } : {}),
+              ...(remote.identityFile !== undefined ? { identityFile: remote.identityFile } : {}),
+              ...(remote.knownHostsFile !== undefined
+                ? { knownHostsFile: remote.knownHostsFile }
+                : {}),
+            },
+          }
+        : {}),
+      ...(link !== undefined ? { link: { ...link } } : {}),
     };
   }
 
@@ -959,6 +1005,7 @@ export class FakeBackend implements Backend {
         id: profile.id,
         name: profile.name,
         default: false,
+        ...(isSshProfile(profile) ? { kind: "ssh" as const } : {}),
       })),
     ];
   }
@@ -1000,11 +1047,20 @@ export class FakeBackend implements Backend {
     const id = this.#nextId++;
     const stream = new OutputStream();
     this.#streams.set(id, stream);
-    // A profile of the user starts in its own folder unless the session names one.
+    // A profile of the user starts in its own folder unless the session names one. A shell on
+    // another machine gets only what its profile says: the folder and the environment of the call
+    // belong to this machine, so they are not sent (a folder left out is the remote home).
+    const remote = user !== undefined && isSshProfile(user) ? user : undefined;
     const started: CreateSessionOptions =
-      user?.cwd !== undefined && options.cwd === undefined
-        ? { ...options, cwd: user.cwd }
-        : options;
+      remote !== undefined
+        ? {
+            cols: options.cols,
+            rows: options.rows,
+            ...(remote.cwd !== undefined ? { cwd: remote.cwd } : {}),
+          }
+        : user?.cwd !== undefined && options.cwd === undefined
+          ? { ...options, cwd: user.cwd }
+          : options;
     const session = new FakeSession(id, profile.id, started, {
       host: this.#host,
       home: this.#home,
@@ -1013,8 +1069,13 @@ export class FakeBackend implements Backend {
       exited: (code) => this.#notifyExit({ id, code }),
     });
     this.#sessions.set(id, session);
-    if (user !== undefined)
-      this.#launched.set(id, { program: user.program, args: user.args ?? [] });
+    if (user !== undefined) {
+      this.#launched.set(id, { program: user.program ?? "", args: user.args ?? [] });
+    }
+    if (remote !== undefined) {
+      this.#remote.set(id, remote);
+      this.#links.set(id, { id, state: "connected" });
+    }
     return id;
   }
 
@@ -1117,6 +1178,61 @@ export class FakeBackend implements Backend {
     const session = this.#alive(id);
     session.terminate(137);
     this.#notifyExit({ id, code: 137, signal: "SIGKILL" });
+  }
+
+  onSessionLink(callback: (link: SessionLink) => void): Unsubscribe {
+    this.#record("onSessionLink");
+    this.#linkListeners.add(callback);
+    return () => {
+      this.#linkListeners.delete(callback);
+    };
+  }
+
+  async retrySession(id: SessionId): Promise<void> {
+    this.#record("retrySession", id);
+    const link = this.#liveLink(id);
+    if (link.state === "connected") return;
+    const reason = link.reason;
+    this.#setLink(id, {
+      state: "reconnecting",
+      attempt: 1,
+      maxAttempts: FAKE_LINK_MAX_ATTEMPTS,
+      retryInMs: 0,
+      ...(reason !== undefined ? { reason } : {}),
+    });
+  }
+
+  /**
+   * Sets the connection of the session `id` of an SSH profile to `link` (without its `id`) and
+   * tells whoever listens with `onSessionLink`: a test breaks the connection, makes it come back or
+   * makes it give up. Not a `Backend` call, so it is not recorded. Throws for a session that is not
+   * a live session of an SSH profile.
+   */
+  setSessionLink(id: SessionId, link: Omit<SessionLink, "id">): void {
+    this.#liveLink(id);
+    this.#setLink(id, link);
+  }
+
+  /**
+   * Sets the connection of every live session of the profile `profileId` to `link`, one event each:
+   * one broken `ssh` breaks all the tabs that use it. Throws when the profile is not an SSH profile
+   * of the user. Not a `Backend` call.
+   */
+  setProfileLink(profileId: string, link: Omit<SessionLink, "id">): void {
+    const profile = this.#userProfiles.find((p) => p.id === profileId);
+    if (profile === undefined || !isSshProfile(profile)) {
+      throw new Error(`'${profileId}' is not an SSH profile`);
+    }
+    for (const [id, session] of this.#sessions) {
+      if (session.alive && session.profileId === profileId && this.#remote.has(id)) {
+        this.#setLink(id, link);
+      }
+    }
+  }
+
+  /** The state of the connection of a session of an SSH profile, `undefined` for any other. */
+  sessionLink(id: SessionId): SessionLinkState | undefined {
+    return this.#links.get(id)?.state;
   }
 
   onOutput(id: SessionId, callback: (data: Uint8Array) => void): Unsubscribe {
@@ -1616,6 +1732,21 @@ export class FakeBackend implements Backend {
     const session = this.#sessions.get(id);
     if (!session?.alive) throw new Error(`unknown session ${id}`);
     return session;
+  }
+
+  /** The connection of a live session of an SSH profile; throws for any other session. */
+  #liveLink(id: SessionId): SessionLink {
+    const link = this.#links.get(id);
+    if (link === undefined || !this.#sessions.get(id)?.alive) {
+      throw new Error(`session ${id} has no connection to retry`);
+    }
+    return link;
+  }
+
+  #setLink(id: SessionId, link: Omit<SessionLink, "id">): void {
+    const next: SessionLink = { id, ...link };
+    this.#links.set(id, next);
+    for (const listener of [...this.#linkListeners]) listener({ ...next });
   }
 
   #notifyExit(exit: SessionExit): void {

@@ -749,11 +749,23 @@ export const en = {
   "field.profiles.item.id":
     'The id of the profile, such as "dev-shell". Unique among the profiles.',
   "field.profiles.item.name": "The name shown in the command palette.",
+  "field.profiles.item.kind":
+    'What the profile opens: "shell" (the default) starts a program on this machine, "ssh" opens a shell in a norend on another machine through ssh.',
   "field.profiles.item.program":
-    'The program that starts the shell, such as "pwsh.exe" or a full path. %NAME% is replaced by the environment variable NAME when a session starts.',
+    'The program that starts the shell, such as "pwsh.exe" or a full path. %NAME% is replaced by the environment variable NAME when a session starts. In an SSH profile it runs on the other machine, nothing in it is replaced, and when left out it is the login shell of the user there.',
   "field.profiles.item.args": "The arguments of the program, one item each.",
   "field.profiles.item.cwd":
-    "The folder a session of this profile starts in, unless the space or the tab names one. %NAME% is replaced by the environment variable NAME.",
+    "The folder a session of this profile starts in, unless the space or the tab names one. %NAME% is replaced by the environment variable NAME. In an SSH profile it is a folder on the other machine, taken as written, and when left out the home folder of the user there.",
+  "field.profiles.item.host":
+    'The machine to reach with ssh: a host name or an address (letters, digits, ".", "-", "_" and ":").',
+  "field.profiles.item.user":
+    "The user to log in as. When left out ssh decides: its own configuration, then the name of the user on this machine.",
+  "field.profiles.item.port":
+    "The port of the ssh server. 22, or what the ssh configuration says, when left out.",
+  "field.profiles.item.identityFile":
+    "The private key to log in with, as a path; only this key is offered. When left out ssh tries its own keys and the agent. A key with a passphrase works only through an agent: Noren never asks for a passphrase and stores none. %NAME% is replaced by the environment variable NAME.",
+  "field.profiles.item.knownHostsFile":
+    "The file with the keys of the hosts you trust, as a path. When left out the known_hosts file of the user is used. A host that is not in the file is refused, never accepted on the first visit. %NAME% is replaced by the environment variable NAME.",
   "field.keybindings": "Keyboard shortcuts.",
   "field.keybindings.preset":
     "Which set of shortcuts is in force: safe keeps the keys a shell uses, browser takes the keys of a web browser.",

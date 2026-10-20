@@ -16,6 +16,11 @@ mod perf;
 mod persist;
 mod prespawn;
 mod quick;
+mod remote;
+#[cfg(test)]
+mod remote_docker;
+#[cfg(test)]
+mod remote_fake;
 mod route;
 mod shortcut;
 mod smoke;
@@ -166,6 +171,7 @@ fn main() {
             bridge::session_write,
             bridge::session_resize,
             bridge::session_kill,
+            bridge::session_retry,
             bridge::state_load,
             bridge::state_save,
             bridge::state_quarantine,

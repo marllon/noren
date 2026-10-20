@@ -10,6 +10,8 @@ export type {
   ModFile,
   SessionExit,
   SessionId,
+  SessionLink,
+  SessionLinkState,
   ShellProfile,
   Unsubscribe,
   Worktree,
@@ -103,11 +105,17 @@ export {
   MAX_PROFILE_ID,
   MAX_USER_PROFILES,
   PROFILE_ID_PATTERN,
+  MAX_SSH_NAME,
   RESERVED_PROFILE_IDS,
+  SSH_HOST_PATTERN,
+  SSH_USER_PATTERN,
+  ShellUserProfileSchema,
+  SshUserProfileSchema,
   UserProfileSchema,
+  isSshProfile,
   profilesProblem,
 } from "./user-profile-schema";
-export type { UserProfile } from "./user-profile-schema";
+export type { ShellUserProfile, SshUserProfile, UserProfile } from "./user-profile-schema";
 export { commandLineOf, splitCommandLine, userProfilesFromImported } from "./user-profiles";
 export type { CommandLine, ProfilesFromImport, SkippedProfile } from "./user-profiles";
 export { parseUserThemes, serializeTheme } from "./user-themes";
@@ -368,7 +376,7 @@ export type {
   Workspace,
 } from "./types";
 export { MAX_LINK_BYTES, externalLinkProblem, isExternalLink } from "./external-link";
-export { DEFAULT_AI_REPLY, FakeBackend } from "./fake-backend";
+export { DEFAULT_AI_REPLY, FAKE_LINK_MAX_ATTEMPTS, FakeBackend } from "./fake-backend";
 export type {
   FakeAiMethod,
   FakeBackendOptions,
@@ -377,6 +385,7 @@ export type {
   FakeCommandRun,
   FakeNotification,
   FakeSessionInfo,
+  FakeSshTarget,
 } from "./fake-backend";
 export {
   DEFAULT_NOTIFICATION_SETTINGS,

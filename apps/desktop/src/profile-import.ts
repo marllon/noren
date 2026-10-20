@@ -1,5 +1,5 @@
 import { commandLineOf, importProfiles, userProfilesFromImported } from "@noren/model";
-import type { Config, ConfigManager, SkippedProfile, UserProfile } from "@noren/model";
+import type { Config, ConfigManager, ShellUserProfile, SkippedProfile } from "@noren/model";
 import { t } from "./i18n";
 import type { PickedFile } from "./scheme-import";
 
@@ -16,7 +16,7 @@ export const MAX_PROFILE_FILE_BYTES = 1_000_000;
 export interface ProfileImportPlan {
   fileName: string;
   /** The profiles that would be added, with the ids they would get. */
-  profiles: UserProfile[];
+  profiles: ShellUserProfile[];
   /** Profiles the file marks as hidden, which are ignored. */
   hidden: number;
   /** Profiles that were read but cannot be imported, with the reason. */
@@ -102,12 +102,12 @@ export async function readProfileFile(
 }
 
 /** The line shown for a profile of the plan: its name and the command line that starts it. */
-export function describeProfile(profile: UserProfile): { name: string; command: string } {
+export function describeProfile(profile: ShellUserProfile): { name: string; command: string } {
   return { name: profile.name, command: commandLineOf(profile) };
 }
 
 /** `"A"`, `"A" and "B"`, or the first two and a count. */
-function namesOf(profiles: readonly UserProfile[]): string {
+function namesOf(profiles: readonly ShellUserProfile[]): string {
   const shown = profiles.slice(0, 2).map((profile) => `"${profile.name}"`);
   const [first = "", second = ""] = shown;
   const rest = profiles.length - shown.length;

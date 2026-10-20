@@ -10,11 +10,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use std::time::Duration;
 
+use noren_core::daemon::LinkState;
 use noren_core::{
     ACTIONS_FILE_PATH, AgentEntry, BackgroundStore, CONFIG_FILE_NAME, ConfigStore, ConfigWatcher,
     GitHead, MODS_DIR_NAME, ModFile, ModStore, ModWatcher, ProcessSource, Profile, ProfileSet,
-    SCROLLBACK_DIR_NAME, ScrollbackStore, SessionEvent, SessionId, SpawnSpec, StateStore,
-    SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect, Worktree,
+    SCROLLBACK_DIR_NAME, ScrollbackStore, SessionEvent, SessionId, SpawnSpec, SshProfile,
+    StateStore, SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect, Worktree,
     check_catalog, create_worktree, detect_system_profiles, list_worktrees, native_path, read_head,
     read_project_file, remove_worktree, run_short, scan_sessions,
 };
@@ -36,6 +37,10 @@ pub const INTEGRATION_RESOURCE_DIR: &str = "resources/shell-integration";
 
 /// Name of the event emitted when a session's child ended and all its output was delivered.
 pub const SESSION_EXIT_EVENT: &str = "session-exit";
+
+/// Name of the event emitted when the connection of a session on another machine (a profile of
+/// kind `ssh`) changes: it broke and is being made again, it came back, or it gave up.
+pub const SESSION_LINK_EVENT: &str = "session-link";
 
 /// State managed by Tauri: every PTY session (in the session daemon, or in this process when there
 /// is none; see `daemon_link`) and the shell profiles: the ones found on this machine, and the ones
@@ -183,28 +188,136 @@ pub struct ProfileDto {
     pub name: String,
     #[serde(rename = "default")]
     pub is_default: bool,
+    /// `"ssh"` for a profile whose shell lives on another machine; left out for a local shell.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<&'static str>,
 }
 
 /// A profile of the user as the interface sends it (an entry of `profiles` in `config.jsonc`).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UserProfileDto {
+    /// `"shell"` (or absent) or `"ssh"`.
+    #[serde(default)]
+    pub kind: Option<String>,
     pub id: String,
     pub name: String,
+    /// Absent for an `ssh` profile that runs the login shell of the user on the other machine.
+    #[serde(default)]
     pub program: String,
     #[serde(default)]
     pub args: Vec<String>,
     #[serde(default)]
     pub cwd: Option<String>,
+    #[serde(default)]
+    pub host: Option<String>,
+    #[serde(default)]
+    pub user: Option<String>,
+    #[serde(default)]
+    pub port: Option<u16>,
+    #[serde(default)]
+    pub identity_file: Option<String>,
+    #[serde(default)]
+    pub known_hosts_file: Option<String>,
 }
 
-impl From<UserProfileDto> for UserProfile {
-    fn from(dto: UserProfileDto) -> Self {
-        Self {
+impl TryFrom<UserProfileDto> for UserProfile {
+    type Error = String;
+
+    /// The page validated the profile already; this refuses what could not have come from it: a
+    /// kind it does not know, an `ssh` profile with no host, a shell profile that names a machine.
+    fn try_from(dto: UserProfileDto) -> Result<Self, String> {
+        let ssh = match dto.kind.as_deref() {
+            None | Some("shell") => {
+                let names_a_machine = dto.host.is_some()
+                    || dto.user.is_some()
+                    || dto.port.is_some()
+                    || dto.identity_file.is_some()
+                    || dto.known_hosts_file.is_some();
+                if names_a_machine {
+                    return Err(format!(
+                        "profile '{}': a shell profile cannot name a machine; the kind is 'ssh'",
+                        dto.id
+                    ));
+                }
+                None
+            }
+            Some("ssh") => Some(SshProfile {
+                host: dto
+                    .host
+                    .ok_or_else(|| format!("profile '{}': an ssh profile needs a host", dto.id))?,
+                user: dto.user,
+                port: dto.port,
+                identity_file: dto.identity_file,
+                known_hosts_file: dto.known_hosts_file,
+            }),
+            Some(other) => {
+                return Err(format!("profile '{}': unknown kind '{other}'", dto.id));
+            }
+        };
+        Ok(Self {
             id: dto.id,
             name: dto.name,
             program: dto.program,
             args: dto.args,
             cwd: dto.cwd,
+            ssh,
+        })
+    }
+}
+
+/// Payload of the `session-link` event: the session and where its connection stands. What does not
+/// apply to the state is left out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionLinkPayload {
+    pub id: u64,
+    /// `connected`, `reconnecting` or `failed`.
+    pub state: &'static str,
+    /// `reconnecting`: the attempt about to start, counted from 1...
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attempt: Option<u32>,
+    /// ...of how many.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_attempts: Option<u32>,
+    /// `reconnecting`: milliseconds until it starts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_in_ms: Option<u64>,
+    /// `reconnecting` and `failed`: why, in a sentence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl SessionLinkPayload {
+    pub fn new(id: SessionId, state: &LinkState) -> Self {
+        let none = Self {
+            id: id.0,
+            state: "connected",
+            attempt: None,
+            max_attempts: None,
+            retry_in_ms: None,
+            reason: None,
+        };
+        match state {
+            LinkState::Connected => none,
+            LinkState::Reconnecting {
+                attempt,
+                max_attempts,
+                retry_in,
+                reason,
+            } => Self {
+                state: "reconnecting",
+                attempt: Some(*attempt),
+                max_attempts: Some(*max_attempts),
+                retry_in_ms: Some(u64::try_from(retry_in.as_millis()).unwrap_or(u64::MAX)),
+                reason: Some(reason.clone()),
+                ..none
+            },
+            LinkState::Failed { reason } => Self {
+                state: "failed",
+                reason: Some(reason.clone()),
+                ..none
+            },
         }
     }
 }
@@ -291,6 +404,7 @@ fn profile_dtos(set: &ProfileSet) -> Vec<ProfileDto> {
             id: profile.id.clone(),
             name: profile.name.clone(),
             is_default: set.default_id.as_deref() == Some(profile.id.as_str()),
+            kind: profile.remote.as_ref().map(|_| "ssh"),
         })
         .collect()
 }
@@ -317,6 +431,14 @@ pub fn create_session<R: Runtime>(
     output: Channel<InvokeResponseBody>,
 ) -> Result<(u64, String), String> {
     crate::perf::mark_once("session-create-called");
+    let profile = state.find_profile(profile_id)?;
+    // A profile of kind `ssh` opens its shell in a `norend` on another machine. The folder and the
+    // environment of this call belong to this machine (the folder of the space, the variables of
+    // the tab), so they are not sent there: the shell gets what the profile says (finding 198).
+    if let Some(machine) = &profile.remote {
+        let id = launch_remote(app, state, machine, profile.remote_spec(cols, rows), output)?;
+        return Ok((id.0, profile.id.clone()));
+    }
     let (profile, spec) = session_spec(app, state, profile_id, cwd, env, cols, rows)?;
     // The shell this very page is about to ask for may be running already (see `prespawn`).
     if let Some(id) = state.claim_prespawned(&spec, &output) {
@@ -338,6 +460,12 @@ pub fn session_spec<R: Runtime>(
     rows: u16,
 ) -> Result<(Profile, SpawnSpec), String> {
     let profile = state.find_profile(profile_id)?;
+    if profile.remote.is_some() {
+        return Err(format!(
+            "'{}' is a profile on another machine: it has no command to start here",
+            profile.id
+        ));
+    }
     let spec = apply_session_options(
         profile.spawn_spec_with_integration(cols, rows, integration_dir(app).as_deref()),
         cwd,
@@ -357,6 +485,25 @@ pub fn launch<R: Runtime>(
 ) -> Result<SessionId, String> {
     route_session(app, state, output, silent, |on_event| {
         state.sessions.spawn(spec, on_event)
+    })
+}
+
+/// Starts `spec` in the daemon of `machine`, sends its output to `output` through a route kept in
+/// `state`, emits `session-exit` when it ends and `session-link` whenever its connection changes.
+pub fn launch_remote<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    machine: &SshProfile,
+    spec: SpawnSpec,
+    output: Channel<InvokeResponseBody>,
+) -> Result<SessionId, String> {
+    let linked = app.clone();
+    route_session(app, state, output, None, |on_event| {
+        state
+            .sessions
+            .spawn_remote(machine, spec, on_event, move |id, link| {
+                let _ = linked.emit(SESSION_LINK_EVENT, SessionLinkPayload::new(id, link));
+            })
     })
 }
 
@@ -501,8 +648,22 @@ pub fn profiles_set_user(
     state: State<'_, AppState>,
     profiles: Vec<UserProfileDto>,
 ) -> Result<(), String> {
-    let user: Vec<UserProfile> = profiles.into_iter().map(UserProfile::from).collect();
+    let user = profiles
+        .into_iter()
+        .map(UserProfile::try_from)
+        .collect::<Result<Vec<_>, _>>()?;
     state.set_user_profiles(&user)
+}
+
+/// Asks the connection of a session on another machine to try again now: it stops waiting between
+/// two attempts, or, after it gave up, starts the attempts over. The new state arrives as
+/// `session-link`. An error for a session that is not one on another machine.
+#[tauri::command]
+pub fn session_retry(state: State<'_, AppState>, id: u64) -> Result<(), String> {
+    state
+        .sessions
+        .retry(SessionId(id))
+        .map_err(|e| e.to_string())
 }
 
 // The arguments are the named fields of the IPC call, so they stay flat.
@@ -519,16 +680,41 @@ pub async fn session_create(
     pane_id: Option<String>,
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<u64, String> {
-    let (id, _) = create_session(
-        &app,
-        &state,
-        profile_id.as_deref(),
-        cwd.as_deref(),
-        env,
-        cols,
-        rows,
-        on_output,
-    )?;
+    // Opening a tab on another machine logs in over `ssh`, which can take a long time on a bad
+    // network: it must not hold a thread of the interface's runtime that long.
+    let remote = state
+        .find_profile(profile_id.as_deref())
+        .is_ok_and(|profile| profile.remote.is_some());
+    let (id, _) = if remote {
+        let waiting = app.clone();
+        let profile_id = profile_id.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let state = waiting.state::<AppState>();
+            create_session(
+                &waiting,
+                &state,
+                profile_id.as_deref(),
+                cwd.as_deref(),
+                env,
+                cols,
+                rows,
+                on_output,
+            )
+        })
+        .await
+        .map_err(|e| e.to_string())??
+    } else {
+        create_session(
+            &app,
+            &state,
+            profile_id.as_deref(),
+            cwd.as_deref(),
+            env,
+            cols,
+            rows,
+            on_output,
+        )?
+    };
     // The shell of a pane is written down with it, so a later run can find it again.
     if let Some(pane) = pane_id {
         state.bind_pane(&pane, SessionId(id));
@@ -1231,6 +1417,7 @@ mod tests {
             args: Vec::new(),
             cwd: None,
             inject_integration: true,
+            remote: None,
         }
     }
 
@@ -1251,6 +1438,7 @@ mod tests {
             program: program.to_owned(),
             args: Vec::new(),
             cwd: None,
+            ssh: None,
         }
     }
 
@@ -1286,7 +1474,8 @@ mod tests {
             ProfileDto {
                 id: "dev-shell".into(),
                 name: "Name of dev-shell".into(),
-                is_default: false
+                is_default: false,
+                kind: None,
             }
         );
         // The next list replaces the whole one.
@@ -1361,13 +1550,14 @@ mod tests {
         }))
         .expect("full");
         assert_eq!(
-            UserProfile::from(dto),
+            UserProfile::try_from(dto).expect("a shell profile"),
             UserProfile {
                 id: "dev-shell".into(),
                 name: "Dev".into(),
                 program: "pwsh.exe".into(),
                 args: vec!["-NoLogo".into()],
                 cwd: Some("C:\\work".into()),
+                ssh: None,
             }
         );
         // The arguments and the folder may be left out.
@@ -1478,12 +1668,14 @@ mod tests {
                 ProfileDto {
                     id: "pwsh".into(),
                     name: "PowerShell".into(),
-                    is_default: false
+                    is_default: false,
+                    kind: None,
                 },
                 ProfileDto {
                     id: "cmd".into(),
                     name: "Command Prompt".into(),
-                    is_default: true
+                    is_default: true,
+                    kind: None,
                 },
             ]
         );
@@ -2291,6 +2483,7 @@ mod tests {
         Profile {
             args: vec!["-NoLogo".to_owned(), "-NoProfile".to_owned()],
             inject_integration: false,
+            remote: None,
             ..profile_running("powershell.exe")
         }
     }
@@ -2298,6 +2491,7 @@ mod tests {
     fn shell_profile() -> Profile {
         Profile {
             inject_integration: false,
+            remote: None,
             ..profile_running("sh")
         }
     }
@@ -2310,6 +2504,7 @@ mod tests {
             args: Vec::new(),
             cwd: None,
             inject_integration: false,
+            remote: None,
         }
     }
 
@@ -3293,5 +3488,474 @@ mod tests {
         assert_eq!(daemon.session_count(), 0, "no shell was started ahead");
         assert_eq!(state.sessions.session_count(), 0);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- Profiles of kind ssh: a shell in a norend on another machine (NOR-F14-04b) ----
+
+    use crate::remote::{REMOTE_ID_BASE, RemoteSessions, is_remote};
+    use crate::remote_fake::{FakeDaemon, fast, wait_for};
+    use noren_core::daemon::Connector;
+
+    fn dto(json: serde_json::Value) -> UserProfileDto {
+        serde_json::from_value(json).expect("a profile the interface could send")
+    }
+
+    fn ssh_dto() -> UserProfileDto {
+        dto(serde_json::json!({
+            "kind": "ssh", "id": "build-box", "name": "Build box",
+            "host": "build.example.org", "user": "deploy", "port": 2222,
+            "identityFile": "C:\\keys\\id_ed25519", "knownHostsFile": "C:\\keys\\known_hosts"
+        }))
+    }
+
+    #[test]
+    fn the_dto_of_an_ssh_profile_carries_the_machine_and_leaves_the_program_to_the_login_shell() {
+        let profile = UserProfile::try_from(ssh_dto()).expect("an ssh profile");
+        assert_eq!(profile.id, "build-box");
+        assert_eq!(profile.program, "");
+        assert_eq!(
+            profile.ssh,
+            Some(SshProfile {
+                host: "build.example.org".into(),
+                user: Some("deploy".into()),
+                port: Some(2222),
+                identity_file: Some("C:\\keys\\id_ed25519".into()),
+                known_hosts_file: Some("C:\\keys\\known_hosts".into()),
+            })
+        );
+        // The shell of the remote side may be named too.
+        let with_shell = UserProfile::try_from(dto(serde_json::json!({
+            "kind": "ssh", "id": "b", "name": "B", "host": "h",
+            "program": "bash", "args": ["-l"], "cwd": "/srv/app"
+        })))
+        .expect("an ssh profile");
+        assert_eq!(with_shell.program, "bash");
+        assert_eq!(with_shell.args, ["-l"]);
+        assert_eq!(with_shell.cwd.as_deref(), Some("/srv/app"));
+        assert_eq!(with_shell.validate(), Ok(()));
+    }
+
+    #[test]
+    fn what_the_interface_could_not_have_sent_is_refused_with_the_profile_named() {
+        let no_host = UserProfile::try_from(dto(serde_json::json!({
+            "kind": "ssh", "id": "b", "name": "B"
+        })))
+        .expect_err("no host");
+        assert_eq!(no_host, "profile 'b': an ssh profile needs a host");
+        let shell_with_host = UserProfile::try_from(dto(serde_json::json!({
+            "id": "s", "name": "S", "program": "sh", "host": "h"
+        })))
+        .expect_err("a shell naming a machine");
+        assert!(shell_with_host.contains("profile 's'"), "{shell_with_host}");
+        let strange = UserProfile::try_from(dto(serde_json::json!({
+            "kind": "serial", "id": "x", "name": "X", "program": "sh"
+        })))
+        .expect_err("another kind");
+        assert_eq!(strange, "profile 'x': unknown kind 'serial'");
+        // A shell profile with its kind spelled out is the same as one without.
+        let shell = UserProfile::try_from(dto(serde_json::json!({
+            "kind": "shell", "id": "s", "name": "S", "program": "sh"
+        })))
+        .expect("a shell");
+        assert_eq!(shell.ssh, None);
+        // And a shell with no program is refused where profiles are checked, as before.
+        let state = detected_state();
+        let empty = UserProfile::try_from(dto(serde_json::json!({ "id": "e", "name": "E" })))
+            .expect("it parses");
+        let refused = state.set_user_profiles(&[empty]).expect_err("no program");
+        assert!(refused.contains("program"), "{refused}");
+    }
+
+    #[test]
+    fn an_ssh_profile_is_listed_with_its_kind_and_is_never_the_default() {
+        let state = detected_state();
+        let ssh = UserProfile::try_from(ssh_dto()).expect("ssh");
+        state
+            .set_user_profiles(&[ssh, user("other", "sh")])
+            .expect("valid");
+        let listed = state.list_profiles();
+        let kinds: Vec<(&str, Option<&str>, bool)> = listed
+            .iter()
+            .map(|p| (p.id.as_str(), p.kind, p.is_default))
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                ("pwsh", None, true),
+                ("cmd", None, false),
+                ("build-box", Some("ssh"), false),
+                ("other", None, false),
+            ]
+        );
+        // On the wire a local shell has no kind at all, and an ssh one has "ssh".
+        let wire = serde_json::to_value(&listed).expect("json");
+        assert!(wire[0].get("kind").is_none(), "{wire}");
+        assert_eq!(wire[2]["kind"], "ssh");
+        assert_eq!(wire[2]["default"], false);
+        // It is a profile with a machine and no command of its own to start here.
+        let found = state.find_profile(Some("build-box")).expect("listed");
+        assert!(found.remote.is_some());
+        assert!(!found.inject_integration);
+    }
+
+    #[test]
+    fn the_payload_of_the_link_event_says_the_state_and_leaves_out_what_does_not_apply() {
+        let id = SessionId(REMOTE_ID_BASE + 3);
+        let up =
+            serde_json::to_value(SessionLinkPayload::new(id, &LinkState::Connected)).expect("json");
+        assert_eq!(
+            up,
+            serde_json::json!({ "id": REMOTE_ID_BASE + 3, "state": "connected" })
+        );
+        let retrying = serde_json::to_value(SessionLinkPayload::new(
+            id,
+            &LinkState::Reconnecting {
+                attempt: 2,
+                max_attempts: 20,
+                retry_in: Duration::from_millis(1500),
+                reason: "Connection reset by peer".into(),
+            },
+        ))
+        .expect("json");
+        assert_eq!(
+            retrying,
+            serde_json::json!({
+                "id": REMOTE_ID_BASE + 3, "state": "reconnecting", "attempt": 2,
+                "maxAttempts": 20, "retryInMs": 1500, "reason": "Connection reset by peer"
+            })
+        );
+        let failed = serde_json::to_value(SessionLinkPayload::new(
+            id,
+            &LinkState::Failed {
+                reason: "Permission denied (publickey)".into(),
+            },
+        ))
+        .expect("json");
+        assert_eq!(
+            failed,
+            serde_json::json!({
+                "id": REMOTE_ID_BASE + 3, "state": "failed",
+                "reason": "Permission denied (publickey)"
+            })
+        );
+    }
+
+    /// An app state whose ssh sessions reach `daemon`, with an ssh profile named `box` (and `home`,
+    /// the same without a folder) in its list.
+    fn state_with_a_remote(daemon: &FakeDaemon, attempts: u32) -> AppState {
+        let reach = daemon.clone();
+        let remote = RemoteSessions::new(
+            std::sync::Arc::new(move |_| Ok(Box::new(reach.connector()) as Box<dyn Connector>)),
+            fast(attempts),
+        );
+        let mut state = detected_state();
+        state.sessions = Sessions::new(Host::InProcess).with_remote(remote);
+        let mut with_folder = UserProfile::try_from(dto(serde_json::json!({
+            "kind": "ssh", "id": "box", "name": "Box", "host": "build.example.org",
+            "program": "bash", "args": ["-l"], "cwd": "/srv/app"
+        })))
+        .expect("ssh");
+        with_folder.name = "Box".into();
+        let home = UserProfile::try_from(dto(serde_json::json!({
+            "kind": "ssh", "id": "home", "name": "Home", "host": "build.example.org"
+        })))
+        .expect("ssh");
+        state
+            .set_user_profiles(&[with_folder, home])
+            .expect("valid");
+        state
+    }
+
+    #[test]
+    fn a_tab_of_an_ssh_profile_starts_what_the_profile_says_and_nothing_of_this_machine() {
+        // Finding 198, all the way from the call the page makes: it passes the folder of the space
+        // and the environment of the tab, and none of it goes to the other machine.
+        let daemon = FakeDaemon::new();
+        let state = state_with_a_remote(&daemon, 5);
+        let app = tauri::test::mock_app();
+        let (page, in_page) = collecting();
+        let this_folder = std::env::current_dir().expect("a folder");
+        let env = HashMap::from([("USERPROFILE".to_owned(), "C:\\Users\\me".to_owned())]);
+
+        let (id, profile) = create_session(
+            app.handle(),
+            &state,
+            Some("box"),
+            Some(this_folder.to_str().expect("utf-8")),
+            Some(env.clone()),
+            120,
+            30,
+            page,
+        )
+        .expect("start");
+        assert_eq!(profile, "box");
+        assert!(is_remote(SessionId(id)), "{id}");
+        let created = daemon.creates();
+        assert_eq!(created.len(), 1);
+        assert_eq!(created[0].program, "bash");
+        assert_eq!(created[0].args, ["-l"]);
+        assert!(created[0].env.is_empty(), "{:?}", created[0].env);
+        assert_eq!(
+            created[0].cwd.as_deref(),
+            Some(Path::new("/srv/app")),
+            "the folder of the profile, not the one of the call"
+        );
+        assert_eq!((created[0].cols, created[0].rows), (120, 30));
+
+        // Without a folder in the profile there is none on the wire: the home of the user there.
+        let (other, _) = collecting();
+        create_session(
+            app.handle(),
+            &state,
+            Some("home"),
+            Some(this_folder.to_str().expect("utf-8")),
+            Some(env),
+            80,
+            24,
+            other,
+        )
+        .expect("start");
+        let created = daemon.creates();
+        assert_eq!(created[1].cwd, None);
+        assert!(created[1].env.is_empty());
+        // No program either: the login shell of the user there.
+        assert_eq!(created[1].program, "sh");
+        assert_eq!(created[1].args, ["-c", "exec \"${SHELL:-/bin/sh}\" -l"]);
+
+        // The output reaches the page by the route, in order, and what is typed goes back.
+        let session = daemon.session_ids()[0];
+        daemon.print(session, b"remote prompt$ ");
+        wait_for("the output in the page", || {
+            received(&in_page) == b"remote prompt$ "
+        });
+        state.sessions.write(SessionId(id), b"ls\r").expect("write");
+        state
+            .sessions
+            .resize(SessionId(id), 100, 40)
+            .expect("resize");
+        assert_eq!(daemon.written_text(session), "ls\r");
+        assert_eq!(daemon.resizes(), vec![(session, 100, 40)]);
+        assert_eq!(state.sessions.session_count(), 2);
+        // An agent scan has no process of this machine to look at.
+        assert_eq!(
+            state.sessions.process_ids(&[SessionId(id)]),
+            vec![(SessionId(id), None)]
+        );
+    }
+
+    #[test]
+    fn the_shell_of_an_ssh_profile_is_not_written_down_for_a_pane_to_find_again() {
+        let daemon = FakeDaemon::new();
+        let state = state_with_a_remote(&daemon, 5);
+        let app = tauri::test::mock_app();
+        let (page, _) = collecting();
+        let (id, _) = create_session(app.handle(), &state, Some("box"), None, None, 80, 24, page)
+            .expect("start");
+        state.bind_pane("pane-remote", SessionId(id));
+        assert!(
+            !state.has_kept_shell("pane-remote"),
+            "a remote shell has no process here to check the book against"
+        );
+    }
+
+    #[test]
+    fn the_page_is_told_when_the_connection_of_a_tab_breaks_and_comes_back_and_the_shell_goes_on() {
+        use tauri::Listener;
+        let daemon = FakeDaemon::new();
+        let state = state_with_a_remote(&daemon, 50);
+        let app = tauri::test::mock_app();
+        let (links_tx, links) = std::sync::mpsc::channel::<String>();
+        app.listen(SESSION_LINK_EVENT, move |event| {
+            let _ = links_tx.send(event.payload().to_owned());
+        });
+        let (page, in_page) = collecting();
+        let (id, _) = create_session(app.handle(), &state, Some("box"), None, None, 80, 24, page)
+            .expect("start");
+        let session = daemon.session_ids()[0];
+        daemon.print(session, b"before\r\n");
+        wait_for("the first output", || received(&in_page) == b"before\r\n");
+
+        daemon.set_down(true);
+        daemon.cut_all();
+        let first = links
+            .recv_timeout(Duration::from_secs(30))
+            .expect("session-link when it breaks");
+        let first: serde_json::Value = serde_json::from_str(&first).expect("json");
+        assert_eq!(first["id"], id);
+        assert_eq!(first["state"], "reconnecting");
+        assert_eq!(first["attempt"], 1);
+        assert_eq!(first["maxAttempts"], 50);
+        assert!(first["retryInMs"].is_u64(), "{first}");
+        assert!(first["reason"].is_string(), "{first}");
+
+        daemon.print(session, b"while down\r\n");
+        daemon.set_down(false);
+        let mut last = serde_json::Value::Null;
+        for _ in 0..200 {
+            let Ok(text) = links.recv_timeout(Duration::from_secs(30)) else {
+                break;
+            };
+            last = serde_json::from_str(&text).expect("json");
+            if last["state"] == "connected" {
+                break;
+            }
+        }
+        assert_eq!(last["state"], "connected", "{last}");
+        assert_eq!(last["id"], id);
+        assert!(last.get("attempt").is_none(), "{last}");
+        // The tab shows each line once, and the one printed while down arrived.
+        wait_for("the line printed while down", || {
+            received(&in_page) == b"before\r\nwhile down\r\n"
+        });
+        assert_eq!(
+            daemon.creates().len(),
+            1,
+            "the same shell: nothing was started again"
+        );
+        state
+            .sessions
+            .write(SessionId(id), b"still here\r")
+            .expect("write after");
+        assert_eq!(daemon.written_text(session), "still here\r");
+    }
+
+    #[test]
+    fn the_page_can_ask_for_another_try_and_a_shell_of_this_machine_has_nothing_to_retry() {
+        use tauri::Listener;
+        let daemon = FakeDaemon::new();
+        let state = state_with_a_remote(&daemon, 50);
+        let app = tauri::test::mock_app();
+        let (links_tx, links) = std::sync::mpsc::channel::<String>();
+        app.listen(SESSION_LINK_EVENT, move |event| {
+            let _ = links_tx.send(event.payload().to_owned());
+        });
+        let (page, _) = collecting();
+        let (id, _) = create_session(app.handle(), &state, Some("box"), None, None, 80, 24, page)
+            .expect("start");
+
+        daemon.refuse(Some("Permission denied (publickey)"));
+        daemon.cut_all();
+        let failed = loop {
+            let text = links
+                .recv_timeout(Duration::from_secs(30))
+                .expect("session-link");
+            let payload: serde_json::Value = serde_json::from_str(&text).expect("json");
+            if payload["state"] == "failed" {
+                break payload;
+            }
+        };
+        assert!(
+            failed["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("Permission denied")),
+            "{failed}"
+        );
+
+        daemon.refuse(None);
+        state.sessions.retry(SessionId(id)).expect("retry");
+        loop {
+            let text = links
+                .recv_timeout(Duration::from_secs(30))
+                .expect("session-link after the retry");
+            let payload: serde_json::Value = serde_json::from_str(&text).expect("json");
+            if payload["state"] == "connected" {
+                break;
+            }
+        }
+
+        // A session that is not on another machine has no connection to retry.
+        let local = state.sessions.retry(SessionId(7)).expect_err("local id");
+        assert!(local.to_string().contains("no connection"), "{local}");
+        assert!(
+            state
+                .sessions
+                .retry(SessionId(REMOTE_ID_BASE + 500))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn the_command_to_retry_is_one_the_page_can_call_and_names_what_is_wrong() {
+        use tauri::ipc::{CallbackFn, InvokeBody};
+        use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
+        use tauri::webview::InvokeRequest;
+
+        let daemon = FakeDaemon::new();
+        let app = mock_builder()
+            .manage(state_with_a_remote(&daemon, 5))
+            .invoke_handler(tauri::generate_handler![session_retry])
+            .build(mock_context(noop_assets()))
+            .expect("build the mock app");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("build the mock window");
+        let url = if cfg!(windows) {
+            "http://tauri.localhost"
+        } else {
+            "tauri://localhost"
+        };
+        let ask = |id: u64| {
+            get_ipc_response(
+                &webview,
+                InvokeRequest {
+                    cmd: "session_retry".into(),
+                    callback: CallbackFn(0),
+                    error: CallbackFn(1),
+                    url: url.parse().expect("url"),
+                    body: InvokeBody::Json(serde_json::json!({ "id": id })),
+                    headers: Default::default(),
+                    invoke_key: INVOKE_KEY.to_string(),
+                },
+            )
+        };
+        let unknown = ask(REMOTE_ID_BASE + 1).expect_err("no such session");
+        assert!(
+            unknown
+                .as_str()
+                .unwrap_or_default()
+                .contains("unknown session"),
+            "{unknown}"
+        );
+        let local = ask(3).expect_err("a local id");
+        assert!(
+            local.as_str().unwrap_or_default().contains("no connection"),
+            "{local}"
+        );
+    }
+
+    #[test]
+    fn leaving_the_app_ends_the_shells_on_other_machines_whatever_the_setting_says() {
+        // A shell on another machine has no pane to come back to yet, so it does not outlive the
+        // app on that machine either: leaving it would pile up shells nobody can see.
+        for keep in [true, false] {
+            let daemon = FakeDaemon::new();
+            let state = state_with_a_remote(&daemon, 5);
+            let app = tauri::test::mock_app();
+            let (page, _) = collecting();
+            let (id, _) =
+                create_session(app.handle(), &state, Some("box"), None, None, 80, 24, page)
+                    .expect("start");
+            state.set_keep_sessions(keep);
+            assert_eq!(daemon.session_ids().len(), 1);
+
+            state.end_sessions_on_exit();
+            assert_eq!(daemon.session_ids(), Vec::<u64>::new(), "keep={keep}");
+            assert_eq!(state.sessions.session_count(), 0);
+            assert!(state.sessions.write(SessionId(id), b"x").is_err());
+            wait_for("the connection to close", || daemon.connections() == 0);
+        }
+    }
+
+    #[test]
+    fn a_shell_started_ahead_is_never_the_shell_of_an_ssh_profile() {
+        let daemon = FakeDaemon::new();
+        let state = state_with_a_remote(&daemon, 5);
+        let app = tauri::test::mock_app();
+        let refused = session_spec(app.handle(), &state, Some("box"), None, None, 80, 24)
+            .expect_err("it has no command to run here");
+        assert!(refused.contains("another machine"), "{refused}");
+        // The shell the machine defaults to still is a local one.
+        assert!(session_spec(app.handle(), &state, None, None, None, 80, 24).is_ok());
+        assert!(daemon.creates().is_empty(), "nothing was sent anywhere");
     }
 }

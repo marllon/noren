@@ -321,8 +321,10 @@ try {
   writeFileSync(knownHosts, knownHostsLine(host, port, hostKey.out));
   writeFileSync(wrongKnownHosts, knownHostsLine(host, port, impostor.public));
 
-  // -- the test
-  log("running the ignored cargo test ssh_docker");
+  // -- the tests
+  log(
+    "running the ignored cargo tests: ssh_docker (the transport) and remote_docker (the profile)",
+  );
   const env = {
     ...cargoEnv(),
     ...testEnvironment({
@@ -348,10 +350,31 @@ try {
     ],
     { cwd: root, stdio: "inherit", env, windowsHide: true },
   );
-  exitCode = test.status === 0 ? 0 : 1;
-  if (exitCode !== 0) {
+  let failure = test.status === 0 ? null : test;
+  if (failure === null) {
+    // The same container, the same keys: now through the profile of the app (a tab of kind ssh).
+    const viaProfile = spawnSync(
+      "cargo",
+      [
+        "test",
+        "-p",
+        "noren",
+        "--bin",
+        "noren",
+        "remote_docker::",
+        "--",
+        "--ignored",
+        "--nocapture",
+        "--test-threads=1",
+      ],
+      { cwd: root, stdio: "inherit", env, windowsHide: true },
+    );
+    failure = viaProfile.status === 0 ? null : viaProfile;
+  }
+  exitCode = failure === null ? 0 : 1;
+  if (failure !== null) {
     log(
-      `the test failed (${test.error ? test.error.message : `exit ${test.status}`}); the log of sshd:`,
+      `the test failed (${failure.error ? failure.error.message : `exit ${failure.status}`}); the log of sshd:`,
     );
     const logs = docker(["logs", "--tail", "60", containerName]);
     console.log(`${logs.out}${logs.err}`);

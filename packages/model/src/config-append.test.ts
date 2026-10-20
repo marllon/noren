@@ -3,15 +3,18 @@ import { describe, expect, it } from "vitest";
 import { describeConfigError, parseConfigText } from "./config";
 import { editConfigText } from "./config-edit";
 import type { ConfigAppend } from "./config-edit";
-import type { UserProfile } from "./user-profile-schema";
+import type { ShellUserProfile, UserProfile } from "./user-profile-schema";
 
 // Adding items to the end of a list setting (`profiles`) in the text of the file: the items in the
 // list and everything around them stay as they are, the new ones are written like their neighbors.
 
-const append = (...items: UserProfile[]): ConfigAppend => ({ path: ["profiles"], append: items });
+const append = (...items: ShellUserProfile[]): ConfigAppend => ({
+  path: ["profiles"],
+  append: items,
+});
 
-const dev: UserProfile = { id: "dev-shell", name: "Dev Shell", program: "pwsh.exe" };
-const git: UserProfile = {
+const dev: ShellUserProfile = { id: "dev-shell", name: "Dev Shell", program: "pwsh.exe" };
+const git: ShellUserProfile = {
   id: "git-bash",
   name: "Git Bash",
   program: "C:\\Program Files\\Git\\bin\\bash.exe",
@@ -184,7 +187,7 @@ describe("editConfigText appending to a list", () => {
   });
 
   it("writes strings that need escaping so they read back the same", () => {
-    const odd: UserProfile = {
+    const odd: ShellUserProfile = {
       id: "odd",
       name: 'He said "hi" \\ and left',
       program: "sh",
@@ -209,7 +212,7 @@ describe("editConfigText appending to a list", () => {
       },
       { requiredKeys: ["id", "name", "program"] },
     );
-    const clean = (value: UserProfile): UserProfile => ({
+    const clean = (value: ShellUserProfile): ShellUserProfile => ({
       ...value,
       name: value.name.replace(/\0/g, "x"),
       program: value.program.replace(/\0/g, "x"),
@@ -218,7 +221,7 @@ describe("editConfigText appending to a list", () => {
     });
     const layout = fc.constantFrom<string | number | undefined>(undefined, 2, 4, "\t");
 
-    function uniqueIds(list: UserProfile[]): UserProfile[] {
+    function uniqueIds(list: ShellUserProfile[]): ShellUserProfile[] {
       const seen = new Set<string>();
       return list
         .filter((item) => !seen.has(item.id) && seen.add(item.id))
@@ -227,7 +230,7 @@ describe("editConfigText appending to a list", () => {
 
     /** The text of the file with `existing` in its list, plain or with comments and trailing commas. */
     function written(
-      existing: UserProfile[],
+      existing: ShellUserProfile[],
       how: string | number | undefined,
       decorated: boolean,
     ): string {

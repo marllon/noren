@@ -337,6 +337,7 @@ mod tests {
             args: args.iter().map(|a| (*a).to_owned()).collect(),
             cwd: None,
             inject_integration: true,
+            remote: None,
         }
     }
 

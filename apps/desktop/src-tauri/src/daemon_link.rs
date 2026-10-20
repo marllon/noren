@@ -51,10 +51,12 @@ use noren_core::daemon::{
 };
 use noren_core::{
     ExitInfo, ProcessSource, PtyError, SessionEvent, SessionId, SessionManager, SpawnSpec,
-    SystemProcesses,
+    SshProfile, SystemProcesses,
 };
 use tokio::runtime::{Builder, Handle, Runtime};
 use tokio::sync::{mpsc as async_mpsc, oneshot};
+
+use crate::remote::{LinkSink, RemoteSessions, is_remote};
 
 /// The daemon a normal run talks to (`norend --endpoint default`).
 pub const DEFAULT_ENDPOINT_NAME: &str = "default";
@@ -135,7 +137,7 @@ pub enum Placement {
 pub struct SessionError(String);
 
 impl SessionError {
-    fn new(message: impl Into<String>) -> Self {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
         Self(message.into())
     }
 }
@@ -174,7 +176,7 @@ pub struct Stopped {
 }
 
 /// The callback of a session: output, then the end.
-type Sink = Box<dyn FnMut(SessionEvent<'_>) + Send>;
+pub(crate) type Sink = Box<dyn FnMut(SessionEvent<'_>) + Send>;
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
@@ -219,6 +221,10 @@ pub struct Sessions {
     /// so a caller that must not wait (the handler of a window event) can ask without forcing
     /// `backend`. Empty until then.
     in_daemon_known: Arc<OnceLock<bool>>,
+    /// The sessions of profiles of kind `ssh`, which live in a daemon on another machine (see
+    /// `remote`). Their ids start at `REMOTE_ID_BASE`, so a call on a session goes where its id
+    /// says.
+    remote: RemoteSessions,
 }
 
 impl Sessions {
@@ -250,6 +256,7 @@ impl Sessions {
                             })
                     })),
                     in_daemon_known: known,
+                    remote: RemoteSessions::default(),
                 }
             }
         }
@@ -261,7 +268,16 @@ impl Sessions {
         Self {
             backend: LazyLock::new(Box::new(move || backend)),
             in_daemon_known: Arc::new(known),
+            remote: RemoteSessions::default(),
         }
+    }
+
+    /// The same sessions with another way to reach the machines of the `ssh` profiles (a test gives
+    /// one that reaches a daemon it holds).
+    #[cfg(test)]
+    pub fn with_remote(mut self, remote: RemoteSessions) -> Self {
+        self.remote = remote;
+        self
     }
 
     /// Where the sessions live. Waits for the daemon to be found or started, the first time.
@@ -292,8 +308,56 @@ impl Sessions {
         }
     }
 
+    /// Starts `spec` in a new session in the daemon of another machine, reached through `ssh` (a
+    /// profile of kind `ssh`). `spec` is sent as it is: it carries what the profile says and
+    /// nothing of this machine. `on_event` is as for [`Self::spawn`]; `on_link` is told each time
+    /// the connection to that machine changes. The ids of these sessions never meet the others'.
+    pub fn spawn_remote<F, G>(
+        &self,
+        machine: &SshProfile,
+        spec: SpawnSpec,
+        on_event: F,
+        on_link: G,
+    ) -> Result<SessionId, SessionError>
+    where
+        F: FnMut(SessionEvent<'_>) + Send + 'static,
+        G: FnMut(SessionId, &noren_core::daemon::LinkState) + Send + 'static,
+    {
+        let on_link: LinkSink = Box::new(on_link);
+        self.remote
+            .spawn(machine, spec, Box::new(on_event), on_link)
+    }
+
+    /// The pid of the `ssh` that carries the connection of a session on another machine.
+    #[cfg(test)]
+    pub fn remote_transport_id(&self, id: SessionId) -> Option<u32> {
+        self.remote.transport_id(id)
+    }
+
+    /// The sessions the daemon on `machine` lists.
+    #[cfg(test)]
+    pub fn remote_sessions_of(&self, machine: &SshProfile) -> Vec<SessionInfo> {
+        self.remote.sessions_of(machine)
+    }
+
+    /// Asks the connection of a session on another machine to try again now (see
+    /// `RemoteSessions::retry`). An error for any other session.
+    pub fn retry(&self, id: SessionId) -> Result<(), SessionError> {
+        if is_remote(id) {
+            self.remote.retry(id)
+        } else {
+            Err(SessionError::new(format!(
+                "session {} is a shell on this machine: it has no connection to retry",
+                id.0
+            )))
+        }
+    }
+
     /// Sends bytes to the terminal input of a session.
     pub fn write(&self, id: SessionId, data: &[u8]) -> Result<(), SessionError> {
+        if is_remote(id) {
+            return self.remote.write(id, data);
+        }
         match &*self.backend {
             Backend::Process { manager, .. } => Ok(manager.write(id, data)?),
             Backend::Daemon(link) => link.write(id, data),
@@ -301,6 +365,9 @@ impl Sessions {
     }
 
     pub fn resize(&self, id: SessionId, cols: u16, rows: u16) -> Result<(), SessionError> {
+        if is_remote(id) {
+            return self.remote.resize(id, cols, rows);
+        }
         match &*self.backend {
             Backend::Process { manager, .. } => Ok(manager.resize(id, cols, rows)?),
             Backend::Daemon(link) => link.resize(id, cols, rows),
@@ -309,6 +376,9 @@ impl Sessions {
 
     /// Ends the process of a session, if it still runs, and releases the session.
     pub fn kill(&self, id: SessionId) -> Result<(), SessionError> {
+        if is_remote(id) {
+            return self.remote.kill(id);
+        }
         match &*self.backend {
             Backend::Process { manager, .. } => Ok(manager.kill(id)?),
             Backend::Daemon(link) => link.kill(id),
@@ -375,10 +445,11 @@ impl Sessions {
 
     /// Sessions of this app that were started and not yet killed (an ended one counts until it is).
     pub fn session_count(&self) -> usize {
-        match &*self.backend {
+        let local = match &*self.backend {
             Backend::Process { manager, .. } => manager.session_count(),
             Backend::Daemon(link) => lock(&link.owned).len(),
-        }
+        };
+        local + self.remote.session_count()
     }
 
     /// Threads this process runs for its sessions. A session of the daemon has none here.
@@ -392,6 +463,7 @@ impl Sessions {
     /// Ends the sessions of the app, so none outlives it. When the run owns its daemon
     /// ([`DaemonSettings::stop_on_shutdown`]) the daemon is stopped too.
     pub fn shutdown(&self) {
+        self.remote.end_all(END_SESSIONS_TIMEOUT);
         match &*self.backend {
             Backend::Process { manager, .. } => manager.shutdown(),
             Backend::Daemon(link) => link.shutdown(),
@@ -404,6 +476,8 @@ impl Sessions {
     /// this process cannot outlive it, so there it ends them all; and a run that owns its daemon
     /// ([`DaemonSettings::stop_on_shutdown`]) stops it, as [`Self::shutdown`] does.
     pub fn detach(&self, keep: &[SessionId]) {
+        // A shell on another machine has no pane to come back to (yet): it ends with the app.
+        self.remote.end_all(END_SESSIONS_TIMEOUT);
         match &*self.backend {
             Backend::Process { manager, .. } => manager.shutdown(),
             Backend::Daemon(link) => link.detach(keep),
@@ -429,6 +503,7 @@ impl Sessions {
     /// of this run are ended then as far as they can be (the caller falls back to
     /// [`Self::shutdown`]).
     pub fn quit_for_good(&self) -> Result<Stopped, SessionError> {
+        self.remote.end_all(END_SESSIONS_TIMEOUT);
         match &*self.backend {
             Backend::Process { manager, .. } => {
                 manager.shutdown();

@@ -175,12 +175,21 @@ function schemaDescriptions(): Map<string, string> {
     description?: string;
     properties?: Record<string, Node>;
     items?: Node;
+    // The kinds of an entry of a list (the shell and the SSH profile): their fields are the fields
+    // of the entry, so a field both kinds have is described once, in the same words.
+    oneOf?: Node[];
   };
   const found = new Map<string, string>();
   const walk = (node: Node, path: string[]): void => {
-    if (node.description !== undefined) found.set(path.join(".") || "root", node.description);
+    if (node.description !== undefined) {
+      const key = path.join(".") || "root";
+      const before = found.get(key);
+      if (before !== undefined) expect(node.description, key).toBe(before);
+      found.set(key, node.description);
+    }
     for (const [name, child] of Object.entries(node.properties ?? {})) walk(child, [...path, name]);
     if (node.items !== undefined) walk(node.items, [...path, "item"]);
+    for (const kind of node.oneOf ?? []) walk(kind, path);
   };
   walk(configJsonSchema() as Node, []);
   return found;

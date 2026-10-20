@@ -23,6 +23,11 @@ export interface ShellProfile {
   name: string;
   /** True for the profile used when `createSession` gets no `profileId`. */
   default: boolean;
+  /**
+   * `"ssh"` for a profile whose shell lives in a `norend` on another machine (its connection can
+   * drop and come back, see `onSessionLink`); absent for a shell on this machine.
+   */
+  kind?: "ssh";
 }
 
 export interface CreateSessionOptions {
@@ -48,6 +53,31 @@ export interface SessionExit {
   code: number;
   /** Name of the terminating signal, when the shell was killed by one. */
   signal?: string;
+}
+
+/** Where the connection of a session to its shell stands: see `SessionLink`. */
+export type SessionLinkState = "connected" | "reconnecting" | "failed";
+
+/**
+ * A change in the connection between the window and the shell of a session whose profile is an SSH
+ * one (`ShellProfile.kind`). The shell itself lives on the other machine and is not touched by a
+ * break: the connection is made again, and the session goes on where it was. A session of a shell on
+ * this machine never has one. A session starts connected; this is told only when that changes.
+ */
+export interface SessionLink {
+  id: SessionId;
+  state: SessionLinkState;
+  /** `reconnecting`: which attempt this is, counted from 1... */
+  attempt?: number;
+  /** ...of how many in all; after the last one the state is `failed`. */
+  maxAttempts?: number;
+  /** `reconnecting`: milliseconds until the attempt starts. */
+  retryInMs?: number;
+  /**
+   * `reconnecting` and `failed`: why the connection broke or the attempt failed, in a sentence for
+   * a person (the words of `ssh`, such as a refused key or a host key that changed).
+   */
+  reason?: string;
 }
 
 /** What `HEAD` of the git repository a folder is in points at. */
@@ -147,6 +177,19 @@ export interface Backend {
   resize(id: SessionId, cols: number, rows: number): Promise<void>;
   /** Ends the session if it is still running and releases its id. */
   kill(id: SessionId): Promise<void>;
+  /**
+   * Called every time the connection of a session of an SSH profile changes (it broke and the
+   * backend is trying again, it came back, or it gave up). Never called for a shell on this machine.
+   * Stops when the returned function is called.
+   */
+  onSessionLink(callback: (link: SessionLink) => void): Unsubscribe;
+  /**
+   * Asks the connection of the session to try again now: it stops waiting between two attempts, or,
+   * after it gave up (`failed`), starts the attempts over. The new state arrives through
+   * `onSessionLink`. Nothing happens when the connection is up. Rejects when the id is not a
+   * session of an SSH profile that is still held.
+   */
+  retrySession(id: SessionId): Promise<void>;
   /** Raw terminal output (escape sequences included) of one session, in order. */
   onOutput(id: SessionId, callback: (data: Uint8Array) => void): Unsubscribe;
   /** Called once per session that ends, whether on its own or through `kill`. */

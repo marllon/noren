@@ -179,8 +179,10 @@ pub enum LinkEvent {
     State(LinkState),
     /// A session was attached again after the link came back. `replay` is everything the daemon
     /// kept of its output, which includes what this client had already received before the
-    /// break: whoever shows the output should replace what it shows with the replay, not append
-    /// to it. `exit` is set when the process ended meanwhile (no more events follow).
+    /// break: whoever shows the output must not append it as it is. [`plan_replay`](super::replay::plan_replay)
+    /// says what to show of it given the latest bytes already shown (only what follows them, or
+    /// a reset of the terminal and the whole replay when the daemon no longer reaches back that
+    /// far). `exit` is set when the process ended meanwhile (no more events follow).
     Reattached {
         session: SessionId,
         replay: Vec<u8>,

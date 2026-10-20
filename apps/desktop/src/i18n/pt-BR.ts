@@ -753,11 +753,23 @@ export const ptBR: Dictionary = {
   "field.profiles.item": "Um perfil de shell seu.",
   "field.profiles.item.id": 'O id do perfil, como "dev-shell". Único entre os perfis.',
   "field.profiles.item.name": "O nome mostrado na paleta de comandos.",
+  "field.profiles.item.kind":
+    'O que o perfil abre: "shell" (o padrão) inicia um programa nesta máquina, "ssh" abre um shell em um norend de outra máquina pelo ssh.',
   "field.profiles.item.program":
-    'O programa que inicia o shell, como "pwsh.exe" ou um caminho completo. %NOME% é trocado pela variável de ambiente NOME quando uma sessão começa.',
+    'O programa que inicia o shell, como "pwsh.exe" ou um caminho completo. %NOME% é trocado pela variável de ambiente NOME quando uma sessão começa. Num perfil SSH ele roda na outra máquina, nada nele é trocado e, se faltar, é o shell de login do usuário de lá.',
   "field.profiles.item.args": "Os argumentos do programa, um item para cada.",
   "field.profiles.item.cwd":
-    "A pasta em que uma sessão deste perfil começa, a menos que o espaço ou a aba indique uma. %NOME% é trocado pela variável de ambiente NOME.",
+    "A pasta em que uma sessão deste perfil começa, a menos que o espaço ou a aba indique uma. %NOME% é trocado pela variável de ambiente NOME. Num perfil SSH é uma pasta da outra máquina, usada como está e, se faltar, a pasta pessoal do usuário de lá.",
+  "field.profiles.item.host":
+    'A máquina a alcançar com o ssh: um nome de host ou um endereço (letras, dígitos, ".", "-", "_" e ":").',
+  "field.profiles.item.user":
+    "O usuário com que entrar. Se faltar, o ssh decide: a configuração dele e depois o nome do usuário desta máquina.",
+  "field.profiles.item.port":
+    "A porta do servidor ssh. 22, ou o que a configuração do ssh disser, se faltar.",
+  "field.profiles.item.identityFile":
+    "A chave privada com que entrar, como um caminho; só ela é oferecida. Se faltar, o ssh tenta as próprias chaves e o agente. Uma chave com frase-senha só funciona por um agente: o Noren nunca pede frase-senha e não guarda nenhuma. %NOME% é trocado pela variável de ambiente NOME.",
+  "field.profiles.item.knownHostsFile":
+    "O arquivo com as chaves dos hosts em que você confia, como um caminho. Se faltar, vale o arquivo known_hosts do usuário. Um host que não está no arquivo é recusado, nunca aceito na primeira visita. %NOME% é trocado pela variável de ambiente NOME.",
   "field.keybindings": "Atalhos de teclado.",
   "field.keybindings.preset":
     "Qual conjunto de atalhos vale: safe mantém as teclas que um shell usa, browser usa as teclas de um navegador da web.",

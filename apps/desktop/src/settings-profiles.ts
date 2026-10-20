@@ -1,12 +1,14 @@
-import { RESERVED_PROFILE_IDS, UserProfileSchema, slugify } from "@noren/model";
-import type { Config, ConfigEdit, UserProfile } from "@noren/model";
+import { RESERVED_PROFILE_IDS, ShellUserProfileSchema, isSshProfile, slugify } from "@noren/model";
+import type { Config, ConfigEdit, ShellUserProfile } from "@noren/model";
 
 // The pure part of the Profiles section of the settings screen: the rows a person edits (the name,
 // the program, the arguments one to a line, the folder), what Save has to write for them (the
 // settings of a profile that changed, the profiles taken out, the new ones appended) and the
 // problems the schema finds, per row and per box. A profile that is already in the file keeps its
 // id; a new one gets the id of the slug of its name, which nothing else uses. Only what changed is
-// written, so the comments around the list and the other profiles stay as they are.
+// written, so the comments around the list and the other profiles stay as they are. The screen edits
+// shell profiles only: a profile of kind "ssh" has no row here (its fields are written in the file),
+// and Save neither changes nor removes it.
 
 /** The boxes of a row. */
 export type ProfileField = "name" | "program" | "args" | "cwd";
@@ -24,16 +26,22 @@ export interface ProfileRow {
   cwd: string;
 }
 
-/** The profiles of the file as rows. */
+/** The shell profiles of the file as rows. */
 export function profileRowsOf(config: Config): ProfileRow[] {
-  return (config.profiles ?? []).map((profile) => ({
-    key: profile.id,
-    saved: true,
-    name: profile.name,
-    program: profile.program,
-    args: (profile.args ?? []).join("\n"),
-    cwd: profile.cwd ?? "",
-  }));
+  return (config.profiles ?? []).flatMap((profile) =>
+    isSshProfile(profile)
+      ? []
+      : [
+          {
+            key: profile.id,
+            saved: true,
+            name: profile.name,
+            program: profile.program,
+            args: (profile.args ?? []).join("\n"),
+            cwd: profile.cwd ?? "",
+          },
+        ],
+  );
 }
 
 /** The rows on screen: the draft when the person touched the list, else the profiles of the file. */
@@ -108,7 +116,7 @@ function profileOfRow(row: ProfileRow, id: string): Record<string, unknown> {
 
 /** What the schema finds wrong with each box of the row (`id` is made by the screen, never wrong). */
 function problemsOfRow(candidate: Record<string, unknown>): Partial<Record<ProfileField, string>> {
-  const parsed = UserProfileSchema.safeParse(candidate);
+  const parsed = ShellUserProfileSchema.safeParse(candidate);
   const found: Partial<Record<ProfileField, string>> = {};
   if (parsed.success) return found;
   for (const issue of parsed.error.issues) {
@@ -150,20 +158,21 @@ export function planProfiles(
   const taken = new Set<string>([...takenIds, ...RESERVED_PROFILE_IDS, ...file.map((p) => p.id)]);
   const settings: ConfigEdit[] = [];
   const removals: ConfigEdit[] = [];
-  const added: UserProfile[] = [];
+  const added: ShellUserProfile[] = [];
 
   for (const row of draft) {
     if (row.saved) {
       const index = file.findIndex((profile) => profile.id === row.key);
       const before = file[index];
-      if (before === undefined) continue; // the file changed under the screen: nothing to edit
+      // The file changed under the screen (or the id is an ssh profile now): nothing to edit.
+      if (before === undefined || isSshProfile(before)) continue;
       const candidate = profileOfRow(row, before.id);
       const problems = problemsOfRow(candidate);
       if (Object.keys(problems).length > 0) {
         plan.problems[row.key] = problems;
         continue;
       }
-      const wanted = candidate as unknown as UserProfile;
+      const wanted = candidate as unknown as ShellUserProfile;
       const at = ["profiles", index] as const;
       if (wanted.name !== before.name) settings.push({ path: [...at, "name"], value: wanted.name });
       if (wanted.program !== before.program) {
@@ -188,7 +197,7 @@ export function planProfiles(
       const candidate = profileOfRow(row, newProfileId(row.name, taken));
       const problems = problemsOfRow(candidate);
       if (Object.keys(problems).length > 0) plan.problems[row.key] = problems;
-      else added.push(candidate as unknown as UserProfile);
+      else added.push(candidate as unknown as ShellUserProfile);
     }
   }
 
@@ -196,7 +205,7 @@ export function planProfiles(
   const kept = new Set(draft.filter((row) => row.saved).map((row) => row.key));
   for (let index = file.length - 1; index >= 0; index--) {
     const profile = file[index];
-    if (profile !== undefined && !kept.has(profile.id)) {
+    if (profile !== undefined && !isSshProfile(profile) && !kept.has(profile.id)) {
       removals.push({ path: ["profiles", index], remove: true });
     }
   }

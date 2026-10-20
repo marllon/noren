@@ -19,6 +19,8 @@ import type {
   OllamaModels,
   SessionExit,
   SessionId,
+  SessionLink,
+  SessionLinkState,
   ShellProfile,
   Unsubscribe,
   UserProfile,
@@ -57,6 +59,21 @@ interface SessionExitPayload {
 }
 
 const SESSION_EXIT_EVENT = "session-exit";
+
+/**
+ * Payload of the `session-link` event: the connection of a session of an SSH profile changed. The
+ * Rust side leaves out what does not apply to the state.
+ */
+interface SessionLinkPayload {
+  id: number;
+  state: SessionLinkState;
+  attempt?: number | null;
+  maxAttempts?: number | null;
+  retryInMs?: number | null;
+  reason?: string | null;
+}
+
+const SESSION_LINK_EVENT = "session-link";
 
 /** Event emitted by the Rust side when `config.jsonc` changes; the payload is the new text or `null`. */
 const CONFIG_CHANGED_EVENT = "config-changed";
@@ -225,7 +242,9 @@ export class TauriBackend implements Backend {
   readonly #earlyExits = new Map<SessionId, SessionExit>();
   readonly #configListeners = new Set<(text: string | null) => void>();
   readonly #modListeners = new Set<(files: ModFile[]) => void>();
+  readonly #linkListeners = new Set<(link: SessionLink) => void>();
   #exitSubscription: Promise<() => void> | undefined;
+  #linkSubscription: Promise<() => void> | undefined;
   #configSubscription: Promise<() => void> | undefined;
   #modSubscription: Promise<() => void> | undefined;
 
@@ -337,6 +356,18 @@ export class TauriBackend implements Backend {
   async kill(id: SessionId): Promise<void> {
     this.#released.add(id);
     await this.#bridge.invoke("session_kill", { id });
+  }
+
+  onSessionLink(callback: (link: SessionLink) => void): Unsubscribe {
+    this.#linkListeners.add(callback);
+    this.#listenForLinks();
+    return () => {
+      this.#linkListeners.delete(callback);
+    };
+  }
+
+  async retrySession(id: SessionId): Promise<void> {
+    await this.#bridge.invoke("session_retry", { id });
   }
 
   onOutput(id: SessionId, callback: (data: Uint8Array) => void): Unsubscribe {
@@ -579,6 +610,27 @@ export class TauriBackend implements Backend {
       },
     );
     return this.#exitSubscription;
+  }
+
+  /** Hears `session-link` once; if that fails the next `onSessionLink` tries again. */
+  #listenForLinks(): void {
+    if (this.#linkSubscription) return;
+    const subscription = this.#bridge.listen<SessionLinkPayload>(SESSION_LINK_EVENT, (event) => {
+      const { id, state, attempt, maxAttempts, retryInMs, reason } = event.payload;
+      const link: SessionLink = {
+        id,
+        state,
+        ...(attempt != null ? { attempt } : {}),
+        ...(maxAttempts != null ? { maxAttempts } : {}),
+        ...(retryInMs != null ? { retryInMs } : {}),
+        ...(reason != null ? { reason } : {}),
+      };
+      for (const listener of [...this.#linkListeners]) listener(link);
+    });
+    this.#linkSubscription = subscription;
+    subscription.catch(() => {
+      if (this.#linkSubscription === subscription) this.#linkSubscription = undefined;
+    });
   }
 
   #handleExit(exit: SessionExit): void {

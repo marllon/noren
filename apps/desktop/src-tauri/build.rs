@@ -22,6 +22,7 @@ const COMMANDS: &[&str] = &[
     "session_write",
     "session_resize",
     "session_kill",
+    "session_retry",
     "state_load",
     "state_save",
     "state_quarantine",

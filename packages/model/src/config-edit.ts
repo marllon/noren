@@ -57,11 +57,35 @@ export type ConfigEdit = ConfigChange | ConfigAppend | ConfigRemove;
 
 type Shape = Record<string, z.ZodType>;
 
-/** The settings an object of the schema has, when `schema` is one (an optional one counts). */
+/**
+ * The settings an object of the schema has, when `schema` is one (an optional one counts). The kinds
+ * of a union of objects (the shell and the SSH profile) give the settings they have together, in an
+ * order that keeps the order of each kind: a setting only one kind has goes after the setting that
+ * comes before it in that kind.
+ */
 function shapeOf(schema: z.ZodType): Shape | undefined {
   let inner = schema;
   while (inner instanceof z.ZodOptional) inner = inner.unwrap() as z.ZodType;
-  return inner instanceof z.ZodObject ? (inner.shape as Shape) : undefined;
+  if (inner instanceof z.ZodObject) return inner.shape as Shape;
+  if (!(inner instanceof z.ZodDiscriminatedUnion)) return undefined;
+  const order: string[] = [];
+  const merged: Shape = {};
+  for (const option of inner.options) {
+    if (!(option instanceof z.ZodObject)) continue;
+    const shape = option.shape as Shape;
+    let after = -1;
+    for (const key of Object.keys(shape)) {
+      const at = order.indexOf(key);
+      if (at >= 0) {
+        after = at;
+      } else {
+        after += 1;
+        order.splice(after, 0, key);
+        merged[key] = shape[key] as z.ZodType;
+      }
+    }
+  }
+  return Object.fromEntries(order.map((key) => [key, merged[key] as z.ZodType]));
 }
 
 /** The schema of the items of a list, when `schema` is one (an optional one counts). */

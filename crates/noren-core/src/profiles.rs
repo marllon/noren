@@ -12,6 +12,7 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use crate::daemon::SshTarget;
 use crate::pty::SpawnSpec;
 
 /// How long `wsl.exe -l -q` may run before it is abandoned.
@@ -33,7 +34,17 @@ pub struct Profile {
     /// Whether Noren loads its shell integration script into this shell (see
     /// [`Profile::spawn_spec_with_integration`]). `true` for every detected profile.
     pub inject_integration: bool,
+    /// The machine whose `norend` runs the shell, for a profile of kind `ssh`; `None` for a shell on
+    /// this machine. For such a profile `program`, `args` and `cwd` are what to run there (see
+    /// [`Profile::remote_spec`]) and `inject_integration` is `false`.
+    pub remote: Option<SshProfile>,
 }
+
+/// What the remote shell of an `ssh` profile runs when the profile names no program: the login shell
+/// of the user on that machine (`$SHELL`, else `sh`), started as a login shell so it reads the files
+/// that set the `PATH`. The daemon starts programs directly, never through a shell, so `sh -c` is
+/// how a profile with no program picks `$SHELL` there.
+const REMOTE_LOGIN_SHELL: (&str, [&str; 2]) = ("sh", ["-c", "exec \"${SHELL:-/bin/sh}\" -l"]);
 
 impl Profile {
     /// Builds the [`SpawnSpec`] that opens this profile, exactly as detected (no integration).
@@ -45,6 +56,77 @@ impl Profile {
             env: Vec::new(),
             cols,
             rows,
+        }
+    }
+
+    /// The [`SpawnSpec`] a profile of kind `ssh` sends to the `norend` on the other machine, and
+    /// nothing else: no environment (the daemon there has its own, and a Windows `PATH` or
+    /// `USERPROFILE` is wrong in a Linux shell), no folder of this machine, no shell integration
+    /// script of this machine (finding 198). The program, its arguments and the folder are what the
+    /// profile says; without a program it is the login shell of the user there, and without a
+    /// folder the shell opens in the home folder of that user (a pseudo terminal starts a program
+    /// that has no folder in the home folder).
+    pub fn remote_spec(&self, cols: u16, rows: u16) -> SpawnSpec {
+        let (program, args) = if is_blank(&self.program) {
+            (
+                REMOTE_LOGIN_SHELL.0.to_owned(),
+                REMOTE_LOGIN_SHELL.1.map(str::to_owned).to_vec(),
+            )
+        } else {
+            (self.program.clone(), self.args.clone())
+        };
+        SpawnSpec {
+            program,
+            args,
+            cwd: self.cwd.as_ref().map(PathBuf::from),
+            env: Vec::new(),
+            cols,
+            rows,
+        }
+    }
+}
+
+/// The machine of a profile of kind `ssh` and how to log in to it: what the `ssh` of the system needs
+/// to reach a `norend` there. Names and paths only; a password or a passphrase has no place in it
+/// (a key with a passphrase works through an agent).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SshProfile {
+    /// A host name or an address.
+    pub host: String,
+    /// The user to log in as; `ssh` decides when `None`.
+    pub user: Option<String>,
+    /// The port of the ssh server; 22 (or what the ssh configuration says) when `None`.
+    pub port: Option<u16>,
+    /// The private key file (`ssh -i`). `%NAME%` is replaced by the environment variable `NAME`.
+    pub identity_file: Option<String>,
+    /// The known hosts file (`UserKnownHostsFile`); the user's own when `None`. `%NAME%` as above.
+    pub known_hosts_file: Option<String>,
+}
+
+impl SshProfile {
+    /// The target the `ssh` of the system is run for (see [`SshTarget`]): keys only, no prompt, no
+    /// window. Nothing about it is kept beyond the call.
+    pub fn target(&self) -> SshTarget {
+        let mut target = SshTarget::new(self.host.clone());
+        target.user = self.user.clone();
+        target.port = self.port;
+        target.identity_file = self.identity_file.as_ref().map(PathBuf::from);
+        target.known_hosts_file = self.known_hosts_file.as_ref().map(PathBuf::from);
+        target
+    }
+
+    /// The same machine with `%NAME%` replaced in the two paths (see [`expand_env_vars`]).
+    pub fn expanded(&self, env: &dyn Fn(&str) -> Option<String>) -> Self {
+        Self {
+            identity_file: self
+                .identity_file
+                .as_ref()
+                .map(|path| expand_env_vars(path, env)),
+            known_hosts_file: self
+                .known_hosts_file
+                .as_ref()
+                .map(|path| expand_env_vars(path, env)),
+            ..self.clone()
         }
     }
 }
@@ -248,6 +330,7 @@ fn detect_windows(env: &dyn ProbeEnv) -> ProfileSet {
             args: Vec::new(),
             cwd: None,
             inject_integration: true,
+            remote: None,
         });
     }
 
@@ -265,6 +348,7 @@ fn detect_windows(env: &dyn ProbeEnv) -> ProfileSet {
             args: Vec::new(),
             cwd: None,
             inject_integration: true,
+            remote: None,
         });
     }
 
@@ -280,6 +364,7 @@ fn detect_windows(env: &dyn ProbeEnv) -> ProfileSet {
             args: Vec::new(),
             cwd: None,
             inject_integration: true,
+            remote: None,
         });
     }
 
@@ -295,6 +380,7 @@ fn detect_windows(env: &dyn ProbeEnv) -> ProfileSet {
             args: vec!["--login".into(), "-i".into()],
             cwd: None,
             inject_integration: true,
+            remote: None,
         });
     }
 
@@ -309,6 +395,7 @@ fn detect_windows(env: &dyn ProbeEnv) -> ProfileSet {
                     args: vec!["-d".into(), distro],
                     cwd: None,
                     inject_integration: true,
+                    remote: None,
                 });
             }
         }
@@ -378,6 +465,7 @@ fn detect_unix(env: &dyn ProbeEnv) -> ProfileSet {
             args: Vec::new(),
             cwd: None,
             inject_integration: true,
+            remote: None,
         });
     }
 
@@ -423,11 +511,16 @@ pub struct UserProfile {
     pub id: String,
     /// Name shown in the interface.
     pub name: String,
-    /// Executable to launch. `%NAME%` is replaced by the environment variable `NAME`.
+    /// Executable to launch. `%NAME%` is replaced by the environment variable `NAME`. For an
+    /// `ssh` profile it is the program on the other machine, taken as written, and may be empty
+    /// (the login shell of the user there).
     pub program: String,
     pub args: Vec<String>,
-    /// Folder a session starts in unless the call that opens it names one.
+    /// Folder a session starts in unless the call that opens it names one. For an `ssh` profile
+    /// it is a folder on the other machine, taken as written.
     pub cwd: Option<String>,
+    /// The machine, for a profile of kind `ssh`; `None` for a shell on this machine.
+    pub ssh: Option<SshProfile>,
 }
 
 /// Why a list of profiles of the user was refused. The text names the profile.
@@ -449,6 +542,9 @@ pub enum UserProfileError {
     EmptyProgram(String),
     /// An argument or the folder is too long, empty, or has a NUL character; the text says which.
     InvalidField(String, &'static str),
+    /// The machine of an `ssh` profile cannot be put on a command line (the text says why: a host
+    /// that could be taken for an option, a port of 0, a path with a control character).
+    InvalidSsh(String, String),
 }
 
 impl std::fmt::Display for UserProfileError {
@@ -481,6 +577,7 @@ impl std::fmt::Display for UserProfileError {
                 "profile '{id}': the program is empty or longer than {MAX_TEXT_CHARS} characters"
             ),
             Self::InvalidField(id, field) => write!(f, "profile '{id}': {field}"),
+            Self::InvalidSsh(id, why) => write!(f, "profile '{id}': {why}"),
         }
     }
 }
@@ -518,7 +615,13 @@ impl UserProfile {
         {
             return Err(UserProfileError::InvalidName(id.clone()));
         }
-        if is_blank(&self.program)
+        // A shell on this machine needs a program; a remote one may leave it to the login shell.
+        let program_missing = if self.ssh.is_some() {
+            !self.program.is_empty() && is_blank(&self.program)
+        } else {
+            is_blank(&self.program)
+        };
+        if program_missing
             || self.program.chars().count() > MAX_TEXT_CHARS
             || self.program.contains('\0')
         {
@@ -548,13 +651,34 @@ impl UserProfile {
                 "the folder is empty, too long or has a NUL character",
             ));
         }
+        if let Some(ssh) = &self.ssh {
+            ssh.target()
+                .validate()
+                .map_err(|e| UserProfileError::InvalidSsh(id.clone(), e.to_string()))?;
+        }
         Ok(())
     }
 
     /// The profile as a session starts it: `%NAME%` in the program, the arguments and the folder
     /// is replaced through `env` (see [`expand_env_vars`]). The shell integration stays on, as for
     /// a detected profile; it only does anything for the shells it knows.
+    ///
+    /// An `ssh` profile is different: what it runs, and where, is on the other machine, so the
+    /// program, the arguments and the folder are kept as written (a `%` in them is not a variable
+    /// of this machine) and nothing of this machine's shell integration is loaded; only the two
+    /// files it names are on this machine, and those have their `%NAME%` replaced.
     pub fn to_profile(&self, env: &dyn Fn(&str) -> Option<String>) -> Profile {
+        if let Some(ssh) = &self.ssh {
+            return Profile {
+                id: self.id.clone(),
+                name: self.name.clone(),
+                program: self.program.clone(),
+                args: self.args.clone(),
+                cwd: self.cwd.clone(),
+                inject_integration: false,
+                remote: Some(ssh.expanded(env)),
+            };
+        }
         Profile {
             id: self.id.clone(),
             name: self.name.clone(),
@@ -566,6 +690,7 @@ impl UserProfile {
                 .collect(),
             cwd: self.cwd.as_ref().map(|cwd| expand_env_vars(cwd, env)),
             inject_integration: true,
+            remote: None,
         }
     }
 }
@@ -629,10 +754,13 @@ impl ProfileSet {
         let mut profiles = self.profiles.clone();
         profiles.extend(user.iter().map(|profile| profile.to_profile(env)));
         Ok(ProfileSet {
-            default_id: self
-                .default_id
-                .clone()
-                .or_else(|| user.first().map(|profile| profile.id.clone())),
+            // The default is a shell of this machine: a profile on another machine needs a login
+            // and a connection, which nothing should start without being asked.
+            default_id: self.default_id.clone().or_else(|| {
+                user.iter()
+                    .find(|profile| profile.ssh.is_none())
+                    .map(|profile| profile.id.clone())
+            }),
             profiles,
         })
     }
@@ -845,6 +973,7 @@ mod tests {
             args: vec!["--login".into(), "-i".into()],
             cwd: None,
             inject_integration: true,
+            remote: None,
         };
         let spec = profile.spawn_spec(100, 30);
         assert_eq!(spec.program, "bash.exe");
@@ -862,6 +991,7 @@ mod tests {
             args: Vec::new(),
             cwd: Some("/work".into()),
             inject_integration: true,
+            remote: None,
         };
         assert_eq!(
             profile.spawn_spec(80, 24).cwd,
@@ -876,6 +1006,7 @@ mod tests {
             program: program.into(),
             args: Vec::new(),
             cwd: None,
+            ssh: None,
         }
     }
 
@@ -1079,5 +1210,200 @@ mod tests {
         for (text, wanted) in cases {
             assert_eq!(expand_env_vars(text, &env), wanted, "{text:?}");
         }
+    }
+
+    // ----- profiles of kind ssh (NOR-F14-04b) -----
+
+    fn ssh_machine() -> SshProfile {
+        SshProfile {
+            host: "build.example.org".into(),
+            user: Some("deploy".into()),
+            port: Some(2222),
+            identity_file: Some("%USERPROFILE%\\.ssh\\id_ed25519".into()),
+            known_hosts_file: Some("%USERPROFILE%\\.ssh\\known_hosts_noren".into()),
+        }
+    }
+
+    fn ssh_user(id: &str) -> UserProfile {
+        UserProfile {
+            id: id.into(),
+            name: format!("Name of {id}"),
+            program: String::new(),
+            args: Vec::new(),
+            cwd: None,
+            ssh: Some(ssh_machine()),
+        }
+    }
+
+    #[test]
+    fn an_ssh_profile_needs_a_machine_and_no_program() {
+        assert_eq!(ssh_user("box").validate(), Ok(()));
+        let mut with_program = ssh_user("box");
+        with_program.program = "bash".into();
+        with_program.args = vec!["-l".into()];
+        with_program.cwd = Some("/srv/app".into());
+        assert_eq!(with_program.validate(), Ok(()));
+        // A program that is only blanks is a mistake; an empty one means the login shell.
+        let mut blank = ssh_user("box");
+        blank.program = "   ".into();
+        assert_eq!(
+            blank.validate(),
+            Err(UserProfileError::EmptyProgram("box".into()))
+        );
+        // A shell of this machine still needs its program.
+        let mut shell = user("sh", "");
+        assert_eq!(
+            shell.validate(),
+            Err(UserProfileError::EmptyProgram("sh".into()))
+        );
+        shell.program = "sh".into();
+        assert_eq!(shell.validate(), Ok(()));
+    }
+
+    #[test]
+    fn an_ssh_profile_whose_machine_cannot_go_on_a_command_line_is_refused() {
+        type Change = fn(&mut SshProfile);
+        let cases: [(&str, Change); 7] = [
+            ("a host that is an option", |m| {
+                m.host = "-oProxyCommand=x".into()
+            }),
+            ("an empty host", |m| m.host = String::new()),
+            ("a host with a space", |m| m.host = "a b".into()),
+            ("a user that is an option", |m| m.user = Some("-x".into())),
+            ("a port of 0", |m| m.port = Some(0)),
+            ("a key path with a newline", |m| {
+                m.identity_file = Some("a\nb".into())
+            }),
+            ("an empty known hosts path", |m| {
+                m.known_hosts_file = Some(String::new())
+            }),
+        ];
+        for (what, change) in cases {
+            let mut profile = ssh_user("box");
+            change(profile.ssh.as_mut().expect("ssh"));
+            let error = profile.validate().expect_err(what);
+            assert!(
+                matches!(&error, UserProfileError::InvalidSsh(id, _) if id == "box"),
+                "{what}: {error:?}"
+            );
+            assert!(error.to_string().starts_with("profile 'box': "), "{what}");
+        }
+    }
+
+    #[test]
+    fn an_ssh_profile_joins_the_list_and_is_never_the_default() {
+        let detected = detected();
+        let set = detected
+            .with_user_profiles(&[ssh_user("box"), user("sh", "sh")], &no_env)
+            .expect("valid");
+        assert_eq!(ids(&set), ["powershell", "cmd", "box", "sh"]);
+        assert_eq!(set.default_id.as_deref(), Some("powershell"));
+        assert!(set.get("box").expect("listed").remote.is_some());
+        assert!(set.get("sh").expect("listed").remote.is_none());
+        // With nothing detected the default is the first shell of this machine, not the ssh one.
+        let only = ProfileSet::default()
+            .with_user_profiles(&[ssh_user("box"), user("sh", "sh")], &no_env)
+            .expect("valid");
+        assert_eq!(only.default_id.as_deref(), Some("sh"));
+        // With nothing but ssh profiles there is no default at all.
+        let none = ProfileSet::default()
+            .with_user_profiles(&[ssh_user("box")], &no_env)
+            .expect("valid");
+        assert_eq!(none.default_id, None);
+        // The id rules are the same for both kinds.
+        assert_eq!(
+            detected.with_user_profiles(&[ssh_user("cmd")], &no_env),
+            Err(UserProfileError::DetectedId("cmd".into()))
+        );
+        assert_eq!(
+            detected.with_user_profiles(&[ssh_user("box"), user("box", "sh")], &no_env),
+            Err(UserProfileError::DuplicateId("box".into()))
+        );
+    }
+
+    #[test]
+    fn only_the_two_files_of_an_ssh_profile_have_their_variables_replaced() {
+        let env = |name: &str| match name {
+            "USERPROFILE" => Some("C:\\Users\\me".to_owned()),
+            "HOME" => Some("C:\\wrong".to_owned()),
+            _ => None,
+        };
+        let mut profile = ssh_user("box");
+        profile.program = "printf".into();
+        profile.args = vec!["%s %HOME%".into()];
+        profile.cwd = Some("/srv/%HOME%".into());
+        let joined = ProfileSet::default()
+            .with_user_profiles(&[profile], &env)
+            .expect("valid");
+        let box_profile = joined.get("box").expect("listed");
+        let remote = box_profile.remote.as_ref().expect("remote");
+        assert_eq!(
+            remote.identity_file.as_deref(),
+            Some("C:\\Users\\me\\.ssh\\id_ed25519")
+        );
+        assert_eq!(
+            remote.known_hosts_file.as_deref(),
+            Some("C:\\Users\\me\\.ssh\\known_hosts_noren")
+        );
+        // What runs on the other machine is the profile's word, not this machine's variables.
+        assert_eq!(box_profile.program, "printf");
+        assert_eq!(box_profile.args, ["%s %HOME%"]);
+        assert_eq!(box_profile.cwd.as_deref(), Some("/srv/%HOME%"));
+        assert!(!box_profile.inject_integration);
+    }
+
+    #[test]
+    fn the_machine_of_an_ssh_profile_becomes_the_target_of_the_ssh_of_the_system() {
+        let target = ssh_machine().target();
+        assert_eq!(target.host, "build.example.org");
+        assert_eq!(target.user.as_deref(), Some("deploy"));
+        assert_eq!(target.port, Some(2222));
+        assert_eq!(
+            target.identity_file,
+            Some(PathBuf::from("%USERPROFILE%\\.ssh\\id_ed25519"))
+        );
+        assert_eq!(
+            target.known_hosts_file,
+            Some(PathBuf::from("%USERPROFILE%\\.ssh\\known_hosts_noren"))
+        );
+        assert_eq!(target.remote_program, "norend");
+        assert!(target.validate().is_ok());
+        let plain = SshProfile {
+            host: "box".into(),
+            user: None,
+            port: None,
+            identity_file: None,
+            known_hosts_file: None,
+        };
+        let args = plain.target().args().expect("args");
+        assert!(args.iter().any(|a| a == "box"));
+        assert!(!args.iter().any(|a| a == "-i" || a == "-p"));
+    }
+
+    #[test]
+    fn a_remote_session_gets_what_the_profile_says_and_nothing_of_this_machine() {
+        // Finding 198: not the environment, not the folder, not the shell integration.
+        let mut profile = ProfileSet::default()
+            .with_user_profiles(&[ssh_user("box")], &no_env)
+            .expect("valid")
+            .get("box")
+            .cloned()
+            .expect("listed");
+        let spec = profile.remote_spec(120, 40);
+        assert!(spec.env.is_empty(), "no environment of this machine");
+        assert_eq!(spec.cwd, None, "no folder: the home of the user there");
+        assert_eq!((spec.cols, spec.rows), (120, 40));
+        // No program: the login shell of the user there.
+        assert_eq!(spec.program, "sh");
+        assert_eq!(spec.args, ["-c", "exec \"${SHELL:-/bin/sh}\" -l"]);
+
+        profile.program = "bash".into();
+        profile.args = vec!["--noprofile".into()];
+        profile.cwd = Some("/srv/app".into());
+        let spec = profile.remote_spec(80, 24);
+        assert_eq!(spec.program, "bash");
+        assert_eq!(spec.args, ["--noprofile"]);
+        assert_eq!(spec.cwd, Some(PathBuf::from("/srv/app")));
+        assert!(spec.env.is_empty());
     }
 }

@@ -1,7 +1,7 @@
 import type { ImportedProfile } from "./import-json";
 import { claimIdentity } from "./theme-derive";
-import { RESERVED_PROFILE_IDS, UserProfileSchema, firstProblem } from "./user-profile-schema";
-import type { UserProfile } from "./user-profile-schema";
+import { RESERVED_PROFILE_IDS, ShellUserProfileSchema, firstProblem } from "./user-profile-schema";
+import type { ShellUserProfile } from "./user-profile-schema";
 
 // Getting the shell profiles of another program's settings file into the profiles of the user: a
 // command line becomes a program and its arguments, and a profile read from the file (an
@@ -107,7 +107,7 @@ export interface SkippedProfile {
 
 export interface ProfilesFromImport {
   /** The new profiles, with ids that collide with nothing, in the order of the file. */
-  profiles: UserProfile[];
+  profiles: ShellUserProfile[];
   /** What was read but could not become a profile. */
   skipped: SkippedProfile[];
 }
@@ -125,7 +125,7 @@ export function userProfilesFromImported(
   imported: readonly ImportedProfile[],
   takenIds: Iterable<string> = [],
 ): ProfilesFromImport {
-  const profiles: UserProfile[] = [];
+  const profiles: ShellUserProfile[] = [];
   const skipped: SkippedProfile[] = [];
   try {
     const taken = new Set<string>([...takenIds, ...RESERVED_PROFILE_IDS]);
@@ -141,7 +141,7 @@ export function userProfilesFromImported(
           continue;
         }
         const identity = claimIdentity(entry.name, "Imported profile", taken);
-        const parsed = UserProfileSchema.safeParse({
+        const parsed = ShellUserProfileSchema.safeParse({
           id: identity.id,
           name: identity.name,
           program: command.program,
@@ -168,7 +168,7 @@ export function userProfilesFromImported(
  * The command line of a profile as a person reads it: the program, then each argument, quoted when
  * it needs it. This is for showing; it splits back into the same program and arguments.
  */
-export function commandLineOf(profile: Pick<UserProfile, "program" | "args">): string {
+export function commandLineOf(profile: Pick<ShellUserProfile, "program" | "args">): string {
   // The backslashes before a quote, and before the closing one, are doubled (see `splitCommandLine`).
   const quote = (text: string): string =>
     text === "" || /[\s"]/.test(text)

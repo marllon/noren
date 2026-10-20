@@ -272,6 +272,36 @@ Noren finds the shells of the machine by itself (PowerShell, Command Prompt, Git
 - The list follows the file like the other settings: add a profile by hand, save, and it is in the palette with no reload; take it out and it is gone. The default shell is always one of the machine's (the first profile of yours only when the machine has none).
 - An `id` that is one of the machine's shells (`pwsh`, `cmd`, `git-bash`, `wsl-Ubuntu`...) is refused when the profiles are loaded: the whole list is not applied, the profiles in force stay, and a notice in the corner says which profile and why. Pick another id.
 
+### A shell on another machine (kind `ssh`)
+
+A profile with `"kind": "ssh"` opens its shell in a `norend` on another machine, through the `ssh` of the system (see [DAEMON.md](DAEMON.md#ssh-profiles-in-the-app)). The shell lives there: when the connection drops, the tab reconnects by itself and the shell is where you left it.
+
+```jsonc
+"profiles": [
+  {
+    "kind": "ssh",
+    "id": "build-box",
+    "name": "Build box",
+    "host": "build.example.org", // a name or an address; required
+    "user": "deploy", // optional: else what ssh decides
+    "port": 2222, // optional: else 22 or what ssh decides
+    "identityFile": "%USERPROFILE%\\.ssh\\id_ed25519", // optional: the private key; only this one is offered
+    "knownHostsFile": "%USERPROFILE%\\.ssh\\known_hosts", // optional: else the one of the user
+    "program": "bash", // optional: what runs there; else the login shell of the user there
+    "args": ["-l"], // optional
+    "cwd": "/srv/app", // optional: a folder there; else the home folder of the user there
+  },
+],
+```
+
+- `kind`, `id`, `name` and `host` are required. `host` and `user` are a short word (letters, digits, `.`, `-`, `_`, and `:` for an address), never starting with `-`; `port` is 1 to 65535. A profile without `kind` is a shell on this machine, as before.
+- **Keys only.** `ssh` runs in batch mode: no password, no passphrase, no question. The key is a file you name (`identityFile`) or one of the keys `ssh` and its agent already know; a key with a passphrase works only through an agent. Noren stores no password, passphrase or key, and the file has nowhere to put one.
+- **The host must be known.** A host that is not in the known hosts file, or whose key changed, is refused with a sentence; it is never accepted on the first visit and never asked about. Add it first with a normal `ssh` after checking its fingerprint, or point `knownHostsFile` at a file that has it.
+- `%NAME%` is replaced by the environment variable `NAME` in `identityFile` and `knownHostsFile` (files of this machine) and nowhere else: `program`, `args` and `cwd` are on the other machine and are used as written.
+- **What the shell there gets** is what the profile says and nothing of this machine: not the folder of the space or the tab, not the environment of the tab, not the shell integration scripts. Without `cwd` it starts in the home folder of the user there; without `program` it is that user's login shell.
+- `norend` must be installed there, found by the `PATH` of a non-interactive login, and the machine must not print anything from a startup file for such a login (see [DAEMON.md](DAEMON.md#the-remote-bridge-ssh)).
+- The settings screen has no boxes for these fields yet and leaves a profile of this kind alone when it saves the others: write it in the file. The tab tells its connection to the interface (connected, reconnecting, failed) and can be told to try again now; showing that is the next task.
+
 **Import profiles...** in the settings screen fills this list from the settings file of another program: it shows what it would add and, when you confirm, appends the profiles to `profiles` keeping your comments (see [THEMING.md](THEMING.md#profiles-in-a-settings-file)). Its `colorScheme` is not carried over. The Profiles section of the settings screen edits and removes them (see above), each change written alone, so the comments around the list and the other profiles stay.
 
 ## Language

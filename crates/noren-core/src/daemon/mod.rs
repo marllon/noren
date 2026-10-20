@@ -18,6 +18,8 @@
 //!   `norend --bridge`.
 //! - [`ReconnectingClient`]: a client whose connection may break and come back, with the sessions
 //!   attached again by their ids.
+//! - [`replay`]: what to show of the output a session is attached again with, so the terminal
+//!   does not get what it already showed a second time.
 //!
 //! ## Limits
 //!
@@ -45,6 +47,7 @@ pub mod frame;
 pub mod ipc;
 pub mod protocol;
 mod reconnect;
+pub mod replay;
 mod ring;
 mod server;
 mod ssh;

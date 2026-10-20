@@ -157,8 +157,28 @@ Cutting a release, in order:
    installers by hand, and publish.
 
 `pnpm workflows:check` validates every file in `.github/workflows` (YAML syntax, the runner label
-`[self-hosted, linux, noren]` on every job, no sudo, apt or hosted runner label, and the tag and
-draft contract of `release.yml`).
+`[self-hosted, linux, noren]` on every job, no sudo, apt or hosted runner label, the tag and draft
+contract of `release.yml`, and that `pages.yml` starts only by `workflow_dispatch`).
+
+## Web demo
+
+`pnpm demo:build` builds a static copy of the interface into `dist-demo/` (gitignored), with
+relative asset paths so it can be served from a sub-path. It is the web mode of the app (the same
+`WebBackend` the e2e tests use, with a simulated shell: `echo`, `pwd`, `ls`, `cd`, `seq` and a few
+more) with a strip that says the shell is simulated and gives the download address. On a first visit
+(nothing saved in the browser) it opens on a script: three spaces with a theme each, a group, a
+pinned tab and a tab split in two panes (`apps/desktop/src/demo/demo-script.ts`); a visitor who
+comes back finds their own changes. Nothing in the demo reaches the network.
+
+The demo code is selected by the build mode, not by the environment: `vite build --mode demo`
+defines `import.meta.env.VITE_NOREN_DEMO` as `"1"` (`apps/desktop/vite.config.ts`), and the normal
+build, which the e2e tests run on, drops that code. `pnpm e2e:demo` builds the demo and runs
+`e2e/demo/*.demo.ts` with `e2e/playwright.demo.config.ts`, which serves `dist-demo/` with
+`vite preview` on port 4781 (`NOREN_DEMO_PORT` changes it; `pnpm e2e` uses 4791).
+
+`.github/workflows/pages.yml` builds the demo and deploys it with the official Pages actions. It
+has no trigger but `workflow_dispatch`, so it never runs by itself, and GitHub Pages must be turned
+on by hand in the repository settings before the first run.
 
 ## Security audits
 

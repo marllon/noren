@@ -378,6 +378,11 @@ export const en = {
   "configNotice.more.other": "{count} more problems",
   "configNotice.dismiss": "Dismiss",
 
+  // The banner of the web demo
+  "demo.banner":
+    "Simulated shell: this demo runs in your browser and no real terminal is behind it. Try echo, ls or pwd.",
+  "demo.download": "Download the app:",
+
   // The actions header of the sidebar
   "actions.label": "Project actions",
   "actions.start": "Start",

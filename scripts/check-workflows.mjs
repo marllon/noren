@@ -1,6 +1,7 @@
 // Workflow gate (D17): every file in .github/workflows must parse as YAML and run only on the
 // self-hosted runner, with no hosted runner label, no sudo and no apt. release.yml is also held to
-// its contract: it starts only on a tag `v*` and creates the release as a draft.
+// its contract: it starts only on a tag `v*` and creates the release as a draft. pages.yml starts
+// only by hand (`workflow_dispatch`), so nothing is published by a push.
 // YAML is parsed with Prettier (already a dev dependency); the runner and trigger rules are read
 // from the non-comment lines, which is enough for the plain block style these files use.
 import { readFileSync, readdirSync } from "node:fs";
@@ -20,6 +21,9 @@ const FORBIDDEN = [
 const problems = [];
 const files = readdirSync(dir).filter((name) => /\.ya?ml$/.test(name));
 if (files.length === 0) problems.push("no workflow files found");
+for (const required of ["ci.yml", "release.yml", "pages.yml"]) {
+  if (!files.includes(required)) problems.push(`${required} is missing`);
+}
 
 for (const name of files) {
   const text = readFileSync(join(dir, name), "utf8");
@@ -54,9 +58,16 @@ for (const name of files) {
     }
   }
 
+  const on = text.match(/^on:\r?\n((?: {2,}.*\r?\n|\r?\n)+)/m)?.[1] ?? "";
+  const triggers = [...on.matchAll(/^ {2}([\w-]+):/gm)].map((match) => match[1]);
+
+  if (name === "pages.yml" && triggers.join() !== "workflow_dispatch") {
+    problems.push(
+      `pages.yml: the only trigger must be workflow_dispatch, found "${triggers.join()}"`,
+    );
+  }
+
   if (name === "release.yml") {
-    const on = text.match(/^on:\r?\n((?: {2,}.*\r?\n|\r?\n)+)/m)?.[1] ?? "";
-    const triggers = [...on.matchAll(/^ {2}([\w-]+):/gm)].map((match) => match[1]);
     if (triggers.join() !== "push") {
       problems.push(`release.yml: the only trigger must be push, found "${triggers.join()}"`);
     }

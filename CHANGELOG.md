@@ -6,6 +6,12 @@ All notable changes to Noren are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Web demo**: `pnpm demo:build` builds a static copy of the interface into `dist-demo/` with a
+  simulated shell, a script of example spaces, a group, a split and themes, and a strip that gives
+  the download address; `pnpm e2e:demo` tests it; `pages.yml` deploys it by hand (`workflow_dispatch`).
+
 ## [0.1.0] - Unreleased
 
 First MVP. Noren is a terminal organized like a modern browser. Windows is the first platform

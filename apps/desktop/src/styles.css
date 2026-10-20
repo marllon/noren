@@ -1019,6 +1019,26 @@ body {
   color: var(--nr-muted);
 }
 
+/* The strip of the web demo (demo/DemoBanner.tsx): under the title bar, in the accent of the theme. */
+.demo-banner {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 12px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--nr-accent);
+  background: color-mix(in srgb, var(--nr-accent) 16%, var(--nr-surface));
+  color: var(--nr-text);
+  font-size: 12px;
+}
+
+.demo-banner code {
+  color: var(--nr-text);
+  font-weight: 600;
+}
+
 .config-notice-close {
   display: inline-flex;
   flex: none;

@@ -114,6 +114,7 @@ import {
 import type { CommandMarkInfo } from "./command-marks-view";
 import { pictureUrl, showBackgroundImage, usePicture } from "./background-image-store";
 import { applySpaceColor, applyTheme, terminalTheme } from "./theme";
+import { DemoBanner } from "./demo/DemoBanner";
 import { TitleBar } from "./TitleBar";
 import {
   FavoriteContextMenu,
@@ -2011,6 +2012,7 @@ export function App() {
     >
       <WindowBackground picture={picture} />
       <TitleBar />
+      {import.meta.env.VITE_NOREN_DEMO === "1" && <DemoBanner />}
       <ConfigErrorNotice />
       <BackgroundNotice picture={picture} />
       <ModStyles />

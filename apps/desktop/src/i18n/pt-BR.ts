@@ -382,6 +382,11 @@ export const ptBR: Dictionary = {
   "configNotice.more.other": "mais {count} problemas",
   "configNotice.dismiss": "Dispensar",
 
+  // A faixa da demo web
+  "demo.banner":
+    "Shell simulado: esta demo roda no seu navegador e não há terminal de verdade por trás. Experimente echo, ls ou pwd.",
+  "demo.download": "Baixe o app:",
+
   // O cabeçalho de ações da barra lateral
   "actions.label": "Ações do projeto",
   "actions.start": "Iniciar",

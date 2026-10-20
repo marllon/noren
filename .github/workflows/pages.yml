@@ -1,0 +1,52 @@
+name: Pages
+
+# Builds the web demo (`pnpm demo:build`, into dist-demo/) and deploys it to GitHub Pages. It runs
+# only when a maintainer starts it by hand from the Actions tab: nothing is published by a push or a
+# tag, and GitHub Pages itself is switched on by hand in the repository settings. There is no hosted
+# runner: the only runner of this repository is the self-hosted one on the studio VPS.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A deploy already running must finish, or the site could be left half published.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+# Same runner setup as ci.yml: Node 24 with corepack is installed once on the machine, so no step
+# here uses sudo, apt, setup-node or a hosted cache.
+jobs:
+  build:
+    name: build
+    runs-on: [self-hosted, linux, noren]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: pnpm install --frozen-lockfile
+
+      # The demo uses relative paths, so it works under the /<repository>/ sub-path of Pages.
+      - run: pnpm demo:build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-demo
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: [self-hosted, linux, noren]
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { seedConfig } from "./settings-fixture";
+import { afterNextFrame } from "./frames";
 
 // The Agents panel (Ctrl+Alt+Shift+G) and its shortcut to the agent that waits for you
 // (Ctrl+Alt+Shift+W). Three agents run in three spaces, one in each state; the fake backend plays
@@ -211,9 +212,14 @@ test("Escape closes the panel, and the arrows and Enter drive it from the keyboa
   await expect(panel(page)).toBeHidden();
   await expect(spaceButton(page, "Three")).toHaveAttribute("data-nr-state", "active");
   await expect.poll(() => focusedPane(page)).toBe(gamma);
+  // Going to an agent gives the pane the keyboard a frame later; opening the panel before that
+  // frame would lose its focus to the pane.
+  await afterNextFrame(page);
 
   await page.keyboard.press("Control+Shift+Alt+G");
   await expect(panel(page)).toBeVisible();
+  // The panel takes the keyboard a frame after it shows; Escape sent before goes to the terminal.
+  await expect(rows(page).first().getByRole("button")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(panel(page)).toBeHidden();
   await expect(terminalFocused(page)).toHaveCount(1);

@@ -99,6 +99,9 @@ test("Escape closes the paste dialog like Cancel", async ({ page }) => {
   await page.keyboard.press("Control+Shift+V");
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
+  // The dialog takes the keyboard in an effect after it shows; Escape sent before that goes to the
+  // terminal and not to the dialog.
+  await expect(dialog.getByRole("button", { name: "Paste", exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   expect(await writeCalls(page)).toBe(writesBefore);

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { closeShortcutsScreen, openShortcutsScreen, seedConfig } from "./settings-fixture";
+import { afterNextFrame } from "./frames";
 
 // The Ask panel (Ctrl+Shift+A): chips that read the terminal, the preview of exactly what will be
 // sent (with the secrets already swapped for markers), the answer in pieces drawn as Markdown, the
@@ -179,6 +180,9 @@ test.describe("the context chips and the preview", () => {
     await expect(palette).toBeHidden();
     // The terminal takes the keyboard back as the palette goes; the panel opens after that.
     await expect(terminalFocused(page)).toHaveCount(1);
+    // The closing palette may give the focus back at once; the app's own hand-back comes a frame
+    // later and would take the keyboard from the panel opened before it.
+    await afterNextFrame(page);
 
     await openAsk(page);
     const context = panel(page).getByRole("group", { name: "Context", exact: true });

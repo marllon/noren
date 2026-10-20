@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
-import { seedSidebarState } from "./sidebar-fixture";
+import { clicksReachThePage, seedSidebarState } from "./sidebar-fixture";
 
 // Dropping a tab outside the tree: on the icon of another space, on the Pinned list and on the
 // Favorites grid (an empty grid is not on screen, so the zone over "New tab" stands in for it).
@@ -97,7 +97,8 @@ test("dropping a tab on the icon of another space moves it there and keeps the a
   await expect(row(page, "scratch")).toHaveCount(0);
   expect(await rows(page)).toEqual(START.slice(0, -1));
 
-  // The tab is in the other space.
+  // The tab is in the other space. A click right after a drop is swallowed by the drag library.
+  await clicksReachThePage(page);
   await spaceButton(page, "Other").click();
   await expect(row(page, "elsewhere")).toBeVisible();
   await expect(row(page, "scratch")).toBeVisible();

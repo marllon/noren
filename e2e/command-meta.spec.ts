@@ -116,6 +116,9 @@ test("a title the user chose does not change, though the command still shows", a
   await field.fill("mine");
   await field.press("Enter");
   await expect(title(page)).toHaveText("mine");
+  // Enter gives the keyboard back to the row a frame later; typing into the terminal before that
+  // would lose the focus to the row halfway through the line.
+  await expect(tab(page)).toBeFocused();
 
   await run(page, "cd /srv/api");
   await expect(part(page, "text")).toHaveText("cd /srv/api");

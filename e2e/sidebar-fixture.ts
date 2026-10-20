@@ -224,3 +224,30 @@ export async function changeActionsFile(page: Page, cwd: string, text: string): 
     { key: WEB_ACTIONS_KEY, folder: cwd, content: text },
   );
 }
+
+/**
+ * Waits until a click reaches the page again after a drag. The drag library swallows every click
+ * for 50 ms after a drop (it removes its capturing listener on a timer), so a click sent right
+ * after `mouse.up()` can vanish. The probe sends a click to the body each frame and resolves on the
+ * first one that gets past the capturing listener, with no fixed wait.
+ */
+export function clicksReachThePage(page: Page): Promise<void> {
+  return page.evaluate(
+    () =>
+      new Promise<void>((done) => {
+        let over = false;
+        const reached = () => {
+          over = true;
+          document.removeEventListener("click", reached);
+          done();
+        };
+        document.addEventListener("click", reached);
+        const probe = () => {
+          if (over) return;
+          document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+          requestAnimationFrame(probe);
+        };
+        probe();
+      }),
+  );
+}

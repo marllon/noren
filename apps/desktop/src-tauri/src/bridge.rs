@@ -741,7 +741,11 @@ pub fn state_file<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
 /// are replaced, so a damaged file still reaches the interface, fails to parse there and goes to
 /// `state_quarantine` (which copies the original bytes, not this text).
 #[tauri::command]
-pub async fn state_load(store: State<'_, StateStore>) -> Result<Option<String>, String> {
+pub async fn state_load<R: Runtime>(
+    window: tauri::Window<R>,
+    store: State<'_, StateStore>,
+) -> Result<Option<String>, String> {
+    crate::windows::require_owner(&window)?;
     store
         .load()
         .map(|bytes| bytes.map(|b| String::from_utf8_lossy(&b).into_owned()))
@@ -750,14 +754,23 @@ pub async fn state_load(store: State<'_, StateStore>) -> Result<Option<String>, 
 
 /// Replaces `state.json` atomically with `content`.
 #[tauri::command]
-pub async fn state_save(store: State<'_, StateStore>, content: String) -> Result<(), String> {
+pub async fn state_save<R: Runtime>(
+    window: tauri::Window<R>,
+    store: State<'_, StateStore>,
+    content: String,
+) -> Result<(), String> {
+    crate::windows::require_owner(&window)?;
     store.save(content.as_bytes()).map_err(|e| e.to_string())
 }
 
 /// Copies `state.json` to `state.broken-<UTC date and time>.json` next to it, leaves the
 /// original in place and returns the path of the copy.
 #[tauri::command]
-pub async fn state_quarantine(store: State<'_, StateStore>) -> Result<String, String> {
+pub async fn state_quarantine<R: Runtime>(
+    window: tauri::Window<R>,
+    store: State<'_, StateStore>,
+) -> Result<String, String> {
+    crate::windows::require_owner(&window)?;
     store
         .quarantine()
         .map(|path| path.to_string_lossy().into_owned())

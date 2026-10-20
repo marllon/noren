@@ -525,6 +525,10 @@ export const en = {
   "quick.promoteFailed": "Could not promote: {reason}",
   "quick.preview": "Quick window preview",
 
+  // The other windows of the app: the tabs moved to them (NOR-F15-04a)
+  "window.title": "Noren window",
+  "window.waiting": "No tab here yet.",
+
   // The favorites of the sidebar
   "favorites.label": "Favorites",
 

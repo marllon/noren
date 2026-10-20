@@ -3335,6 +3335,51 @@ body {
   opacity: 0;
 }
 
+/* A window besides the main one: a title line over the terminals of the tabs moved to it. */
+.window-app {
+  display: flex;
+  flex-direction: column;
+}
+
+.window-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--nr-border);
+  background: var(--nr-surface);
+  color: var(--nr-muted);
+  font-size: 12px;
+  user-select: none;
+}
+
+.window-terminals {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.window-terminal {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.window-terminal + .window-terminal {
+  border-top: 1px solid var(--nr-border);
+}
+
+.window-waiting {
+  margin: 0;
+  padding: 14px;
+  color: var(--nr-muted);
+  font-size: 13px;
+}
+
 /* Only in a browser opened with ?quick-preview (e2e): the quick window as a panel beside the app. */
 .quick-preview {
   position: fixed;

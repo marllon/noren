@@ -1,5 +1,5 @@
-// Real-app smoke test: debug build without bundle, then `noren --smoke`, `noren --smoke-deeplink` and
-// `noren --smoke-quick`.
+// Real-app smoke test: debug build without bundle, then `noren --smoke`, `noren --smoke-deeplink`,
+// `noren --smoke-quick` and `noren --smoke-window`.
 // Exits with the app's exit code. The first run must print "SMOKE OK" and "noren-smoke-ok" (printed
 // after a real shell session echoed it), "SMOKE window effect ..." (the line of the effect the
 // hidden window was given, Mica on Windows and vibrancy on macOS: the effect applied, or the opaque
@@ -12,7 +12,12 @@
 // "SMOKE window hidden"; the third must print "SMOKE QUICK OK" (the quick window was made hidden,
 // frameless and at the top of the screen; a shell opened in it was promoted to the main window as a
 // tab with the same session id and the same process, still answering, its output now reaching the
-// main window), "SMOKE quick window hidden" and "SMOKE window hidden" (neither window ever shown).
+// main window), "SMOKE quick window hidden" and "SMOKE window hidden" (neither window ever shown);
+// the fourth must print "SMOKE WINDOW OK" (a second window was made hidden and its page came up, was
+// refused every command that owns or changes the workspace, stayed on its page when taken to a web
+// page, and a shell that was running was moved to it: the same session id and the same shell process,
+// nothing started or ended, its output now reaching the second window and no longer the old channel;
+// a window the app closes leaves the shell alone and one the person closes is reported, NOR-F15-04a).
 // Every run must also print "SMOKE global shortcut none registered": no smoke mode registers the
 // global shortcut of the quick terminal (the run fails if the app holds one), and "SMOKE tray icon
 // none": no smoke mode shows the tray icon of a normal start (NOR-F14-02c).
@@ -199,6 +204,28 @@ runSmoke(
     "still alive after the promotion",
     "SMOKE window hidden",
     "SMOKE QUICK OK",
+  ],
+);
+
+// The window run (NOR-F15-04a) keeps its files in a folder of its own, made and removed by the app. A
+// second window is made hidden, a running shell is moved to it, and both windows stay hidden.
+runSmoke(
+  ["--smoke-window"],
+  [
+    "SMOKE global shortcut none registered",
+    "SMOKE tray icon none",
+    "SMOKE second window window-smoke-window-1 created for space smoke-space, hidden, its page is up",
+    "SMOKE second window refused 13 commands",
+    "SMOKE second window stayed on its page",
+    "opened as the tab to move",
+    "moved to the second window",
+    "still alive after the move, same shell pid",
+    "SMOKE second window drew a terminal for the session it was given",
+    "SMOKE second window hidden",
+    "SMOKE second window closed by the app, session",
+    "SMOKE a window closed by the person was reported as closed",
+    "SMOKE window hidden",
+    "SMOKE WINDOW OK",
   ],
 );
 

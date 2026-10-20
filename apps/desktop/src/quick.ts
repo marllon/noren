@@ -1,3 +1,4 @@
+import { windowIdOfLabel } from "@noren/model";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -19,12 +20,20 @@ export const QUICK_PROMOTE_EVENT = "quick-promote";
 /** Main window → everyone: what became of a promotion, `{ id, ok, itemId?, reason? }`. */
 export const QUICK_PROMOTED_EVENT = "quick-promoted";
 
-/** Which of the two windows this page is in. */
-export type WindowKind = "main" | "quick";
+/**
+ * Which window this page is in: the main one (the workspace, the only page that loads and saves
+ * the state), the quick terminal, or another window of the app (`window-<id>`, a space of its own).
+ */
+export type WindowKind = "main" | "quick" | "window";
 
-/** The kind of window from its label; a plain browser, which has no label, is the main one. */
+/**
+ * The kind of window from its label; a plain browser, which has no label, is the main one. Only a
+ * label that names a window (`windowIdOfLabel`) is another window: any other label the page does
+ * not know loads the main page, as before.
+ */
 export function windowKindOf(label: string | undefined): WindowKind {
-  return label === QUICK_WINDOW_LABEL ? "quick" : "main";
+  if (label === QUICK_WINDOW_LABEL) return "quick";
+  return label !== undefined && windowIdOfLabel(label) !== undefined ? "window" : "main";
 }
 
 /** The part of the event system of the app the quick terminal uses, injected so tests can fake it. */

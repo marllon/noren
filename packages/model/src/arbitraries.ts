@@ -2,6 +2,7 @@ import * as fc from "fast-check";
 import { createBrowserPane, createDiffPane, createPreviewPane } from "./factories";
 import {
   DEFAULT_MAX_PANES,
+  MAX_EXTRA_WINDOWS,
   type ArchivedItem,
   type ClosedItem,
   type Id,
@@ -414,6 +415,11 @@ export interface WorkspaceArbitraryOptions {
   previewPanes?: boolean;
   /** Make every third pane a diff pane (no session, a folder). Off by default. */
   diffPanes?: boolean;
+  /**
+   * Give each space the main window does not show a window of its own (up to `MAX_EXTRA_WINDOWS`),
+   * so a generated workspace has as many windows as it has other spaces. Off by default.
+   */
+  windows?: boolean;
 }
 
 const DIFF_FOLDERS = ["/home/user/project", "C:\\Projects\\noren", "D:/work/repo"];
@@ -479,6 +485,13 @@ export function arbWorkspace(options: WorkspaceArbitraryOptions = {}): fc.Arbitr
       ws = withReplacedPanes(ws, 2, (id, index) =>
         createPreviewPane(id, PREVIEW_PATHS[index % PREVIEW_PATHS.length] ?? ""),
       );
+    }
+    if (options.windows === true) {
+      const windows = ws.spaces
+        .filter((space) => space.id !== ws.activeSpaceId)
+        .slice(0, MAX_EXTRA_WINDOWS)
+        .map((space) => ({ id: `win-${space.id}`, spaceId: space.id }));
+      if (windows.length > 0) ws = { ...ws, windows };
     }
     return ws;
   });

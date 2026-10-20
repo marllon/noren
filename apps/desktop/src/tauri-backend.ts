@@ -1,5 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { WINDOW_CLOSED_EVENT, windowIdOfPayload } from "./window-events";
 import {
   AI_ERROR_KINDS,
   OutputStream,
@@ -254,6 +255,8 @@ export class TauriBackend implements Backend {
   readonly #configListeners = new Set<(text: string | null) => void>();
   readonly #modListeners = new Set<(files: ModFile[]) => void>();
   readonly #linkListeners = new Set<(link: SessionLink) => void>();
+  readonly #windowClosedListeners = new Set<(windowId: Id) => void>();
+  #windowClosedSubscription: Promise<() => void> | undefined;
   #exitSubscription: Promise<() => void> | undefined;
   #linkSubscription: Promise<() => void> | undefined;
   #configSubscription: Promise<() => void> | undefined;
@@ -557,6 +560,28 @@ export class TauriBackend implements Backend {
     await this.#bridge.invoke("browser_close", { paneId });
   }
 
+  async openWindow(windowId: Id, spaceId: Id): Promise<void> {
+    await this.#bridge.invoke("window_open", { windowId, spaceId });
+  }
+
+  async closeWindow(windowId: Id): Promise<void> {
+    await this.#bridge.invoke("window_close", { windowId });
+  }
+
+  async moveTabToWindow(windowId: Id, sessionIds: readonly SessionId[]): Promise<void> {
+    // The Rust side tells the page of the window, which takes the output over (`session_attach`
+    // from its own page), and answers when it has.
+    await this.#bridge.invoke("window_move_tab", { windowId, sessionIds: [...sessionIds] });
+  }
+
+  onWindowClosed(callback: (windowId: Id) => void): Unsubscribe {
+    this.#windowClosedListeners.add(callback);
+    this.#listenForWindowClosed();
+    return () => {
+      this.#windowClosedListeners.delete(callback);
+    };
+  }
+
   async readFilePreview(path: string): Promise<FilePreview> {
     // One raw frame (a picture is megabytes); a plain list of numbers is read too, for a bridge
     // that has no binary channel. A file that is not shown is an answer; only a frame that cannot
@@ -586,6 +611,10 @@ export class TauriBackend implements Backend {
     this.#modSubscription = undefined;
     this.#modListeners.clear();
     if (mods) (await mods.catch(() => undefined))?.();
+    const windows = this.#windowClosedSubscription;
+    this.#windowClosedSubscription = undefined;
+    this.#windowClosedListeners.clear();
+    if (windows) (await windows.catch(() => undefined))?.();
   }
 
   /**
@@ -653,6 +682,21 @@ export class TauriBackend implements Backend {
       },
     );
     return this.#exitSubscription;
+  }
+
+  /** Hears `window-closed` once; if that fails the next `onWindowClosed` tries again. */
+  #listenForWindowClosed(): void {
+    if (this.#windowClosedSubscription) return;
+    const subscription = this.#bridge.listen<unknown>(WINDOW_CLOSED_EVENT, (event) => {
+      const windowId = windowIdOfPayload(event.payload);
+      if (windowId === undefined) return;
+      for (const listener of [...this.#windowClosedListeners]) listener(windowId);
+    });
+    this.#windowClosedSubscription = subscription;
+    subscription.catch(() => {
+      if (this.#windowClosedSubscription === subscription)
+        this.#windowClosedSubscription = undefined;
+    });
   }
 
   /** Hears `session-link` once; if that fails the next `onSessionLink` tries again. */

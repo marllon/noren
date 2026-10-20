@@ -227,6 +227,15 @@ function checkShape(data: Obj): Workspace {
   str(data["activeSpaceId"], "activeSpaceId");
   list(data["spaces"], "spaces", checkSpace);
   list(data["favorites"], "favorites", str);
+  // A state saved before windows existed has none; whether the space of a window exists, and
+  // whether the name is one, is for the invariants to say.
+  if ("windows" in data) {
+    list(data["windows"], "windows", (entry, at) => {
+      const window = obj(entry, at);
+      str(window["id"], `${at}.id`);
+      str(window["spaceId"], `${at}.spaceId`);
+    });
+  }
   list(data["closed"], "closed", (v, p) => {
     checkEntry(v, p, "closedAt");
     checkPlace(v as Obj, p);

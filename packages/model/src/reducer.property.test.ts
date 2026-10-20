@@ -24,6 +24,9 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "space/set-defaults": true,
   "space/move": true,
   "space/activate": true,
+  "window/open": true,
+  "window/close": true,
+  "window/move-item": true,
   "space/set-active-item": true,
   "space/delete": true,
   "item/create": true,
@@ -164,6 +167,13 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "space/set-active-item":
       return !ws.spaces.some(
         (space) => space.id === action.spaceId && Object.hasOwn(space.items, action.itemId),
+      );
+    case "window/close":
+      return !(ws.windows ?? []).some((window) => window.id === action.windowId);
+    case "window/move-item":
+      return (
+        !itemIdsOf(ws).has(action.itemId) ||
+        !(ws.windows ?? []).some((window) => window.id === action.windowId)
       );
     case "item/close":
     case "item/archive":
@@ -359,6 +369,52 @@ function checkNothingUnreadOnScreen(ws: Workspace, where: () => string): void {
 }
 
 /**
+ * What the actions on windows must do: `window/open` adds exactly one window on the space asked,
+ * `window/move-item` puts the tab in the space of the window and makes it the one that space
+ * shows, `window/close` takes away exactly that window, and the main window never takes the space
+ * of a window by `space/activate`. A window only goes away with its action, with its space (a
+ * deleted space) or because the main window ended up showing it (`space/delete`).
+ */
+function checkWindows(ws: Workspace, next: Workspace, action: Action, where: () => string): void {
+  const fail = (what: string): never => {
+    throw new Error(`${where()}: ${what}`);
+  };
+  const before = ws.windows ?? [];
+  const after = next.windows ?? [];
+  if (action.type === "window/open") {
+    const added = after.filter((w) => !before.some((b) => b.id === w.id));
+    if (
+      after.length !== before.length + 1 ||
+      added.length !== 1 ||
+      added[0]?.spaceId !== action.spaceId
+    ) {
+      fail("open did not add exactly one window on the space");
+    }
+  } else if (action.type === "window/close") {
+    if (after.length !== before.length - 1 || after.some((w) => w.id === action.windowId)) {
+      fail("close did not take away exactly the window");
+    }
+  } else if (action.type === "window/move-item") {
+    const window = before.find((w) => w.id === action.windowId);
+    const space = next.spaces.find((s) => s.id === window?.spaceId);
+    if (space === undefined || !Object.hasOwn(space.items, action.itemId)) {
+      fail("the tab is not in the space of the window");
+    } else if (space.activeItemId !== action.itemId) {
+      fail("the tab that arrived is not the one the window shows");
+    }
+  } else if (action.type === "space/activate") {
+    if (before.some((w) => w.spaceId === action.spaceId) && next !== ws) {
+      fail("the main window took the space of a window");
+    }
+  } else if (action.type !== "space/delete" && after.length < before.length) {
+    fail("a window went away without its action");
+  }
+  if (action.type !== "window/open" && after.length > before.length) {
+    fail("a window appeared without its action");
+  }
+}
+
+/**
  * Plays `STEPS` random actions per run on random workspaces. `maxPanes` goes both to the
  * generated workspaces and to the reducer; absent means the default of 4. `browserPanes`,
  * `previewPanes` and `diffPanes` make every third pane of the generated workspaces a browser, a
@@ -367,7 +423,12 @@ function checkNothingUnreadOnScreen(ws: Workspace, where: () => string): void {
 function playSequences(
   numRuns: number,
   maxPanes?: number,
-  kinds: { browserPanes?: boolean; previewPanes?: boolean; diffPanes?: boolean } = {},
+  kinds: {
+    browserPanes?: boolean;
+    previewPanes?: boolean;
+    diffPanes?: boolean;
+    windows?: boolean;
+  } = {},
 ): void {
   const generated = new Map<ActionType, number>();
   const applied = new Map<ActionType, number>();
@@ -384,6 +445,7 @@ function playSequences(
         ...(kinds.browserPanes === true ? { browserPanes: true } : {}),
         ...(kinds.previewPanes === true ? { previewPanes: true } : {}),
         ...(kinds.diffPanes === true ? { diffPanes: true } : {}),
+        ...(kinds.windows === true ? { windows: true } : {}),
       }),
       fc.gen(),
       (initial, gen) => {
@@ -459,6 +521,7 @@ function playSequences(
           if (next !== ws) checkOrigin(ws, next, action, where);
           if (next !== ws) checkActiveItems(ws, next, action, where);
           if (next !== ws) checkNothingUnreadOnScreen(next, where);
+          if (next !== ws) checkWindows(ws, next, action, where);
 
           generated.set(action.type, (generated.get(action.type) ?? 0) + 1);
           if (next === ws) {
@@ -534,6 +597,14 @@ describe("reducer properties", () => {
         previewPanes: true,
         diffPanes: true,
       });
+    },
+    SEQUENCE_TIMEOUT_MS,
+  );
+
+  it(
+    "property: sequences keep every invariant on workspaces that already have windows",
+    () => {
+      playSequences(SMALL_RUNS, undefined, { windows: true });
     },
     SEQUENCE_TIMEOUT_MS,
   );

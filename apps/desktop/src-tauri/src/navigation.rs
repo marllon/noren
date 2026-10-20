@@ -13,7 +13,7 @@
 use tauri::plugin::{Builder, TauriPlugin};
 use tauri::{Runtime, Url};
 
-use crate::browser_pane;
+use crate::{browser_pane, windows};
 
 /// Whether `url` is a page served by the app: the custom protocol, or its host on Windows. The
 /// empty page (`about:blank`) is allowed too: an engine may pass through it, and it loads nothing.
@@ -27,9 +27,14 @@ fn is_app_page(url: &Url) -> bool {
 }
 
 /// Whether the web view called `label` may go to `url`: a web view of a browser pane to an `http`
-/// or `https` page that is not the app's, every other web view only to the pages of the app.
+/// or `https` page that is not the app's, every other web view only to the pages of the app. A
+/// window besides the main one (`window-<id>`, `windows.rs`) is named on its own line although it
+/// falls under "every other": it shows terminals and nothing from the web, and a change that widened
+/// the rule for the others would have to widen it for the windows on purpose.
 fn allowed(label: &str, url: &Url) -> bool {
-    if browser_pane::is_pane_label(label) {
+    if windows::is_window_label(label) {
+        is_app_page(url)
+    } else if browser_pane::is_pane_label(label) {
         browser_pane::allows_navigation(url)
     } else {
         is_app_page(url)
@@ -116,6 +121,39 @@ mod tests {
         ] {
             assert!(!allowed_in("browser-p1", url), "{url}");
         }
+    }
+
+    #[test]
+    fn a_window_besides_the_main_one_stays_on_the_pages_of_the_app() {
+        for label in ["window-w1", "window-3f2b9c1e-7d4a-4b6e-9a51-0c2d8e7f1a33"] {
+            for url in [
+                "tauri://localhost/",
+                "http://tauri.localhost/",
+                "https://tauri.localhost/index.html?x",
+                "about:blank",
+            ] {
+                assert!(allowed_in(label, url), "{label} {url}");
+            }
+            // It never goes to a web page, the way a web view of a pane does.
+            for url in [
+                "https://example.com/",
+                "http://127.0.0.1:8080/",
+                "http://localhost:3000/",
+                "http://tauri.localhost.evil.example/",
+                "file:///C:/Windows/win.ini",
+                "javascript:alert(1)",
+                "data:text/html,<script>alert(1)</script>",
+                "noren://open?path=/tmp",
+                "blob:http://tauri.localhost/1",
+                "http://ipc.localhost/state_save",
+            ] {
+                assert!(!allowed_in(label, url), "{label} {url}");
+            }
+        }
+        // A label that only looks like one is the rule of the label it really is.
+        assert!(!allowed_in("window-", "https://example.com/"));
+        assert!(!allowed_in("windows-w1", "https://example.com/"));
+        assert!(allowed_in("browser-window-w1", "https://example.com/"));
     }
 
     #[test]

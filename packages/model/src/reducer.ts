@@ -43,9 +43,18 @@ import {
   type GroupLocation,
 } from "./tree";
 import {
+  canOpenWindow,
+  findWindow,
+  isWindowId,
+  spaceIsShown,
+  windowShowing,
+  workspaceWindows,
+} from "./windows";
+import {
   DEFAULT_MAX_PANES,
   MAX_CLOSED,
   MAX_GROUP_DEPTH,
+  type AppWindow,
   type ArchivedItem,
   type ClosedItem,
   type ClosedPlace,
@@ -82,12 +91,13 @@ export function reduce(ws: Workspace, action: Action, ctx: ReducerContext): Work
 
 /**
  * `reduce` without the safety net: tests use it so a bug cannot hide behind a no-op. Every space
- * the action changed ends with a valid active item (see `settleActive`), and the panes on screen
- * are not unread (see `clearViewed`).
+ * the action changed ends with a valid active item (see `settleActive`), the panes on screen are
+ * not unread (see `clearViewed`), and no window is left on a space that is gone or that the main
+ * window shows (see `settleWindows`).
  */
 export function reduceStrict(ws: Workspace, action: Action, ctx: ReducerContext): Workspace {
   const next = applyAction(ws, action, ctx);
-  return next === ws ? ws : clearViewed(settleActive(ws, next, action));
+  return next === ws ? ws : settleWindows(clearViewed(settleActive(ws, next, action)));
 }
 
 function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Workspace {
@@ -162,7 +172,15 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       return moveSpace(ws, action.spaceId, action.index);
     case "space/activate":
       if (ws.activeSpaceId === action.spaceId || !findSpace(ws, action.spaceId)) return ws;
+      // A space another window shows stays there: a terminal is drawn by one page.
+      if (windowShowing(ws, action.spaceId) !== undefined) return ws;
       return { ...ws, activeSpaceId: action.spaceId };
+    case "window/open":
+      return openWindow(ws, action.spaceId, ctx);
+    case "window/close":
+      return closeWindow(ws, action.windowId);
+    case "window/move-item":
+      return moveItemToWindow(ws, action);
     case "space/set-active-item":
       return updateSpace(ws, action.spaceId, (space) =>
         typeof action.itemId === "string" &&
@@ -426,6 +444,7 @@ function collectIds(ws: Workspace): Set<Id> {
   ws.archive.forEach((entry) => {
     addItem(entry.item);
   });
+  for (const window of workspaceWindows(ws)) ids.add(window.id);
   return ids;
 }
 
@@ -789,6 +808,63 @@ function moveSpace(ws: Workspace, spaceId: Id, index: number): Workspace {
   return { ...ws, spaces: insertAt(rest, to, space) };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Windows
+
+function openWindow(ws: Workspace, spaceId: Id, ctx: ReducerContext): Workspace {
+  if (!findSpace(ws, spaceId) || spaceIsShown(ws, spaceId) || !canOpenWindow(ws)) return ws;
+  const id = idPool(ws, ctx)();
+  if (!isWindowId(id)) return ws;
+  return { ...ws, windows: [...workspaceWindows(ws), { id, spaceId }] };
+}
+
+function closeWindow(ws: Workspace, windowId: Id): Workspace {
+  if (findWindow(ws, windowId) === undefined) return ws;
+  return withWindows(
+    ws,
+    workspaceWindows(ws).filter((window) => window.id !== windowId),
+  );
+}
+
+function moveItemToWindow(
+  ws: Workspace,
+  action: Extract<Action, { type: "window/move-item" }>,
+): Workspace {
+  const window = findWindow(ws, action.windowId);
+  const located = locate(ws, action.itemId);
+  if (!window || !located || located.space.id === window.spaceId) return ws;
+  const moved = relocate(ws, located, window.spaceId, action.placement ?? { to: "tree" });
+  if (moved === ws) return ws;
+  // The tab that arrives is the one the window shows.
+  return updateSpace(moved, window.spaceId, (space) =>
+    space.activeItemId === action.itemId ? undefined : withActiveItem(space, action.itemId),
+  );
+}
+
+/** The workspace with `windows` as its windows; the key is left out when there are none. */
+function withWindows(ws: Workspace, windows: readonly AppWindow[]): Workspace {
+  const next = { ...ws };
+  delete next.windows;
+  return windows.length === 0 ? next : { ...next, windows: [...windows] };
+}
+
+/**
+ * Drops the windows that cannot stay after an action: the space was deleted, or the main window
+ * ended up showing it (`space/delete` can do either). Runs after every action that changed the
+ * workspace, so no action has to know, and the invariants of the windows always hold.
+ */
+function settleWindows(ws: Workspace): Workspace {
+  const windows = workspaceWindows(ws);
+  if (windows.length === 0) return ws;
+  const shown = new Set<Id>([ws.activeSpaceId]);
+  const kept = windows.filter((window) => {
+    if (!findSpace(ws, window.spaceId) || shown.has(window.spaceId)) return false;
+    shown.add(window.spaceId);
+    return true;
+  });
+  return kept.length === windows.length ? ws : withWindows(ws, kept);
+}
+
 function deleteSpace(
   ws: Workspace,
   spaceId: Id,
@@ -817,8 +893,17 @@ function deleteSpace(
     };
   }
 
-  // The space that slides into the deleted one's place, or the last one.
-  const neighbor = rest[Math.min(index, rest.length - 1)];
+  // The space that slides into the deleted one's place, or the last one. A space another window
+  // shows is passed over when the main window is the one that needs a new space, so the window
+  // is not taken from it.
+  const slid = Math.min(index, rest.length - 1);
+  const free = rest.filter((s) => windowShowing(ws, s.id) === undefined);
+  const neighbor =
+    wasActive && free.length > 0
+      ? free.reduce((best, s) =>
+          Math.abs(rest.indexOf(s) - slid) < Math.abs(rest.indexOf(best) - slid) ? s : best,
+        )
+      : rest[slid];
   if (!neighbor) return ws;
   const now = ctx.clock.now();
   const ids = spaceItemIds(space);

@@ -276,7 +276,7 @@ pub fn run_daemon_name() -> String {
 /// process, which is not the app. Prints the `SMOKE DAEMON` line the script looks for. A run whose
 /// sessions fell back to the app (no `norend` next to it) fails here, so the smoke cannot pass on
 /// the weaker path.
-fn check_runs_in_daemon(state: &AppState, id: u64) -> Result<(), String> {
+pub(crate) fn check_runs_in_daemon(state: &AppState, id: u64) -> Result<(), String> {
     let found = locate_in_daemon(state, id)?;
     print_line(&format!(
         "SMOKE DAEMON norend pid {} on {}: session {id} runs in it (shell pid {}, the app is pid {})",
@@ -353,7 +353,7 @@ pub(crate) fn check_shell_runs_in(shell: u32, norend: u32, id: u64) -> Result<()
 
 /// Stops the daemon of the run and fails unless it is gone: the process ended with code 0 and
 /// nothing listens on its endpoint any more. Prints the `SMOKE DAEMON stopped` line.
-fn check_daemon_stopped(state: &AppState) -> Result<(), String> {
+pub(crate) fn check_daemon_stopped(state: &AppState) -> Result<(), String> {
     let stopped = state
         .sessions
         .stop_daemon()
@@ -762,19 +762,19 @@ impl Default for QuickSandbox {
 }
 
 /// An event the quick run listens to: its name and its payload (`null` when it has none).
-type Heard = (String, Value);
+pub(crate) type Heard = (String, Value);
 
 /// The events the quick run heard, kept until something waits for them: the pages do not report in
 /// the order the run waits, so an event that comes early must not be lost.
-struct Inbox {
-    rx: Receiver<Heard>,
-    kept: Vec<Heard>,
+pub(crate) struct Inbox {
+    pub(crate) rx: Receiver<Heard>,
+    pub(crate) kept: Vec<Heard>,
 }
 
 impl Inbox {
     /// Waits until an event called `name` has a payload `accept` takes, and returns what it took.
     /// Other events stay for later waits.
-    fn wait<T>(
+    pub(crate) fn wait<T>(
         &mut self,
         name: &str,
         what: &str,
@@ -810,7 +810,7 @@ impl Inbox {
     }
 
     /// Whether an event called `name` with a payload `accept` takes has been heard so far.
-    fn saw(&mut self, name: &str, accept: impl Fn(&Value) -> bool) -> bool {
+    pub(crate) fn saw(&mut self, name: &str, accept: impl Fn(&Value) -> bool) -> bool {
         self.kept.extend(self.rx.try_iter());
         self.kept
             .iter()
@@ -835,7 +835,7 @@ fn promoted_verdict(payload: &Value, id: u64) -> Option<Result<(), String>> {
 }
 
 /// Waits until the output the route handed to its current channel has a line that is `marker`.
-fn wait_for_route_line(
+pub(crate) fn wait_for_route_line(
     route: &crate::route::OutputRoute,
     marker: &str,
     when: &str,

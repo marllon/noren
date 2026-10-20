@@ -55,6 +55,7 @@ import { isSshProfile, profilesProblem } from "./user-profile-schema";
 import type { SshUserProfile, UserProfile } from "./user-profile-schema";
 import { decodeUtf8, encodeUtf8 } from "./utf8";
 import { WINDOW_EFFECT_LABELS } from "./window-effect";
+import { isWindowId } from "./windows";
 import { branchProblem, worktreeDestination } from "./worktree";
 import type { WindowEffect, WindowEffectReport, WindowScheme } from "./window-effect";
 
@@ -91,6 +92,12 @@ export type FakeCallMethod = keyof Backend | FakeAiMethod;
 export interface FakeBrowserPane {
   url: string;
   bounds: BrowserBounds;
+}
+
+/** An open window of the fake: the space it shows and the sessions whose output it received. */
+export interface FakeWindow {
+  spaceId: Id;
+  sessions: SessionId[];
 }
 
 export interface FakeCall {
@@ -773,6 +780,12 @@ class FakeAi implements AiBackend {
  *   not a name, an address `browserUrlProblem` refuses, bounds `browserBoundsProblem` refuses, a
  *   pane that has a web view already or has none) and `browserPane(paneId)` says where each one is
  *   and what it shows; no page is ever loaded
+ * - the windows of the app live in memory: `openWindow` checks what the real one checks (a window
+ *   id that is not a name, a blank space, a window that is open already), `moveTabToWindow` takes
+ *   the sessions it is given into the window (it refuses a window that is not open and a session
+ *   that is not alive) and `windows()` and `windowOfSession` say where everything is;
+ *   `closeWindowByPerson` is the person closing a window, which `onWindowClosed` reports. Nothing
+ *   is ever shown
  * - the quick terminal window is a flag: `quickToggle` flips `quickVisible` (hidden at first) and
  *   `setQuickShortcut` keeps the chord in `quickShortcut`; nothing is ever shown or registered
  * - `config.jsonc` lives in memory: `loadConfig` answers its text, `saveConfig` replaces it as the
@@ -843,6 +856,8 @@ export class FakeBackend implements Backend {
   readonly #notifications: FakeNotification[] = [];
   readonly #openedLinks: string[] = [];
   readonly #browserPanes = new Map<string, FakeBrowserPane>();
+  readonly #windows = new Map<Id, FakeWindow>();
+  readonly #windowClosedListeners = new Set<(windowId: Id) => void>();
   readonly #configListeners = new Set<(text: string | null) => void>();
   readonly #userThemes = new Map<string, string>();
   readonly #mods = new Map<string, string>();
@@ -1752,6 +1767,67 @@ export class FakeBackend implements Backend {
     const problem = externalLinkProblem(url);
     if (problem !== undefined) throw new Error(problem);
     this.#openedLinks.push(url);
+  }
+
+  async openWindow(windowId: Id, spaceId: Id): Promise<void> {
+    this.#record("openWindow", windowId, spaceId);
+    if (!isWindowId(windowId)) throw new Error(`"${windowId}" is not a window id`);
+    if (typeof spaceId !== "string" || spaceId.trim() === "") {
+      throw new Error("a window needs the space it shows");
+    }
+    if (this.#windows.has(windowId)) throw new Error(`window ${windowId} is open already`);
+    this.#windows.set(windowId, { spaceId, sessions: [] });
+  }
+
+  async closeWindow(windowId: Id): Promise<void> {
+    this.#record("closeWindow", windowId);
+    this.#windows.delete(windowId);
+  }
+
+  async moveTabToWindow(windowId: Id, sessionIds: readonly SessionId[]): Promise<void> {
+    this.#record("moveTabToWindow", windowId, [...sessionIds]);
+    const window = this.#windows.get(windowId);
+    if (window === undefined) throw new Error(`window ${windowId} is not open`);
+    // All or nothing here: the fake checks every session before it takes one.
+    for (const id of sessionIds) this.#alive(id);
+    for (const other of this.#windows.values()) {
+      other.sessions = other.sessions.filter((id) => !sessionIds.includes(id));
+    }
+    window.sessions.push(...sessionIds);
+  }
+
+  onWindowClosed(callback: (windowId: Id) => void): Unsubscribe {
+    this.#windowClosedListeners.add(callback);
+    return () => {
+      this.#windowClosedListeners.delete(callback);
+    };
+  }
+
+  /**
+   * The person closes the window `windowId` (its close button): it is gone, the sessions it had
+   * keep running with no window, and whoever called `onWindowClosed` hears of it. Not a `Backend`
+   * call, so it is not recorded; a window that is not open changes nothing.
+   */
+  closeWindowByPerson(windowId: Id): void {
+    if (!this.#windows.delete(windowId)) return;
+    for (const listener of [...this.#windowClosedListeners]) listener(windowId);
+  }
+
+  /** The windows that are open, in the order they were opened. */
+  windows(): { id: Id; spaceId: Id; sessions: SessionId[] }[] {
+    return [...this.#windows].map(([id, window]) => ({
+      id,
+      spaceId: window.spaceId,
+      sessions: [...window.sessions],
+    }));
+  }
+
+  /** The window that received the output of the session, `undefined` for one no window has. */
+  windowOfSession(id: SessionId): Id | undefined {
+    for (const [windowId, window] of this.#windows) {
+      if (window.sessions.includes(id)) return windowId;
+    }
+    return undefined;
   }
 
   async openBrowserPane(paneId: Id, url: string, bounds: BrowserBounds): Promise<void> {

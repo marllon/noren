@@ -72,10 +72,17 @@ impl CloseGate {
 pub const MAIN_LABEL: &str = "main";
 
 /// Handles the window events of the app: a request to close the main window is held when the page
-/// asked for it, and once the main window is gone the quick window goes with it (it is hidden, so
-/// it would keep the app running with nothing to see; with no window left the app ends as it always
-/// did). The other windows are left to the default.
+/// asked for it, and once the main window is gone the quick window and the other windows go with it
+/// (they may be hidden, so they would keep the app running with nothing to see; with no window left
+/// the app ends as it always did). A window besides the main one that is closed by the person is
+/// told to the interface (`windows::on_destroyed`). The rest is left to the default.
 pub fn on_window_event(window: &Window, event: &WindowEvent) {
+    if let Some(id) = crate::windows::window_id_of_label(window.label()) {
+        if let WindowEvent::Destroyed = event {
+            crate::windows::on_destroyed(window.app_handle(), id);
+        }
+        return;
+    }
     if window.label() != MAIN_LABEL {
         return;
     }
@@ -86,6 +93,7 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
         {
             let _ = quick.destroy();
         }
+        crate::windows::destroy_all(window.app_handle());
         return;
     }
     let WindowEvent::CloseRequested { api, .. } = event else {

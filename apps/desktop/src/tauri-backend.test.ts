@@ -281,6 +281,53 @@ describe("TauriBackend", () => {
     );
   });
 
+  it("opens, closes and moves a tab to a window through window_open, window_close and window_move_tab", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    await expect(backend.openWindow("w1", "s2")).resolves.toBeUndefined();
+    await expect(backend.moveTabToWindow("w1", [3, 4])).resolves.toBeUndefined();
+    await expect(backend.closeWindow("w1")).resolves.toBeUndefined();
+    expect(fake.callsTo("window_open").map((c) => c.args)).toEqual([
+      { windowId: "w1", spaceId: "s2" },
+    ]);
+    expect(fake.callsTo("window_move_tab").map((c) => c.args)).toEqual([
+      { windowId: "w1", sessionIds: [3, 4] },
+    ]);
+    expect(fake.callsTo("window_close").map((c) => c.args)).toEqual([{ windowId: "w1" }]);
+    fake.failing.add("window_move_tab");
+    await expect(backend.moveTabToWindow("w1", [3])).rejects.toThrow("window_move_tab failed");
+    fake.failing.add("window_open");
+    await expect(backend.openWindow("w2", "s3")).rejects.toThrow("window_open failed");
+  });
+
+  it("tells the window the person closed from the window-closed event, and only for a real window id", async () => {
+    const fake = fakeBridge();
+    const handlers = new Map<string, (event: { payload: unknown }) => void>();
+    const listen = fake.bridge.listen.bind(fake.bridge);
+    fake.bridge.listen = (event, handler) => {
+      handlers.set(event, handler as (event: { payload: unknown }) => void);
+      return listen(event, handler);
+    };
+    const backend = new TauriBackend(fake.bridge);
+    const closed: string[] = [];
+    const stop = backend.onWindowClosed((id) => closed.push(id));
+    await Promise.resolve();
+    const fire = (payload: unknown) => handlers.get("window-closed")?.({ payload });
+    fire({ windowId: "w1" });
+    fire({ windowId: "not a window" });
+    fire({ windowId: 7 });
+    fire(null);
+    fire("w2");
+    expect(closed).toEqual(["w1"]);
+    stop();
+    fire({ windowId: "w3" });
+    expect(closed).toEqual(["w1"]);
+    // One listener for any number of callbacks.
+    backend.onWindowClosed(() => undefined);
+    backend.onWindowClosed(() => undefined);
+    expect(fake.log.filter((line) => line === "listen window-closed")).toHaveLength(1);
+  });
+
   describe("readFilePreview", () => {
     /** The frame the shell answers with: header length, JSON header, body. */
     const frame = (header: unknown, body: number[] = []): ArrayBuffer => {

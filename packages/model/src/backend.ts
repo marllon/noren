@@ -365,6 +365,42 @@ export interface Backend {
   /** Whether the window of the app has the keyboard focus of the system now. */
   isWindowFocused(): Promise<boolean>;
   /**
+   * Opens the native window `windowId` of the app, showing the space `spaceId` (an `AppWindow` of
+   * the workspace). The window is made, loads the page of the app and listens for the tabs that are
+   * moved to it (`moveTabToWindow`); it is shown unless the run is a smoke run, which keeps every
+   * window hidden. The window does not load or save the state: the main window owns it, and is the
+   * only one that writes `state.json` (a window gets no `loadState`, `saveState` or
+   * `quarantineState`). Resolves when the window exists, not when its page is up. Rejects, opening
+   * nothing, when `windowId` is not a window id (`isWindowId`: it becomes the label of the native
+   * window), when `spaceId` is blank or when the window is open already.
+   */
+  openWindow(windowId: Id, spaceId: Id): Promise<void>;
+  /**
+   * Closes the window `windowId`. The sessions it was showing are not ended: they are still the same
+   * processes, with nowhere to send their output until a page takes them over again
+   * (`attachSession`). A window that is not open is not an error. It does not call `onWindowClosed`
+   * (the caller asked for it).
+   */
+  closeWindow(windowId: Id): Promise<void>;
+  /**
+   * Moves the tab whose shells are `sessionIds` to the window `windowId`: from then on the output
+   * of each session goes to the page of that window and no longer to the page that had it. Every
+   * session is the same process under the same id, nothing is restarted, and what a shell prints
+   * while this is being done is held and reaches the new page in order. Resolves when the page of
+   * the window has taken all of them over; a tab with no shell (a browser, preview or diff pane
+   * only) has nothing to take and resolves at once. Rejects, changing nothing for the sessions
+   * not yet taken, when the window is not open, when its page is not up within a few seconds, when
+   * a session is not a live one or when the page refuses. The caller keeps the state: moving the
+   * tab in the workspace (`window/move-item`) is its job.
+   */
+  moveTabToWindow(windowId: Id, sessionIds: readonly SessionId[]): Promise<void>;
+  /**
+   * Called when a window opened with `openWindow` is closed by the person (its close button), not
+   * by `closeWindow`. The sessions it was showing keep running with nowhere to send their output;
+   * taking the tabs back is the caller's job. Stops when the returned function is called.
+   */
+  onWindowClosed(callback: (windowId: Id) => void): Unsubscribe;
+  /**
    * Opens a web address in the browser of the system. Only `http://` and `https://` addresses are
    * opened (`externalLinkProblem` says why one is not); the backend checks again whatever the
    * caller did, and rejects with that sentence. The page confirms with the person before calling.

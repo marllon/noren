@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capabilities of the main window: the commands of the app, the events it exchanges with the other window and the Rust side, the home folder, and the title bar (its buttons, and the drag region whose double click maximizes the window). Nothing else of the core permission sets (no webview, menu, tray, image, resource or app permissions).",
+  "description": "Capabilities of the main window, the one that owns the workspace: the commands of the app (the state among them, which no other window gets), the events it exchanges with the other windows and the Rust side, the home folder, and the title bar (its buttons, and the drag region whose double click maximizes the window). Nothing else of the core permission sets (no webview, menu, tray, image, resource or app permissions).",
   "windows": ["main"],
   "permissions": [
     "allow-ai-providers",
@@ -56,6 +56,9 @@
     "allow-browser-navigate",
     "allow-browser-set-bounds",
     "allow-browser-close",
+    "allow-window-open",
+    "allow-window-close",
+    "allow-window-move-tab",
     "allow-notify-show",
     "allow-window-is-focused",
     "allow-deep-link-take-waiting",

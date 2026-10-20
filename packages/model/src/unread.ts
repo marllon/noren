@@ -1,6 +1,7 @@
 import { layoutPanes } from "./sessions";
 import { spaceItemIds } from "./tree";
 import type { Id, Item, LayoutNode, Pane, Space, Workspace } from "./types";
+import { spaceIsShown } from "./windows";
 
 // What the user can see, and what happened where they were not looking: the rules for the unread
 // and bell marks of a pane. Pure; the reducer and the interface share them.
@@ -28,9 +29,12 @@ export function visiblePanes(item: Item): Pane[] {
   return zoomed.length > 0 ? zoomed : panes;
 }
 
-/** Whether the pane is on screen now: in the item the active space shows, and not hidden by zoom. */
+/**
+ * Whether the pane is on screen now: in the item a space shows (the active space in the main window,
+ * or the space of another window), and not hidden by zoom.
+ */
 export function isPaneVisible(ws: Workspace, spaceId: Id, itemId: Id, paneId: Id): boolean {
-  if (ws.activeSpaceId !== spaceId) return false;
+  if (!spaceIsShown(ws, spaceId)) return false;
   const space = ws.spaces.find((s) => s.id === spaceId);
   const item = space && shownItem(space);
   return (

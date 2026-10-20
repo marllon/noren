@@ -532,6 +532,10 @@ export const ptBR: Dictionary = {
   "quick.promoteFailed": "Não foi possível promover: {reason}",
   "quick.preview": "Prévia da janela rápida",
 
+  // As outras janelas do app: as abas levadas para elas (NOR-F15-04a)
+  "window.title": "Janela do Noren",
+  "window.waiting": "Nenhuma aba aqui ainda.",
+
   // Os favoritos da barra lateral
   "favorites.label": "Favoritos",
 

@@ -11,6 +11,26 @@ export interface Workspace {
   /** Recently closed items, newest last, at most `MAX_CLOSED`. */
   closed: ClosedItem[];
   archive: ArchivedItem[];
+  /**
+   * The windows of the app besides the main one, each showing a space of its own (`AppWindow`). The
+   * main window shows `activeSpaceId`. Absent when the app has the one window, and in a state saved
+   * before windows existed.
+   */
+  windows?: AppWindow[];
+}
+
+/**
+ * A window of the app besides the main one. It shows one space, and no other window shows that
+ * space (nor does the main window): a terminal is drawn by one page, so the tabs of a space belong
+ * to the window that shows it. Moving a tab to a window is moving it into the space the window
+ * shows (`window/move-item`). The state lives with the main window, which is the only one that
+ * loads and saves it (`docs/ARCHITECTURE.md`, "Windows").
+ */
+export interface AppWindow {
+  /** Names the native window (`windowLabel`), so it is a name: `isWindowId`. */
+  id: Id;
+  /** The space the window shows; `window-space-missing` when it is not one. */
+  spaceId: Id;
 }
 
 export interface SpaceDefaults {
@@ -225,3 +245,5 @@ export const MAX_CLOSED = 50;
 export const DEFAULT_MAX_PANES = 4;
 /** Deepest group nesting allowed in `Space.tree`. */
 export const MAX_GROUP_DEPTH = 2;
+/** Most windows the app keeps besides the main one. */
+export const MAX_EXTRA_WINDOWS = 8;

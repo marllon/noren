@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "window",
+  "description": "Capabilities of the windows besides the main one (window-<id>, made at run time): taking over the output of a session that was moved to them, typing in it and resizing it, and the events they exchange with the other windows and the Rust side. No state, settings, files, AI, notification, browser or window commands: the main window owns the workspace and is the only one that writes state.json.",
+  "windows": ["window-*"],
+  "permissions": [
+    "allow-session-attach",
+    "allow-session-write",
+    "allow-session-resize",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:event:allow-emit"
+  ]
+}

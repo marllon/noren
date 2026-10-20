@@ -1,3 +1,4 @@
+import { windowIdOfLabel } from "@noren/model";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { StrictMode } from "react";
 import type { ReactNode } from "react";
@@ -20,11 +21,17 @@ function show(content: ReactNode): void {
   if (root) createRoot(root).render(<StrictMode>{content}</StrictMode>);
 }
 
-// The quick window loads this same page, but only its terminal: importing the app would start the
-// workspace again (the saved state, the settings, the shells of every tab) in a second window.
-// Whichever page is not this window's stays unloaded.
-if (insideTauri && windowKindOf(getCurrentWindow().label) === "quick") {
+// The other windows load this same page, but only what they show: importing the app would start
+// the workspace again (the saved state, the settings, the shells of every tab) in a second window,
+// and two pages would write `state.json`. The main window owns the state and is the only one that
+// loads the app. Whichever page is not this window's stays unloaded.
+const label = insideTauri ? getCurrentWindow().label : undefined;
+const kind = windowKindOf(label);
+const windowId = label === undefined ? undefined : windowIdOfLabel(label);
+if (insideTauri && kind === "quick") {
   void import("./QuickApp").then(({ QuickApp }) => show(<QuickApp />));
+} else if (insideTauri && kind === "window" && windowId !== undefined) {
+  void import("./WindowApp").then(({ WindowApp }) => show(<WindowApp windowId={windowId} />));
 } else {
   void import("./App").then(async ({ App }) => {
     if (!quickPreviewEnabled) {

@@ -1,8 +1,10 @@
 import { browserUrlProblem } from "./browser";
 import { previewPathProblem } from "./file-preview";
+import { isWindowId } from "./windows";
 import {
   DEFAULT_MAX_PANES,
   MAX_CLOSED,
+  MAX_EXTRA_WINDOWS,
   MAX_GROUP_DEPTH,
   type Id,
   type Item,
@@ -31,6 +33,10 @@ export type ViolationCode =
   | "diff-has-url"
   | "pane-has-path"
   | "active-space-missing"
+  | "window-id-invalid"
+  | "window-space-missing"
+  | "window-space-shared"
+  | "window-overflow"
   | "active-item-missing"
   | "item-key-mismatch"
   | "item-unplaced"
@@ -61,7 +67,7 @@ export interface InvariantOptions {
 }
 
 interface IdOwner {
-  kind: "space" | "item" | "group" | "pane";
+  kind: "space" | "item" | "group" | "pane" | "window";
   /** The item that owns the id (panes) or the id's own path (others). */
   owner: string;
 }
@@ -299,6 +305,39 @@ function run(ws: Workspace, maxPanes: number, out: Violation[]): void {
   if (!ws.spaces.some((space) => space.id === ws.activeSpaceId)) {
     add("active-space-missing", "activeSpaceId", `active space ${ws.activeSpaceId} does not exist`);
   }
+
+  // The windows besides the main one: a name each, a space of the workspace each, and no space
+  // shown twice (the main window shows the active space). A terminal is drawn by one page.
+  const windows = ws.windows ?? [];
+  if (windows.length > MAX_EXTRA_WINDOWS) {
+    add(
+      "window-overflow",
+      "windows",
+      `${windows.length} windows besides the main one, max ${MAX_EXTRA_WINDOWS}`,
+    );
+  }
+  const shown = new Map<Id, string>([[ws.activeSpaceId, "the main window"]]);
+  windows.forEach((window, index) => {
+    const path = `windows[${index}]`;
+    register("window", window.id, path, window.id);
+    if (!isWindowId(window.id)) {
+      add("window-id-invalid", path, `${JSON.stringify(window.id)} cannot name a window`);
+    }
+    if (!ws.spaces.some((space) => space.id === window.spaceId)) {
+      add("window-space-missing", path, `window ${window.id} shows ${window.spaceId}, not a space`);
+      return;
+    }
+    const holder = shown.get(window.spaceId);
+    if (holder !== undefined) {
+      add(
+        "window-space-shared",
+        path,
+        `space ${window.spaceId} is shown by ${holder} and by window ${window.id}`,
+      );
+    } else {
+      shown.set(window.spaceId, `window ${window.id}`);
+    }
+  });
 
   const seenFavorites = new Set<Id>();
   ws.favorites.forEach((id, index) => {

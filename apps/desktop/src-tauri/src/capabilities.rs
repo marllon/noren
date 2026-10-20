@@ -10,6 +10,7 @@ const BUILD_RS: &str = include_str!("../build.rs");
 const MAIN_RS: &str = include_str!("main.rs");
 const MAIN_CAPABILITY: &str = include_str!("../capabilities/default.json");
 const QUICK_CAPABILITY: &str = include_str!("../capabilities/quick.json");
+const WINDOW_CAPABILITY: &str = include_str!("../capabilities/window.json");
 const TAURI_CONF: &str = include_str!("../tauri.conf.json");
 
 /// The names in `const COMMANDS: &[&str] = [ ... ];` of `build.rs`.
@@ -129,8 +130,73 @@ fn the_quick_window_is_granted_one_shell_and_a_confirmed_link_and_nothing_else()
 }
 
 #[test]
+fn a_window_besides_the_main_one_is_granted_the_sessions_moved_to_it_and_nothing_else() {
+    let window = capability(WINDOW_CAPABILITY);
+    // One pattern, the label of the windows the app makes (`window-<id>`, `windows.rs`).
+    assert_eq!(window["windows"], serde_json::json!(["window-*"]));
+    assert_eq!(
+        permissions_of(&window),
+        BTreeSet::from(
+            [
+                "allow-session-attach",
+                "allow-session-resize",
+                "allow-session-write",
+                "core:event:allow-emit",
+                "core:event:allow-listen",
+                "core:event:allow-unlisten",
+            ]
+            .map(str::to_owned)
+        )
+    );
+}
+
+#[test]
+fn only_the_main_window_may_call_what_owns_or_changes_the_workspace() {
+    // The state and the files of the app, and the commands that make, close and fill the other
+    // windows: the main window owns the workspace and is the only page that writes `state.json`.
+    let owner_only = [
+        "state_load",
+        "state_save",
+        "state_quarantine",
+        "config_load",
+        "config_save",
+        "config_watch",
+        "theme_save",
+        "scrollback_save",
+        "scrollback_delete",
+        "profiles_set_user",
+        "sessions_keep_set",
+        "window_open",
+        "window_close",
+        "window_move_tab",
+    ];
+    let main = permissions_of(&capability(MAIN_CAPABILITY));
+    let quick = permissions_of(&capability(QUICK_CAPABILITY));
+    let window = permissions_of(&capability(WINDOW_CAPABILITY));
+    for command in owner_only {
+        assert!(main.contains(&permission(command)), "main lacks {command}");
+        assert!(
+            !quick.contains(&permission(command)),
+            "quick may call {command}"
+        );
+        assert!(
+            !window.contains(&permission(command)),
+            "a window may call {command}"
+        );
+    }
+    // A window is given the sessions that are already running, never the power to start or end one:
+    // the quick window starts its own shell, and the main window starts the rest.
+    for command in ["session_create", "session_kill", "session_reattach"] {
+        assert!(
+            !window.contains(&permission(command)),
+            "a window may call {command}"
+        );
+    }
+}
+
+#[test]
 fn no_capability_uses_a_default_set_a_wildcard_or_a_remote_origin() {
-    for text in [MAIN_CAPABILITY, QUICK_CAPABILITY] {
+    for text in [MAIN_CAPABILITY, QUICK_CAPABILITY, WINDOW_CAPABILITY] {
         let capability = capability(text);
         for permission in permissions_of(&capability) {
             assert!(!permission.ends_with(":default"), "{permission}");
@@ -148,14 +214,14 @@ fn no_capability_uses_a_default_set_a_wildcard_or_a_remote_origin() {
         );
         assert!(capability.get("webviews").is_none());
     }
-    // Only the two capabilities exist.
+    // Only the three capabilities exist.
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
     let mut files: Vec<String> = std::fs::read_dir(dir)
         .expect("capabilities folder")
         .filter_map(|entry| Some(entry.ok()?.file_name().to_str()?.to_owned()))
         .collect();
     files.sort();
-    assert_eq!(files, ["default.json", "quick.json"]);
+    assert_eq!(files, ["default.json", "quick.json", "window.json"]);
 }
 
 #[test]
@@ -164,8 +230,10 @@ fn the_web_view_of_a_browser_pane_is_granted_nothing() {
     // the window. What keeps its page out is the origin: a page that is not the app's is a remote
     // origin, and only a capability with a `remote` entry can grant that. None has one (the test
     // above), the web view has no name in any file, and the commands that make one are the only
-    // ones of the pane (a page cannot open another).
-    for text in [MAIN_CAPABILITY, QUICK_CAPABILITY] {
+    // ones of the pane (a page cannot open another). The one pattern in any file is the label of the
+    // windows the app makes, `window-*`, which no web view of a pane can have: its label starts with
+    // `browser-` and the id of a pane cannot change that.
+    for text in [MAIN_CAPABILITY, QUICK_CAPABILITY, WINDOW_CAPABILITY] {
         let capability = capability(text);
         for window in capability["windows"].as_array().expect("windows") {
             let window = window.as_str().expect("a window label");
@@ -173,7 +241,15 @@ fn the_web_view_of_a_browser_pane_is_granted_nothing() {
                 !crate::browser_pane::is_pane_label(window),
                 "{window} names a web view of a browser pane"
             );
-            assert!(!window.contains('*'), "{window}");
+            if window.contains('*') {
+                assert_eq!(window, "window-*", "the one pattern a capability may have");
+                let prefix = window.trim_end_matches('*');
+                assert_eq!(prefix, crate::windows::LABEL_PREFIX);
+                for id in ["p1", "window-x", "", "main"] {
+                    let pane = crate::browser_pane::pane_label(id).unwrap_or_default();
+                    assert!(!pane.starts_with(prefix), "{pane} matches {window}");
+                }
+            }
         }
         assert!(capability.get("webviews").is_none());
         assert!(capability.get("remote").is_none());

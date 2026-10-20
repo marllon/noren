@@ -159,7 +159,11 @@ on a page served by the run itself on `127.0.0.1` (a free port, the standard lib
 prints `SMOKE browser pane loaded <url>` once the web view reports the load, still with the window
 hidden. It also takes that web view to no area and back, which is how the interface hides a pane
 that is out of view, and checks that the view keeps its page (`SMOKE browser pane hidden at no area
-and shown again`; see [ARCHITECTURE.md](ARCHITECTURE.md#the-browser-pane)).
+and shown again`; see [ARCHITECTURE.md](ARCHITECTURE.md#the-browser-pane)). `pnpm smoke` also runs
+`noren --smoke-quick` (the quick terminal) and `noren --smoke-window`, which makes a second window,
+hidden like every window of a smoke run, and moves a running shell to it with the same session id
+and the same process; both keep their state in a temp folder (see
+[ARCHITECTURE.md](ARCHITECTURE.md#windows)).
 
 Both paths were checked on disk: the WebView folder after an install, and `state.json` after a
 release build saved a state (the folder does not exist until the first save). Deleting both folders

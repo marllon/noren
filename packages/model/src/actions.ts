@@ -85,7 +85,26 @@ export type Action =
    */
   | { type: "space/set-ai"; spaceId: Id; enabled: boolean }
   | { type: "space/move"; spaceId: Id; index: number }
+  /**
+   * Shows the space in the main window. A space another window shows cannot be shown here too (a
+   * terminal is drawn by one page): nothing changes then.
+   */
   | { type: "space/activate"; spaceId: Id }
+  // Windows
+  /**
+   * Adds a window that shows the space (`AppWindow`, with a fresh id). Nothing changes when the
+   * space does not exist, when the main window or another window shows it already, or when the
+   * workspace has `MAX_EXTRA_WINDOWS` windows besides the main one.
+   */
+  | { type: "window/open"; spaceId: Id }
+  /** Takes the window away from the workspace. The space it showed keeps its tabs. */
+  | { type: "window/close"; windowId: Id }
+  /**
+   * Moves the tab to the window: into the space the window shows, at `placement` (the end of the
+   * tree by default), and makes it the tab that space shows. The tab keeps its panes and sessions.
+   * Nothing changes for a window or a tab that does not exist, or a tab already in that space.
+   */
+  | { type: "window/move-item"; itemId: Id; windowId: Id; placement?: Placement }
   /**
    * Chooses the item a space shows. The item must belong to that space. The reducer also moves it
    * on its own: a new or reopened item becomes active, and when the active item leaves the space

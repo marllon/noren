@@ -4,6 +4,7 @@ import { splitAt, splitPaths } from "./layout";
 import { layoutPanes } from "./sessions";
 import { treeGroups, treeItemIds } from "./tree";
 import type { Id, Item, Workspace } from "./types";
+import { workspaceWindows } from "./windows";
 
 const tag = <T extends string>(type: T): fc.Arbitrary<T> => fc.constant(type);
 
@@ -135,6 +136,7 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
   const spaceId = arbIdOf(spaceIds);
   const itemId = arbIdOf(itemIds);
   const groupId = arbIdOf(groupIds);
+  const windowId = arbIdOf(workspaceWindows(ws).map((window) => window.id));
 
   const placement: fc.Arbitrary<Placement> = fc.oneof(
     fc.record({ to: tag("pinned"), index: arbIndex }, { requiredKeys: ["to"] }),
@@ -274,6 +276,16 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
     weighted(1, fc.record({ type: tag("space/set-ai"), spaceId, enabled: fc.boolean() })),
     weighted(1, fc.record({ type: tag("space/move"), spaceId, index: arbIndex })),
     weighted(2, fc.record({ type: tag("space/activate"), spaceId })),
+    // Windows
+    weighted(2, fc.record({ type: tag("window/open"), spaceId })),
+    weighted(1, fc.record({ type: tag("window/close"), windowId })),
+    weighted(
+      2,
+      fc.record(
+        { type: tag("window/move-item"), itemId, windowId, placement },
+        { requiredKeys: ["type", "itemId", "windowId"] },
+      ),
+    ),
     weighted(
       3,
       fc.oneof(

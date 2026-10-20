@@ -27,8 +27,10 @@ mod shortcut;
 mod smoke;
 mod smoke_browser;
 mod smoke_persist;
+mod smoke_window;
 mod tray;
 mod window_effect;
+mod windows;
 
 use tauri::{Listener, Manager, RunEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -88,8 +90,16 @@ fn main() {
     } else {
         None
     };
-    let any_smoke =
-        smoke || smoke_deeplink || smoke_quick || perf_run.is_some() || persist_run.is_some();
+    // The window run makes a second window and moves a tab to it. The page of the main window saves
+    // the workspace it makes, so the run keeps the files of the app in a folder of its own too.
+    let smoke_window = smoke_window::has_flag(&args);
+    let window_sandbox = smoke_window.then(smoke_window::WindowSandbox::new);
+    let any_smoke = smoke
+        || smoke_deeplink
+        || smoke_quick
+        || smoke_window
+        || perf_run.is_some()
+        || persist_run.is_some();
 
     let mut builder = tauri::Builder::default();
     // First of all, so a second instance is detected before the rest of the setup runs. Not in a
@@ -145,6 +155,8 @@ fn main() {
         .manage(deeplink::Links::default())
         .manage(lifecycle::CloseGate::default())
         .manage(shortcut::QuickShortcut::new(!any_smoke))
+        // The windows besides the main one; the ones a smoke run opens stay hidden.
+        .manage(windows::WindowBook::new(!any_smoke))
         .manage(ai_state)
         .on_window_event(lifecycle::on_window_event)
         .on_page_load(|webview, payload| {
@@ -207,6 +219,9 @@ fn main() {
             browser_pane::browser_navigate,
             browser_pane::browser_set_bounds,
             browser_pane::browser_close,
+            windows::window_open,
+            windows::window_close,
+            windows::window_move_tab,
             notify::notify_show,
             notify::window_is_focused,
             deeplink::deep_link_take_waiting,
@@ -214,29 +229,40 @@ fn main() {
         ])
         .setup(move |app| {
             perf::mark("setup-start");
-            match (&smoke_link, &quick_sandbox, &perf_run, &persist_run) {
+            windows::install(app.handle());
+            match (
+                &smoke_link,
+                &quick_sandbox,
+                &perf_run,
+                &persist_run,
+                &window_sandbox,
+            ) {
                 // The deep-link, quick, perf and persistence checks never touch the user's files:
                 // they run on a folder of their own.
-                (Some(target), _, _, _) => {
+                (Some(target), _, _, _, _) => {
                     smoke::manage_sandbox_stores(app, &target.state_dir);
                     app.manage(target.clone());
                 }
-                (None, Some(sandbox), _, _) => {
+                (None, Some(sandbox), _, _, _) => {
                     smoke::manage_sandbox_stores(app, &sandbox.state_dir);
                     app.manage(sandbox.clone());
                 }
-                (None, None, Some(run), _) => {
+                (None, None, Some(run), _, _) => {
                     smoke::manage_sandbox_stores(app, &run.state_dir);
                     app.manage(run.clone());
                 }
-                (None, None, None, Some(run)) => {
+                (None, None, None, None, Some(sandbox)) => {
+                    smoke::manage_sandbox_stores(app, &sandbox.state_dir);
+                    app.manage(sandbox.clone());
+                }
+                (None, None, None, Some(run), _) => {
                     smoke::manage_sandbox_stores(app, &run.dir);
                     // Both runs of the pair keep the book of which shell is which pane's in the
                     // folder they share.
                     app.state::<AppState>()
                         .use_pane_book(PaneBook::open(run.book_file(), &run.endpoint));
                 }
-                (None, None, None, None) => {
+                (None, None, None, None, None) => {
                     // Which shell is which pane's is kept next to the saved state, for the daemon
                     // of the user. The plain smoke run keeps it in memory: it must not touch the
                     // book of the user.
@@ -296,7 +322,7 @@ fn main() {
             // The quick terminal: a second window, hidden, that loads its page once the main one is up
             // (see `quick::create_hidden_after_ready`), so it is ready when something shows it. The
             // plain smoke runs check the main window alone and leave it out.
-            if !smoke && !smoke_deeplink && persist_run.is_none() {
+            if !smoke && !smoke_deeplink && !smoke_window && persist_run.is_none() {
                 quick::create_hidden_after_ready(app);
             }
             // The global shortcut of the quick terminal: only a normal start registers one. A chord
@@ -333,6 +359,9 @@ fn main() {
             }
             if let Some(run) = persist_run.clone() {
                 smoke_persist::arm(app, run);
+            }
+            if let Some(sandbox) = window_sandbox.clone() {
+                smoke_window::arm(app, sandbox);
             }
             perf::mark("setup-end");
             Ok(())
@@ -377,6 +406,9 @@ fn main() {
             }
             if let Some(run) = handle.try_state::<perf::PerfRun>() {
                 run.remove();
+            }
+            if let Some(sandbox) = handle.try_state::<smoke_window::WindowSandbox>() {
+                sandbox.remove();
             }
         }
     });

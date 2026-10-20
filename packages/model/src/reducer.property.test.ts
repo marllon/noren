@@ -48,6 +48,7 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "group/rename": true,
   "group/set-color": true,
   "pane/split": true,
+  "pane/set-url": true,
   "pane/close": true,
   "pane/detach": true,
   "item/join": true,
@@ -75,6 +76,7 @@ const SEQUENCE_TIMEOUT_MS = 60_000;
 /** Actions whose effect on the panes `checkPaneDelta` knows. */
 const PANE_ACTIONS = new Set<ActionType>([
   "pane/split",
+  "pane/set-url",
   "pane/close",
   "pane/detach",
   "item/join",
@@ -186,6 +188,7 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "group/set-color":
       return !groupIdsOf(ws).has(action.groupId);
     case "pane/split":
+    case "pane/set-url":
     case "pane/close":
     case "pane/detach":
     case "pane/focus":
@@ -325,6 +328,7 @@ function checkPaneDelta(ws: Workspace, next: Workspace, action: Action, where: (
     case "pane/zoom":
     case "pane/focus":
     case "pane/focus-direction":
+    case "pane/set-url":
     case "pane/set-status":
     case "pane/set-location":
     case "pane/command-start":
@@ -506,6 +510,7 @@ describe("reducer properties", () => {
       "source",
       "profileId",
       "cwd",
+      "url",
       "activate",
     ] as const;
     fc.assert(

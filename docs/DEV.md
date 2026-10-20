@@ -157,7 +157,9 @@ macOS) and prints what the system answered, `SMOKE window effect mica applied` o
 fallback with its reason; a system that cannot paint it still passes. It then opens a browser pane
 on a page served by the run itself on `127.0.0.1` (a free port, the standard library only) and
 prints `SMOKE browser pane loaded <url>` once the web view reports the load, still with the window
-hidden (see [ARCHITECTURE.md](ARCHITECTURE.md#the-browser-pane)).
+hidden. It also takes that web view to no area and back, which is how the interface hides a pane
+that is out of view, and checks that the view keeps its page (`SMOKE browser pane hidden at no area
+and shown again`; see [ARCHITECTURE.md](ARCHITECTURE.md#the-browser-pane)).
 
 Both paths were checked on disk: the WebView folder after an install, and `state.json` after a
 release build saved a state (the folder does not exist until the first save). Deleting both folders

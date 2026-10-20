@@ -1335,6 +1335,65 @@ body {
 }
 
 /*
+ * A pane that shows a web page: an address bar, and under it the area the web view of the shell is
+ * laid over. The page itself is not drawn here; the area only holds the place (and the colors, for
+ * the moment before the page has been drawn).
+ */
+.browser-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.browser-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--nr-border);
+  background: var(--nr-surface);
+}
+
+.browser-address {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-bg);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+
+.browser-address:focus-visible {
+  outline: 2px solid var(--nr-accent);
+  outline-offset: -1px;
+}
+
+.browser-address[aria-invalid="true"] {
+  border-color: var(--nr-accent);
+}
+
+.browser-problem {
+  margin: 0;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--nr-border);
+  border-left: 2px solid var(--nr-space-color);
+  background: var(--nr-surface);
+  font-size: 12px;
+}
+
+.browser-view {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--nr-bg);
+}
+
+/*
  * Zoom: the zoomed pane covers the whole item and the others are hidden. Nothing moves in the
  * component tree, so no terminal unmounts; the panels keep their sizes, which is what comes back
  * when the zoom ends. The chain of panels up to the item is made static so the zoomed pane

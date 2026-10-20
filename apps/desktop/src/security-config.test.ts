@@ -57,8 +57,14 @@ describe("what the page may not do", () => {
   it("gives the terminal a handler for OSC 8 links that does not open a window", () => {
     const terminal = pageSources.find(({ file }) => file === "TerminalView.tsx");
     expect(terminal?.text).toMatch(/linkHandler:\s*\{[\s\S]*?allowNonHttpProtocols:\s*false/);
-    expect(terminal?.text).toMatch(
-      /new WebLinksAddon\(\(_event, uri\) => requestExternalLink\(uri\)\)/,
+    expect(terminal?.text).toMatch(/linkHandler:\s*\{\s*activate:\s*activateLink,/);
+    expect(terminal?.text).toMatch(/new WebLinksAddon\(activateLink\)/);
+    // Whatever handler a link gets, it ends in the question unless Ctrl was held and the shell took
+    // the link: there is no other way out of it.
+    const handler = /const activateLink = [\s\S]*?\n {4}\};/.exec(terminal?.text ?? "")?.[0] ?? "";
+    expect(handler).toMatch(/event\.ctrlKey \|\| event\.metaKey/);
+    expect(handler).toMatch(
+      /onOpenLinkRef\.current\?\.\(uri\) === true\) return;\s*requestExternalLink\(uri\);/,
     );
   });
 

@@ -122,6 +122,20 @@ export const en = {
   "pane.zoom": "Zoom pane",
   "pane.close": "Close pane",
 
+  // A pane that shows a web page
+  "pane.browser": "web page",
+  "browser.pane": "Web page",
+  "browser.address": "Address",
+  "browser.problem.empty": "The address is empty or too long.",
+  "browser.problem.scheme": "Only http and https addresses can be shown.",
+  "browser.problem.characters": "The address has a blank, a control character or a backslash.",
+  "browser.problem.noHost": "The address has no host.",
+  "browser.problem.userinfo": "The address has a user name or password before the host.",
+  "browser.problem.escapedHost": "The host name of the address is written with escapes.",
+  "browser.problem.appOwn": "That address belongs to the app itself and cannot be shown here.",
+  "browser.problem.other": "This address cannot be shown: {reason}",
+  "browser.openFailed": "The page could not be shown: {reason}",
+
   // Moving things with the keyboard or the pointer
   "drag.instructions":
     "To move this item, press Space. Use the up and down arrow keys to choose a place, Space to drop it there, or Escape to cancel.",

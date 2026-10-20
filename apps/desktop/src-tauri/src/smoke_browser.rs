@@ -382,6 +382,54 @@ fn run(
 
     browser_pane::set_bounds(app, PANE_ID, MOVED_TO)?;
     print_line("SMOKE browser pane moved");
+
+    // How the interface hides a pane that is out of view (`browser-view.ts`): the same place with no
+    // area, and its bounds back when the pane returns. The web view has to take both, keep its page
+    // and the size it was given.
+    let label = browser_pane::pane_label(PANE_ID)?;
+    let webview = app
+        .get_webview(&label)
+        .ok_or_else(|| "browser pane: the web view is gone before it was hidden".to_owned())?;
+    let no_area = Bounds {
+        width: 0.0,
+        height: 0.0,
+        ..MOVED_TO
+    };
+    browser_pane::set_bounds(app, PANE_ID, no_area)?;
+    let hidden = webview
+        .size()
+        .map_err(|e| format!("browser pane: could not read the size of the hidden view: {e}"))?;
+    if hidden.width != 0 || hidden.height != 0 {
+        return Err(format!(
+            "browser pane: taken to no area it is {}x{}",
+            hidden.width, hidden.height
+        ));
+    }
+    browser_pane::set_bounds(app, PANE_ID, MOVED_TO)?;
+    let shown = webview
+        .size()
+        .map_err(|e| format!("browser pane: could not read the size of the shown view: {e}"))?;
+    if shown.width == 0 || shown.height == 0 {
+        return Err("browser pane: it came back from no area with no area".to_owned());
+    }
+    // The page went through it without being loaded again, and is still at its address.
+    if let Ok(extra) = loads.recv_timeout(Duration::from_millis(500)) {
+        return Err(format!(
+            "browser pane: hiding it loaded a page again ({extra})"
+        ));
+    }
+    let at = webview
+        .url()
+        .map_err(|e| format!("browser pane: could not read the address of the view: {e}"))?;
+    if at.as_str() != second {
+        return Err(format!(
+            "browser pane: hiding it left it at {at}, not {second}"
+        ));
+    }
+    print_line(&format!(
+        "SMOKE browser pane hidden at no area and shown again ({}x{}, still at {at})",
+        shown.width, shown.height
+    ));
     Ok(())
 }
 

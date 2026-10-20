@@ -125,6 +125,21 @@ export const ptBR: Dictionary = {
   "pane.zoom": "Ampliar painel",
   "pane.close": "Fechar painel",
 
+  // A pane that shows a web page
+  "pane.browser": "página web",
+  "browser.pane": "Página web",
+  "browser.address": "Endereço",
+  "browser.problem.empty": "O endereço está vazio ou é longo demais.",
+  "browser.problem.scheme": "Só endereços http e https podem ser mostrados.",
+  "browser.problem.characters":
+    "O endereço tem um espaço, um caractere de controle ou uma barra invertida.",
+  "browser.problem.noHost": "O endereço não tem um servidor.",
+  "browser.problem.userinfo": "O endereço tem usuário ou senha antes do servidor.",
+  "browser.problem.escapedHost": "O nome do servidor do endereço está escrito com escapes.",
+  "browser.problem.appOwn": "Esse endereço é do próprio app e não pode ser mostrado aqui.",
+  "browser.problem.other": "Este endereço não pode ser mostrado: {reason}",
+  "browser.openFailed": "Não foi possível mostrar a página: {reason}",
+
   // Moving things with the keyboard or the pointer
   "drag.instructions":
     "Para mover este item, aperte Espaço. Use as setas para cima e para baixo para escolher o lugar, Espaço para soltá-lo ali ou Esc para cancelar.",

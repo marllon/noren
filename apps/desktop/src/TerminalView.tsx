@@ -161,6 +161,13 @@ interface TerminalViewProps {
    * back to the program, such as a reply to a query, and not for a paste).
    */
   onInput?(): void;
+  /**
+   * Called with the address of a web link that was Ctrl+clicked (Cmd+clicked on a Mac), in a plain
+   * address on the screen or in a link the program declared. True when it took the link (it opened
+   * it beside this pane); false, or no callback, leaves the link to the question every other click
+   * of a link asks (`requestExternalLink`).
+   */
+  onOpenLink?(url: string): boolean;
 }
 
 /** Pause between the WebGL contexts that views out of sight get ahead of their first show. */
@@ -223,6 +230,7 @@ export function TerminalView({
   onExplain,
   onOutput,
   onInput,
+  onOpenLink,
 }: TerminalViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -233,6 +241,7 @@ export function TerminalView({
   const onExplainRef = useRef(onExplain);
   const onOutputRef = useRef(onOutput);
   const onInputRef = useRef(onInput);
+  const onOpenLinkRef = useRef(onOpenLink);
   const onSessionStartRef = useRef(onSessionStart);
   const activeRef = useRef(active);
   const themeRef = useRef(theme);
@@ -250,6 +259,7 @@ export function TerminalView({
     onExplainRef.current = onExplain;
     onOutputRef.current = onOutput;
     onInputRef.current = onInput;
+    onOpenLinkRef.current = onOpenLink;
     onSessionStartRef.current = onSessionStart;
     activeRef.current = active;
     themeRef.current = theme;
@@ -297,12 +307,18 @@ export function TerminalView({
     if (!host) return;
 
     perfMark("terminal-mount");
+    // A click on a link does not open it: it asks the person first (`link-prompt.ts`). Only a click
+    // with Ctrl held opens it, in a browser pane beside this one, when the shell takes it.
+    const activateLink = (event: MouseEvent, uri: string): void => {
+      if ((event.ctrlKey || event.metaKey) && onOpenLinkRef.current?.(uri) === true) return;
+      requestExternalLink(uri);
+    };
     const term = new Terminal({
       allowProposedApi: true,
-      // The links a program declares itself (OSC 8) go through the same question; the default
-      // handler would open a browser window after a bare `confirm`.
+      // The links a program declares itself (OSC 8) go through the same handler; the default one
+      // would open a browser window after a bare `confirm`.
       linkHandler: {
-        activate: (_event, uri) => requestExternalLink(uri),
+        activate: activateLink,
         allowNonHttpProtocols: false,
       },
       cursorBlink: optionsRef.current.cursorBlink,
@@ -323,9 +339,8 @@ export function TerminalView({
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.loadAddon(new Unicode11Addon());
-    // A click on an address does not open it: it asks the person first (`link-prompt.ts`). The
-    // default handler of the addon would call `window.open` at once.
-    term.loadAddon(new WebLinksAddon((_event, uri) => requestExternalLink(uri)));
+    // The default handler of the addon would call `window.open` at once.
+    term.loadAddon(new WebLinksAddon(activateLink));
     term.loadAddon(new SearchAddon());
     const serialize = new SerializeAddon();
     term.loadAddon(serialize);

@@ -93,6 +93,11 @@ const arbIdentity = fc.oneof(
   { weight: 1, arbitrary: fc.constant({ name: "A\u0000B", email: "a@x.io" }) },
 );
 const arbCwd = fc.constantFrom("/home/user", "C:\\Projects\\noren", "~/proj");
+/** A page a browser pane may show, or an address it may not (the reducer must refuse those). */
+const arbBrowserUrl = fc.oneof(
+  { weight: 4, arbitrary: fc.constantFrom("https://example.com/", "http://localhost:3000/a?b#c") },
+  { weight: 1, arbitrary: fc.constantFrom("file:///C:/x", "javascript:alert(1)", "", "https://") },
+);
 /** Reaches both ends and a little past them. */
 const arbIndex = fc.integer({ min: -1, max: 8 });
 
@@ -403,9 +408,21 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
             side,
             profileId: arbProfile,
             cwd: arbCwd,
+            url: arbBrowserUrl,
           },
           { requiredKeys: ["type", "itemId", "paneId", "dir", "side"] },
         ),
+      ),
+    ),
+    weighted(
+      3,
+      target.chain(({ itemId, paneId }) =>
+        fc.record({
+          type: tag("pane/set-url"),
+          itemId: fc.constant(itemId),
+          paneId: fc.constant(paneId),
+          url: arbBrowserUrl,
+        }),
       ),
     ),
     weighted(

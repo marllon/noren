@@ -248,6 +248,105 @@ describe("the reducer with a browser pane in the workspace", () => {
     expect(added[0]?.url).toBeUndefined();
   });
 
+  it("splits a terminal pane into a browser pane beside it when given an address", () => {
+    const base = createDefaultWorkspace({ newId: createSequentialIds("d") });
+    const item = firstItem(base);
+    const only = layoutPanes(item.layout)[0];
+    if (!only) throw new Error("no pane");
+    const next = applyChecked(base, {
+      type: "pane/split",
+      itemId: item.id,
+      paneId: only.id,
+      dir: "row",
+      side: "after",
+      url: URL,
+    });
+    const panes = layoutPanes(firstItem(next).layout);
+    expect(panes).toHaveLength(2);
+    expect(panes[0]?.id).toBe(only.id);
+    expect(panes[1]).toMatchObject({ type: "browser", url: URL, profileId: DEFAULT_PROFILE_ID });
+    expect(panes[1]?.sessionId).toBeUndefined();
+    expect(panes[1]?.cwd).toBeUndefined();
+    // The new pane has the keyboard, as any split does.
+    expect(firstItem(next).focusedPaneId).toBe(panes[1]?.id);
+  });
+
+  it.each([
+    ["file:///C:/Windows/win.ini"],
+    ["javascript:alert(1)"],
+    ["data:text/html,hi"],
+    ["http://tauri.localhost/"],
+    [""],
+  ])("does not split into a browser pane whose address is %s", (url) => {
+    const { ws, terminalId } = withBrowserPane();
+    const { ctx } = testContext();
+    const next = reduce(
+      ws,
+      {
+        type: "pane/split",
+        itemId: firstItem(ws).id,
+        paneId: terminalId,
+        dir: "row",
+        side: "after",
+        url,
+      },
+      ctx,
+    );
+    expect(next).toBe(ws);
+  });
+
+  it("points a browser pane at another page and keeps everything else", () => {
+    const { ws, browserId, terminalId } = withBrowserPane();
+    const next = applyChecked(ws, {
+      type: "pane/set-url",
+      itemId: firstItem(ws).id,
+      paneId: browserId,
+      url: "https://example.org/next",
+    });
+    expect(paneOf(next, browserId)).toEqual({
+      ...paneOf(ws, browserId),
+      url: "https://example.org/next",
+    });
+    expect(paneOf(next, terminalId)).toBe(paneOf(ws, terminalId));
+    // The page survives the state file.
+    const parsed = parseState(serializeWorkspace(next));
+    if (!parsed.ok) throw new Error(parsed.reason);
+    expect(paneOf(parsed.workspace, browserId).url).toBe("https://example.org/next");
+  });
+
+  it.each([
+    ["file:///C:/Windows/win.ini"],
+    ["javascript:alert(1)"],
+    ["data:text/html,hi"],
+    ["noren://open"],
+    ["http://tauri.localhost/"],
+    ["https://good.example@evil.example/"],
+    [""],
+  ])("keeps the page of a browser pane when told to go to %s", (url) => {
+    const { ws, browserId } = withBrowserPane();
+    const { ctx } = testContext();
+    const next = reduce(
+      ws,
+      { type: "pane/set-url", itemId: firstItem(ws).id, paneId: browserId, url },
+      ctx,
+    );
+    expect(next).toBe(ws);
+  });
+
+  it("changes nothing for the same page, a terminal pane or an unknown pane", () => {
+    const { ws, browserId, terminalId } = withBrowserPane();
+    const { ctx } = testContext();
+    const itemId = firstItem(ws).id;
+    const go = (paneId: string, url: string) =>
+      reduce(ws, { type: "pane/set-url", itemId, paneId, url }, ctx);
+    expect(go(browserId, URL)).toBe(ws);
+    expect(go(terminalId, "https://example.org/")).toBe(ws);
+    expect(go("nope", "https://example.org/")).toBe(ws);
+    expect(
+      reduce(ws, { type: "pane/set-url", itemId: "nope", paneId: browserId, url: URL }, ctx),
+    ).toBe(ws);
+  });
+
   it("closes a browser pane like any other pane and keeps the terminal", () => {
     const { ws, browserId, terminalId } = withBrowserPane();
     const { ctx } = testContext();

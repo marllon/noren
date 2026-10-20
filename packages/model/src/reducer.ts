@@ -1,6 +1,8 @@
 import type { Action, Placement, ReducerContext } from "./actions";
+import { browserUrlProblem } from "./browser";
 import {
   DEFAULT_PROFILE_ID,
+  createBrowserPane,
   createEmptySpace,
   createPane,
   createTab,
@@ -252,6 +254,8 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
     }
     case "pane/split":
       return splitPane(ws, action, ctx);
+    case "pane/set-url":
+      return setPaneUrl(ws, action);
     case "pane/close":
       return closePane(ws, action.itemId, action.paneId, ctx);
     case "pane/detach":
@@ -1121,7 +1125,16 @@ function splitPane(
   if (countPanes(located.item.layout) + 1 > maxPanesOf(ctx)) return ws;
   const profileId = action.profileId === undefined ? source.profileId : present(action.profileId);
   if (profileId === undefined) return ws;
-  const fresh = createPane(idPool(ws, ctx)(), profileId, present(action.cwd) ?? source.cwd);
+  // A browser pane has no folder of its own to hand on, and its address has to be one it may show.
+  const { url } = action;
+  if (url !== undefined && (typeof url !== "string" || browserUrlProblem(url) !== undefined)) {
+    return ws;
+  }
+  const id = idPool(ws, ctx)();
+  const fresh =
+    url !== undefined
+      ? createBrowserPane(id, url)
+      : createPane(id, profileId, present(action.cwd) ?? source.cwd);
   const layout = insertBeside(located.item.layout, source.id, action.dir, action.side, {
     kind: "pane",
     pane: fresh,
@@ -1130,6 +1143,17 @@ function splitPane(
   // The new pane takes focus, so zoom on another pane would hide it.
   const item: Item = { ...withoutZoom(located.item), layout, focusedPaneId: fresh.id };
   return replaceItem(ws, located.space, item);
+}
+
+function setPaneUrl(ws: Workspace, action: Extract<Action, { type: "pane/set-url" }>): Workspace {
+  if (typeof action.url !== "string" || browserUrlProblem(action.url) !== undefined) return ws;
+  const located = locate(ws, action.itemId);
+  const pane = located && findPane(located.item.layout, action.paneId);
+  if (!located || !pane || pane.type !== "browser" || pane.url === action.url) return ws;
+  return replaceItem(ws, located.space, {
+    ...located.item,
+    layout: withPane(located.item.layout, { ...pane, url: action.url }),
+  });
 }
 
 function closePane(ws: Workspace, itemId: Id, paneId: Id, ctx: ReducerContext): Workspace {

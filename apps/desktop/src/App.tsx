@@ -5,6 +5,7 @@ import {
   ManualClock,
   PaneLocationTracker,
   aiIsOn,
+  browserUrlProblem,
   layoutPanes,
   scrollbackAllowed,
   treeGroups,
@@ -12,6 +13,7 @@ import {
 } from "@noren/model";
 import type {
   AgentRow,
+  BrowserBounds,
   FakeSshTarget,
   GroupNode,
   Id,
@@ -55,6 +57,8 @@ import { quickPreviewEnabled, quickPreviewEvents, tauriQuickEvents } from "./qui
 import { retryFailedLinks } from "./session-link-store";
 import { tauriBridge } from "./tauri-backend";
 import { AskPanel } from "./AskPanel";
+import { BrowserPane } from "./BrowserPane";
+import { browserTitle } from "./browser-address";
 import { askOffNotice, shellNameOf } from "./ask-panel";
 import type { AskSources, ExplainRequest } from "./ask-panel";
 import { CommandAskDialog } from "./CommandAskDialog";
@@ -261,6 +265,14 @@ export interface NorenTestHook {
   setWindowFocused(focused: boolean): void;
   /** Every web address the backend was asked to open in the browser, in order. None is ever opened. */
   openedLinks(): string[];
+  /**
+   * The web views the backend holds for browser panes now, in the order they were opened: the pane,
+   * the page and where the view is (a view out of sight has no width or no height). No page is ever
+   * loaded.
+   */
+  browserViews(): { paneId: string; url: string; bounds: BrowserBounds }[];
+  /** Every call about a web view of a pane the backend got, in order, with the pane it was for. */
+  browserCalls(): { method: string; paneId: string }[];
   /** Every command line the backend was asked to run in a short process (stop commands), in order. */
   commandRuns(): { cwd: string; command: string }[];
   /** Makes the next short commands end with this exit code (0 by default). */
@@ -370,6 +382,8 @@ interface PaneTerminalProps {
   first: boolean;
   colors: ITheme;
   onReady(paneId: Id, handle: TerminalHandle): void;
+  /** A link of the output was Ctrl+clicked: true when it opened beside the pane. */
+  onOpenLink(url: string): boolean;
 }
 
 /**
@@ -377,7 +391,16 @@ interface PaneTerminalProps {
  * git branch of the pane (OSC 7 and 133 from the integrated shell); it is made once per pane, and
  * the session it listens to is the one the terminal starts or attaches.
  */
-function PaneTerminal({ store, space, pane, active, first, colors, onReady }: PaneTerminalProps) {
+function PaneTerminal({
+  store,
+  space,
+  pane,
+  active,
+  first,
+  colors,
+  onReady,
+  onOpenLink,
+}: PaneTerminalProps) {
   const { profileId, cwd, env } = sessionStartOptions(space, pane);
   // Font, cursor, scrollback and bell: the settings of the file and the zoom of this window.
   const options = useTerminalOptions();
@@ -429,6 +452,7 @@ function PaneTerminal({ store, space, pane, active, first, colors, onReady }: Pa
       {...(restored !== undefined ? { restored } : {})}
       onSessionStart={(id) => store.getState().attachSession(pane.id, String(id))}
       onReady={(handle) => onReady(pane.id, handle)}
+      onOpenLink={onOpenLink}
       onCwd={recordFolder}
       {...(onExplain !== undefined ? { onExplain } : {})}
       onInput={() => {
@@ -460,6 +484,8 @@ interface ItemViewProps {
   onReady(paneId: Id, handle: TerminalHandle): void;
   /** The menu button of a pane header was pressed. */
   onPaneMenu(paneId: Id, point: MenuPoint): void;
+  /** A link of the output of a pane was Ctrl+clicked: true when it opened beside the pane. */
+  onOpenBrowser(paneId: Id, url: string): boolean;
 }
 
 /** The layout of one tab: its panes as nested resizable panels, a terminal in each. */
@@ -473,6 +499,7 @@ function ItemView({
   home,
   onReady,
   onPaneMenu,
+  onOpenBrowser,
 }: ItemViewProps) {
   const dispatch = useStore(store, (state) => state.dispatch);
   const { paneHeaders } = useLayout();
@@ -491,14 +518,28 @@ function ItemView({
         : undefined;
     },
     paneTitle: (pane) => {
+      if (pane.type === "browser") return browserTitle(pane.url);
       const cwd = pane.cwd ?? space.defaults.cwd;
       const short = cwd !== undefined ? shortCwd(cwd, home) : "";
       return short !== "" ? short : t("pane.title");
     },
-    // A browser pane has no shell and nothing to draw yet: its web view and its address bar are
-    // NOR-F15-01b. Until then it must not start a terminal.
-    renderPane: (pane) =>
-      pane.type === "terminal" ? (
+    // A browser pane has no shell: it draws its address bar and the area its web view is laid over.
+    // The pane is in view when its tab is on screen and no other pane of the tab is zoomed over it.
+    renderPane: (pane) => {
+      if (pane.type === "browser") {
+        return (
+          <BrowserPane
+            key={pane.id}
+            backend={backend}
+            pane={pane}
+            visible={shown && (item.zoomedPaneId === undefined || item.zoomedPaneId === pane.id)}
+            onNavigate={(url) =>
+              dispatch({ type: "pane/set-url", itemId: item.id, paneId: pane.id, url })
+            }
+          />
+        );
+      }
+      return (
         <PaneTerminal
           key={pane.id}
           store={store}
@@ -508,8 +549,10 @@ function ItemView({
           first={first}
           colors={colors}
           onReady={onReady}
+          onOpenLink={(url) => onOpenBrowser(pane.id, url)}
         />
-      ) : null,
+      );
+    },
     onFocusPane: (paneId) => dispatch({ type: "pane/focus", itemId: item.id, paneId }),
     onZoomPane: (paneId) => dispatch({ type: "pane/zoom", itemId: item.id, paneId }),
     onClosePane: (paneId) => dispatch({ type: "pane/close", itemId: item.id, paneId }),
@@ -1068,6 +1111,40 @@ function Shell({ store }: { store: WorkspaceStore }) {
     setAskExplain((last) => ({ request, seq: (last?.seq ?? 0) + 1 }));
     setAskOpen(true);
   }, []);
+  /**
+   * A web link of the output of `paneId` was Ctrl+clicked: a browser pane opens beside it, and the
+   * keyboard stays with the pane the person was typing in. False for an address a browser pane may
+   * not show or a pane that is nowhere, so the click asks the question every link asks; a tab with
+   * no room says so and opens nothing.
+   */
+  const openBrowserBeside = useCallback(
+    (paneId: Id, url: string): boolean => {
+      if (browserUrlProblem(url) !== undefined) return false;
+      const state = store.getState();
+      for (const s of state.workspace.spaces) {
+        for (const item of Object.values(s.items)) {
+          const panes = layoutPanes(item.layout);
+          if (!panes.some((pane) => pane.id === paneId)) continue;
+          if (panes.length >= DEFAULT_MAX_PANES) {
+            showNotice(paneLimitNotice(DEFAULT_MAX_PANES));
+            return true;
+          }
+          state.dispatch({
+            type: "pane/split",
+            itemId: item.id,
+            paneId,
+            dir: "row",
+            side: "after",
+            url,
+          });
+          state.dispatch({ type: "pane/focus", itemId: item.id, paneId });
+          return true;
+        }
+      }
+      return false;
+    },
+    [store, showNotice],
+  );
   /** "? text" in the palette: the dialog opens for the shell and the system of the pane in use. */
   const askForCommand = (request: string) => {
     const state = store.getState();
@@ -1413,6 +1490,15 @@ function Shell({ store }: { store: WorkspaceStore }) {
         notifications: () => fake.notifications.map(({ title, body }) => ({ title, body })),
         setWindowFocused: (focused) => fake.setWindowFocused(focused),
         openedLinks: () => [...fake.openedLinks],
+        browserViews: () =>
+          fake.browserPaneIds().flatMap((paneId) => {
+            const view = fake.browserPane(paneId);
+            return view === undefined ? [] : [{ paneId, url: view.url, bounds: view.bounds }];
+          }),
+        browserCalls: () =>
+          fake.calls
+            .filter((call) => call.method.endsWith("BrowserPane"))
+            .map((call) => ({ method: call.method, paneId: String(call.args[0]) })),
         commandRuns: () => fake.commands.map(({ cwd, command }) => ({ cwd, command })),
         failCommands: (code) => fake.setCommandExitCode(code),
         actionsReads: () => fake.callsTo("readActionsFile").length,
@@ -2074,6 +2160,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
                         onPaneMenu={(paneId, point) =>
                           setOverlay({ kind: "pane-menu", paneId, point })
                         }
+                        onOpenBrowser={openBrowserBeside}
                       />
                     ))}
                   </div>

@@ -198,7 +198,9 @@ export type Action =
    * Splits `paneId` in two: `dir` is the axis the panes line up on (`row`: side by side, `column`:
    * stacked) and `side` puts the new pane before (left/top) or after (right/bottom) it. The new
    * pane takes focus and ends zoom. It inherits `profileId` and `cwd` from the split pane unless
-   * given. Over `maxPanes` is invalid.
+   * given. Over `maxPanes` is invalid. With `url` the new pane is a browser pane showing that page
+   * (see `createBrowserPane`), with no shell and no folder: an address `browserUrlProblem` refuses
+   * changes nothing.
    */
   | {
       type: "pane/split";
@@ -208,7 +210,14 @@ export type Action =
       side: "before" | "after";
       profileId?: string;
       cwd?: string;
+      url?: string;
     }
+  /**
+   * Points a browser pane at another page. An address `browserUrlProblem` refuses, a pane that is
+   * not a browser pane, an unknown pane or the address the pane already has leave the workspace as
+   * it is.
+   */
+  | { type: "pane/set-url"; itemId: Id; paneId: Id; url: string }
   /** Closes the pane and the layout collapses. Closing the only pane closes the item. */
   | { type: "pane/close"; itemId: Id; paneId: Id }
   /** Moves the pane, session included, to a new item right after the item it came from. */

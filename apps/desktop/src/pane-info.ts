@@ -83,6 +83,18 @@ export interface CommandInfo {
   duration?: string;
 }
 
+/**
+ * The pane that speaks for a tab: the one with the keyboard, or the first terminal pane when that one
+ * is a browser pane, which has no folder, branch, command or program to name the tab after.
+ */
+export function speakingPane(item: Item): Pane | undefined {
+  const panes = layoutPanes(item.layout);
+  const focused = panes.find((pane) => pane.id === item.focusedPaneId) ?? panes[0];
+  return focused?.type === "browser"
+    ? (panes.find((pane) => pane.type === "terminal") ?? focused)
+    : focused;
+}
+
 /** The command a pane shows; `undefined` when it never ran one that the shell reported. */
 export function commandInfo(pane: Pane | undefined): CommandInfo | undefined {
   if (pane === undefined) return undefined;
@@ -166,8 +178,7 @@ export function summarizeItem(
   linkOf?: (pane: Pane) => SessionLink | undefined,
 ): ItemSummary {
   const panes = layoutPanes(item.layout);
-  const focused: Pane | undefined =
-    panes.find((pane) => pane.id === item.focusedPaneId) ?? panes[0];
+  const focused = speakingPane(item);
   const cwd = focused?.cwd ?? defaultCwd;
   const failed = panes.find((pane) => pane.status === "exited" && pane.exitCode !== 0);
   const command = commandInfo(focused);

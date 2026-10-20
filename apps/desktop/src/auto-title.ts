@@ -1,6 +1,5 @@
-import { layoutPanes } from "@noren/model";
 import type { Action, Item, Pane } from "@noren/model";
-import { shortCwd } from "./pane-info";
+import { shortCwd, speakingPane } from "./pane-info";
 
 /** Longest name of a command used as a tab title. */
 const MAX_COMMAND_NAME = 32;
@@ -53,12 +52,6 @@ export function paneAutoTitle(pane: Pane | undefined, home?: string): string | u
   return commandName(pane.runningCommand?.text) ?? folderTitle(pane.cwd, home);
 }
 
-/** The pane a tab is named after: the one with the keyboard. */
-function titlePane(item: Item): Pane | undefined {
-  const panes = layoutPanes(item.layout);
-  return panes.find((pane) => pane.id === item.focusedPaneId) ?? panes[0];
-}
-
 /**
  * The action that gives a tab the title its focused pane asks for, or `undefined` when the tab
  * already has it. A tab whose title the user chose (locked) is never touched. When the pane asks
@@ -66,7 +59,7 @@ function titlePane(item: Item): Pane | undefined {
  */
 export function autoTitleAction(item: Item, home?: string): Action | undefined {
   if (item.titleLocked) return undefined;
-  const wanted = paneAutoTitle(titlePane(item), home);
+  const wanted = paneAutoTitle(speakingPane(item), home);
   if (wanted === item.title) return undefined;
   return { type: "item/rename", itemId: item.id, title: wanted ?? "", source: "process" };
 }

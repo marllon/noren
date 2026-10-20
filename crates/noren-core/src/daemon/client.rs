@@ -15,12 +15,12 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tokio::io::{ReadHalf, WriteHalf};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use super::frame::{FrameError, read_frame, write_frame};
-use super::ipc::{ClientStream, Endpoint, connect};
+use super::ipc::{Endpoint, connect};
 use super::lock;
 use super::protocol::{
     ClientMessage, ErrorBody, MAX_WRITE_BYTES, PROTOCOL_VERSION, ProtocolError, Request, Response,
@@ -29,7 +29,11 @@ use super::protocol::{
 use crate::pty::{ExitInfo, SessionId, SpawnSpec};
 
 /// How long the daemon has to answer the `Hello`.
-const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The write side of a connection, whatever carries it (a pipe, a socket, the pipes of an `ssh`
+/// process).
+type BoxedWriter = Box<dyn AsyncWrite + Send + Unpin>;
 
 /// Why a call to the daemon failed.
 #[derive(Debug)]
@@ -130,7 +134,7 @@ impl ClientEvents {
 }
 
 struct Shared {
-    writer: AsyncMutex<WriteHalf<ClientStream>>,
+    writer: AsyncMutex<BoxedWriter>,
     pending: Mutex<HashMap<u32, oneshot::Sender<Response>>>,
     next_id: AtomicU32,
     /// Set once the reading side has ended; no answer will come after that.
@@ -163,6 +167,32 @@ impl DaemonClient {
     /// says which versions are involved.
     pub async fn connect(endpoint: &Endpoint) -> Result<(Self, ClientEvents), ClientError> {
         let stream = connect(endpoint).await.map_err(ClientError::Connect)?;
+        Self::connect_stream(stream).await
+    }
+
+    /// The same client over a stream the caller already has: the handshake is the one of
+    /// [`DaemonClient::connect`], and everything after it too. This is how a daemon is reached
+    /// when it is not on a local endpoint, for instance through the pipes of an `ssh` process
+    /// (see [`SshTarget`](super::SshTarget)) or an in-memory stream in a test. The stream must be
+    /// the whole conversation: the first byte it carries is the `Hello` frame, and nothing else
+    /// may be written to or read from it by anyone else. Dropping the client drops the stream.
+    pub async fn connect_stream<S>(stream: S) -> Result<(Self, ClientEvents), ClientError>
+    where
+        S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+    {
+        Self::connect_stream_within(stream, HANDSHAKE_TIMEOUT).await
+    }
+
+    /// [`DaemonClient::connect_stream`] with its own time for the daemon to answer the `Hello`
+    /// (a stream that first has to be opened, like a login on another machine, needs more than
+    /// the 10 seconds a local pipe is given).
+    pub async fn connect_stream_within<S>(
+        stream: S,
+        handshake_timeout: Duration,
+    ) -> Result<(Self, ClientEvents), ClientError>
+    where
+        S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+    {
         let (mut reader, mut writer) = tokio::io::split(stream);
 
         let hello = ClientMessage::Hello {
@@ -170,7 +200,7 @@ impl DaemonClient {
         }
         .to_frame()
         .map_err(ClientError::Protocol)?;
-        let answer = tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
+        let answer = tokio::time::timeout(handshake_timeout, async {
             write_frame(&mut writer, &hello)
                 .await
                 .map_err(ClientError::Io)?;
@@ -199,7 +229,7 @@ impl DaemonClient {
         }
 
         let shared = Arc::new(Shared {
-            writer: AsyncMutex::new(writer),
+            writer: AsyncMutex::new(Box::new(writer)),
             pending: Mutex::new(HashMap::new()),
             next_id: AtomicU32::new(1),
             closed: AtomicBool::new(false),
@@ -346,11 +376,13 @@ impl Response {
 
 /// Reads the connection until it ends: answers go to their callers, output and exit events go
 /// to the event queue.
-async fn read_loop(
-    mut reader: ReadHalf<ClientStream>,
+async fn read_loop<R>(
+    mut reader: R,
     shared: Arc<Shared>,
     events: mpsc::UnboundedSender<ClientEvent>,
-) {
+) where
+    R: AsyncRead + Unpin,
+{
     loop {
         let Ok(payload) = read_frame(&mut reader).await else {
             break;

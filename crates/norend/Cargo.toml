@@ -13,10 +13,15 @@ noren-core = { path = "../noren-core" }
 # without a new crate. Only `rt` (a current-thread runtime for the wait) and `signal` are turned
 # on here; the daemon in `noren-core` already runs its own runtime. 1.53.3, MIT (already in the
 # tree; `signal` uses signal-hook-registry, MIT OR Apache-2.0, already in the tree through Tauri).
-# `time` is for the pause between two looks at the endpoint in `norend --stop`.
-tokio = { version = "1.53.3", features = ["rt", "signal", "time"] }
+# `time` is for the pause between two looks at the endpoint in `norend --stop` and while `--bridge`
+# waits for a daemon it started. `io-std` (the standard input and output as async streams) and
+# `io-util` (the copy loop) are for `norend --bridge`, which relays one connection of the daemon
+# over standard input and output; they add no crate.
+tokio = { version = "1.53.3", features = ["rt", "signal", "time", "io-std", "io-util", "macros"] }
 
 [dev-dependencies]
 # The tests are clients of the daemon process they start, so they need the runtime the client
 # library runs on; `time` for the timeouts, `macros` for `#[tokio::test]`.
-tokio = { version = "1.53.3", features = ["rt", "time", "macros"] }
+# `process` and `io-util` are for the tests of `--bridge`, which run it with its standard streams
+# piped and speak the protocol over them.
+tokio = { version = "1.53.3", features = ["rt", "time", "macros", "process", "io-util"] }

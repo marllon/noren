@@ -13,7 +13,11 @@
 //! - [`frame`]: reads and writes its frames on an async stream.
 //! - [`ipc`]: where the daemon listens and how a client connects.
 //! - [`Daemon`] and [`ServerConfig`]: the server.
-//! - [`DaemonClient`]: the client.
+//! - [`DaemonClient`]: the client, over the local endpoint or over any async stream.
+//! - [`SshTarget`]: a daemon on another machine, reached through the `ssh` of the system running
+//!   `norend --bridge`.
+//! - [`ReconnectingClient`]: a client whose connection may break and come back, with the sessions
+//!   attached again by their ids.
 //!
 //! ## Limits
 //!
@@ -40,20 +44,32 @@ mod client;
 pub mod frame;
 pub mod ipc;
 pub mod protocol;
+mod reconnect;
 mod ring;
 mod server;
+mod ssh;
 
-pub use client::{Attached, ClientError, ClientEvent, ClientEvents, Created, DaemonClient};
+pub use client::{
+    Attached, ClientError, ClientEvent, ClientEvents, Created, DaemonClient, HANDSHAKE_TIMEOUT,
+};
 pub use frame::{FrameError, read_frame, write_frame};
 pub use ipc::Endpoint;
 pub use protocol::{
     ClientMessage, ErrorBody, ErrorCode, PROTOCOL_VERSION, ProtocolError, Request, Response,
     ServerMessage, SessionInfo,
 };
+pub use reconnect::{
+    BackoffPolicy, ConnectFailure, Connector, Established, LinkEvent, LinkEvents, LinkState,
+    ReconnectingClient, Transport,
+};
 pub use ring::ByteRing;
 pub use server::{
     DEFAULT_BUFFER_BYTES, DEFAULT_CLIENT_QUEUE_FRAMES, DEFAULT_HANDSHAKE_TIMEOUT,
     DEFAULT_MAX_SESSIONS, Daemon, ServerConfig, ShutdownRequested,
+};
+pub use ssh::{
+    DEFAULT_CONNECT_TIMEOUT, DEFAULT_REMOTE_PROGRAM, DEFAULT_SSH_HANDSHAKE_TIMEOUT, SshError,
+    SshFailure, SshLink, SshTarget, default_ssh_program,
 };
 
 /// Locks a mutex, taking the data back from a thread that panicked while holding it.

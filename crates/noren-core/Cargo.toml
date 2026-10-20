@@ -47,9 +47,12 @@ serde_json = "1"
 # local IPC (named pipes on Windows, Unix domain sockets elsewhere, which std cannot create),
 # `io-util` for the async reads and writes of the length-prefixed frames, and `sync` for the
 # queues between the connection tasks. No multi-thread runtime: the daemon runs a current-thread
-# one and hands the blocking PTY calls to the blocking pool. 1.53.3, MIT (already in the tree
-# through Tauri).
-tokio = { version = "1.53.3", features = ["rt", "time", "macros", "net", "io-util", "sync"] }
+# one and hands the blocking PTY calls to the blocking pool. `process` is for the `ssh` of the
+# remote daemon (`daemon::ssh`): its standard streams are the connection, read and written
+# asynchronously, and it is ended when the handle is dropped; std's `Child` has neither. It adds
+# no crate (mio, libc and signal-hook-registry on Unix, windows-sys on Windows are already in the
+# tree). 1.53.3, MIT (already in the tree through Tauri).
+tokio = { version = "1.53.3", features = ["rt", "time", "macros", "net", "io-util", "sync", "process"] }
 # `CancellationToken`: stops a request from another thread and wakes the stream that is waiting
 # for the next chunk. 0.7.20, MIT (already in the tree through Tauri).
 tokio-util = { version = "0.7.20", default-features = false }

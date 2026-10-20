@@ -6,6 +6,7 @@ use noren_core::daemon::protocol::MAX_BUFFER_BYTES;
 pub const USAGE: &str = "\
 Usage: norend [--endpoint <name>] [--buffer-bytes <n>]
        norend --stop [--endpoint <name>]
+       norend --bridge [--endpoint <name>]
 
 Keeps terminal sessions alive in this process while windows come and go. It listens on a local
 endpoint that only the current user can open (a named pipe on Windows, a Unix socket elsewhere).
@@ -20,11 +21,17 @@ Options:
                        sessions and exits) and wait until it is gone: the endpoint free and its
                        process ended. Nothing running there is not an error. This is what an
                        installer calls before it replaces the program.
+  --bridge             Do not run a daemon: connect to the one on the endpoint of this user
+                       (starting a detached one when none answers) and pass one connection
+                       between it and standard input and output, byte for byte, until either side
+                       closes; the daemon and its sessions stay. Standard output carries only the
+                       protocol. This is what a client on another machine runs through ssh.
   -h, --help           Print this text and exit
   -V, --version        Print the version of norend and of the protocol and exit
 
-Exit codes: 0 stopped cleanly (or, with --stop, stopped or nothing to stop), 1 could not run (or
-could not stop it), 2 wrong command line, 3 another norend already listens on that endpoint.
+Exit codes: 0 stopped cleanly (or, with --stop, stopped or nothing to stop; with --bridge, one
+side closed), 1 could not run (or could not stop it, or reach a daemon), 2 wrong command line,
+3 another norend already listens on that endpoint.
 ";
 
 /// What the command line asks for.
@@ -33,12 +40,19 @@ pub enum Command {
     Run(RunOptions),
     /// `--stop`: stop the daemon on this endpoint instead of running one.
     Stop(StopOptions),
+    /// `--bridge`: relay one connection to the daemon over standard input and output.
+    Bridge(BridgeOptions),
     Help,
     Version,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StopOptions {
+    pub endpoint: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BridgeOptions {
     pub endpoint: String,
 }
 
@@ -65,6 +79,7 @@ where
         buffer_bytes: None,
     };
     let mut stop = false;
+    let mut bridge = false;
     while let Some(arg) = args.next() {
         let (name, inline) = match arg.split_once('=') {
             Some((name, value)) if name.starts_with("--") => {
@@ -96,8 +111,25 @@ where
                 }
                 stop = true;
             }
+            "--bridge" => {
+                if inline.is_some() {
+                    return Err("--bridge takes no value".to_owned());
+                }
+                bridge = true;
+            }
             other => return Err(format!("unknown argument {other:?}")),
         }
+    }
+    if stop && bridge {
+        return Err("--stop does not go with --bridge".to_owned());
+    }
+    if bridge {
+        if options.buffer_bytes.is_some() {
+            return Err("--buffer-bytes does not go with --bridge".to_owned());
+        }
+        return Ok(Command::Bridge(BridgeOptions {
+            endpoint: options.endpoint,
+        }));
     }
     if !stop {
         return Ok(Command::Run(options));
@@ -192,6 +224,44 @@ mod tests {
         assert!(error.contains("does not go with --stop"), "{error}");
         let error = parse(["--stop=yes"]).expect_err("a value");
         assert!(error.contains("takes no value"), "{error}");
+    }
+
+    #[test]
+    fn bridge_relays_to_the_daemon_of_the_endpoint_instead_of_running_one() {
+        assert_eq!(
+            parse(["--bridge"]),
+            Ok(Command::Bridge(BridgeOptions {
+                endpoint: "default".into()
+            }))
+        );
+        for args in [
+            vec!["--bridge", "--endpoint", "work"],
+            vec!["--endpoint=work", "--bridge"],
+        ] {
+            assert_eq!(
+                parse(args.clone()),
+                Ok(Command::Bridge(BridgeOptions {
+                    endpoint: "work".into()
+                })),
+                "{args:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn bridge_does_not_go_with_the_other_modes() {
+        for (args, needle) in [
+            (vec!["--bridge", "--stop"], "does not go with --bridge"),
+            (vec!["--stop", "--bridge"], "does not go with --bridge"),
+            (
+                vec!["--bridge", "--buffer-bytes", "4096"],
+                "does not go with --bridge",
+            ),
+            (vec!["--bridge=yes"], "takes no value"),
+        ] {
+            let error = parse(args.clone()).expect_err(&format!("{args:?}"));
+            assert!(error.contains(needle), "{args:?}: {error}");
+        }
     }
 
     #[test]

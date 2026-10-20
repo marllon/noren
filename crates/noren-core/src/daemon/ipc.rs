@@ -77,7 +77,7 @@ impl fmt::Display for Endpoint {
     }
 }
 
-fn check_name(name: &str) -> io::Result<()> {
+pub(super) fn check_name(name: &str) -> io::Result<()> {
     let valid = !name.is_empty()
         && name.len() <= MAX_ENDPOINT_NAME_CHARS
         && !name.starts_with('.')

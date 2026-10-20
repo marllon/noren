@@ -15,6 +15,7 @@
     "format:check": "prettier --check .",
     "rust:check": "node scripts/game-run.mjs cargo fmt --all --check && node scripts/game-run.mjs cargo clippy --workspace --all-targets -- -D warnings && node scripts/game-run.mjs cargo test --workspace",
     "smoke": "node scripts/smoke.mjs",
+    "test:ssh": "node scripts/test-ssh.mjs",
     "desktop:build": "node scripts/desktop-build.mjs",
     "workflows:check": "node scripts/check-workflows.mjs",
     "licenses:check": "node scripts/check-licenses.mjs && node scripts/game-run.mjs cargo deny check licenses",

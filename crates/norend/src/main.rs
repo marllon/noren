@@ -2,6 +2,7 @@
 //! (`noren_core::daemon`) on the endpoint of the current user and runs until it is told to stop.
 //! See `docs/DAEMON.md`.
 
+mod bridge;
 mod cli;
 mod stop;
 
@@ -37,6 +38,7 @@ fn main() -> ExitCode {
         }
         Ok(Command::Run(options)) => ExitCode::from(run(&options)),
         Ok(Command::Stop(options)) => ExitCode::from(stop_daemon(&options)),
+        Ok(Command::Bridge(options)) => ExitCode::from(bridge::run(&options)),
         Err(message) => {
             eprintln!("norend: {message}\nTry 'norend --help'.");
             ExitCode::from(EXIT_USAGE)

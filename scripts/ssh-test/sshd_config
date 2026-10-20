@@ -1,0 +1,22 @@
+# The OpenSSH server of the fixture of `pnpm test:ssh` (see Dockerfile). Keys only, one user, no
+# forwarding of any kind. Logs go to the standard error of the container (`sshd -e`).
+Port 22
+HostKey /etc/ssh/ssh_host_ed25519_key
+AllowUsers noren
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+UsePAM no
+StrictModes yes
+AllowTcpForwarding no
+AllowAgentForwarding no
+X11Forwarding no
+PermitTunnel no
+PrintMotd no
+PrintLastLog no
+# A client that vanished without a goodbye is noticed after about 15 seconds.
+ClientAliveInterval 5
+ClientAliveCountMax 3
+LogLevel INFO

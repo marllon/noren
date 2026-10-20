@@ -78,6 +78,31 @@ Tips:
 - Never run a dev server as part of an automated step; tests that need a server start and stop it
   themselves.
 
+## Testing the SSH transport (Docker)
+
+```sh
+pnpm test:ssh
+```
+
+`pnpm verify` needs neither Docker nor `ssh`: the test that talks to a real OpenSSH server
+(`crates/noren-core/tests/ssh_docker.rs`) is `#[ignore]`. `pnpm test:ssh` (`scripts/test-ssh.mjs`)
+runs it. Docker must be running; the `ssh` it uses is the one of the system (on Windows the OpenSSH of
+`System32`), run without a window. The script builds an image from `scripts/ssh-test/Dockerfile` (a
+Debian machine with sshd and a `norend` compiled for Linux from this workspace; the first build
+downloads the base images, the Debian package of sshd and the Rust crates, so it needs the network,
+and takes a minute or two on a fast machine), makes throwaway keys and known hosts files in a
+temporary folder (nothing is written to `~/.ssh`), starts the container with its ssh port published
+on `127.0.0.1` only, runs the ignored test (a session is created, written to, read, the `ssh` process
+is killed, the client reconnects and the same session, same id and same pid, answers; refused keys,
+changed host keys and a missing `norend` are told apart) and then removes the container and its
+volumes, every image of the run, the base images it had to pull (only those that were not on the
+machine before) and the folder. It ends by checking that `docker ps -a` and `docker images` show
+nothing of the run; exit code 0 means the test passed and nothing was left. `--keep-base-images` keeps
+the pulled base images (for repeated runs while developing); `--sweep` removes what a run that was
+killed hard left behind (every object carries the label `noren-ssh-test`). `node --test
+scripts/test-ssh-lib.test.mjs` tests the pure part of the script. See
+[DAEMON.md](DAEMON.md#the-remote-bridge-ssh).
+
 ## Building installers (Windows)
 
 ```sh

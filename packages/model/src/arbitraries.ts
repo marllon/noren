@@ -1,4 +1,5 @@
 import * as fc from "fast-check";
+import { createBrowserPane } from "./factories";
 import {
   DEFAULT_MAX_PANES,
   type ArchivedItem,
@@ -407,6 +408,42 @@ class Builder {
 export interface WorkspaceArbitraryOptions {
   /** Most panes per item. Defaults to 4; must be at least 1. */
   maxPanes?: number;
+  /** Make every third pane a browser pane (no session, an address). Off by default. */
+  browserPanes?: boolean;
+}
+
+const BROWSER_URLS = [
+  "https://example.com/",
+  "http://localhost:3000/docs?q=1",
+  "http://127.0.0.1:8080/",
+];
+
+/**
+ * The workspace with every third pane (counting spaces, then closed, then archived items, in
+ * order) made a browser pane under the same id. It draws nothing at random, so the workspaces an
+ * arbitrary generates are the same ones with and without it, apart from these panes.
+ */
+function withBrowserPanes(ws: Workspace): Workspace {
+  let count = 0;
+  const layout = (node: LayoutNode): LayoutNode => {
+    if (node.kind === "split") return { ...node, children: node.children.map(layout) };
+    const index = count++;
+    if (index % 3 !== 1) return node;
+    return {
+      kind: "pane",
+      pane: createBrowserPane(node.pane.id, BROWSER_URLS[index % BROWSER_URLS.length] ?? ""),
+    };
+  };
+  const item = (it: Item): Item => ({ ...it, layout: layout(it.layout) });
+  return {
+    ...ws,
+    spaces: ws.spaces.map((space) => ({
+      ...space,
+      items: Object.fromEntries(Object.entries(space.items).map(([id, it]) => [id, item(it)])),
+    })),
+    closed: ws.closed.map((entry) => ({ ...entry, item: item(entry.item) })),
+    archive: ws.archive.map((entry) => ({ ...entry, item: item(entry.item) })),
+  };
 }
 
 /**
@@ -416,5 +453,8 @@ export interface WorkspaceArbitraryOptions {
  */
 export function arbWorkspace(options: WorkspaceArbitraryOptions = {}): fc.Arbitrary<Workspace> {
   const maxPanes = Math.max(1, options.maxPanes ?? DEFAULT_MAX_PANES);
-  return arbWorkspaceShape(maxPanes).map((shape) => new Builder().workspace(shape));
+  return arbWorkspaceShape(maxPanes).map((shape) => {
+    const ws = new Builder().workspace(shape);
+    return options.browserPanes === true ? withBrowserPanes(ws) : ws;
+  });
 }

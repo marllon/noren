@@ -13,8 +13,10 @@ import type {
   AiProviderInfo,
   Backend,
   BackgroundImageFile,
+  BrowserBounds,
   CreateSessionOptions,
   GitInfo,
+  Id,
   ModFile,
   OllamaModels,
   SessionExit,
@@ -528,6 +530,22 @@ export class TauriBackend implements Backend {
 
   async openExternal(url: string): Promise<void> {
     await this.#bridge.invoke("link_open", { url });
+  }
+
+  async openBrowserPane(paneId: Id, url: string, bounds: BrowserBounds): Promise<void> {
+    await this.#bridge.invoke("browser_open", { paneId, url, bounds });
+  }
+
+  async navigateBrowserPane(paneId: Id, url: string): Promise<void> {
+    await this.#bridge.invoke("browser_navigate", { paneId, url });
+  }
+
+  async setBrowserPaneBounds(paneId: Id, bounds: BrowserBounds): Promise<void> {
+    await this.#bridge.invoke("browser_set_bounds", { paneId, bounds });
+  }
+
+  async closeBrowserPane(paneId: Id): Promise<void> {
+    await this.#bridge.invoke("browser_close", { paneId });
   }
 
   /** Stops listening to `session-exit` and `config-changed`. Sessions still running will keep their ids until killed. */

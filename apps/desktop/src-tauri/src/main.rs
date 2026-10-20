@@ -3,6 +3,7 @@
 
 mod ai;
 mod bridge;
+mod browser_pane;
 #[cfg(test)]
 mod capabilities;
 mod daemon_link;
@@ -24,6 +25,7 @@ mod remote_fake;
 mod route;
 mod shortcut;
 mod smoke;
+mod smoke_browser;
 mod smoke_persist;
 mod tray;
 mod window_effect;
@@ -199,6 +201,10 @@ fn main() {
             bridge::background_image_read,
             bridge::fonts_list_monospace,
             link::link_open,
+            browser_pane::browser_open,
+            browser_pane::browser_navigate,
+            browser_pane::browser_set_bounds,
+            browser_pane::browser_close,
             notify::notify_show,
             notify::window_is_focused,
             deeplink::deep_link_take_waiting,

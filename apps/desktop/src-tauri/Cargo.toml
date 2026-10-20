@@ -21,7 +21,10 @@ tokio = { version = "1.53.3", features = ["rt-multi-thread", "sync", "macros", "
 # lets closing the window leave the app (and the shells in `norend`) running. Its own crate,
 # `tray-icon` 0.25.1 (MIT OR Apache-2.0), was already in the lockfile; on Linux it loads the
 # appindicator library at run time (a system without it gets no icon, see `tray::install`).
-tauri = { version = "2", features = ["tray-icon"] }
+# `unstable`: `Window::add_child`, which puts the web view of a browser pane (`browser_pane.rs`) inside
+# the main window next to the page of the app. A feature of Tauri itself (it enables the same
+# feature of `tauri-runtime-wry`), no new crate; the lockfile does not change.
+tauri = { version = "2", features = ["tray-icon", "unstable"] }
 # Derive macros for the command DTOs (profile list, session-exit payload, write payload).
 # Already in the dependency tree through Tauri; MIT OR Apache-2.0.
 serde = { version = "1", features = ["derive"] }

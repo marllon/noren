@@ -251,6 +251,36 @@ describe("TauriBackend", () => {
     await expect(backend.retrySession(9)).rejects.toThrow("session_retry failed");
   });
 
+  it("sends the four calls of a browser pane as commands, and lets a refusal reach the caller", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    const bounds = { x: 10, y: 20, width: 400, height: 300 };
+    await expect(
+      backend.openBrowserPane("p1", "https://example.com/", bounds),
+    ).resolves.toBeUndefined();
+    await expect(
+      backend.navigateBrowserPane("p1", "http://localhost:3000/"),
+    ).resolves.toBeUndefined();
+    await expect(
+      backend.setBrowserPaneBounds("p1", { ...bounds, width: 500 }),
+    ).resolves.toBeUndefined();
+    await expect(backend.closeBrowserPane("p1")).resolves.toBeUndefined();
+    expect(fake.callsTo("browser_open").map((c) => c.args)).toEqual([
+      { paneId: "p1", url: "https://example.com/", bounds },
+    ]);
+    expect(fake.callsTo("browser_navigate").map((c) => c.args)).toEqual([
+      { paneId: "p1", url: "http://localhost:3000/" },
+    ]);
+    expect(fake.callsTo("browser_set_bounds").map((c) => c.args)).toEqual([
+      { paneId: "p1", bounds: { ...bounds, width: 500 } },
+    ]);
+    expect(fake.callsTo("browser_close").map((c) => c.args)).toEqual([{ paneId: "p1" }]);
+    fake.failing.add("browser_open");
+    await expect(backend.openBrowserPane("p2", "file:///x", bounds)).rejects.toThrow(
+      "browser_open failed",
+    );
+  });
+
   it("includes the signal when there is one", async () => {
     const fake = fakeBridge({ session_create: 5 });
     const backend = new TauriBackend(fake.bridge);

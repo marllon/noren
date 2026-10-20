@@ -158,6 +158,48 @@ fn no_capability_uses_a_default_set_a_wildcard_or_a_remote_origin() {
     assert_eq!(files, ["default.json", "quick.json"]);
 }
 
+#[test]
+fn the_web_view_of_a_browser_pane_is_granted_nothing() {
+    // A web view of a pane is a child of `main`, so a capability for the window `main` reaches it by
+    // the window. What keeps its page out is the origin: a page that is not the app's is a remote
+    // origin, and only a capability with a `remote` entry can grant that. None has one (the test
+    // above), the web view has no name in any file, and the commands that make one are the only
+    // ones of the pane (a page cannot open another).
+    for text in [MAIN_CAPABILITY, QUICK_CAPABILITY] {
+        let capability = capability(text);
+        for window in capability["windows"].as_array().expect("windows") {
+            let window = window.as_str().expect("a window label");
+            assert!(
+                !crate::browser_pane::is_pane_label(window),
+                "{window} names a web view of a browser pane"
+            );
+            assert!(!window.contains('*'), "{window}");
+        }
+        assert!(capability.get("webviews").is_none());
+        assert!(capability.get("remote").is_none());
+    }
+    let quick = permissions_of(&capability(QUICK_CAPABILITY));
+    for command in [
+        "browser_open",
+        "browser_navigate",
+        "browser_set_bounds",
+        "browser_close",
+    ] {
+        assert!(
+            !quick.contains(&permission(command)),
+            "the quick window may call {command}"
+        );
+    }
+    let tauri_conf: Value = serde_json::from_str(TAURI_CONF).expect("tauri.conf.json");
+    let windows = tauri_conf["app"]["windows"].as_array().expect("windows");
+    assert_eq!(
+        windows.len(),
+        1,
+        "the web views of panes are made at run time, not declared"
+    );
+    assert_eq!(windows[0]["label"], "main");
+}
+
 fn csp() -> serde_json::Map<String, Value> {
     let conf: Value = serde_json::from_str(TAURI_CONF).expect("tauri.conf.json");
     conf["app"]["security"]["csp"]

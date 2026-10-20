@@ -1,3 +1,4 @@
+import { browserUrlProblem } from "./browser";
 import {
   DEFAULT_MAX_PANES,
   MAX_CLOSED,
@@ -6,6 +7,7 @@ import {
   type Item,
   type LayoutNode,
   type Node,
+  type Pane,
   type Workspace,
 } from "./types";
 
@@ -17,6 +19,9 @@ export type ViolationCode =
   | "duplicate-id"
   | "pane-in-multiple-items"
   | "session-shared"
+  | "browser-url-invalid"
+  | "browser-has-session"
+  | "terminal-has-url"
   | "active-space-missing"
   | "active-item-missing"
   | "item-key-mismatch"
@@ -90,10 +95,28 @@ function run(ws: Workspace, maxPanes: number, out: Violation[]): void {
   };
   const sessions = new Map<Id, string>();
 
+  // A browser pane shows an http or https page and has no shell; a terminal pane has no page.
+  const checkPaneKind = (pane: Pane, path: string): void => {
+    if (pane.type !== "browser") {
+      if (pane.url !== undefined) {
+        add("terminal-has-url", path, `terminal pane ${pane.id} has an address`);
+      }
+      return;
+    }
+    const problem = pane.url === undefined ? "it has none" : browserUrlProblem(pane.url);
+    if (problem !== undefined) {
+      add("browser-url-invalid", path, `browser pane ${pane.id} has no usable address: ${problem}`);
+    }
+    if (pane.sessionId !== undefined) {
+      add("browser-has-session", path, `browser pane ${pane.id} holds session ${pane.sessionId}`);
+    }
+  };
+
   const checkLayout = (layout: LayoutNode, path: string, owner: string, panes: Id[]): void => {
     if (layout.kind === "pane") {
       register("pane", layout.pane.id, `${path}.pane`, owner);
       panes.push(layout.pane.id);
+      checkPaneKind(layout.pane, `${path}.pane`);
       const sessionId = layout.pane.sessionId;
       if (sessionId !== undefined) {
         const holder = sessions.get(sessionId);

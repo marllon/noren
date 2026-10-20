@@ -35,12 +35,19 @@ import type { BackgroundImageFile } from "./background";
 import { ManualClock } from "./clock";
 import type { Clock } from "./clock";
 import { sameFolder } from "./deep-link";
+import {
+  browserBoundsProblem,
+  browserUrlProblem,
+  isBrowserPaneId,
+  type BrowserBounds,
+} from "./browser";
 import { externalLinkProblem } from "./external-link";
 import { MAX_MOD_BYTES, MAX_MODS, isValidModFileName } from "./mods";
 import { OutputStream } from "./output-stream";
 import { MAX_SCROLLBACK_BYTES, isScrollbackPaneId } from "./scrollback";
 import { fontNameList } from "./terminal-options";
 import { THEME_ID_PATTERN } from "./theme";
+import type { Id } from "./types";
 import { isSshProfile, profilesProblem } from "./user-profile-schema";
 import type { SshUserProfile, UserProfile } from "./user-profile-schema";
 import { decodeUtf8, encodeUtf8 } from "./utf8";
@@ -77,6 +84,12 @@ export type FakeAiMethod = `ai.${keyof AiBackend & string}`;
 export type FakeCallMethod = keyof Backend | FakeAiMethod;
 
 /** One recorded call to a `Backend` method. Callbacks are not recorded. */
+/** The web view of a browser pane in the fake: its place and its page. */
+export interface FakeBrowserPane {
+  url: string;
+  bounds: BrowserBounds;
+}
+
 export interface FakeCall {
   readonly method: FakeCallMethod;
   readonly args: readonly unknown[];
@@ -737,6 +750,11 @@ class FakeAi implements AiBackend {
  *   under the shell of a session); a session that ended, or an agent not in the catalog, is left out
  * - `notify` only records the notification (`notifications`) and `isWindowFocused` answers what
  *   `setWindowFocused` said (focused at first): no notification is ever shown
+ * - the web views of the browser panes live in memory: `openBrowserPane`, `navigateBrowserPane`,
+ *   `setBrowserPaneBounds` and `closeBrowserPane` check what the real ones check (a pane id that is
+ *   not a name, an address `browserUrlProblem` refuses, bounds `browserBoundsProblem` refuses, a
+ *   pane that has a web view already or has none) and `browserPane(paneId)` says where each one is
+ *   and what it shows; no page is ever loaded
  * - the quick terminal window is a flag: `quickToggle` flips `quickVisible` (hidden at first) and
  *   `setQuickShortcut` keeps the chord in `quickShortcut`; nothing is ever shown or registered
  * - `config.jsonc` lives in memory: `loadConfig` answers its text, `saveConfig` replaces it as the
@@ -806,6 +824,7 @@ export class FakeBackend implements Backend {
   readonly #dirtyWorktrees = new Set<string>();
   readonly #notifications: FakeNotification[] = [];
   readonly #openedLinks: string[] = [];
+  readonly #browserPanes = new Map<string, FakeBrowserPane>();
   readonly #configListeners = new Set<(text: string | null) => void>();
   readonly #userThemes = new Map<string, string>();
   readonly #mods = new Map<string, string>();
@@ -1702,6 +1721,53 @@ export class FakeBackend implements Backend {
     const problem = externalLinkProblem(url);
     if (problem !== undefined) throw new Error(problem);
     this.#openedLinks.push(url);
+  }
+
+  async openBrowserPane(paneId: Id, url: string, bounds: BrowserBounds): Promise<void> {
+    this.#record("openBrowserPane", paneId, url, { ...bounds });
+    if (!isBrowserPaneId(paneId)) throw new Error(`"${paneId}" is not a pane id`);
+    const problem = browserUrlProblem(url) ?? browserBoundsProblem(bounds);
+    if (problem !== undefined) throw new Error(problem);
+    if (this.#browserPanes.has(paneId)) throw new Error(`pane ${paneId} has a web view already`);
+    this.#browserPanes.set(paneId, { url, bounds: { ...bounds } });
+  }
+
+  async navigateBrowserPane(paneId: Id, url: string): Promise<void> {
+    this.#record("navigateBrowserPane", paneId, url);
+    const view = this.#browserView(paneId);
+    const problem = browserUrlProblem(url);
+    if (problem !== undefined) throw new Error(problem);
+    view.url = url;
+  }
+
+  async setBrowserPaneBounds(paneId: Id, bounds: BrowserBounds): Promise<void> {
+    this.#record("setBrowserPaneBounds", paneId, { ...bounds });
+    const view = this.#browserView(paneId);
+    const problem = browserBoundsProblem(bounds);
+    if (problem !== undefined) throw new Error(problem);
+    view.bounds = { ...bounds };
+  }
+
+  async closeBrowserPane(paneId: Id): Promise<void> {
+    this.#record("closeBrowserPane", paneId);
+    this.#browserPanes.delete(paneId);
+  }
+
+  /** Where the web view of the pane is and what it shows; `undefined` when it has none. */
+  browserPane(paneId: Id): FakeBrowserPane | undefined {
+    const view = this.#browserPanes.get(paneId);
+    return view && { url: view.url, bounds: { ...view.bounds } };
+  }
+
+  /** The ids of the panes that have a web view, in the order they were opened. */
+  browserPaneIds(): Id[] {
+    return [...this.#browserPanes.keys()];
+  }
+
+  #browserView(paneId: Id): FakeBrowserPane {
+    const view = this.#browserPanes.get(paneId);
+    if (view === undefined) throw new Error(`pane ${paneId} has no web view`);
+    return view;
   }
 
   /** Every address `openExternal` accepted, in order. Nothing is opened. */

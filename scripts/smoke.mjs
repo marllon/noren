@@ -3,8 +3,11 @@
 // Exits with the app's exit code. The first run must print "SMOKE OK" and "noren-smoke-ok" (printed
 // after a real shell session echoed it), "SMOKE window effect ..." (the line of the effect the
 // hidden window was given, Mica on Windows and vibrancy on macOS: the effect applied, or the opaque
-// fallback with the reason, since a system that cannot paint it still passes) and "SMOKE window
-// hidden" (the main window stayed hidden); the second must print "SMOKE DEEPLINK OK" (a
+// fallback with the reason, since a system that cannot paint it still passes), "SMOKE browser pane
+// loaded <url>" (a browser pane, a web view inside the hidden main window, loaded a page from a
+// server of the run on 127.0.0.1; the page sees no test hook, is refused every command of the app and
+// stays put when it tries to go to an address of the app, NOR-F15-01a) and "SMOKE window hidden"
+// (the main window stayed hidden); the second must print "SMOKE DEEPLINK OK" (a
 // noren://open link reached the interface and the space on screen has the folder of the link) and
 // "SMOKE window hidden"; the third must print "SMOKE QUICK OK" (the quick window was made hidden,
 // frameless and at the top of the screen; a shell opened in it was promoted to the main window as a
@@ -158,6 +161,12 @@ runSmoke(
     "SMOKE OK",
     "noren-smoke-ok",
     `SMOKE window effect ${effect}`,
+    // The browser pane (NOR-F15-01a): a web view in the hidden window loaded a page from a server
+    // of the run on 127.0.0.1, which saw nothing of the app and stayed where it was.
+    "SMOKE browser pane loaded http://127.0.0.1:",
+    "SMOKE browser pane stayed on its page",
+    "SMOKE browser pane refused file, javascript, data, noren and app addresses",
+    "SMOKE browser pane closed",
   ],
 );
 

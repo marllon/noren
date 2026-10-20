@@ -495,18 +495,21 @@ function ItemView({
       const short = cwd !== undefined ? shortCwd(cwd, home) : "";
       return short !== "" ? short : t("pane.title");
     },
-    renderPane: (pane) => (
-      <PaneTerminal
-        key={pane.id}
-        store={store}
-        space={space}
-        pane={pane}
-        active={shown && pane.id === item.focusedPaneId}
-        first={first}
-        colors={colors}
-        onReady={onReady}
-      />
-    ),
+    // A browser pane has no shell and nothing to draw yet: its web view and its address bar are
+    // NOR-F15-01b. Until then it must not start a terminal.
+    renderPane: (pane) =>
+      pane.type === "terminal" ? (
+        <PaneTerminal
+          key={pane.id}
+          store={store}
+          space={space}
+          pane={pane}
+          active={shown && pane.id === item.focusedPaneId}
+          first={first}
+          colors={colors}
+          onReady={onReady}
+        />
+      ) : null,
     onFocusPane: (paneId) => dispatch({ type: "pane/focus", itemId: item.id, paneId }),
     onZoomPane: (paneId) => dispatch({ type: "pane/zoom", itemId: item.id, paneId }),
     onClosePane: (paneId) => dispatch({ type: "pane/close", itemId: item.id, paneId }),

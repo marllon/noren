@@ -17,6 +17,23 @@ export function createPane(id: Id, profileId: string, cwd?: string): Pane {
   };
 }
 
+/**
+ * A pane that shows the web page at `url`. It has no shell: no session, the default profile (so a
+ * terminal pane split from it starts the default shell), and no folder. The address is the caller's
+ * to check (`browserUrlProblem`).
+ */
+export function createBrowserPane(id: Id, url: string): Pane {
+  return {
+    id,
+    type: "browser",
+    profileId: DEFAULT_PROFILE_ID,
+    url,
+    status: "idle",
+    unread: false,
+    bell: false,
+  };
+}
+
 /** A tab: one item with one pane, focused. */
 export function createTab(itemId: Id, pane: Pane, lastActivityAt: number): Item {
   return {

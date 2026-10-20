@@ -356,9 +356,10 @@ function checkNothingUnreadOnScreen(ws: Workspace, where: () => string): void {
 
 /**
  * Plays `STEPS` random actions per run on random workspaces. `maxPanes` goes both to the
- * generated workspaces and to the reducer; absent means the default of 4.
+ * generated workspaces and to the reducer; absent means the default of 4. `browserPanes` makes
+ * every third pane of the generated workspaces a browser pane.
  */
-function playSequences(numRuns: number, maxPanes?: number): void {
+function playSequences(numRuns: number, maxPanes?: number, browserPanes = false): void {
   const generated = new Map<ActionType, number>();
   const applied = new Map<ActionType, number>();
   let noops = 0;
@@ -367,7 +368,10 @@ function playSequences(numRuns: number, maxPanes?: number): void {
 
   fc.assert(
     fc.property(
-      arbWorkspace(maxPanes === undefined ? {} : { maxPanes }),
+      arbWorkspace({
+        ...(maxPanes === undefined ? {} : { maxPanes }),
+        ...(browserPanes ? { browserPanes } : {}),
+      }),
       fc.gen(),
       (initial, gen) => {
         const { ctx: base, clock } = testContext();
@@ -464,6 +468,14 @@ describe("reducer properties", () => {
     `property: ${STEPS} random actions keep every invariant (${NUM_RUNS} runs)`,
     () => {
       playSequences(NUM_RUNS);
+    },
+    SEQUENCE_TIMEOUT_MS,
+  );
+
+  it(
+    "property: sequences keep every invariant on workspaces with browser panes",
+    () => {
+      playSequences(SMALL_RUNS, undefined, true);
     },
     SEQUENCE_TIMEOUT_MS,
   );

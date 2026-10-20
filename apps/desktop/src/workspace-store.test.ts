@@ -3,6 +3,7 @@ import {
   ManualClock,
   PaneLocationTracker,
   STATE_SAVE_DELAY_MS,
+  createBrowserPane,
   createDefaultWorkspace,
   createSequentialIds,
   layoutPanes,
@@ -309,6 +310,38 @@ describe("workspace store", () => {
 
     store.getState().attachSession("no-such-pane", "78");
     expect(backend.callsTo("kill").map((call) => call.args[0])).toEqual([78]);
+  });
+
+  it("attachSession never gives a session to a browser pane, and ends the one offered", async () => {
+    const backend = new FakeBackend();
+    const { store } = await openStore(backend);
+    store.getState().newTab();
+    const space = store.getState().workspace.spaces[0];
+    const created = space && spaceItemIds(space)[1];
+    const item = space && created !== undefined ? space.items[created] : undefined;
+    if (!space || !item) throw new Error("no new tab");
+    // A saved state could hold a browser pane; nothing makes one in this interface yet.
+    const browser = createBrowserPane(item.focusedPaneId, "https://example.com/");
+    const workspace = store.getState().workspace;
+    store.setState({
+      workspace: {
+        ...workspace,
+        spaces: [
+          {
+            ...space,
+            items: {
+              ...space.items,
+              [item.id]: { ...item, layout: { kind: "pane", pane: browser } },
+            },
+          },
+          ...workspace.spaces.slice(1),
+        ],
+      },
+    });
+
+    store.getState().attachSession(browser.id, "79");
+    expect(liveSessionIds(store.getState().workspace).has("79")).toBe(false);
+    expect(backend.callsTo("kill").map((call) => call.args[0])).toEqual([79]);
   });
 
   it("an action the reducer rejects changes and saves nothing", async () => {

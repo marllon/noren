@@ -274,10 +274,13 @@ function locatePane(ws: Workspace, paneId: Id): { spaceId: Id; item: Item } | un
   return undefined;
 }
 
-/** Copy of the layout with the session set on the pane; the same object when the pane is absent. */
+/**
+ * Copy of the layout with the session set on the pane; the same object when the pane is absent. A
+ * browser pane has no shell, so it never takes a session (the caller ends the one that was offered).
+ */
 function withSession(layout: LayoutNode, paneId: Id, sessionId: Id): LayoutNode {
   if (layout.kind === "pane") {
-    return layout.pane.id === paneId
+    return layout.pane.id === paneId && layout.pane.type === "terminal"
       ? { kind: "pane", pane: { ...layout.pane, sessionId } }
       : layout;
   }

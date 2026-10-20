@@ -95,7 +95,9 @@ export async function restoreWorkspace(
   return { workspace, source, ...extra, failedPaneIds, reattachedPaneIds, savedCommands };
 }
 
-/** Gives a shell to every pane of the spaces' items and returns the workspace holding them. */
+/**
+ * Gives a shell to every terminal pane of the spaces' items and returns the workspace holding them.
+ */
 async function startSessions(
   ws: Workspace,
   backend: RestoreSessions,
@@ -113,6 +115,8 @@ async function startSessions(
   for (const space of ws.spaces) {
     for (const item of Object.values(space.items)) {
       for (const pane of layoutPanes(item.layout)) {
+        // A browser pane has no shell to start: the page is shown from its address.
+        if (pane.type !== "terminal") continue;
         const { pane: next, reattached } = await startPane(pane, space, backend, options);
         if (next.sessionId === undefined) failedPaneIds.push(pane.id);
         if (reattached) reattachedPaneIds.push(pane.id);

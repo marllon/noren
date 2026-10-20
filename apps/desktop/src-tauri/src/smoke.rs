@@ -27,6 +27,7 @@ use crate::daemon_link::Placement;
 use crate::deeplink::{self, Links};
 use crate::quick;
 use crate::shortcut;
+use crate::smoke_browser;
 use crate::window_effect;
 
 pub const SMOKE_FLAG: &str = "--smoke";
@@ -500,7 +501,8 @@ fn wait_for_marker(
 }
 
 /// Smoke mode: wait for the interface to emit `app-ready`, then run a real shell session of the
-/// default profile, report `SMOKE OK noren-smoke-ok` and quit with 0. Anything that does not
+/// default profile, open a browser pane on a local page (`smoke_browser.rs`), report
+/// `SMOKE OK noren-smoke-ok` and quit with 0. Anything that does not
 /// finish within `SMOKE_TIMEOUT` ends the process with an error and code 1.
 pub fn arm(app: &tauri::App) {
     let started = Instant::now();
@@ -521,6 +523,7 @@ pub fn arm(app: &tauri::App) {
                 .and_then(|()| check_window_effect(&handle))
                 .inspect(|()| check_fonts())
                 .and_then(|()| check_scrollback())
+                .and_then(|()| smoke_browser::check_browser_pane(&handle))
                 .and_then(|()| check_no_global_shortcut(&handle))
                 .and_then(|()| check_window_hidden(&handle))
                 .and_then(|()| check_daemon_stopped(&handle.state::<AppState>()));

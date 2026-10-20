@@ -8,6 +8,8 @@
 import type { AgentEntry } from "./agents";
 import type { AiBackend } from "./ai";
 import type { BackgroundImageFile } from "./background";
+import type { BrowserBounds } from "./browser";
+import type { Id } from "./types";
 import type { UserProfile } from "./user-profile-schema";
 import type { WindowEffect, WindowEffectReport, WindowScheme } from "./window-effect";
 
@@ -366,4 +368,27 @@ export interface Backend {
    * caller did, and rejects with that sentence. The page confirms with the person before calling.
    */
   openExternal(url: string): Promise<void>;
+  /**
+   * Opens the web view of the browser pane `paneId` at `bounds` (CSS pixels from the top left
+   * corner of the page of the window) showing `url`, laid over the window like a child of it. The
+   * page in it is someone else's: it can reach nothing of the app, no command and no event, and it
+   * can only go to `http://` and `https://` addresses (`browserUrlProblem`). Rejects, opening
+   * nothing, when `paneId` is not a pane id (`isBrowserPaneId`: it becomes the name of the web
+   * view), when the address or the bounds are refused (`browserUrlProblem`, `browserBoundsProblem`)
+   * or when the pane already has a web view. Resolves when the web view exists, not when the page
+   * has loaded.
+   */
+  openBrowserPane(paneId: Id, url: string, bounds: BrowserBounds): Promise<void>;
+  /**
+   * Takes the web view of the pane `paneId` to `url`. Rejects when the pane has no web view or the
+   * address is refused (`browserUrlProblem`); the web view stays where it was.
+   */
+  navigateBrowserPane(paneId: Id, url: string): Promise<void>;
+  /**
+   * Moves and resizes the web view of the pane `paneId`. Rejects when the pane has no web view or
+   * the bounds are refused (`browserBoundsProblem`).
+   */
+  setBrowserPaneBounds(paneId: Id, bounds: BrowserBounds): Promise<void>;
+  /** Closes the web view of the pane `paneId`. A pane with none is not an error. */
+  closeBrowserPane(paneId: Id): Promise<void>;
 }

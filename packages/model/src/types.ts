@@ -120,11 +120,25 @@ export interface RunningCommand {
   text?: string;
 }
 
+/** What a pane shows: a shell, or a web page. */
+export type PaneType = "terminal" | "browser";
+
 export interface Pane {
   id: Id;
-  type: "terminal";
+  type: PaneType;
+  /** The session of a terminal pane. A browser pane never has one (`browser-has-session`). */
   sessionId?: Id;
+  /**
+   * The shell profile of a terminal pane. A browser pane has no shell and holds the default
+   * profile, so a terminal pane made from it (a split) starts the default shell.
+   */
   profileId: string;
+  /**
+   * The page of a browser pane: an `http://` or `https://` address (`browserUrlProblem`). Present on
+   * every browser pane and on no terminal pane. The web view that shows it belongs to the running
+   * app and is made again from this address at the start.
+   */
+  url?: string;
   /** Folder of the shell; a shell with the Noren integration reports it at every prompt. */
   cwd?: string;
   /**

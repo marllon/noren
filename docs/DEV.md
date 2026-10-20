@@ -154,7 +154,10 @@ and the uninstaller removes it; a debug or `target/` build registers nothing (se
 `noren --smoke-deeplink <link>`, both with a hidden window; the second keeps its state in a temp
 folder, never in the real `state.json`. The first also gives the hidden window Mica (vibrancy on
 macOS) and prints what the system answered, `SMOKE window effect mica applied` or the opaque
-fallback with its reason; a system that cannot paint it still passes.
+fallback with its reason; a system that cannot paint it still passes. It then opens a browser pane
+on a page served by the run itself on `127.0.0.1` (a free port, the standard library only) and
+prints `SMOKE browser pane loaded <url>` once the web view reports the load, still with the window
+hidden (see [ARCHITECTURE.md](ARCHITECTURE.md#the-browser-pane)).
 
 Both paths were checked on disk: the WebView folder after an install, and `state.json` after a
 release build saved a state (the folder does not exist until the first save). Deleting both folders

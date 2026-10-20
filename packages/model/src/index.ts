@@ -306,7 +306,7 @@ export { ManualClock } from "./clock";
 export type { Clock } from "./clock";
 export { createDefaultWorkspace } from "./default-workspace";
 export type { DefaultWorkspaceOptions } from "./default-workspace";
-export { DEFAULT_PROFILE_ID } from "./factories";
+export { DEFAULT_PROFILE_ID, createBrowserPane } from "./factories";
 export { createSequentialIds } from "./ids";
 export type { IdGenerator } from "./ids";
 export { SIZE_SUM_TOLERANCE, checkInvariants } from "./invariants";
@@ -368,6 +368,7 @@ export type {
   Node,
   Pane,
   PaneLeaf,
+  PaneType,
   RunningCommand,
   Space,
   SpaceBackground,
@@ -376,10 +377,19 @@ export type {
   Workspace,
 } from "./types";
 export { MAX_LINK_BYTES, externalLinkProblem, isExternalLink } from "./external-link";
+export {
+  MAX_BROWSER_EXTENT,
+  browserBoundsProblem,
+  browserUrlProblem,
+  isBrowserPaneId,
+  isBrowserUrl,
+} from "./browser";
+export type { BrowserBounds } from "./browser";
 export { DEFAULT_AI_REPLY, FAKE_LINK_MAX_ATTEMPTS, FakeBackend } from "./fake-backend";
 export type {
   FakeAiMethod,
   FakeBackendOptions,
+  FakeBrowserPane,
   FakeCall,
   FakeCallMethod,
   FakeCommandRun,

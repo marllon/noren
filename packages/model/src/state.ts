@@ -234,6 +234,7 @@ function checkShape(data: Obj): Workspace {
       const window = obj(entry, at);
       str(window["id"], `${at}.id`);
       str(window["spaceId"], `${at}.spaceId`);
+      optional(window, "returnSpaceId", at, str);
     });
   }
   list(data["closed"], "closed", (v, p) => {

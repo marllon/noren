@@ -40,6 +40,7 @@ export type ActionCommand =
   | { kind: "worktree-new" }
   | { kind: "worktree-remove" }
   | { kind: "diff-open" }
+  | { kind: "window-move-tab" }
   | { kind: "quick-toggle" }
   | { kind: "ask-toggle" }
   | { kind: "close" }
@@ -278,6 +279,15 @@ export const ACTIONS: readonly ActionDef[] = [
     title: "Show git diff beside this pane",
     category: "Panes",
     command: { kind: "diff-open" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
+  },
+  {
+    // The tab on screen goes to a window of its own, the same way as dragging it out of the window; no chord, the palette is the way in.
+    id: "window.move-tab",
+    title: "Move tab to new window",
+    category: "Tabs",
+    command: { kind: "window-move-tab" },
     repeat: false,
     chords: { safe: undefined, browser: undefined },
   },

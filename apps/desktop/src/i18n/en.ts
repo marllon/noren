@@ -224,6 +224,7 @@ export const en = {
   "drag.favorite": "Add this tab to the favorites.",
   "drag.moveToSpace": "Move to space {name}.",
   "drag.noChange": "No change at this spot.",
+  "drag.toWindow": "Move to a new window.",
   "drag.inside": "Into group {name}.",
   "drag.before": "Before {name}.",
   "drag.after": "After {name}.",
@@ -316,6 +317,7 @@ export const en = {
   "action.worktree.new": "New worktree",
   "action.worktree.remove": "Remove worktree",
   "action.diff.open": "Show git diff beside this pane",
+  "action.window.move-tab": "Move tab to new window",
   "action.tab.mru-next": "Next recent tab",
   "action.tab.mru-prev": "Previous recent tab",
   "action.tab.last-unread": "Go to last unread tab",
@@ -528,6 +530,16 @@ export const en = {
   // The other windows of the app: the tabs moved to them (NOR-F15-04a)
   "window.title": "Noren window",
   "window.waiting": "No tab here yet.",
+  "window.tabs": "Tabs of this window",
+  "window.noShell": "This pane has no shell.",
+  "window.paneElsewhere": "This pane is shown in the main window.",
+  "window.preview": "Window preview",
+  "window.close": "Close window",
+  "window.notice.panes": "A tab with a browser, preview or diff pane stays in the main window.",
+  "window.notice.limit": "There are too many windows. Close one first.",
+  "window.notice.inWindow": "That tab is in another window.",
+  "window.notice.unavailable": "Other windows need the desktop app.",
+  "window.notice.failed": "Could not move the tab to a new window: {reason}",
 
   // The favorites of the sidebar
   "favorites.label": "Favorites",

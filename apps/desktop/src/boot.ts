@@ -16,6 +16,7 @@ import { realClock } from "./real-clock";
 import { migrateLegacySettings } from "./legacy-settings";
 import type { LegacyStorageArea } from "./legacy-settings";
 import { startMods } from "./mods-store";
+import { windowPreviewEnabled } from "./quick";
 import { notificationSettings } from "./notification-settings";
 import { perfMark } from "./perf-probe";
 import { getProfiles, startProfiles } from "./profiles-store";
@@ -27,6 +28,8 @@ import {
   sweepOrphanScrollback,
 } from "./scrollback-service";
 import { tauriBridge } from "./tauri-backend";
+import { windowEventsOfApp } from "./window-host";
+import { releaseWindows, startWindows } from "./window-service";
 import { followActiveSpaceMods } from "./use-mods";
 import { followActiveSpaceTheme } from "./use-theme";
 import { followActiveSpaceBackground } from "./use-window";
@@ -148,6 +151,23 @@ export async function bootWorkspace(
     startAutoArchive({ store, clock: archiveClock(target) });
     // The agents under the shells of the tabs, from the process tree, on an interval.
     startAgentScanner({ store, backend: target });
+    // The windows besides the main one: their pages get the space they show, a window the person
+    // closes gives its tabs back, and the windows the saved state remembers are brought up again
+    // (the shells were restored with the rest). Where the page cannot show other windows (a plain
+    // browser), there is nothing to start.
+    const windowEvents = windowEventsOfApp();
+    if (windowEvents !== undefined) {
+      if (windowPreviewEnabled && target instanceof FakeBackend) {
+        const { windowPreviewHost } = await import("./window-preview-host");
+        target.setWindowHost(windowPreviewHost);
+      }
+      startWindows(store, target, windowEvents);
+    } else {
+      // A state saved where windows could be shown, opened where they cannot: the tabs of those
+      // windows come back to the main window (their shells were restored in this page), so none is
+      // left in a space nobody shows.
+      releaseWindows(store);
+    }
     // The silence that turns a working agent idle is measured on the clock of the fake shell in
     // web mode (a test moves it), and on real time in the app.
     setAgentStateClock(target instanceof FakeBackend ? target.clock : realClock);

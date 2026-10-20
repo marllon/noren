@@ -26,6 +26,7 @@ import {
   dropAction,
   canDropOnPane,
   dropSlots,
+  leavesWindow,
   outsideAction,
   outsideId,
   outsideOf,
@@ -60,6 +61,8 @@ interface DragState {
   pane: PaneDrop | null;
   /** The pane that a dragged pane would swap with, when it is under the pointer. */
   swap: Id | null;
+  /** The pointer is beyond the edge of the window with a tab: dropping it there takes it to a window of its own. */
+  window: boolean;
   /** Whether a drag is under way (the empty-state drop zones only show then). */
   dragging: boolean;
 }
@@ -69,6 +72,7 @@ const DragStateContext = createContext<DragState>({
   outside: null,
   pane: null,
   swap: null,
+  window: false,
   dragging: false,
 });
 
@@ -161,9 +165,31 @@ interface Place {
   outside: OutsideDrop | null;
   pane: PaneDrop | null;
   swap: Id | null;
+  window: boolean;
 }
 
-const NOWHERE: Place = { target: null, outside: null, pane: null, swap: null };
+const NOWHERE: Place = { target: null, outside: null, pane: null, swap: null, window: false };
+
+/**
+ * Where the pointer is at the end of a drag started with the mouse, in the client coordinates of
+ * the page: where it was pressed plus how far it travelled. `undefined` for a drag the keyboard
+ * drives, which never leaves the window.
+ */
+function pointerAt(event: DragMoveEvent | DragEndEvent): { x: number; y: number } | undefined {
+  const start = event.activatorEvent as Partial<{ clientX: number; clientY: number }>;
+  if (typeof start.clientX !== "number" || typeof start.clientY !== "number") return undefined;
+  return { x: start.clientX + event.delta.x, y: start.clientY + event.delta.y };
+}
+
+/** Whether a tab is being let go beyond the edge of the window. */
+function beyondWindow(event: DragMoveEvent | DragEndEvent): boolean {
+  const point = pointerAt(event);
+  const root = document.documentElement;
+  return (
+    point !== undefined &&
+    leavesWindow(point, { width: root.clientWidth, height: root.clientHeight })
+  );
+}
 
 const SIDE_WORDS = {
   row: { before: "drag.side.left", after: "drag.side.right" },
@@ -186,6 +212,11 @@ interface TreeDndProps {
   onPaneDrop(sourceId: Id, drop: PaneDrop): void;
   /** A pane header was dropped on the middle of another pane: swap the two. */
   onPaneSwap(paneId: Id, otherPaneId: Id): void;
+  /**
+   * A tab was let go beyond the edge of the window: take it to a window of its own. Left out where
+   * the page cannot show another window, so the drop there does nothing.
+   */
+  onDragOut?(itemId: Id): void;
   children: ReactNode;
 }
 
@@ -202,6 +233,7 @@ export function TreeDnd({
   paneItemId,
   onPaneDrop,
   onPaneSwap,
+  onDragOut,
   children,
 }: TreeDndProps) {
   // Draws again when the language changes: the instructions and announcements are read from `t`.
@@ -210,7 +242,7 @@ export function TreeDnd({
   const [status, setStatus] = useState("");
   /** What the ghost says: the name of the tab, group or pane being dragged. */
   const [dragging, setDragging] = useState<string | null>(null);
-  const { target, outside, pane, swap } = place;
+  const { target, outside, pane, swap, window: leaving } = place;
 
   const order = spaceItemIds(space);
   /** The name of a tab or group, for what is read aloud and shown on the ghost. */
@@ -224,7 +256,14 @@ export function TreeDnd({
   const labelOfActive = (active: { id: string | number; data: { current?: unknown } }): string =>
     paneSourceOf(active.data.current)?.title ?? labelOf(String(active.id));
 
-  const describe = ({ target: spot, outside: away, pane: beside, swap: other }: Place): string => {
+  const describe = ({
+    target: spot,
+    outside: away,
+    pane: beside,
+    swap: other,
+    window: toWindow,
+  }: Place): string => {
+    if (toWindow) return t("drag.toWindow");
     if (other !== null) return t("drag.swap");
     if (beside) return t("drag.beside", { side: t(SIDE_WORDS[beside.dir][beside.side]) });
     if (away) {
@@ -262,6 +301,10 @@ export function TreeDnd({
       return other === undefined ? NOWHERE : { ...NOWHERE, swap: other };
     }
     const source = sourceOf(event.active.data.current);
+    // A tab let go beyond the edge of the window leaves it (a group stays; pinned tabs do not drag).
+    if (source?.kind === "item" && onDragOut !== undefined && beyondWindow(event)) {
+      return { ...NOWHERE, window: true };
+    }
     if (!source || !collision) return NOWHERE;
     const away = outsideOf(String(collision.id));
     if (away) {
@@ -368,7 +411,8 @@ export function TreeDnd({
       sameTarget(target, next.target) &&
       sameOutside(outside, next.outside) &&
       samePane(pane, next.pane) &&
-      swap === next.swap
+      swap === next.swap &&
+      leaving === next.window
     ) {
       return;
     }
@@ -393,7 +437,8 @@ export function TreeDnd({
     }
     if (!source) return;
     let action: Action | undefined;
-    if (landing.pane) onPaneDrop(source.id, landing.pane);
+    if (landing.window) onDragOut?.(source.id);
+    else if (landing.pane) onPaneDrop(source.id, landing.pane);
     else if (landing.outside) action = outsideAction(spaces, favorites, source, landing.outside);
     else if (landing.target) action = dropAction(space, source, landing.target);
     if (action) onAction(action);
@@ -406,7 +451,9 @@ export function TreeDnd({
   };
 
   return (
-    <DragStateContext value={{ target, outside, pane, swap, dragging: dragging !== null }}>
+    <DragStateContext
+      value={{ target, outside, pane, swap, window: leaving, dragging: dragging !== null }}
+    >
       <DndContext
         sensors={sensors}
         collisionDetection={rowCollision}

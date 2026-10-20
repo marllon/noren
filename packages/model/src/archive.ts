@@ -1,5 +1,6 @@
 import { layoutPanes } from "./sessions";
 import type { Id, Item, Workspace } from "./types";
+import { windowShownItems } from "./windows";
 
 // The auto-archive: which open items have been idle long enough to be put away in the archive.
 // Pure: it reads a workspace and a moment, and answers with item ids. The scheduler that asks every
@@ -87,18 +88,21 @@ export function itemInUse(item: Item): boolean {
 }
 
 /**
- * The open items that are idle: not pinned, not a favorite, not on screen, with no command running
+ * The open items that are idle: not pinned, not a favorite, not on screen (the tab of the main
+ * window, and the one each other window shows), with no command running
  * (and nothing unread), and with no activity (the latest of `lastActivityAt`, what `seen` says and
  * `since`) for `afterMs`. In the order of the spaces. Never throws, whatever the workspace holds.
  */
 export function idleItems(ws: Workspace, check: IdleCheck): IdleItem[] {
   if (!Number.isFinite(check.now) || !(check.afterMs > 0)) return [];
   const favorites = new Set(ws.favorites);
+  const inWindows = windowShownItems(ws);
   const idle: IdleItem[] = [];
   for (const space of ws.spaces) {
     const pinned = new Set(space.pinned);
     for (const item of Object.values(space.items)) {
       if (pinned.has(item.id) || favorites.has(item.id) || item.id === check.shownItemId) continue;
+      if (inWindows.has(item.id)) continue;
       if (itemInUse(item)) continue;
       if (check.now - lastActivity(item, check) < check.afterMs) continue;
       idle.push({ spaceId: space.id, itemId: item.id });

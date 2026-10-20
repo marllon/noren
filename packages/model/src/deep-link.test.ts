@@ -298,6 +298,13 @@ describe("findSpaceByFolder", () => {
     expect(findSpaceByFolder({ ...ws, activeSpaceId: "s9" }, "/srv/a")?.id).toBe("s0");
   });
 
+  it("passes over a space another window shows, which the main window cannot show", () => {
+    // A tab dragged out makes a space with the folder of its origin.
+    const ws = { ...withFolders(["/srv/a", "/srv/a"], 0), windows: [{ id: "w1", spaceId: "s0" }] };
+    expect(findSpaceByFolder({ ...ws, activeSpaceId: "s1" }, "/srv/a")?.id).toBe("s1");
+    expect(findSpaceByFolder({ ...ws, spaces: ws.spaces.slice(0, 1) }, "/srv/a")).toBeUndefined();
+  });
+
   it("a space with no folder never matches", () => {
     expect(findSpaceByFolder(withFolders([undefined]), "/srv/a")).toBeUndefined();
   });

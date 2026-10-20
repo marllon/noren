@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import { insideTauri } from "./backend";
 import { applyLanguageSetting } from "./i18n";
 import { perfMark } from "./perf-probe";
-import { quickPreviewEnabled, windowKindOf } from "./quick";
+import { quickPreviewEnabled, windowKindOf, windowPreviewEnabled } from "./quick";
 import "./app.css";
 
 perfMark("page-script");
@@ -34,16 +34,23 @@ if (insideTauri && kind === "quick") {
   void import("./WindowApp").then(({ WindowApp }) => show(<WindowApp windowId={windowId} />));
 } else {
   void import("./App").then(async ({ App }) => {
-    if (!quickPreviewEnabled) {
+    if (!quickPreviewEnabled && !windowPreviewEnabled) {
       show(<App />);
       return;
     }
-    // A browser opened with `?quick-preview` also draws the quick window, as a panel (e2e tests).
-    const { QuickPreview } = await import("./QuickPreview");
+    // A browser opened with `?quick-preview` also draws the quick window, as a panel, and one opened
+    // with `?window-preview` the other windows of the app (e2e tests).
+    const { QuickPreview } = quickPreviewEnabled
+      ? await import("./QuickPreview")
+      : { QuickPreview: undefined };
+    const { WindowPreview } = windowPreviewEnabled
+      ? await import("./WindowPreview")
+      : { WindowPreview: undefined };
     show(
       <>
         <App />
-        <QuickPreview />
+        {QuickPreview !== undefined && <QuickPreview />}
+        {WindowPreview !== undefined && <WindowPreview />}
       </>,
     );
   });

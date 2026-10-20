@@ -7,10 +7,12 @@ import {
   aiIsOn,
   browserUrlProblem,
   layoutPanes,
+  mainWindowSpaces,
   previewPathProblem,
   resolveOutputPath,
   scrollbackAllowed,
   treeGroups,
+  windowShowing,
   withMod,
 } from "@noren/model";
 import type {
@@ -57,6 +59,8 @@ import { formatChord } from "./shortcuts-screen";
 import { followQuickPromotions, promoteQuickSession } from "./quick-promote";
 import type { PromoteResult } from "./quick-promote";
 import { quickPreviewEnabled, quickPreviewEvents, tauriQuickEvents } from "./quick";
+import { windowsAvailable } from "./window-host";
+import { moveItemToNewWindow, windowMoveProblem } from "./window-service";
 import { retryFailedLinks } from "./session-link-store";
 import { tauriBridge } from "./tauri-backend";
 import { AskPanel } from "./AskPanel";
@@ -775,6 +779,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const reveal = useSidebarReveal(sidebarMode(layout) === "auto-hide");
 
   const space = activeSpaceOf(workspace);
+  // The spaces the main window lists and takes tabs to: those another window shows are not there.
+  const listedSpaces = mainWindowSpaces(workspace);
   const activeId = activeItemIdOf({ workspace });
   const spaceColor = space.color;
   const itemIds = spaceItemIds(space);
@@ -981,6 +987,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
    * counts as used.
    */
   const showTab = (spaceId: Id, itemId: Id) => {
+    // A tab in the space another window shows is that window's to show.
+    if (windowShowing(store.getState().workspace, spaceId) !== undefined) {
+      showNotice(t("window.notice.inWindow"));
+      return;
+    }
     dispatch({ type: "space/set-active-item", spaceId, itemId });
     dispatch({ type: "space/activate", spaceId });
   };
@@ -1262,6 +1273,46 @@ function Shell({ store }: { store: WorkspaceStore }) {
     });
     state.dispatch({ type: "pane/focus", itemId: item.id, paneId: source.id });
   }, [store, showNotice]);
+  /**
+   * A tab goes to a window of its own: dragged out of the window, or "Move tab to new window" in the
+   * palette (the tab on screen). The window gets a space of its own, named after the tab, and the
+   * shells of the tab go on in it. A tab with a browser, preview or diff pane, too many windows, a
+   * page that cannot show other windows and a window the backend refuses say so in a notice and
+   * leave the tab where it is.
+   */
+  const moveTabToNewWindow = useCallback(
+    (itemId: Id): void => {
+      if (!windowsAvailable()) {
+        showNotice(t("window.notice.unavailable"));
+        return;
+      }
+      const problem = windowMoveProblem(store.getState().workspace, itemId);
+      if (problem === "panes") {
+        showNotice(t("window.notice.panes"));
+        return;
+      }
+      if (problem === "limit") {
+        showNotice(t("window.notice.limit"));
+        return;
+      }
+      if (problem !== undefined) return;
+      const owner = store.getState().workspace.spaces.find((s) => Object.hasOwn(s.items, itemId));
+      void moveItemToNewWindow(
+        store,
+        backend,
+        itemId,
+        owner === undefined ? undefined : itemTitle(owner, itemId),
+      ).then((result) => {
+        if (!result.ok) showNotice(t("window.notice.failed", { reason: result.reason }));
+      });
+    },
+    [store, showNotice],
+  );
+  /** "Move tab to new window": the tab on screen. */
+  const moveActiveTabToWindow = useCallback((): void => {
+    const itemId = activeItemIdOf(store.getState());
+    if (itemId !== undefined) moveTabToNewWindow(itemId);
+  }, [store, moveTabToNewWindow]);
   /** "? text" in the palette: the dialog opens for the shell and the system of the pane in use. */
   const askForCommand = (request: string) => {
     const state = store.getState();
@@ -1464,6 +1515,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) openDiffBeside();
         return;
       }
+      if (action.command.kind === "window-move-tab") {
+        if (!modalOpen.current) moveActiveTabToWindow();
+        return;
+      }
       if (action.command.kind === "quick-toggle") {
         // The window of the quick terminal is not this one: a dialog here does not stand in its way.
         toggleQuick();
@@ -1515,6 +1570,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     openAgents,
     openWorktree,
     openDiffBeside,
+    moveActiveTabToWindow,
     goToWaitingAgent,
     toggleQuick,
   ]);
@@ -1533,8 +1589,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
       const step = gesture(travel, event.timeStamp);
       if (step === 0) return;
       const state = store.getState();
-      const from = state.workspace.spaces.findIndex((s) => s.id === state.workspace.activeSpaceId);
-      if (from < 0 || state.workspace.spaces[from + step] === undefined) return;
+      // The spaces the switcher lists: those another window shows are not there.
+      const listed = mainWindowSpaces(state.workspace);
+      const from = listed.findIndex((s) => s.id === state.workspace.activeSpaceId);
+      if (from < 0 || listed[from + step] === undefined) return;
       event.preventDefault();
       state.activateSpaceAt(from + step);
     };
@@ -1917,6 +1975,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
     } else if (entry.action.command.kind === "diff-open") {
       // The diff opens beside the pane in use, which keeps the keyboard.
       openDiffBeside();
+    } else if (entry.action.command.kind === "window-move-tab") {
+      // The tab on screen goes to a window of its own; the terminal there is another page's now.
+      moveActiveTabToWindow();
     } else if (entry.action.command.kind === "mru") {
       // No modifier is held in the palette: go straight to the tab the chord would end on.
       setPaletteOpen(false);
@@ -2205,7 +2266,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
           />
         )}
         <TreeDnd
-          spaces={workspace.spaces}
+          spaces={listedSpaces}
           favorites={workspace.favorites}
           space={space}
           rows={rows}
@@ -2213,6 +2274,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
           paneItemId={activeId}
           onPaneDrop={onPaneDrop}
           onPaneSwap={onPaneSwap}
+          {...(windowsAvailable() ? { onDragOut: moveTabToNewWindow } : {})}
         >
           <aside
             ref={sidebarRef}
@@ -2260,7 +2322,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
               <DropZones pinned={space.pinned.length === 0} favorites={favorites.length === 0} />
             </div>
             <SpaceSwitcher
-              spaces={workspace.spaces}
+              spaces={listedSpaces}
               activeSpaceId={space.id}
               onActivate={activateSpace}
               onNewSpace={() => setOverlay({ kind: "new" })}
@@ -2270,31 +2332,35 @@ function Shell({ store }: { store: WorkspaceStore }) {
           <div className="main">
             {tabsOnTop && <TabBar {...treeProps} onNewTab={() => newTab()} />}
             <section className="content" aria-label={t("window.content")}>
-              {workspace.spaces.map((s) => {
-                const firstId = itemShownIn(s);
-                return (
-                  <div key={s.id} className="space-layer" hidden={s.id !== space.id}>
-                    {Object.values(s.items).map((item) => (
-                      <ItemView
-                        key={item.id}
-                        store={store}
-                        space={s}
-                        item={item}
-                        shown={s.id === space.id && item.id === activeId}
-                        first={item.id === firstId}
-                        colors={colors}
-                        home={home}
-                        onReady={recordHandle}
-                        onPaneMenu={(paneId, point) =>
-                          setOverlay({ kind: "pane-menu", paneId, point })
-                        }
-                        onOpenBrowser={openBrowserBeside}
-                        onOpenPreview={openPreviewBeside}
-                      />
-                    ))}
-                  </div>
-                );
-              })}
+              {/* A space another window shows is drawn by that window's page, not here: a terminal
+                  mounted in two pages would take the output of its session back. */}
+              {workspace.spaces
+                .filter((s) => windowShowing(workspace, s.id) === undefined)
+                .map((s) => {
+                  const firstId = itemShownIn(s);
+                  return (
+                    <div key={s.id} className="space-layer" hidden={s.id !== space.id}>
+                      {Object.values(s.items).map((item) => (
+                        <ItemView
+                          key={item.id}
+                          store={store}
+                          space={s}
+                          item={item}
+                          shown={s.id === space.id && item.id === activeId}
+                          first={item.id === firstId}
+                          colors={colors}
+                          home={home}
+                          onReady={recordHandle}
+                          onPaneMenu={(paneId, point) =>
+                            setOverlay({ kind: "pane-menu", paneId, point })
+                          }
+                          onOpenBrowser={openBrowserBeside}
+                          onOpenPreview={openPreviewBeside}
+                        />
+                      ))}
+                    </div>
+                  );
+                })}
               <div
                 className="pane-notice"
                 role="status"

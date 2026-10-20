@@ -3,6 +3,7 @@
 // narrow the list and the fuzzy match that orders it. The palette itself (`CommandPalette.tsx`)
 // only draws what this returns.
 
+import { windowShowing } from "@noren/model";
 import type { Id, ShellProfile, Workspace } from "@noren/model";
 import { itemTitle } from "./favorites";
 import { t, tabCount } from "./i18n";
@@ -118,7 +119,7 @@ export function parseQuery(query: string): ParsedQuery {
 }
 
 export interface EntrySources {
-  workspace: Pick<Workspace, "spaces" | "activeSpaceId">;
+  workspace: Pick<Workspace, "spaces" | "activeSpaceId" | "windows">;
   /** The chord of every action in force (preset and overrides laid together). */
   chords: ChordMap;
   /** The home folder, for the short form of a folder. */
@@ -187,6 +188,8 @@ export function buildEntries(sources: EntrySources): PaletteEntry[] {
         ...(short !== "" ? { cwd: short } : {}),
       });
     }
+    // A space another window shows is not one the main window can show: it is not listed.
+    if (windowShowing(workspace, space.id) !== undefined) continue;
     const folder = space.defaults.cwd;
     const short = folder !== undefined ? shortCwd(folder, home) : "";
     const count = tabCount(itemIds.length);

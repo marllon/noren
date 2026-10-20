@@ -27,6 +27,8 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "window/open": true,
   "window/close": true,
   "window/move-item": true,
+  "window/open-with-item": true,
+  "window/return": true,
   "space/set-active-item": true,
   "space/delete": true,
   "item/create": true,
@@ -169,7 +171,10 @@ function missingTarget(ws: Workspace, action: Action): boolean {
         (space) => space.id === action.spaceId && Object.hasOwn(space.items, action.itemId),
       );
     case "window/close":
+    case "window/return":
       return !(ws.windows ?? []).some((window) => window.id === action.windowId);
+    case "window/open-with-item":
+      return !itemIdsOf(ws).has(action.itemId);
     case "window/move-item":
       return (
         !itemIdsOf(ws).has(action.itemId) ||
@@ -402,6 +407,42 @@ function checkWindows(ws: Workspace, next: Workspace, action: Action, where: () 
     } else if (space.activeItemId !== action.itemId) {
       fail("the tab that arrived is not the one the window shows");
     }
+  } else if (action.type === "window/open-with-item") {
+    const added = after.filter((w) => !before.some((b) => b.id === w.id));
+    const space = next.spaces.find((s) => s.id === added[0]?.spaceId);
+    if (after.length !== before.length + 1 || added.length !== 1 || space === undefined) {
+      fail("dragging a tab out did not add exactly one window on a space");
+    } else if (ws.spaces.some((s) => s.id === space.id)) {
+      fail("the space of the window was there before");
+    } else if (
+      Object.keys(space.items).join() !== action.itemId ||
+      space.activeItemId !== action.itemId
+    ) {
+      fail("the tab dragged out is not alone in the space of the window as the one it shows");
+    } else if (!itemOf(ws, action.itemId) || added[0]?.returnSpaceId === undefined) {
+      fail("the window does not remember where the tab came from");
+    } else if (next.spaces.length !== ws.spaces.length + 1) {
+      fail("dragging a tab out made other than one space");
+    }
+  } else if (action.type === "window/return") {
+    const window = before.find((w) => w.id === action.windowId);
+    const gone = window !== undefined && !next.spaces.some((s) => s.id === window.spaceId);
+    const held =
+      window === undefined
+        ? []
+        : Object.keys(ws.spaces.find((s) => s.id === window.spaceId)?.items ?? {});
+    if (after.length !== before.length - 1 || after.some((w) => w.id === action.windowId)) {
+      fail("return did not take away exactly the window");
+    } else if (window?.returnSpaceId !== undefined && !gone) {
+      fail("the space made for the window did not go away with it");
+    } else if (window?.returnSpaceId !== undefined) {
+      for (const itemId of held) {
+        const holder = next.spaces.find((s) => Object.hasOwn(s.items, itemId));
+        if (holder === undefined || after.some((w) => w.spaceId === holder.id)) {
+          fail("a tab of the window did not come back to a space a window does not show");
+        }
+      }
+    }
   } else if (action.type === "space/activate") {
     if (before.some((w) => w.spaceId === action.spaceId) && next !== ws) {
       fail("the main window took the space of a window");
@@ -409,7 +450,11 @@ function checkWindows(ws: Workspace, next: Workspace, action: Action, where: () 
   } else if (action.type !== "space/delete" && after.length < before.length) {
     fail("a window went away without its action");
   }
-  if (action.type !== "window/open" && after.length > before.length) {
+  if (
+    action.type !== "window/open" &&
+    action.type !== "window/open-with-item" &&
+    after.length > before.length
+  ) {
     fail("a window appeared without its action");
   }
 }

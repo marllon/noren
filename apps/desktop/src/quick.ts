@@ -100,3 +100,18 @@ export const quickPreviewEnabled =
 
 /** The bus of the preview: the app and the panel hear each other through it. */
 export const quickPreviewEvents: QuickEvents = memoryQuickEvents();
+
+/**
+ * True in a plain browser opened with `?window-preview`: the windows besides the main one are drawn
+ * as panels next to the app, on the same backend and the same in-memory events, as the quick
+ * window is (`window-preview.tsx`). It is how the e2e tests see the pages of the other windows
+ * together with the main one, which one page cannot; inside the app the flag is always false, and a
+ * browser without it has no other windows (a tab cannot be dragged out, there is nowhere to put it).
+ */
+export const windowPreviewEnabled =
+  typeof window !== "undefined" &&
+  !("__TAURI_INTERNALS__" in window) &&
+  new URLSearchParams(window.location.search).has("window-preview");
+
+/** The bus of the window panels: the app and the panels hear each other through it. */
+export const windowPreviewEvents: QuickEvents = memoryQuickEvents();

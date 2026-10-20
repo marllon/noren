@@ -31,6 +31,14 @@ export interface AppWindow {
   id: Id;
   /** The space the window shows; `window-space-missing` when it is not one. */
   spaceId: Id;
+  /**
+   * Present on a window made for a tab dragged out of a space (`window/open-with-item`): the space
+   * the tab came from. Such a window owns the space it shows, which was made for it; closing the
+   * window sends the tabs back (`window/return`) to this space, or to the one the main window shows
+   * when it is gone or another window shows it, and the space made for the window goes away. A
+   * window without it shows a space that was always there, and keeps it when it closes.
+   */
+  returnSpaceId?: Id;
 }
 
 export interface SpaceDefaults {

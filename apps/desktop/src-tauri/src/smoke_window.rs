@@ -14,8 +14,10 @@
 //!    function behind the `window_move_tab` command: the page takes the output over from its own page
 //!    (`session_attach` under its own capability) and answers. The shell is the same session under the
 //!    same id and the same process, nothing was started or ended, the output of the old channel
-//!    stopped and what the shell prints now reaches the channel of the page, which drew a terminal for
-//!    it;
+//!    stopped and what the shell prints now reaches the channel of the page. The run then plays the
+//!    main window and sends the page the space it shows (`window-state`): the page draws its tab and a
+//!    terminal for the session, and a click on the tab reaches the main window as a request
+//!    (`window-action`, NOR-F15-04b);
 //! 4. a window the app closes is gone and a shell that was in it is not touched, and a window the
 //!    person closes (the run closes it the way the close button does) is told with `window-closed`.
 //!
@@ -30,16 +32,16 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use noren_core::SessionId;
-use serde_json::Value;
+use serde_json::{Value, json};
 use tauri::ipc::{Channel, InvokeResponseBody};
-use tauri::{AppHandle, Listener, Manager};
+use tauri::{AppHandle, Emitter, Listener, Manager};
 
 use crate::bridge::{self, AppState};
 use crate::smoke::{
     Heard, Inbox, check_daemon_stopped, check_no_global_shortcut, check_runs_in_daemon,
     check_window_hidden, fresh_dir, locate_in_daemon, print_line, wait_for_route_line,
 };
-use crate::windows::{self, CLOSED_EVENT, READY_WAIT, TAKE_WAIT};
+use crate::windows::{self, ACTION_EVENT, CLOSED_EVENT, READY_WAIT, STATE_EVENT, TAKE_WAIT};
 
 pub const SMOKE_WINDOW_FLAG: &str = "--smoke-window";
 
@@ -57,6 +59,9 @@ const AFTER: &str = "noren-window-after";
 const TAIL_BYTES: usize = 16 * 1024;
 /// What the page reports to the run (`eval` cannot answer, so the page emits this event).
 const PROBE_EVENT: &str = "window-probe";
+/// The tab and the pane of the space the run sends the window, as the main window would.
+const TAB_ID: &str = "smoke-tab";
+const PANE_ID: &str = "smoke-pane";
 
 /// Whether `--smoke-window` is among the arguments (the first one is the program).
 pub fn has_flag(args: &[String]) -> bool {
@@ -166,22 +171,82 @@ fn navigation_probe(window_id: &str) -> String {
     )
 }
 
-/// The script that reports what the page drew: one terminal for each session it was given.
+/// The script that reports what the page drew for the space it was sent: the tabs of the space and
+/// one terminal for each session it was given. The state reaches the page as an event, so the script
+/// waits (a few seconds at most) until the page has drawn the terminal, then reports what is there.
 fn dom_probe(window_id: &str) -> String {
     format!(
         r#"(() => {{
   const internals = window.__TAURI_INTERNALS__;
-  internals.invoke("plugin:event|emit", {{
-    event: "{PROBE_EVENT}",
-    payload: {{
-      kind: "dom",
-      windowId: "{window_id}",
-      terminals: document.querySelectorAll('[data-nr-part="window-terminal"]').length,
-      xterms: document.querySelectorAll('[data-nr-part="window-terminal"] .xterm').length,
-    }},
+  const look = () => ({{
+    tabs: document.querySelectorAll('[data-nr-part="window-tab"]').length,
+    terminals: document.querySelectorAll('[data-nr-part="window-terminal"]').length,
+    xterms: document.querySelectorAll('[data-nr-part="window-terminal"] .xterm').length,
+    title: (document.querySelector('[data-nr-part="window-title"]') || {{}}).textContent || "",
   }});
+  const report = () => internals.invoke("plugin:event|emit", {{
+    event: "{PROBE_EVENT}",
+    payload: {{ kind: "dom", windowId: "{window_id}", ...look() }},
+  }});
+  const started = Date.now();
+  const wait = () => {{
+    const seen = look();
+    if ((seen.tabs > 0 && seen.xterms > 0) || Date.now() - started > 8000) report();
+    else setTimeout(wait, 100);
+  }};
+  wait();
 }})();"#
     )
+}
+
+/// The script that presses the tab button of the page, as a click of the person would.
+fn click_tab_probe() -> &'static str {
+    r#"(() => {
+  const tab = document.querySelector('[data-nr-part="window-tab"]');
+  if (tab) tab.click();
+})();"#
+}
+
+/// What the main window sends a window to draw: the space it shows, with one tab holding one pane
+/// whose shell is the session `session` (the same JSON `window-sync.ts` sends, the shape of
+/// `Space` in `@noren/model`).
+fn state_payload(window_id: &str, session: u64) -> Value {
+    json!({
+        "windowId": window_id,
+        "space": {
+            "id": SPACE_ID,
+            "name": "Smoke window",
+            "icon": "terminal",
+            "color": "#6b8afd",
+            "modIds": [],
+            "defaults": { "env": {} },
+            "aiEnabled": true,
+            "saveScrollback": true,
+            "pinned": [],
+            "tree": [{ "kind": "item", "id": TAB_ID }],
+            "items": {
+                TAB_ID: {
+                    "id": TAB_ID,
+                    "titleLocked": false,
+                    "layout": {
+                        "kind": "pane",
+                        "pane": {
+                            "id": PANE_ID,
+                            "type": "terminal",
+                            "profileId": "default",
+                            "status": "idle",
+                            "unread": false,
+                            "bell": false,
+                            "sessionId": session.to_string()
+                        }
+                    },
+                    "focusedPaneId": PANE_ID,
+                    "lastActivityAt": 1
+                }
+            },
+            "activeItemId": TAB_ID
+        }
+    })
 }
 
 /// Fails unless the window `label` exists and is hidden.
@@ -383,21 +448,47 @@ fn run(app: &AppHandle, inbox: &mut Inbox, deadline: Instant) -> Result<u64, Str
         route.delivered()
     ));
 
-    // The page drew a terminal for it.
+    // The main window sends the window the space it shows, and the page draws it: the tab and a
+    // terminal for the session it took over.
+    app.emit(STATE_EVENT, state_payload(WINDOW_ID, id))
+        .map_err(|e| format!("could not send the space to the second window: {e}"))?;
     window
         .eval(dom_probe(WINDOW_ID))
         .map_err(|e| format!("could not run the page probe in the second window: {e}"))?;
     let dom = inbox.wait(PROBE_EVENT, "the page report", deadline, |payload| {
         probe_report(payload, WINDOW_ID, "dom")
     })?;
+    let tabs = dom.get("tabs").and_then(Value::as_u64).unwrap_or(0);
     let terminals = dom.get("terminals").and_then(Value::as_u64).unwrap_or(0);
     let xterms = dom.get("xterms").and_then(Value::as_u64).unwrap_or(0);
-    if terminals != 1 || xterms != 1 {
+    let title = dom.get("title").and_then(Value::as_str).unwrap_or("");
+    if tabs != 1 || terminals != 1 || xterms != 1 || title != "Smoke window" {
         return Err(format!(
-            "the second window drew {terminals} terminals and {xterms} xterm views for the one session it was given"
+            "the second window drew {tabs} tabs, {terminals} terminals and {xterms} xterm views titled {title:?} for the one tab and session it was given"
         ));
     }
-    print_line("SMOKE second window drew a terminal for the session it was given");
+    print_line(
+        "SMOKE second window drew the space it was sent: its tab and a terminal for the session it was given",
+    );
+
+    // A change the window asks for reaches the main window as an event: pressing its tab button.
+    window
+        .eval(click_tab_probe())
+        .map_err(|e| format!("could not press the tab in the second window: {e}"))?;
+    inbox.wait(
+        ACTION_EVENT,
+        "the request of the second window",
+        deadline,
+        |payload| {
+            let action = payload.get("action")?;
+            (payload.get("windowId").and_then(Value::as_str) == Some(WINDOW_ID)
+                && action.get("type").and_then(Value::as_str) == Some("space/set-active-item")
+                && action.get("spaceId").and_then(Value::as_str) == Some(SPACE_ID)
+                && action.get("itemId").and_then(Value::as_str) == Some(TAB_ID))
+            .then_some(())
+        },
+    )?;
+    print_line("SMOKE second window asked the main window to show its tab (window-action)");
 
     check_label_hidden(app, &label)?;
     check_window_hidden(app)?;
@@ -466,6 +557,7 @@ pub fn arm(app: &tauri::App, sandbox: WindowSandbox) {
         "app-ready",
         bridge::SESSION_EXIT_EVENT,
         CLOSED_EVENT,
+        ACTION_EVENT,
         PROBE_EVENT,
     ] {
         let tx = tx.clone();
@@ -531,6 +623,31 @@ mod tests {
             navigation_probe("w1").contains("127.0.0.1:1"),
             "the address nobody listens on"
         );
+    }
+
+    #[test]
+    fn the_space_the_run_sends_is_one_tab_with_one_pane_holding_the_session() {
+        let payload = state_payload("w1", 7);
+        assert_eq!(payload["windowId"], "w1");
+        let space = &payload["space"];
+        assert_eq!(space["id"], SPACE_ID);
+        // The tree, the items and the active tab name the same tab, as the invariants of the model ask.
+        assert_eq!(space["tree"][0]["id"], TAB_ID);
+        assert_eq!(space["activeItemId"], TAB_ID);
+        let item = &space["items"][TAB_ID];
+        assert_eq!(item["id"], TAB_ID);
+        assert_eq!(item["focusedPaneId"], PANE_ID);
+        let pane = &item["layout"]["pane"];
+        assert_eq!(pane["id"], PANE_ID);
+        assert_eq!(pane["type"], "terminal");
+        // The session is written the way the model keeps it: as text.
+        assert_eq!(pane["sessionId"], "7");
+    }
+
+    #[test]
+    fn the_click_probe_presses_the_tab_button_the_page_draws() {
+        assert!(click_tab_probe().contains(r#"[data-nr-part="window-tab"]"#));
+        assert!(click_tab_probe().contains(".click()"));
     }
 
     #[test]

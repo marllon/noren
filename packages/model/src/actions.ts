@@ -106,6 +106,23 @@ export type Action =
    */
   | { type: "window/move-item"; itemId: Id; windowId: Id; placement?: Placement }
   /**
+   * Drags a tab out of the window: makes a space of its own (named `name`, "Window" when left
+   * out; it keeps the colors and start folder of the space the tab comes from), a window that
+   * shows it and moves the tab in, as the tab that window shows, all in one step. The window
+   * remembers where the tab came from (`AppWindow.returnSpaceId`). Nothing changes for a tab that
+   * does not exist or has a pane that is not a terminal (`windowCanShowTab`), or when the workspace
+   * has `MAX_EXTRA_WINDOWS` windows besides the main one.
+   */
+  | { type: "window/open-with-item"; itemId: Id; name?: string }
+  /**
+   * Closes a window that was made for a tab (`returnSpaceId`) and gives its tabs back: each goes to
+   * the end of the space it came from (pinned ones stay pinned), or of the space the main window
+   * shows when that one is gone or another window shows it, and the space made for the window goes
+   * away. When the main window gets the tabs, the one the window showed becomes its active tab.
+   * A window without `returnSpaceId` is closed as by `window/close`.
+   */
+  | { type: "window/return"; windowId: Id }
+  /**
    * Chooses the item a space shows. The item must belong to that space. The reducer also moves it
    * on its own: a new or reopened item becomes active, and when the active item leaves the space
    * the next one in sidebar order (else the previous one) takes over.

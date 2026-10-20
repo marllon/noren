@@ -114,3 +114,71 @@ describe("FakeBackend windows", () => {
     expect(closed).toEqual(["w1"]);
   });
 });
+
+describe("FakeBackend window host", () => {
+  function host() {
+    const heard: string[] = [];
+    let refuse: string | undefined;
+    return {
+      heard,
+      refuseWith(reason: string | undefined) {
+        refuse = reason;
+      },
+      host: {
+        opened: (windowId: string, spaceId: string) =>
+          void heard.push(`opened ${windowId} ${spaceId}`),
+        closed: (windowId: string) => void heard.push(`closed ${windowId}`),
+        take: async (windowId: string, sessionIds: readonly number[]) => {
+          heard.push(`take ${windowId} ${sessionIds.join(",")}`);
+          if (refuse !== undefined) throw new Error(refuse);
+        },
+      },
+    };
+  }
+
+  it("hears of a window opened and closed, by the app or by the person, and of the sessions moved to it", async () => {
+    const backend = new FakeBackend();
+    const { heard, host: standIn } = host();
+    backend.setWindowHost(standIn);
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    await backend.openWindow("w1", "s2");
+    await backend.openWindow("w2", "s3");
+    await backend.moveTabToWindow("w1", [id]);
+    await backend.closeWindow("w1");
+    backend.closeWindowByPerson("w2");
+    // A window that is gone is not heard of twice.
+    await backend.closeWindow("w1");
+    backend.closeWindowByPerson("w2");
+    expect(heard).toEqual([
+      "opened w1 s2",
+      "opened w2 s3",
+      `take w1 ${id}`,
+      "closed w1",
+      "closed w2",
+    ]);
+  });
+
+  it("fails the move, and leaves the sessions where they were, when the window refuses them", async () => {
+    const backend = new FakeBackend();
+    const { host: standIn, refuseWith } = host();
+    backend.setWindowHost(standIn);
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    await backend.openWindow("w1", "s2");
+    refuseWith("the page did not answer");
+    await expect(backend.moveTabToWindow("w1", [id])).rejects.toThrow("did not answer");
+    expect(backend.windowOfSession(id)).toBeUndefined();
+    refuseWith(undefined);
+    await backend.moveTabToWindow("w1", [id]);
+    expect(backend.windowOfSession(id)).toBe("w1");
+  });
+
+  it("works with no host, and a host can be taken away", async () => {
+    const backend = new FakeBackend();
+    const { heard, host: standIn } = host();
+    backend.setWindowHost(standIn);
+    backend.setWindowHost(undefined);
+    await backend.openWindow("w1", "s2");
+    await backend.closeWindow("w1");
+    expect(heard).toEqual([]);
+  });
+});

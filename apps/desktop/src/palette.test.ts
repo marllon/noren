@@ -68,6 +68,18 @@ describe("buildEntries", () => {
     expect(other2).toMatchObject({ detail: "1 tab · /srv/docs", active: false });
   });
 
+  it("lists the tabs of a space another window shows, and not the space itself", async () => {
+    const { store, other } = await openStore();
+    store.getState().dispatch({ type: "window/open", spaceId: other.id });
+    const entries = buildEntries({
+      workspace: store.getState().workspace,
+      chords: resolveBindings(DEFAULT_KEYBINDINGS).chords,
+    });
+    // The tab is still found (picking it says it is in another window); the space cannot be shown here.
+    expect(titles(entries.filter((entry) => entry.kind === "tab"))).toContain("docs");
+    expect(titles(entries.filter((entry) => entry.kind === "space"))).toEqual(["Main"]);
+  });
+
   it("shows the folder of a tab under the home folder in its short form", async () => {
     const { store } = await openStore();
     const entries = buildEntries({

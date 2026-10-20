@@ -76,6 +76,31 @@ describe("idleItems", () => {
     expect(ids(ws, 12 * HOUR, 12 * HOUR, "shown")).toContain("idle");
   });
 
+  it("leaves out the tab a window besides the main one shows, and still picks the others of its space", () => {
+    // The space "Work" is shown by a window: "other" is the tab it shows. With a second tab in it,
+    // that one is as idle as any tab out of sight.
+    const ws = fixture();
+    const work = ws.spaces[1];
+    if (!work) throw new Error("the fixture has a second space");
+    const shownByWindow: Workspace = {
+      ...ws,
+      spaces: [
+        ws.spaces[0] as Workspace["spaces"][number],
+        {
+          ...work,
+          tree: [...work.tree, { kind: "item", id: "second" }],
+          items: { ...work.items, second: withPane("second", {}, 0) },
+        },
+      ],
+      windows: [{ id: "w1", spaceId: "s2", returnSpaceId: "s1" }],
+    };
+    const found = ids(shownByWindow, 99 * HOUR, 12 * HOUR, "shown");
+    expect(found).not.toContain("other");
+    expect(found).toContain("second");
+    // Without the window, "other" is idle like the rest.
+    expect(ids(ws, 99 * HOUR, 12 * HOUR, "shown")).toContain("other");
+  });
+
   it("leaves out a pinned item", () => {
     expect(ids(fixture(), 99 * HOUR, 12 * HOUR, "shown")).not.toContain("pin");
   });

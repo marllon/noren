@@ -5,6 +5,7 @@ import {
   lastUnread,
   layoutPanes,
   liveSessionIds,
+  mainWindowSpaces,
   reduce,
   treeGroups,
   treeItemIds,
@@ -460,7 +461,8 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
       },
 
       activateSpaceAt(index) {
-        const space = get().workspace.spaces[index];
+        // The switcher lists the spaces the main window can show: those another window shows are not there.
+        const space = mainWindowSpaces(get().workspace)[index];
         if (space) get().dispatch({ type: "space/activate", spaceId: space.id });
       },
 

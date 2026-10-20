@@ -51,6 +51,11 @@ pub const TAKE_EVENT: &str = "window-take-sessions";
 pub const TAKEN_EVENT: &str = "window-sessions-taken";
 /// Rust → everyone: the person closed the window, `{ "windowId": "w1" }`.
 pub const CLOSED_EVENT: &str = "window-closed";
+/// Main window → window pages: the space a window shows, `{ "windowId": "w1", "space": { ... } }`
+/// (`window-sync.ts`; the smoke run plays the main window with it).
+pub const STATE_EVENT: &str = "window-state";
+/// Window page → main window: a change the window asks for, `{ "windowId": "w1", "action": { ... } }`.
+pub const ACTION_EVENT: &str = "window-action";
 
 /// The longest window id a label is made of; the same limit as `isWindowId` of `@noren/model`.
 const MAX_WINDOW_ID: usize = 64;
@@ -516,6 +521,8 @@ mod tests {
         assert_eq!(TAKE_EVENT, "window-take-sessions");
         assert_eq!(TAKEN_EVENT, "window-sessions-taken");
         assert_eq!(CLOSED_EVENT, "window-closed");
+        assert_eq!(STATE_EVENT, "window-state");
+        assert_eq!(ACTION_EVENT, "window-action");
     }
 
     // ---- The book ----

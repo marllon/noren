@@ -364,7 +364,10 @@ export {
   canOpenWindow,
   findWindow,
   isWindowId,
+  mainWindowSpaces,
   spaceIsShown,
+  windowCanShowTab,
+  windowShownItems,
   windowIdOfLabel,
   windowLabel,
   windowShowing,
@@ -461,6 +464,7 @@ export type {
   FakeNotification,
   FakeSessionInfo,
   FakeSshTarget,
+  FakeWindowHost,
 } from "./fake-backend";
 export {
   DEFAULT_NOTIFICATION_SETTINGS,

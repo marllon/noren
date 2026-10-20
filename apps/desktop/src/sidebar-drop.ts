@@ -406,3 +406,25 @@ export function joinedPaneCount(space: Space, sourceId: Id, targetItemId: Id): n
 /** What the notice says when a join would pass the pane limit. */
 export const paneLimitNotice = (maxPanes: number): string =>
   `A tab holds at most ${maxPanes} panes.`;
+
+/** How far (px) past the edge of the window the pointer must be when a tab is dropped for the drop to leave the window. */
+export const WINDOW_EDGE_MARGIN = 8;
+
+/**
+ * Whether a tab dropped at `point` (client coordinates of the page) has left the window: the pointer
+ * is more than `WINDOW_EDGE_MARGIN` beyond one of the sides of the page, which `area` measures. The
+ * browser keeps reporting the pointer to the page for as long as the button is held, wherever it
+ * goes, so the end of a drag knows where it was let go. Dropping a tab there takes it out to a
+ * window of its own.
+ */
+export function leavesWindow(
+  point: { x: number; y: number },
+  area: { width: number; height: number },
+): boolean {
+  return (
+    point.x < -WINDOW_EDGE_MARGIN ||
+    point.y < -WINDOW_EDGE_MARGIN ||
+    point.x >= area.width + WINDOW_EDGE_MARGIN ||
+    point.y >= area.height + WINDOW_EDGE_MARGIN
+  );
+}

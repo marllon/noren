@@ -4,7 +4,7 @@ import { splitAt, splitPaths } from "./layout";
 import { layoutPanes } from "./sessions";
 import { treeGroups, treeItemIds } from "./tree";
 import type { Id, Item, Workspace } from "./types";
-import { workspaceWindows } from "./windows";
+import { windowCanShowTab, workspaceWindows } from "./windows";
 
 const tag = <T extends string>(type: T): fc.Arbitrary<T> => fc.constant(type);
 
@@ -137,6 +137,20 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
   const itemId = arbIdOf(itemIds);
   const groupId = arbIdOf(groupIds);
   const windowId = arbIdOf(workspaceWindows(ws).map((window) => window.id));
+  // The tabs a window can show (terminals only), mostly: a workspace full of browser, preview and
+  // diff panes would otherwise leave the actions on windows nearly always refused.
+  const windowItemIds = ws.spaces.flatMap((space) =>
+    Object.values(space.items)
+      .filter(windowCanShowTab)
+      .map((item) => item.id),
+  );
+  const windowItemId: fc.Arbitrary<Id> =
+    windowItemIds.length === 0
+      ? itemId
+      : fc.oneof(
+          { weight: 8, arbitrary: arbIdOf(windowItemIds) },
+          { weight: 1, arbitrary: itemId },
+        );
 
   const placement: fc.Arbitrary<Placement> = fc.oneof(
     fc.record({ to: tag("pinned"), index: arbIndex }, { requiredKeys: ["to"] }),
@@ -282,7 +296,15 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
     weighted(
       2,
       fc.record(
-        { type: tag("window/move-item"), itemId, windowId, placement },
+        { type: tag("window/open-with-item"), itemId: windowItemId, name: arbName },
+        { requiredKeys: ["type", "itemId"] },
+      ),
+    ),
+    weighted(2, fc.record({ type: tag("window/return"), windowId })),
+    weighted(
+      2,
+      fc.record(
+        { type: tag("window/move-item"), itemId: windowItemId, windowId, placement },
         { requiredKeys: ["type", "itemId", "windowId"] },
       ),
     ),

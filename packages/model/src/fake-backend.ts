@@ -100,6 +100,24 @@ export interface FakeWindow {
   sessions: SessionId[];
 }
 
+/**
+ * What stands in for the native side of the windows in a page that draws them (the e2e tests draw a
+ * window as a panel next to the app): the real backend makes a window, closes it and hands it the
+ * output of sessions in Rust; the fake tells this object instead. Nothing is shown unless a page
+ * gives one (`FakeBackend.setWindowHost`).
+ */
+export interface FakeWindowHost {
+  /** The window `windowId` was opened to show the space `spaceId`. */
+  opened(windowId: Id, spaceId: Id): void;
+  /** The window was closed, by the app or by the person. */
+  closed(windowId: Id): void;
+  /**
+   * The window is to take over the output of the sessions. Resolves once it did; rejects when it
+   * could not, which fails `moveTabToWindow` as a window that refuses fails it for real.
+   */
+  take(windowId: Id, sessionIds: readonly SessionId[]): Promise<void>;
+}
+
 export interface FakeCall {
   readonly method: FakeCallMethod;
   readonly args: readonly unknown[];
@@ -785,7 +803,9 @@ class FakeAi implements AiBackend {
  *   the sessions it is given into the window (it refuses a window that is not open and a session
  *   that is not alive) and `windows()` and `windowOfSession` say where everything is;
  *   `closeWindowByPerson` is the person closing a window, which `onWindowClosed` reports. Nothing
- *   is ever shown
+ *   is ever shown, unless a page that draws windows (the e2e panels) hands over a `FakeWindowHost`
+ *   (`setWindowHost`), which is told of every window opened or closed and asked to take the sessions
+ *   of a tab moved to one, as the Rust side asks the page of a native window
  * - the quick terminal window is a flag: `quickToggle` flips `quickVisible` (hidden at first) and
  *   `setQuickShortcut` keeps the chord in `quickShortcut`; nothing is ever shown or registered
  * - `config.jsonc` lives in memory: `loadConfig` answers its text, `saveConfig` replaces it as the
@@ -857,6 +877,7 @@ export class FakeBackend implements Backend {
   readonly #openedLinks: string[] = [];
   readonly #browserPanes = new Map<string, FakeBrowserPane>();
   readonly #windows = new Map<Id, FakeWindow>();
+  #windowHost: FakeWindowHost | undefined;
   readonly #windowClosedListeners = new Set<(windowId: Id) => void>();
   readonly #configListeners = new Set<(text: string | null) => void>();
   readonly #userThemes = new Map<string, string>();
@@ -1777,11 +1798,12 @@ export class FakeBackend implements Backend {
     }
     if (this.#windows.has(windowId)) throw new Error(`window ${windowId} is open already`);
     this.#windows.set(windowId, { spaceId, sessions: [] });
+    this.#windowHost?.opened(windowId, spaceId);
   }
 
   async closeWindow(windowId: Id): Promise<void> {
     this.#record("closeWindow", windowId);
-    this.#windows.delete(windowId);
+    if (this.#windows.delete(windowId)) this.#windowHost?.closed(windowId);
   }
 
   async moveTabToWindow(windowId: Id, sessionIds: readonly SessionId[]): Promise<void> {
@@ -1794,6 +1816,23 @@ export class FakeBackend implements Backend {
       other.sessions = other.sessions.filter((id) => !sessionIds.includes(id));
     }
     window.sessions.push(...sessionIds);
+    // The page that draws the window takes the output over, as the page of a native one does; a
+    // window that refuses leaves the sessions where they were.
+    try {
+      await this.#windowHost?.take(windowId, sessionIds);
+    } catch (error) {
+      window.sessions = window.sessions.filter((id) => !sessionIds.includes(id));
+      throw error;
+    }
+  }
+
+  /**
+   * Gives the object that plays the native windows in a page that draws them (`undefined` takes it
+   * away): it hears of every window opened or closed and is asked to take the sessions of a tab
+   * moved to one. Not a `Backend` call, so it is not recorded.
+   */
+  setWindowHost(host: FakeWindowHost | undefined): void {
+    this.#windowHost = host;
   }
 
   onWindowClosed(callback: (windowId: Id) => void): Unsubscribe {
@@ -1810,6 +1849,7 @@ export class FakeBackend implements Backend {
    */
   closeWindowByPerson(windowId: Id): void {
     if (!this.#windows.delete(windowId)) return;
+    this.#windowHost?.closed(windowId);
     for (const listener of [...this.#windowClosedListeners]) listener(windowId);
   }
 

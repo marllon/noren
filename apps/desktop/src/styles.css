@@ -3380,6 +3380,50 @@ body {
   font-size: 13px;
 }
 
+/* The tabs of a window besides the main one: a row of buttons over the tab on screen. */
+.window-tabs {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--nr-border);
+  background: var(--nr-surface);
+}
+
+.window-tab {
+  flex: none;
+  max-width: 220px;
+  padding: 4px 10px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: calc(var(--nr-radius) * 0.6);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.window-tab:hover {
+  background: color-mix(in srgb, var(--nr-text) 8%, transparent);
+}
+
+.window-tab[aria-selected="true"] {
+  border-color: var(--nr-border);
+  background: color-mix(in srgb, var(--nr-accent) 16%, var(--nr-surface));
+}
+
+/* Where the tabs of a window are drawn: the tab on screen fills it (the others stay mounted, hidden). */
+.window-content {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
 /* Only in a browser opened with ?quick-preview (e2e): the quick window as a panel beside the app. */
 .quick-preview {
   position: fixed;
@@ -3396,6 +3440,57 @@ body {
 
 .quick-preview[data-nr-shown="false"] {
   visibility: hidden;
+}
+
+/* Only in a browser opened with ?window-preview (e2e): the other windows of the app as panels beside it. */
+.window-previews {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.window-preview {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 520px;
+  height: 280px;
+  border: 2px solid var(--nr-accent);
+  border-radius: var(--nr-radius);
+  background: var(--nr-bg);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.window-preview > .window-app {
+  flex: 1;
+  min-height: 0;
+}
+
+.window-preview-frame {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 4px 0 10px;
+  background: var(--nr-border);
+  color: var(--nr-text);
+  font-size: 11px;
+}
+
+.window-preview-close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
 
 /* The Ask panel: beside the terminal, on the side the sidebar is not. */

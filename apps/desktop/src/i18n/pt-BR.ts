@@ -228,6 +228,7 @@ export const ptBR: Dictionary = {
   "drag.pin": "Fixar esta aba.",
   "drag.favorite": "Adicionar esta aba às favoritas.",
   "drag.moveToSpace": "Mover para o espaço {name}.",
+  "drag.toWindow": "Levar para uma janela nova.",
   "drag.noChange": "Nenhuma mudança neste ponto.",
   "drag.inside": "Dentro do grupo {name}.",
   "drag.before": "Antes de {name}.",
@@ -321,6 +322,7 @@ export const ptBR: Dictionary = {
   "action.worktree.new": "Nova worktree",
   "action.worktree.remove": "Remover worktree",
   "action.diff.open": "Mostrar o diff do git ao lado deste painel",
+  "action.window.move-tab": "Levar a aba para uma janela nova",
   "action.tab.mru-next": "Próxima aba recente",
   "action.tab.mru-prev": "Aba recente anterior",
   "action.tab.last-unread": "Ir para a última aba não lida",
@@ -535,6 +537,17 @@ export const ptBR: Dictionary = {
   // As outras janelas do app: as abas levadas para elas (NOR-F15-04a)
   "window.title": "Janela do Noren",
   "window.waiting": "Nenhuma aba aqui ainda.",
+  "window.tabs": "Abas desta janela",
+  "window.noShell": "Este painel não tem um shell.",
+  "window.paneElsewhere": "Este painel aparece na janela principal.",
+  "window.preview": "Prévia da janela",
+  "window.close": "Fechar janela",
+  "window.notice.panes":
+    "Uma aba com painel de navegador, prévia ou diff fica na janela principal.",
+  "window.notice.limit": "Há janelas demais. Feche uma antes.",
+  "window.notice.inWindow": "Essa aba está em outra janela.",
+  "window.notice.unavailable": "As outras janelas precisam do app de desktop.",
+  "window.notice.failed": "Não foi possível levar a aba para uma janela nova: {reason}",
 
   // Os favoritos da barra lateral
   "favorites.label": "Favoritos",

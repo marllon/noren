@@ -47,6 +47,7 @@ import {
   findWindow,
   isWindowId,
   spaceIsShown,
+  windowCanShowTab,
   windowShowing,
   workspaceWindows,
 } from "./windows";
@@ -181,6 +182,10 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       return closeWindow(ws, action.windowId);
     case "window/move-item":
       return moveItemToWindow(ws, action);
+    case "window/open-with-item":
+      return openWindowWithItem(ws, action, ctx);
+    case "window/return":
+      return returnWindow(ws, action.windowId);
     case "space/set-active-item":
       return updateSpace(ws, action.spaceId, (space) =>
         typeof action.itemId === "string" &&
@@ -833,12 +838,104 @@ function moveItemToWindow(
   const window = findWindow(ws, action.windowId);
   const located = locate(ws, action.itemId);
   if (!window || !located || located.space.id === window.spaceId) return ws;
+  // The page of a window draws terminals only.
+  if (!windowCanShowTab(located.item)) return ws;
   const moved = relocate(ws, located, window.spaceId, action.placement ?? { to: "tree" });
   if (moved === ws) return ws;
   // The tab that arrives is the one the window shows.
   return updateSpace(moved, window.spaceId, (space) =>
     space.activeItemId === action.itemId ? undefined : withActiveItem(space, action.itemId),
   );
+}
+
+/** The name of the space made for a window when the action gives none. */
+const WINDOW_SPACE_NAME = "Window";
+
+/**
+ * A tab dragged out: a space for the window, the window (which remembers the space the tab came
+ * from) and the tab moved in, in one step, so no state in between (a window with an empty space,
+ * a tab in a space nobody shows) is ever seen.
+ */
+function openWindowWithItem(
+  ws: Workspace,
+  action: Extract<Action, { type: "window/open-with-item" }>,
+  ctx: ReducerContext,
+): Workspace {
+  const located = locate(ws, action.itemId);
+  if (!located || !canOpenWindow(ws) || !windowCanShowTab(located.item)) return ws;
+  const name =
+    (typeof action.name === "string" ? clean(action.name) : undefined) ?? WINDOW_SPACE_NAME;
+  const take = idPool(ws, ctx);
+  const spaceId = take();
+  const windowId = take();
+  if (!isWindowId(windowId)) return ws;
+  const source = located.space;
+  const space = createEmptySpace(spaceId, name, {
+    icon: source.icon,
+    color: source.color,
+    ...(source.defaults.profileId !== undefined ? { profileId: source.defaults.profileId } : {}),
+    ...(source.defaults.cwd !== undefined ? { cwd: source.defaults.cwd } : {}),
+    env: source.defaults.env,
+  });
+  const made: Workspace = {
+    ...ws,
+    spaces: [...ws.spaces, space],
+    windows: [...workspaceWindows(ws), { id: windowId, spaceId, returnSpaceId: source.id }],
+  };
+  // A pinned tab stays pinned in the window.
+  const placement: Placement = source.pinned.includes(action.itemId)
+    ? { to: "pinned" }
+    : { to: "tree" };
+  return moveItemToWindow(made, {
+    type: "window/move-item",
+    itemId: action.itemId,
+    windowId,
+    placement,
+  });
+}
+
+/**
+ * Closes a window and gives its tabs back to the space they came from (see `window/return`). The
+ * space the tabs go to is never one that a window shows: the page that draws it must be the main
+ * window's, which is where the sessions of the tabs are taken back to.
+ */
+function returnWindow(ws: Workspace, windowId: Id): Workspace {
+  const window = findWindow(ws, windowId);
+  if (window === undefined) return ws;
+  const own = findSpace(ws, window.spaceId);
+  if (window.returnSpaceId === undefined || own === undefined) return closeWindow(ws, windowId);
+  const home = window.returnSpaceId === own.id ? undefined : findSpace(ws, window.returnSpaceId);
+  const target =
+    home !== undefined && windowShowing(ws, home.id) === undefined
+      ? home
+      : findSpace(ws, ws.activeSpaceId);
+  if (target === undefined) return closeWindow(ws, windowId);
+  let next = ws;
+  for (const itemId of spaceItemIds(own)) {
+    const located = locate(next, itemId);
+    if (!located || located.space.id !== own.id) continue;
+    const placement: Placement = own.pinned.includes(itemId) ? { to: "pinned" } : { to: "tree" };
+    next = relocate(next, located, target.id, placement);
+  }
+  // The tab the window showed is the one the main window shows when it is the one that gets them.
+  const shown = own.activeItemId;
+  if (target.id === ws.activeSpaceId && shown !== undefined) {
+    next = updateSpace(next, target.id, (space) =>
+      Object.hasOwn(space.items, shown) && space.activeItemId !== shown
+        ? withActiveItem(space, shown)
+        : undefined,
+    );
+  }
+  const gone = findSpace(next, own.id);
+  const rest = withWindows(
+    next,
+    workspaceWindows(next).filter((w) => w.id !== windowId),
+  );
+  // The space was made for the window, and the tabs it held left with it: it goes away too. One
+  // that still holds an item (a tab that could not be placed) stays, so nothing is lost.
+  return gone !== undefined && Object.keys(gone.items).length === 0
+    ? { ...rest, spaces: rest.spaces.filter((space) => space.id !== own.id) }
+    : rest;
 }
 
 /** The workspace with `windows` as its windows; the key is left out when there are none. */

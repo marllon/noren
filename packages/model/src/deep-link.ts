@@ -1,4 +1,5 @@
 import type { Space, Workspace } from "./types";
+import { windowShowing } from "./windows";
 
 /** What a valid `noren://` link asks for. */
 export type DeepLink =
@@ -149,8 +150,12 @@ export function sameFolder(a: string, b: string): boolean {
  * order of the switcher. `undefined` when none has that folder.
  */
 export function findSpaceByFolder(workspace: Workspace, path: string): Space | undefined {
+  // A space another window shows cannot be shown by the main window (the link would do nothing).
   const matching = workspace.spaces.filter(
-    (space) => space.defaults.cwd !== undefined && sameFolder(space.defaults.cwd, path),
+    (space) =>
+      space.defaults.cwd !== undefined &&
+      sameFolder(space.defaults.cwd, path) &&
+      windowShowing(workspace, space.id) === undefined,
   );
   return matching.find((space) => space.id === workspace.activeSpaceId) ?? matching[0];
 }

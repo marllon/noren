@@ -1,5 +1,6 @@
+import { layoutPanes } from "./sessions";
 import { MAX_EXTRA_WINDOWS } from "./types";
-import type { AppWindow, Id, Workspace } from "./types";
+import type { AppWindow, Id, Item, Space, Workspace } from "./types";
 
 /**
  * The start of the label of the native window of every `AppWindow`. The app chooses only what
@@ -48,12 +49,49 @@ export function windowShowing(ws: Pick<Workspace, "windows">, spaceId: Id): AppW
   return workspaceWindows(ws).find((window) => window.spaceId === spaceId);
 }
 
+/**
+ * The spaces the main window can show: every space except those other windows show. These are the
+ * ones its space switcher lists, in the workspace's order.
+ */
+export function mainWindowSpaces(ws: Pick<Workspace, "spaces" | "windows">): Space[] {
+  return ws.spaces.filter((space) => windowShowing(ws, space.id) === undefined);
+}
+
+/**
+ * The tabs the windows besides the main one show now: the active tab of the space of each (its
+ * first when it names none). The person is looking at them, as at the tab of the main window.
+ */
+export function windowShownItems(ws: Pick<Workspace, "spaces" | "windows">): Set<Id> {
+  const shown = new Set<Id>();
+  for (const window of workspaceWindows(ws)) {
+    const space = ws.spaces.find((s) => s.id === window.spaceId);
+    if (space === undefined) continue;
+    const chosen = space.activeItemId;
+    const id =
+      chosen !== undefined && Object.hasOwn(space.items, chosen)
+        ? chosen
+        : [...space.pinned, ...Object.keys(space.items)].find((i) => Object.hasOwn(space.items, i));
+    if (id !== undefined) shown.add(id);
+  }
+  return shown;
+}
+
 /** Whether some window, the main one or another, shows the space. */
 export function spaceIsShown(
   ws: Pick<Workspace, "windows" | "activeSpaceId">,
   spaceId: Id,
 ): boolean {
   return ws.activeSpaceId === spaceId || windowShowing(ws, spaceId) !== undefined;
+}
+
+/**
+ * Whether the tab can be shown by a window besides the main one: every pane of it is a terminal.
+ * The page of such a window draws terminals only; the web view of a browser pane, the preview and
+ * the diff stay with the main window until the windows draw those too (NOR-F15-04c), so a tab with
+ * one of them stays where it is.
+ */
+export function windowCanShowTab(item: Pick<Item, "layout">): boolean {
+  return layoutPanes(item.layout).every((pane) => pane.type === "terminal");
 }
 
 /** Whether the workspace can take one more window. */

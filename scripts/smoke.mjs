@@ -11,7 +11,8 @@
 // tab with the same session id and the same process, still answering, its output now reaching the
 // main window), "SMOKE quick window hidden" and "SMOKE window hidden" (neither window ever shown).
 // Every run must also print "SMOKE global shortcut none registered": no smoke mode registers the
-// global shortcut of the quick terminal (the run fails if the app holds one).
+// global shortcut of the quick terminal (the run fails if the app holds one), and "SMOKE tray icon
+// none": no smoke mode shows the tray icon of a normal start (NOR-F14-02c).
 // The sessions of every run live in `norend`, the session daemon, which the app starts from beside
 // its own executable on an endpoint named for the run (so it never meets the daemon of the user):
 // this script builds `norend` first, and every run must print "SMOKE DAEMON norend pid <n> ..."
@@ -153,6 +154,7 @@ runSmoke(
   [
     "SMOKE window hidden",
     "SMOKE global shortcut none registered",
+    "SMOKE tray icon none",
     "SMOKE OK",
     "noren-smoke-ok",
     `SMOKE window effect ${effect}`,
@@ -166,7 +168,12 @@ try {
   const link = `noren://open?path=${encodeURIComponent(folder)}`;
   runSmoke(
     ["--smoke-deeplink", link],
-    ["SMOKE window hidden", "SMOKE global shortcut none registered", "SMOKE DEEPLINK OK"],
+    [
+      "SMOKE window hidden",
+      "SMOKE global shortcut none registered",
+      "SMOKE tray icon none",
+      "SMOKE DEEPLINK OK",
+    ],
   );
 } finally {
   rmSync(folder, { recursive: true, force: true });
@@ -177,6 +184,7 @@ runSmoke(
   [
     "SMOKE quick window hidden",
     "SMOKE global shortcut none registered",
+    "SMOKE tray icon none",
     "opened in the quick window",
     "promoted to the main window",
     "still alive after the promotion",
@@ -230,7 +238,11 @@ function persistCheck() {
   const folder = mkdtempSync(join(tmpdir(), "noren smoke persist "));
   const logs = mkdtempSync(join(tmpdir(), "noren smoke persist logs "));
   const endpoint = `smoke-persist-${process.pid}-${Date.now()}`;
-  const common = ["SMOKE window hidden", "SMOKE global shortcut none registered"];
+  const common = [
+    "SMOKE window hidden",
+    "SMOKE global shortcut none registered",
+    "SMOKE tray icon none",
+  ];
   let norend;
   let failed = true;
   try {

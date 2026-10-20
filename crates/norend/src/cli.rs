@@ -1,33 +1,45 @@
-//! The command line of `norend`: two options and the usual help and version flags, parsed by hand
-//! (a parser crate would be a dependency for two flags).
+//! The command line of `norend`: three options and the usual help and version flags, parsed by hand
+//! (a parser crate would be a dependency for a handful of flags).
 
 use noren_core::daemon::protocol::MAX_BUFFER_BYTES;
 
 pub const USAGE: &str = "\
 Usage: norend [--endpoint <name>] [--buffer-bytes <n>]
+       norend --stop [--endpoint <name>]
 
 Keeps terminal sessions alive in this process while windows come and go. It listens on a local
 endpoint that only the current user can open (a named pipe on Windows, a Unix socket elsewhere).
-Stop it with Ctrl+C, with SIGTERM, or with a Shutdown request from a client.
+Stop it with Ctrl+C, with SIGTERM, with a Shutdown request from a client, or with 'norend --stop'.
 
 Options:
-  --endpoint <name>    Name of the daemon to run: 1 to 64 ASCII letters, digits, '-', '_' or '.',
-                       not starting with a dot. Default: default
+  --endpoint <name>    Name of the daemon to run (or to stop): 1 to 64 ASCII letters, digits, '-',
+                       '_' or '.', not starting with a dot. Default: default
   --buffer-bytes <n>   Bytes of output each session keeps for a client that attaches later.
                        Default and maximum: 1048576 (1 MiB)
+  --stop               Do not run a daemon: ask the one on the endpoint to stop (it ends its
+                       sessions and exits) and wait until it is gone: the endpoint free and its
+                       process ended. Nothing running there is not an error. This is what an
+                       installer calls before it replaces the program.
   -h, --help           Print this text and exit
   -V, --version        Print the version of norend and of the protocol and exit
 
-Exit codes: 0 stopped cleanly, 1 could not run, 2 wrong command line, 3 another norend already
-listens on that endpoint.
+Exit codes: 0 stopped cleanly (or, with --stop, stopped or nothing to stop), 1 could not run (or
+could not stop it), 2 wrong command line, 3 another norend already listens on that endpoint.
 ";
 
 /// What the command line asks for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Run(RunOptions),
+    /// `--stop`: stop the daemon on this endpoint instead of running one.
+    Stop(StopOptions),
     Help,
     Version,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StopOptions {
+    pub endpoint: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +64,7 @@ where
         endpoint: DEFAULT_ENDPOINT.to_owned(),
         buffer_bytes: None,
     };
+    let mut stop = false;
     while let Some(arg) = args.next() {
         let (name, inline) = match arg.split_once('=') {
             Some((name, value)) if name.starts_with("--") => {
@@ -77,10 +90,24 @@ where
                 }
                 options.buffer_bytes = Some(bytes);
             }
+            "--stop" => {
+                if inline.is_some() {
+                    return Err("--stop takes no value".to_owned());
+                }
+                stop = true;
+            }
             other => return Err(format!("unknown argument {other:?}")),
         }
     }
-    Ok(Command::Run(options))
+    if !stop {
+        return Ok(Command::Run(options));
+    }
+    if options.buffer_bytes.is_some() {
+        return Err("--buffer-bytes does not go with --stop".to_owned());
+    }
+    Ok(Command::Stop(StopOptions {
+        endpoint: options.endpoint,
+    }))
 }
 
 fn value_of(
@@ -131,6 +158,40 @@ mod tests {
         assert_eq!(parse(["-h"]), Ok(Command::Help));
         assert_eq!(parse(["-V"]), Ok(Command::Version));
         assert_eq!(parse(["--version"]), Ok(Command::Version));
+    }
+
+    #[test]
+    fn stop_asks_to_stop_the_daemon_of_the_endpoint_instead_of_running_one() {
+        assert_eq!(
+            parse(["--stop"]),
+            Ok(Command::Stop(StopOptions {
+                endpoint: "default".into()
+            }))
+        );
+        // The endpoint may come before or after, in both spellings.
+        for args in [
+            vec!["--stop", "--endpoint", "work"],
+            vec!["--endpoint", "work", "--stop"],
+            vec!["--endpoint=work", "--stop"],
+        ] {
+            assert_eq!(
+                parse(args.clone()),
+                Ok(Command::Stop(StopOptions {
+                    endpoint: "work".into()
+                })),
+                "{args:?}"
+            );
+        }
+        // Without it nothing changed.
+        assert!(matches!(parse(["--endpoint", "work"]), Ok(Command::Run(_))));
+    }
+
+    #[test]
+    fn stop_does_not_go_with_the_options_of_a_running_daemon() {
+        let error = parse(["--stop", "--buffer-bytes", "4096"]).expect_err("a mix");
+        assert!(error.contains("does not go with --stop"), "{error}");
+        let error = parse(["--stop=yes"]).expect_err("a value");
+        assert!(error.contains("takes no value"), "{error}");
     }
 
     #[test]

@@ -438,6 +438,91 @@ fn the_sessions_end_with_the_daemon() {
     }
 }
 
+/// Runs `norend` with `args` to the end, as an installer would (no window, nothing on stdin).
+fn run_to_the_end(args: &[&str]) -> std::process::Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norend"));
+    command.args(args).stdin(Stdio::null());
+    no_window(&mut command);
+    command.output().expect("norend runs")
+}
+
+#[test]
+fn stop_ends_the_daemon_and_its_sessions_and_frees_the_endpoint() {
+    let _turn = take_turn();
+    let (mut norend, endpoint) = Norend::start_named(&[]);
+    let name = norend.name.clone();
+    let pids = within(async {
+        let (client, mut events) = connect(&endpoint).await;
+        let mut pids = Vec::new();
+        for _ in 0..2 {
+            let (_, pid) = start_session(&client, &mut events).await;
+            pids.push(pid.expect("a pid"));
+        }
+        for pid in &pids {
+            assert!(process_alive(*pid));
+        }
+        // The client that was in the middle of its work is let go with the daemon, as the app is.
+        pids
+    });
+
+    // Another process of norend asks the first one to stop: this is the call of an installer.
+    let stop = run_to_the_end(&["--stop", "--endpoint", &name]);
+    let (out, err) = (
+        String::from_utf8_lossy(&stop.stdout),
+        String::from_utf8_lossy(&stop.stderr),
+    );
+    assert_eq!(stop.status.code(), Some(0), "stdout: {out}\nstderr: {err}");
+    assert!(out.contains("stopped the norend on"), "{out}");
+    // It found the process of the daemon by its command line, and says which it waited for.
+    assert!(
+        out.contains(&format!("process {} is gone", norend.child.id())),
+        "{out}"
+    );
+
+    // It came back only when the daemon was gone, checked at once with nothing in between: the
+    // process has ended (it can be collected), so have the shells, and the endpoint is free (a new
+    // daemon can take the name).
+    let ended = norend.child.try_wait().expect("ask the daemon");
+    assert!(
+        ended.is_some(),
+        "the daemon was still running when --stop returned; it printed:\n{}",
+        norend.output()
+    );
+    for pid in &pids {
+        assert!(!process_alive(*pid), "the shell {pid} outlived the daemon");
+    }
+    within(async {
+        assert_endpoint_free(&endpoint).await;
+    });
+    assert_eq!(
+        ended.and_then(|status| status.code()),
+        Some(0),
+        "{}",
+        norend.output()
+    );
+    assert!(norend.output().contains("norend: stopped"));
+}
+
+#[test]
+fn stop_with_nothing_running_is_a_success_and_changes_nothing() {
+    let name = unique_name();
+    let stop = run_to_the_end(&["--stop", "--endpoint", &name]);
+    let (out, err) = (
+        String::from_utf8_lossy(&stop.stdout),
+        String::from_utf8_lossy(&stop.stderr),
+    );
+    assert_eq!(stop.status.code(), Some(0), "stdout: {out}\nstderr: {err}");
+    assert!(out.contains("nothing to stop"), "{out}");
+    assert!(err.is_empty(), "{err}");
+    // Twice, as an installer that runs again would.
+    assert_eq!(
+        run_to_the_end(&["--stop", "--endpoint", &name])
+            .status
+            .code(),
+        Some(0)
+    );
+}
+
 #[test]
 fn a_second_norend_on_the_same_endpoint_stops_with_a_clear_error() {
     let _turn = take_turn();
@@ -565,6 +650,11 @@ fn a_wrong_command_line_stops_at_once_with_code_2() {
         (vec!["--buffer-bytes", "99999999"], "over the limit"),
         (vec!["--bogus"], "unknown argument"),
         (vec!["--endpoint"], "needs a value"),
+        (
+            vec!["--stop", "--endpoint", "a/b"],
+            "not a valid daemon name",
+        ),
+        (vec!["--stop", "--buffer-bytes", "9"], "does not go with"),
     ] {
         let mut command = Command::new(env!("CARGO_BIN_EXE_norend"));
         command.args(&args).stdin(Stdio::null());

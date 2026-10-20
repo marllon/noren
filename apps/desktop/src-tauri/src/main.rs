@@ -20,6 +20,7 @@ mod route;
 mod shortcut;
 mod smoke;
 mod smoke_persist;
+mod tray;
 mod window_effect;
 
 use tauri::{Listener, Manager, RunEvent};
@@ -271,6 +272,12 @@ fn main() {
             {
                 window.show()?;
                 window.set_focus()?;
+            }
+            // The tray icon, which closing the window with the shells kept leaves the app running
+            // in. Only a normal start has one: the smoke modes have no one to click it. Without it
+            // closing the window quits, as before.
+            if !any_smoke && let Err(reason) = tray::install(app.handle()) {
+                eprintln!("warning: no tray icon ({reason}); closing the window will quit the app");
             }
             // The quick terminal: a second window, hidden, that loads its page once the main one is up
             // (see `quick::create_hidden_after_ready`), so it is ready when something shows it. The

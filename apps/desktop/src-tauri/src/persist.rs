@@ -16,6 +16,11 @@
 //!
 //! With the setting off, or with the sessions in this process (no `norend`), the app ends every
 //! session on the way out, and nothing here finds anything to take over.
+//!
+//! Closing the window with the shells kept does not even leave the app (NOR-F14-02c): the window is
+//! hidden and the app stays in the tray (`tray`, `lifecycle`). The way out above is taken when the
+//! tray icon's "Quit" is chosen, which also ends the daemon ([`AppState::begin_quit`]), or when the
+//! window closes with the setting off or no daemon.
 
 use std::collections::HashSet;
 use std::sync::atomic::Ordering;
@@ -43,6 +48,17 @@ impl AppState {
     /// Takes the value of `sessions.keepOnClose` from the interface.
     pub fn set_keep_sessions(&self, keep: bool) {
         self.keep_sessions.store(keep, Ordering::SeqCst);
+    }
+
+    /// The tray icon's "Quit" was chosen: the app goes away for real, ending the sessions and the
+    /// daemon on its way out.
+    pub fn begin_quit(&self) {
+        self.quitting.store(true, Ordering::SeqCst);
+    }
+
+    /// Whether [`Self::begin_quit`] was called.
+    pub fn is_quitting(&self) -> bool {
+        self.quitting.load(Ordering::SeqCst)
     }
 
     /// Replaces the book of which shell is which pane's (a run starts with one in memory, and the
@@ -161,8 +177,26 @@ impl AppState {
 
     /// What the app does with its sessions on its way out. With the shells kept and the sessions in
     /// the daemon, the ones that belong to a pane and still run are left there and the others end;
-    /// otherwise every session ends.
+    /// otherwise every session ends. After "Quit" of the tray icon (NOR-F14-02c) nothing is kept:
+    /// every session ends and so does the daemon, whoever started it, and the endpoint is free when
+    /// this returns.
     pub fn end_sessions_on_exit(&self) {
+        if self.is_quitting() {
+            lock(&self.pane_book).clear();
+            match self.sessions.quit_for_good() {
+                Ok(stopped) => {
+                    if let Some(pid) = stopped.norend_pid {
+                        eprintln!("quit for good: the session daemon (pid {pid}) was stopped");
+                    }
+                }
+                Err(error) => {
+                    eprintln!("warning: could not stop the session daemon: {error}");
+                    // The daemon would not go: at least what this run started does not stay behind.
+                    self.sessions.shutdown();
+                }
+            }
+            return;
+        }
         if !(self.keeps_sessions() && self.sessions.in_daemon()) {
             lock(&self.pane_book).clear();
             self.sessions.shutdown();

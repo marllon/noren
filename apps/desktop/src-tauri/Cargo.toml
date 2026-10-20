@@ -17,7 +17,11 @@ noren-core = { path = "../../../crates/noren-core" }
 # (`sync`), `select!` (`macros`) and the waits (`time`). Already in the tree through Tauri and
 # noren-core; 1.53.3, MIT.
 tokio = { version = "1.53.3", features = ["rt-multi-thread", "sync", "macros", "time"] }
-tauri = { version = "2", features = [] }
+# `tray-icon`: the icon in the notification area with "Open" and "Quit" (`tray.rs`), which is what
+# lets closing the window leave the app (and the shells in `norend`) running. Its own crate,
+# `tray-icon` 0.25.1 (MIT OR Apache-2.0), was already in the lockfile; on Linux it loads the
+# appindicator library at run time (a system without it gets no icon, see `tray::install`).
+tauri = { version = "2", features = ["tray-icon"] }
 # Derive macros for the command DTOs (profile list, session-exit payload, write payload).
 # Already in the dependency tree through Tauri; MIT OR Apache-2.0.
 serde = { version = "1", features = ["derive"] }

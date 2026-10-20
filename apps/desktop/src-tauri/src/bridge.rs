@@ -61,6 +61,10 @@ pub struct AppState {
     /// the interface hands over). Off until it does, so an app that never heard from the interface
     /// ends its sessions as it always did.
     pub(crate) keep_sessions: AtomicBool,
+    /// Set by the tray icon's "Quit" (see `tray`): the app is going away for real, so the closing
+    /// of the window is not turned into hiding it, and on the way out the sessions and the daemon
+    /// are ended instead of left running.
+    pub(crate) quitting: AtomicBool,
     /// Which session of the daemon belongs to which pane (see `pane_sessions`).
     pub(crate) pane_book: Mutex<PaneBook>,
 }
@@ -117,6 +121,7 @@ impl AppState {
             prespawn: Mutex::default(),
             processes: SystemProcesses::new(),
             keep_sessions: AtomicBool::new(false),
+            quitting: AtomicBool::new(false),
             pane_book: Mutex::new(PaneBook::in_memory()),
         }
     }
@@ -2921,6 +2926,71 @@ mod tests {
         assert!(
             PaneBook::open(book.clone(), &name).is_empty(),
             "and so is the book on disk"
+        );
+        let _ = std::fs::remove_dir_all(book.parent().unwrap());
+    }
+
+    #[test]
+    fn quitting_for_good_ends_the_shells_of_the_panes_and_the_daemon_though_the_setting_keeps_them()
+    {
+        use crate::daemon_link::{DaemonSettings, Placement, norend_binary};
+
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let name = format!("quit-{}", std::process::id());
+        let book = a_book_file("quit-for-good");
+        // A normal run: it starts a norend of its own that outlives it, and keeps the shells.
+        let state = AppState::with_detected_in(
+            ProfileSet {
+                profiles: vec![shell_profile()],
+                default_id: Some("test".to_owned()),
+            },
+            Host::Daemon(DaemonSettings {
+                endpoint: name.clone(),
+                program: Some(norend_binary()),
+                ..DaemonSettings::normal()
+            }),
+        );
+        state.set_keep_sessions(true);
+        state.use_pane_book(PaneBook::open(book.clone(), &name));
+        let Placement::Daemon {
+            norend_pid: Some(norend),
+            ..
+        } = state.sessions.placement()
+        else {
+            panic!("expected a norend this run started");
+        };
+        let app = tauri::test::mock_app();
+        let (_, pane_pid) = start_pane_shell(&app, &state, Some("pane-a"));
+        let (_, other_pid) = start_pane_shell(&app, &state, Some("pane-b"));
+        assert_eq!(state.pane_book.lock().unwrap().len(), 2);
+
+        // Without the tray's quit the same exit leaves both shells (that is the setting).
+        state.begin_quit();
+        assert!(state.is_quitting());
+        state.end_sessions_on_exit();
+
+        // Everything is gone: the shells of the panes, the daemon, and the endpoint.
+        let processes = SystemProcesses::new();
+        let deadline = std::time::Instant::now() + Duration::from_secs(40);
+        for pid in [pane_pid, other_pid, norend] {
+            loop {
+                if !processes.snapshot().iter().any(|p| p.pid == pid) {
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "process {pid} outlived the quit"
+                );
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+        assert!(!state.sessions.daemon_listens(), "the endpoint is free");
+        assert!(state.pane_book.lock().unwrap().is_empty());
+        assert!(
+            PaneBook::open(book.clone(), &name).is_empty(),
+            "nothing is left written down for the next run to look for"
         );
         let _ = std::fs::remove_dir_all(book.parent().unwrap());
     }

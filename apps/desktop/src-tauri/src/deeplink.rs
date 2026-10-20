@@ -5,7 +5,7 @@
 use std::sync::Mutex;
 use std::sync::mpsc::Sender;
 
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 /// Event the interface listens to; the payload is the raw link as a JSON string.
 pub const LINK_EVENT: &str = "deep-link-url";
@@ -214,8 +214,9 @@ pub fn deliver(app: &AppHandle, url: String) {
     }
 }
 
-/// Brings the existing window to the front: shown, not minimized, focused.
-pub fn focus_main_window(app: &AppHandle) {
+/// Brings the existing window to the front: shown (it may be hidden in the tray), not minimized,
+/// focused.
+pub fn focus_main_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();

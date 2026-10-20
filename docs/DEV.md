@@ -84,7 +84,7 @@ Tips:
 pnpm desktop:build
 ```
 
-This runs `tauri build` in release mode and produces two installers, an NSIS `.exe` and an MSI.
+`scripts/desktop-build.mjs` builds the session daemon (`cargo build -p norend --release`), copies it to `apps/desktop/src-tauri/binaries/` (ignored by git) under the name Tauri looks for (`norend-<target triple>.exe`), and runs `tauri build` in release mode with the extra configuration `apps/desktop/src-tauri/tauri.bundle.conf.json`, which carries `norend` in the installers next to `noren` and names the hooks that stop a running one before the files are replaced. That file is separate from `tauri.conf.json` on purpose: the build script of Tauri requires the copy of `norend` for every build of the app, and `cargo build`, `clippy`, `test`, `pnpm verify` and `pnpm smoke` must not. Arguments after the command go to `tauri build` (`pnpm desktop:build --bundles msi`). It produces two installers on Windows, an NSIS `.exe` and an MSI (see [DAEMON.md](DAEMON.md#in-the-installers)).
 The first run compiles the release profile (a few minutes); the Tauri bundler downloads NSIS and
 one plugin DLL for the `.exe`, and the WiX 3 binaries for the `.msi`, from GitHub on first use;
 later runs reuse them. The targets per platform are set in `bundle.targets`: `nsis` and `msi` in
@@ -96,8 +96,10 @@ unless `CARGO_TARGET_DIR` says otherwise), which is ignored by git; never commit
 
 | Installer | Path                                                   | Size (0.1.0) |
 | --------- | ------------------------------------------------------ | ------------ |
-| NSIS      | `target/release/bundle/nsis/Noren_0.1.0_x64-setup.exe` | 3.13 MiB     |
-| MSI       | `target/release/bundle/msi/Noren_0.1.0_x64_en-US.msi`  | 4.55 MiB     |
+| NSIS      | `target/release/bundle/nsis/Noren_0.1.0_x64-setup.exe` | 3.57 MiB     |
+| MSI       | `target/release/bundle/msi/Noren_0.1.0_x64_en-US.msi`  | 5.34 MiB     |
+
+To see that `norend.exe` is in an installer without installing anything: `msiexec /a <the .msi> /qn TARGETDIR=<an absolute path of an empty folder>` unpacks the MSI (no registry, no shortcuts, the custom actions do not run) and `PFiles\Noren` holds `noren.exe` and `norend.exe` side by side; for the NSIS installer, `target/release/nsis/x64/installer.nsi` is the script it was built from (it lists `norend.exe` among the files and includes `installer/hooks.nsh`). `node --test scripts/desktop-build-lib.test.mjs` tests the small pure part of `scripts/desktop-build.mjs`.
 
 The version is `0.1.0` and must stay in step in `package.json`, `apps/desktop/package.json`,
 `packages/model/package.json`, `tauri.conf.json`, the workspace `Cargo.toml` and `Cargo.lock`. It

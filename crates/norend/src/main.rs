@@ -3,6 +3,7 @@
 //! See `docs/DAEMON.md`.
 
 mod cli;
+mod stop;
 
 use std::io::{self, Write};
 use std::process::ExitCode;
@@ -10,7 +11,7 @@ use std::process::ExitCode;
 use noren_core::daemon::protocol::PROTOCOL_VERSION;
 use noren_core::daemon::{Daemon, Endpoint, ServerConfig, ShutdownRequested};
 
-use cli::{Command, RunOptions};
+use cli::{Command, RunOptions, StopOptions};
 
 /// Stopped cleanly.
 const EXIT_OK: u8 = 0;
@@ -35,9 +36,46 @@ fn main() -> ExitCode {
             ExitCode::from(EXIT_OK)
         }
         Ok(Command::Run(options)) => ExitCode::from(run(&options)),
+        Ok(Command::Stop(options)) => ExitCode::from(stop_daemon(&options)),
         Err(message) => {
             eprintln!("norend: {message}\nTry 'norend --help'.");
             ExitCode::from(EXIT_USAGE)
+        }
+    }
+}
+
+/// `norend --stop`: stops the daemon of the endpoint, or finds there is none.
+fn stop_daemon(options: &StopOptions) -> u8 {
+    let endpoint = match Endpoint::named(&options.endpoint) {
+        Ok(endpoint) => endpoint,
+        Err(e) => {
+            eprintln!("norend: {e}");
+            return EXIT_USAGE;
+        }
+    };
+    match stop::stop(&options.endpoint, &endpoint, stop::STOP_TIMEOUT) {
+        Ok(stop::Stopped::NothingRunning) => {
+            println!("norend: no norend listens on {endpoint}; nothing to stop");
+            EXIT_OK
+        }
+        Ok(stop::Stopped::Stopped { gone }) if gone.is_empty() => {
+            println!(
+                "norend: stopped the norend on {endpoint}; the endpoint is free (the system would \
+                 not say which process it was, so its end was not waited for)"
+            );
+            EXIT_OK
+        }
+        Ok(stop::Stopped::Stopped { gone }) => {
+            let pids: Vec<String> = gone.iter().map(u32::to_string).collect();
+            println!(
+                "norend: stopped the norend on {endpoint}; process {} is gone and the endpoint is free",
+                pids.join(", ")
+            );
+            EXIT_OK
+        }
+        Err(message) => {
+            eprintln!("norend: {message}");
+            EXIT_FAILED
         }
     }
 }

@@ -170,7 +170,7 @@ The settings are read at every check, so a saved change applies without a restar
 - **Off.** Closing the window ends every shell, as it always did, and a shell left behind (by a crash, or from before you turned this off) is ended when Noren opens.
 - **Shells with no pane do not stay.** The shell of the quick terminal window, and one promoted from it to a tab, end with the app. A shell that no pane comes back for is ended when Noren opens (nobody could reach it), unless another program is attached to it.
 - **No daemon, no persistence.** When there is no `norend` next to the app (the log has a line that says so), the shells live inside the app and end with it whatever this says.
-- **The daemon stays.** With the setting on, `norend` keeps running after the window closes, with no window of its own. Closing it for real (a tray icon with a "quit" that stops it) is a later step of the roadmap; until then a `norend` that is left over is stopped with the task manager or `kill`.
+- **The app stays too.** With the setting on and the sessions in the daemon, closing the window only hides it: Noren stays in the notification area (the tray icon) and its shells keep running. **Open Noren** (or a click on the icon) brings the window back; **Quit Noren and end all sessions** ends the shells, the daemon and the app for real. With the setting off, or with no `norend`, closing the window quits the app as it always did. See [DAEMON.md](DAEMON.md#the-tray-icon-and-quitting-for-real).
 - It follows the file like every other setting: turn it off while Noren is open and the next close ends the shells. There is no checkbox for it in the settings screen yet.
 
 ## The AI

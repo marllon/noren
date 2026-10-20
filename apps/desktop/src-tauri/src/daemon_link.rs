@@ -42,14 +42,17 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::{Arc, Condvar, LazyLock, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, LazyLock, Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use noren_core::daemon::{
     ClientError, ClientEvent, ClientEvents, DaemonClient, Endpoint, ErrorCode, SessionInfo,
 };
-use noren_core::{ExitInfo, PtyError, SessionEvent, SessionId, SessionManager, SpawnSpec};
+use noren_core::{
+    ExitInfo, ProcessSource, PtyError, SessionEvent, SessionId, SessionManager, SpawnSpec,
+    SystemProcesses,
+};
 use tokio::runtime::{Builder, Handle, Runtime};
 use tokio::sync::{mpsc as async_mpsc, oneshot};
 
@@ -212,6 +215,10 @@ type BackendInit = Box<dyn FnOnce() -> Backend + Send + Sync>;
 pub struct Sessions {
     /// Decided in the background from the start of the program; the first call waits for it.
     backend: LazyLock<Backend, BackendInit>,
+    /// Whether the backend is a daemon, published by the thread that decided it the moment it did,
+    /// so a caller that must not wait (the handler of a window event) can ask without forcing
+    /// `backend`. Empty until then.
+    in_daemon_known: Arc<OnceLock<bool>>,
 }
 
 impl Sessions {
@@ -219,29 +226,41 @@ impl Sessions {
         match host {
             Host::InProcess => Self::from_backend(Backend::in_process(None)),
             Host::Daemon(settings) => {
+                let known = Arc::new(OnceLock::new());
+                let publish = Arc::clone(&known);
                 let resolving = thread::Builder::new()
                     .name("noren-daemon-find".to_owned())
-                    .spawn(move || resolve(settings));
+                    .spawn(move || {
+                        let backend = resolve(settings);
+                        let _ = publish.set(matches!(backend, Backend::Daemon(_)));
+                        backend
+                    });
                 let waiting = Mutex::new(resolving.ok());
+                let on_failure = Arc::clone(&known);
                 Self {
                     backend: LazyLock::new(Box::new(move || {
                         let handle = lock(&waiting).take();
                         handle
                             .and_then(|handle| handle.join().ok())
                             .unwrap_or_else(|| {
+                                let _ = on_failure.set(false);
                                 Backend::in_process(Some(
                                     "the search for the session daemon failed".to_owned(),
                                 ))
                             })
                     })),
+                    in_daemon_known: known,
                 }
             }
         }
     }
 
     fn from_backend(backend: Backend) -> Self {
+        let known = OnceLock::new();
+        let _ = known.set(matches!(backend, Backend::Daemon(_)));
         Self {
             backend: LazyLock::new(Box::new(move || backend)),
+            in_daemon_known: Arc::new(known),
         }
     }
 
@@ -311,6 +330,13 @@ impl Sessions {
     /// Whether the sessions live in the daemon, and so can outlive the app.
     pub fn in_daemon(&self) -> bool {
         matches!(&*self.backend, Backend::Daemon(_))
+    }
+
+    /// [`Self::in_daemon`] without waiting: `None` while the search for the daemon is still going
+    /// on. For the handler of a window event, which runs on the thread of the event loop and must
+    /// not stand still for the seconds a daemon can take to start.
+    pub fn in_daemon_now(&self) -> Option<bool> {
+        self.in_daemon_known.get().copied()
     }
 
     /// Every session the daemon holds, whoever started it: the ones this run started, the ones an
@@ -392,6 +418,26 @@ impl Sessions {
                 Err(SessionError::new("the sessions do not run in a daemon"))
             }
             Backend::Daemon(link) => link.stop_daemon(),
+        }
+    }
+
+    /// Quitting for real (the tray icon's "Quit"): every session ends, the daemon on the endpoint
+    /// stops (whoever started it, and even when the connection of this run was lost: it is found
+    /// again, never started) and the call returns when the endpoint is free. When the daemon is
+    /// already gone there is nothing to stop and that is a success. The sessions in this process
+    /// end with the app, as they always did. An error when the daemon would not stop; the sessions
+    /// of this run are ended then as far as they can be (the caller falls back to
+    /// [`Self::shutdown`]).
+    pub fn quit_for_good(&self) -> Result<Stopped, SessionError> {
+        match &*self.backend {
+            Backend::Process { manager, .. } => {
+                manager.shutdown();
+                Ok(Stopped {
+                    norend_pid: None,
+                    exit_code: None,
+                })
+            }
+            Backend::Daemon(link) => link.quit_for_good(),
         }
     }
 
@@ -789,8 +835,78 @@ impl Link {
         lock(&self.owned).clear();
     }
 
+    /// See [`Sessions::quit_for_good`].
+    fn quit_for_good(&self) -> Result<Stopped, SessionError> {
+        let conn = match self.live_connection() {
+            Ok(conn) => conn,
+            // The connection of this run was cut (the daemon may be fine): look for the daemon
+            // itself on the endpoint, and do not start one just to stop it.
+            Err(_) => match self.open() {
+                Ok(conn) => conn,
+                Err(OpenError::Absent) => {
+                    lock(&self.owned).clear();
+                    return Ok(Stopped {
+                        norend_pid: None,
+                        exit_code: None,
+                    });
+                }
+                Err(OpenError::Other(why)) => return Err(SessionError::new(why)),
+            },
+        };
+        let deadline = Instant::now() + STOP_TIMEOUT;
+        // The shells it holds, taken before it is asked (afterwards there is nobody to ask).
+        let shells = self.running_shells(&conn);
+        let stopped = self.stop_through(conn)?;
+        self.wait_until_free(deadline)?;
+        // A daemon this run started has a process to wait for (done by `stop_through`, which covers its
+        // shells). One it found has none that this run can see, and it frees its endpoint before it
+        // ends the sessions: its shells being gone is what says the sessions ended.
+        if stopped.norend_pid.is_none() {
+            wait_until_processes_gone(&shells, deadline)?;
+        }
+        Ok(stopped)
+    }
+
+    /// The pids of the shells of the daemon that still run (best effort: none when it cannot say).
+    fn running_shells(&self, conn: &Arc<Conn>) -> Vec<u32> {
+        let conn = Arc::clone(conn);
+        let listed = self.call_within(
+            async move { conn.client.list().await },
+            END_SESSIONS_TIMEOUT,
+        );
+        match listed {
+            Ok(Ok(listed)) => listed
+                .iter()
+                .filter(|info| info.exit.is_none())
+                .filter_map(|info| info.pid)
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Waits until nothing listens on the endpoint: the daemon answers its `Shutdown` first and
+    /// ends the sessions and leaves the endpoint after it, so the endpoint is the one sign that is
+    /// true whoever started the daemon.
+    fn wait_until_free(&self, deadline: Instant) -> Result<(), SessionError> {
+        while self.listens() {
+            if Instant::now() >= deadline {
+                return Err(SessionError::new(format!(
+                    "the session daemon was asked to stop and still listened on {} when the time was up",
+                    self.endpoint
+                )));
+            }
+            thread::sleep(LAUNCH_POLL);
+        }
+        Ok(())
+    }
+
     fn stop_daemon(&self) -> Result<Stopped, SessionError> {
         let conn = self.live_connection()?;
+        self.stop_through(conn)
+    }
+
+    /// Sends `Shutdown` on `conn`; when this run started the daemon, waits for its process to end.
+    fn stop_through(&self, conn: Arc<Conn>) -> Result<Stopped, SessionError> {
         self.call_within(async move { conn.client.shutdown().await }, STOP_TIMEOUT)??;
         lock(&self.owned).clear();
         let launched = lock(&self.launched).clone();
@@ -811,6 +927,31 @@ impl Link {
                 STOP_TIMEOUT.as_secs()
             ))),
         }
+    }
+}
+
+/// Waits until none of `pids` is a process any more, up to `deadline`.
+fn wait_until_processes_gone(pids: &[u32], deadline: Instant) -> Result<(), SessionError> {
+    if pids.is_empty() {
+        return Ok(());
+    }
+    let processes = SystemProcesses::new();
+    loop {
+        let alive: Vec<u32> = processes
+            .snapshot()
+            .iter()
+            .map(|process| process.pid)
+            .filter(|pid| pids.contains(pid))
+            .collect();
+        if alive.is_empty() {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(SessionError::new(format!(
+                "the session daemon was asked to stop, and its shells {alive:?} were still running when the time was up"
+            )));
+        }
+        thread::sleep(LAUNCH_POLL);
     }
 }
 
@@ -1108,17 +1249,48 @@ impl Launched {
     }
 }
 
+/// The `norend` Cargo builds for the tests of the workspace, next to the test executable's
+/// profile folder. Builds it when only this package was asked for.
+#[cfg(test)]
+pub(crate) fn norend_binary() -> PathBuf {
+    static BUILT: OnceLock<PathBuf> = OnceLock::new();
+    BUILT
+        .get_or_init(|| {
+            if let Some(path) = std::env::var_os("NOREND_BIN") {
+                return PathBuf::from(path);
+            }
+            let name = if cfg!(windows) {
+                "norend.exe"
+            } else {
+                "norend"
+            };
+            let exe = std::env::current_exe().expect("test executable");
+            // target/<profile>/deps/<test> -> target/<profile>/norend
+            let profile = exe.parent().and_then(Path::parent).expect("profile folder");
+            let path = profile.join(name);
+            if !path.is_file() {
+                let mut build = Command::new(env!("CARGO"));
+                build.args(["build", "-p", "norend"]);
+                if !cfg!(debug_assertions) {
+                    build.arg("--release");
+                }
+                let status = build.status().expect("run cargo to build norend");
+                assert!(status.success(), "cargo build -p norend failed");
+            }
+            assert!(path.is_file(), "no norend at {}", path.display());
+            path
+        })
+        .clone()
+}
+
 #[cfg(test)]
 mod tests {
-    use std::sync::OnceLock;
     use std::sync::atomic::AtomicUsize;
 
-    use noren_core::daemon::{Daemon, ServerConfig};
-    use noren_core::{ProcessSource, SystemProcesses};
-
     use super::*;
+    use noren_core::daemon::{Daemon, ServerConfig};
 
-    use super::ONE_AT_A_TIME;
+    use super::{ONE_AT_A_TIME, norend_binary};
 
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -1154,39 +1326,6 @@ mod tests {
 
     fn missing_program() -> PathBuf {
         std::env::temp_dir().join("noren-no-such-norend-4f2a91")
-    }
-
-    /// The `norend` Cargo builds for the tests of the workspace, next to the test executable's
-    /// profile folder. Builds it when only this package was asked for.
-    fn norend_binary() -> PathBuf {
-        static BUILT: OnceLock<PathBuf> = OnceLock::new();
-        BUILT
-            .get_or_init(|| {
-                if let Some(path) = std::env::var_os("NOREND_BIN") {
-                    return PathBuf::from(path);
-                }
-                let name = if cfg!(windows) {
-                    "norend.exe"
-                } else {
-                    "norend"
-                };
-                let exe = std::env::current_exe().expect("test executable");
-                // target/<profile>/deps/<test> -> target/<profile>/norend
-                let profile = exe.parent().and_then(Path::parent).expect("profile folder");
-                let path = profile.join(name);
-                if !path.is_file() {
-                    let mut build = Command::new(env!("CARGO"));
-                    build.args(["build", "-p", "norend"]);
-                    if !cfg!(debug_assertions) {
-                        build.arg("--release");
-                    }
-                    let status = build.status().expect("run cargo to build norend");
-                    assert!(status.success(), "cargo build -p norend failed");
-                }
-                assert!(path.is_file(), "no norend at {}", path.display());
-                path
-            })
-            .clone()
     }
 
     /// A shell that stays up and echoes what it is told.
@@ -1849,6 +1988,337 @@ mod tests {
         wait_until_gone(norend);
         wait_until_gone(pid);
         assert!(!second.daemon_listens());
+    }
+
+    // ---- quitting for good (NOR-F14-02c) ----
+
+    /// Whether anything accepts a connection on `endpoint`, asked from outside the app's link.
+    fn endpoint_answers(endpoint: &str) -> bool {
+        let endpoint = Endpoint::named(endpoint).expect("endpoint");
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime")
+            .block_on(async { DaemonClient::connect(&endpoint).await.is_ok() })
+    }
+
+    /// Waits until `child` ends and returns how.
+    fn wait_for_child(child: &mut Child) -> ExitStatus {
+        let deadline = Instant::now() + Duration::from_secs(40);
+        loop {
+            if let Some(status) = child.try_wait().expect("ask the child") {
+                return status;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the process {} did not end",
+                child.id()
+            );
+            thread::sleep(Duration::from_millis(30));
+        }
+    }
+
+    /// A `norend` somebody else started: killed on drop, so a failing test leaves nothing running.
+    struct OtherNorend(Child);
+
+    impl OtherNorend {
+        /// Starts it the way the app does and waits until it answers.
+        fn start(endpoint: &str) -> Self {
+            let child = launch_norend(&norend_binary(), endpoint).expect("start norend");
+            let norend = Self(child);
+            let deadline = Instant::now() + Duration::from_secs(40);
+            while !endpoint_answers(endpoint) {
+                assert!(Instant::now() < deadline, "the norend never listened");
+                thread::sleep(Duration::from_millis(30));
+            }
+            norend
+        }
+    }
+
+    impl Drop for OtherNorend {
+        fn drop(&mut self) {
+            if matches!(self.0.try_wait(), Ok(None)) {
+                let _ = self.0.kill();
+            }
+            let _ = self.0.wait();
+        }
+    }
+
+    #[test]
+    fn quitting_for_good_ends_the_sessions_stops_the_daemon_the_app_started_and_frees_the_endpoint()
+    {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let endpoint = unique_endpoint();
+        // A normal run: the daemon outlives the app, unless the person quits for good.
+        let sessions = sessions(settings(&endpoint, Some(norend_binary())));
+        let Placement::Daemon {
+            norend_pid: Some(norend),
+            ..
+        } = sessions.placement()
+        else {
+            panic!("expected a norend this run started");
+        };
+        let (first, first_output) = start_shell(&sessions);
+        let (second, second_output) = start_shell(&sessions);
+        let pids = [first, second].map(|id| sessions.process_ids(&[id])[0].1.expect("pid"));
+        assert!(process_exists(norend) && pids.iter().all(|pid| process_exists(*pid)));
+        assert!(sessions.daemon_listens());
+
+        let stopped = sessions.quit_for_good().expect("quit for good");
+
+        assert_eq!(
+            stopped,
+            Stopped {
+                norend_pid: Some(norend),
+                exit_code: Some(0)
+            },
+            "norend ended on its own, cleanly"
+        );
+        assert!(!process_exists(norend), "the daemon is gone");
+        first_output.wait_for_exit();
+        second_output.wait_for_exit();
+        for pid in pids {
+            wait_until_gone(pid);
+        }
+        assert!(!sessions.daemon_listens(), "the endpoint is free");
+        assert!(!endpoint_answers(&endpoint));
+        assert_eq!(sessions.session_count(), 0, "and the app holds no session");
+    }
+
+    #[test]
+    fn quitting_for_good_also_stops_a_daemon_that_somebody_else_started() {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let endpoint = unique_endpoint();
+        let mut other = OtherNorend::start(&endpoint);
+        // This run finds the daemon (it could not start one), as after a close with the shells kept.
+        let sessions = sessions(settings(&endpoint, Some(missing_program())));
+        assert_eq!(
+            sessions.placement(),
+            Placement::Daemon {
+                endpoint: endpoint.clone(),
+                norend_pid: None
+            }
+        );
+        let (id, output) = start_shell(&sessions);
+        let pid = sessions.process_ids(&[id])[0].1.expect("pid");
+
+        let stopped = sessions.quit_for_good().expect("quit for good");
+
+        assert_eq!(
+            stopped,
+            Stopped {
+                norend_pid: None,
+                exit_code: None
+            },
+            "this run did not start it, so it has no process to wait for"
+        );
+        // It did not return before the sessions had ended and the endpoint was free: that is checked
+        // first, with nothing in between (this run has no process to wait for, so the shell is the
+        // sign), and only then that the daemon itself ended well.
+        assert!(
+            !process_exists(pid),
+            "the shell was still running when it returned"
+        );
+        assert!(!endpoint_answers(&endpoint));
+        assert!(!sessions.daemon_listens());
+        assert_eq!(wait_for_child(&mut other.0).code(), Some(0));
+        output.wait_for_exit();
+    }
+
+    #[test]
+    fn quitting_for_good_ends_the_sessions_nobody_of_this_run_started_too() {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let endpoint = unique_endpoint();
+        let mut other = OtherNorend::start(&endpoint);
+        // A shell a run before this one left in the daemon, which this run never took over.
+        let before = sessions(settings(&endpoint, Some(missing_program())));
+        let (left, left_output) = start_shell(&before);
+        let left_pid = before.process_ids(&[left])[0].1.expect("pid");
+        before.detach(&[left]);
+        drop(before);
+
+        let now = sessions(settings(&endpoint, Some(missing_program())));
+        assert_eq!(now.session_count(), 0, "this run owns nothing");
+        now.quit_for_good().expect("quit for good");
+
+        assert!(
+            !process_exists(left_pid),
+            "the shell nobody took over was still running"
+        );
+        assert!(!endpoint_answers(&endpoint));
+        assert_eq!(wait_for_child(&mut other.0).code(), Some(0));
+        drop(left_output);
+    }
+
+    #[test]
+    fn quitting_for_good_finds_the_daemon_again_when_the_connection_of_the_run_was_cut() {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let endpoint = unique_endpoint();
+        let mut other = OtherNorend::start(&endpoint);
+        let sessions = sessions(settings(&endpoint, Some(missing_program())));
+        let (id, output) = start_shell(&sessions);
+        let pid = sessions.process_ids(&[id])[0].1.expect("pid");
+        // The daemon is fine but this run's connection is not (the daemon cuts a client that does
+        // not read): every call fails, and the daemon is still there to stop.
+        let Backend::Daemon(link) = &*sessions.backend else {
+            panic!("expected a daemon");
+        };
+        lock(&link.conn)
+            .as_ref()
+            .expect("a connection")
+            .lost
+            .store(true, Ordering::SeqCst);
+        assert!(sessions.write(id, b"x").is_err());
+
+        sessions.quit_for_good().expect("quit for good");
+
+        assert!(
+            !process_exists(pid),
+            "the shell was still running when it returned"
+        );
+        assert!(!endpoint_answers(&endpoint));
+        assert_eq!(wait_for_child(&mut other.0).code(), Some(0));
+        drop(output);
+    }
+
+    #[test]
+    fn quitting_for_good_when_the_daemon_is_already_gone_is_not_an_error() {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let endpoint = unique_endpoint();
+        let mut daemon = start_daemon(&endpoint);
+        let sessions = sessions(settings(&endpoint, Some(missing_program())));
+        let (_id, output) = start_shell(&sessions);
+        daemon.shutdown();
+        output.wait_for_exit();
+        // The link learns that the connection ended a moment after the shell is reported gone.
+        let Backend::Daemon(link) = &*sessions.backend else {
+            panic!("expected a daemon");
+        };
+        let deadline = Instant::now() + Duration::from_secs(40);
+        while link.live_connection().is_ok() {
+            assert!(Instant::now() < deadline, "the link never noticed");
+            thread::sleep(Duration::from_millis(20));
+        }
+
+        // It must not start a daemon just to stop it.
+        assert_eq!(
+            sessions.quit_for_good(),
+            Ok(Stopped {
+                norend_pid: None,
+                exit_code: None
+            })
+        );
+        assert!(!endpoint_answers(&endpoint));
+        assert_eq!(sessions.session_count(), 0);
+    }
+
+    #[test]
+    fn waiting_for_processes_to_be_gone_ends_with_them_and_names_the_ones_that_stay() {
+        // A real process that stays up until it is killed.
+        #[cfg(windows)]
+        let mut child = Command::new("ping")
+            .args(["-n", "60", "127.0.0.1"])
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("start ping");
+        #[cfg(unix)]
+        let mut child = Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .expect("start sleep");
+        let pid = child.id();
+
+        // Nothing to wait for is done at once.
+        assert!(wait_until_processes_gone(&[], Instant::now()).is_ok());
+        // A pid that is running when the time is up is an error that names it.
+        let error = wait_until_processes_gone(&[pid], Instant::now() + Duration::from_millis(300))
+            .expect_err("it still runs");
+        assert!(error.to_string().contains(&pid.to_string()), "{error}");
+
+        // Gone, it is a success: waiting while another thread ends it.
+        let ender = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(300));
+            let _ = child.kill();
+            let _ = child.wait();
+        });
+        let waited = Instant::now();
+        wait_until_processes_gone(&[pid], Instant::now() + Duration::from_secs(30))
+            .expect("it ended");
+        assert!(
+            waited.elapsed() >= Duration::from_millis(200),
+            "it did wait"
+        );
+        ender.join().unwrap();
+    }
+
+    #[test]
+    fn quitting_for_good_with_the_sessions_in_this_process_just_ends_them() {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let sessions = Sessions::new(Host::InProcess);
+        let (id, output) = start_shell(&sessions);
+
+        assert_eq!(
+            sessions.quit_for_good(),
+            Ok(Stopped {
+                norend_pid: None,
+                exit_code: None
+            })
+        );
+
+        output.wait_for_exit();
+        assert!(!sessions.owns(id));
+        assert_eq!(sessions.session_count(), 0);
+    }
+
+    #[test]
+    fn whether_the_sessions_are_in_a_daemon_can_be_asked_without_waiting_for_the_search() {
+        let dir = std::env::temp_dir().join(format!("noren-slow-norend-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Stays up and listens on nothing, so the search takes as long as the launch timeout.
+        #[cfg(windows)]
+        let slow = {
+            let path = dir.join("slow-norend.cmd");
+            std::fs::write(&path, "@ping -n 6 127.0.0.1 > nul\r\n").unwrap();
+            path
+        };
+        #[cfg(unix)]
+        let slow = {
+            use std::os::unix::fs::PermissionsExt;
+            let path = dir.join("slow-norend");
+            std::fs::write(&path, "#!/bin/sh\nsleep 5\n").unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            path
+        };
+        let mut own = settings(&unique_endpoint(), Some(slow));
+        own.launch_timeout = Duration::from_millis(800);
+        let sessions = sessions(own);
+
+        // Still looking: the answer is "not known yet", at once.
+        let asked = Instant::now();
+        assert_eq!(sessions.in_daemon_now(), None);
+        assert!(asked.elapsed() < Duration::from_millis(300));
+
+        // The search gave up: known, and not in a daemon.
+        assert!(!sessions.in_daemon());
+        assert_eq!(sessions.in_daemon_now(), Some(false));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // A search that finds a daemon, and the plain in-process host, are known too.
+        assert_eq!(
+            Sessions::new(Host::InProcess).in_daemon_now(),
+            Some(false),
+            "no daemon was asked for"
+        );
+        let endpoint = unique_endpoint();
+        let _daemon = start_daemon(&endpoint);
+        let found = sessions_for(&endpoint);
+        assert!(found.in_daemon());
+        assert_eq!(found.in_daemon_now(), Some(true));
+    }
+
+    /// Sessions that find the daemon already on `endpoint`.
+    fn sessions_for(endpoint: &str) -> Sessions {
+        sessions(settings(endpoint, Some(missing_program())))
     }
 
     // ---- a daemon that has to be started ----

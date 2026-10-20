@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A fragment of the Windows installer (MSI), named in tauri.bundle.conf.json (bundle.windows.wix).
+  (It is called .wix.xml and not .wxs because Prettier takes .wxs for a script language and fails
+  on it; the WiX compiler does not look at the extension.)
+
+  The session daemon, norend.exe, sits next to noren.exe and is left running when the window of the
+  app closes. Windows keeps the file of a running program open, so before the installer replaces or
+  removes files it asks the daemon in the install folder to stop (norend.exe with its stop option: it ends its
+  sessions, exits, and returns when its endpoint is free; nothing running there is not an error).
+
+  The action is immediate, not deferred: it runs in the session of the person installing, with their
+  token, which is the only one that can open the endpoint of their daemon (the pipe is closed to every
+  other user, the system account included). It runs before InstallValidate, which is where Windows
+  Installer looks for files in use. When the folder has no norend.exe yet (a first install) the
+  action cannot start it, and that is ignored (Return="ignore").
+
+  A fragment is linked only when something in it is referenced: the empty component group below is
+  what tauri.bundle.conf.json references (bundle.windows.wix.componentGroupRefs), which brings the
+  action and its place in the sequence along.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <CustomAction
+      Id="StopNorend"
+      Directory="INSTALLDIR"
+      ExeCommand="&quot;[INSTALLDIR]norend.exe&quot; --stop"
+      Execute="immediate"
+      Impersonate="yes"
+      Return="ignore"
+    />
+    <InstallExecuteSequence>
+      <Custom Action="StopNorend" Before="InstallValidate">1</Custom>
+    </InstallExecuteSequence>
+    <ComponentGroup Id="StopNorendGroup" />
+  </Fragment>
+</Wix>

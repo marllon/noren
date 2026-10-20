@@ -1,0 +1,14 @@
+{
+  "bundle": {
+    "externalBin": ["binaries/norend"],
+    "windows": {
+      "nsis": {
+        "installerHooks": "installer/hooks.nsh"
+      },
+      "wix": {
+        "fragmentPaths": ["installer/stop-norend.wix.xml"],
+        "componentGroupRefs": ["StopNorendGroup"]
+      }
+    }
+  }
+}

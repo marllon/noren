@@ -65,6 +65,16 @@ pub(crate) fn check_no_global_shortcut(app: &AppHandle) -> Result<(), String> {
     print_line(&format!(
         "SMOKE global shortcut none registered ({refused} requests refused)"
     ));
+    check_no_tray_icon(app)
+}
+
+/// Fails when the app shows a tray icon: no smoke run makes one (nobody is there to click it, and
+/// it would stay in the notification area of whoever runs the checks if a run were cut short).
+fn check_no_tray_icon(app: &AppHandle) -> Result<(), String> {
+    if app.tray_by_id(crate::tray::TRAY_ID).is_some() {
+        return Err("this run shows a tray icon, expected none".to_string());
+    }
+    print_line("SMOKE tray icon none");
     Ok(())
 }
 

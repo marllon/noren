@@ -13,7 +13,8 @@ noren-core = { path = "../noren-core" }
 # without a new crate. Only `rt` (a current-thread runtime for the wait) and `signal` are turned
 # on here; the daemon in `noren-core` already runs its own runtime. 1.53.3, MIT (already in the
 # tree; `signal` uses signal-hook-registry, MIT OR Apache-2.0, already in the tree through Tauri).
-tokio = { version = "1.53.3", features = ["rt", "signal"] }
+# `time` is for the pause between two looks at the endpoint in `norend --stop`.
+tokio = { version = "1.53.3", features = ["rt", "signal", "time"] }
 
 [dev-dependencies]
 # The tests are clients of the daemon process they start, so they need the runtime the client

@@ -266,6 +266,9 @@ describe("a tab with a preview or a diff pane (NOR-F15-04d)", () => {
   it("window/return gives it back to the space it came from, panes unchanged", () => {
     const ws = withPanes();
     const out = applyChecked(ws, { type: "window/open-with-item", itemId: "im" });
+    // (Without this the test would pass when the tab never left, since there would be nothing to return.)
+    expect(out.windows).toHaveLength(1);
+    expect(spaceOf(out, "sA")?.items["im"]).toBeUndefined();
     const windowId = out.windows?.[0]?.id ?? "";
     const back = applyChecked(out, { type: "window/return", windowId });
     expect(back.windows).toBeUndefined();

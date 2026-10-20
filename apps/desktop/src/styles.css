@@ -1480,6 +1480,280 @@ body {
 }
 
 /*
+ * A pane that shows the git diff of a folder: the folder on top with a refresh button, the changed
+ * files in a list beside the lines of the one picked, set side by side in a table (the old file on
+ * the left, the new one on the right). Drawn by the page itself, so it stacks like any other pane.
+ * A pane too narrow for two columns puts the list above the lines.
+ */
+.diff-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  container-type: inline-size;
+  background: var(--nr-bg);
+  color: var(--nr-text);
+}
+
+.diff-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 8px;
+  border-bottom: 1px solid var(--nr-border);
+  background: var(--nr-surface);
+  color: var(--nr-muted);
+  font-size: 12px;
+}
+
+.diff-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-refresh {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--nr-radius);
+  background: transparent;
+  color: var(--nr-text);
+  cursor: pointer;
+}
+
+.diff-refresh:hover {
+  background: var(--nr-border);
+}
+
+.diff-refresh:focus-visible,
+.diff-file-button:focus-visible,
+.diff-more-button:focus-visible {
+  outline: 2px solid var(--nr-accent);
+  outline-offset: -2px;
+}
+
+.diff-note {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--nr-muted);
+  font-size: 13px;
+}
+
+.diff-problem {
+  margin: 10px 12px;
+  padding: 0 0 0 8px;
+  border-left: 2px solid var(--nr-space-color);
+  color: var(--nr-text);
+}
+
+.diff-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.diff-files {
+  flex: 0 0 min(32%, 240px);
+  min-width: 120px;
+  margin: 0;
+  padding: 0;
+  border-right: 1px solid var(--nr-border);
+  list-style: none;
+  overflow: auto;
+}
+
+.diff-file-button {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--nr-text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.diff-file-button:hover {
+  background: var(--nr-surface);
+}
+
+.diff-file-button[aria-current="true"] {
+  background: var(--nr-surface);
+  box-shadow: inset 2px 0 0 var(--nr-space-color);
+}
+
+.diff-letter {
+  flex: none;
+  width: 1ch;
+  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-weight: 700;
+}
+
+.diff-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-counts {
+  flex: none;
+  color: var(--nr-muted);
+  font-size: 11px;
+}
+
+.diff-file {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+.diff-file:focus-visible {
+  outline: 2px solid var(--nr-accent);
+  outline-offset: -2px;
+}
+
+.diff-file-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--nr-border);
+  font-size: 12px;
+}
+
+.diff-file-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.diff-file-status {
+  color: var(--nr-muted);
+}
+
+.diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.diff-table th {
+  padding: 2px 8px;
+  border-bottom: 1px solid var(--nr-border);
+  color: var(--nr-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.diff-table th + th {
+  border-left: 1px solid var(--nr-border);
+}
+
+.diff-col-no {
+  width: 4.5ch;
+}
+
+.diff-no {
+  padding: 0 6px;
+  color: var(--nr-muted);
+  text-align: right;
+  vertical-align: top;
+  user-select: none;
+}
+
+.diff-text {
+  padding: 0 6px;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+  white-space: pre-wrap;
+}
+
+.diff-no[data-nr-side="new"] {
+  border-left: 1px solid var(--nr-border);
+}
+
+.diff-sign {
+  display: inline-block;
+  width: 1.5ch;
+  color: var(--nr-muted);
+  user-select: none;
+}
+
+/*
+ * The theme has an accent and a muted color and no red or green, so an added line is tinted with the
+ * accent and a deleted one with the muted color; the sign in front of each line and the empty side
+ * of a one-sided change carry the meaning, not the color.
+ */
+.diff-text[data-nr-kind="del"],
+.diff-no[data-nr-kind="del"] {
+  background: color-mix(in srgb, var(--nr-muted) 22%, var(--nr-bg));
+}
+
+.diff-text[data-nr-kind="add"],
+.diff-no[data-nr-kind="add"] {
+  background: color-mix(in srgb, var(--nr-accent) 20%, var(--nr-bg));
+}
+
+.diff-text[data-nr-kind="empty"] {
+  background: var(--nr-surface);
+}
+
+.diff-hunk td {
+  padding: 2px 10px;
+  background: var(--nr-surface);
+  color: var(--nr-muted);
+  white-space: pre-wrap;
+}
+
+.diff-noeol {
+  margin-left: 8px;
+  color: var(--nr-muted);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.diff-more-button {
+  padding: 1px 8px;
+  border: 1px solid var(--nr-border);
+  border-radius: var(--nr-radius);
+  background: var(--nr-surface);
+  color: var(--nr-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+@container (max-width: 520px) {
+  .diff-body {
+    flex-direction: column;
+  }
+
+  .diff-files {
+    flex: 0 0 auto;
+    max-height: 30%;
+    border-right: 0;
+    border-bottom: 1px solid var(--nr-border);
+  }
+}
+
+/*
  * Zoom: the zoomed pane covers the whole item and the others are hidden. Nothing moves in the
  * component tree, so no terminal unmounts; the panels keep their sizes, which is what comes back
  * when the zoom ends. The chain of panels up to the item is made static so the zoomed pane

@@ -51,6 +51,23 @@ export function createPreviewPane(id: Id, path: string): Pane {
   };
 }
 
+/**
+ * A pane that shows the git diff of the folder `cwd`. It has no shell: no session and the default
+ * profile (so a terminal pane split from it starts the default shell, in the same folder). The
+ * folder is the caller's to check (`previewPathProblem`).
+ */
+export function createDiffPane(id: Id, cwd: string): Pane {
+  return {
+    id,
+    type: "diff",
+    profileId: DEFAULT_PROFILE_ID,
+    cwd,
+    status: "idle",
+    unread: false,
+    bell: false,
+  };
+}
+
 /** A tab: one item with one pane, focused. */
 export function createTab(itemId: Id, pane: Pane, lastActivityAt: number): Item {
   return {

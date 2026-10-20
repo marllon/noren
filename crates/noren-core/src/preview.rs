@@ -229,7 +229,7 @@ fn has_drive_root(path: &str) -> bool {
 /// as `classifyPreviewPath` of `@noren/model`, and then the one thing only this side knows: whether
 /// the system takes it for absolute (`/home/me` is not a path on Windows, and `C:\Users` is not on
 /// Linux).
-fn path_refusal(path: &str) -> Option<PreviewRefusal> {
+pub(crate) fn path_refusal(path: &str) -> Option<PreviewRefusal> {
     if path.trim().is_empty()
         || path.encode_utf16().count() > MAX_PREVIEW_PATH
         || path.chars().any(|c| c <= '\u{1f}' || c == '\u{7f}')

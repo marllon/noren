@@ -42,8 +42,9 @@ import {
   type BrowserBounds,
 } from "./browser";
 import { externalLinkProblem } from "./external-link";
-import { previewOf } from "./file-preview";
+import { classifyPreviewPath, previewOf } from "./file-preview";
 import type { FilePreview, PreviewEntry } from "./file-preview";
+import type { GitDiff, GitDiffRefusal } from "./git-diff";
 import { MAX_MOD_BYTES, MAX_MODS, isValidModFileName } from "./mods";
 import { OutputStream } from "./output-stream";
 import { MAX_SCROLLBACK_BYTES, isScrollbackPaneId } from "./scrollback";
@@ -130,6 +131,13 @@ export interface FakeBackendOptions {
    * a file, or `"directory"`. A path that is not here is not there.
    */
   files?: Record<string, Uint8Array | "directory">;
+  /**
+   * The git diff each fake repository answers `readGitDiff` with, by the folder that holds it: the
+   * text `git diff` would print, or the refusal to answer with. A folder inside it gets the same
+   * answer, as in a real repository. A repository with no entry here (see `gitRepos`) has no
+   * changes, and a folder in no repository is refused as `not-a-repository`.
+   */
+  gitDiffs?: Record<string, string | GitDiffRefusal>;
   /** The monospaced font families this fake computer has. Defaults to the ones the terminal falls back to. */
   monospaceFonts?: readonly string[];
   /**
@@ -747,6 +755,9 @@ class FakeAi implements AiBackend {
  *   command and answers the configured exit code
  * - `gitInfo` answers from fake repositories (`gitRepos`, `setGitRepo`): a folder is in the
  *   repository of the nearest folder above it (or itself) that has one
+ * - `readGitDiff` answers with the diff text a test gives a repository (`gitDiffs`, `setGitDiff`),
+ *   nothing for a fake repository that has none, and `not-a-repository` outside one; a folder that
+ *   is not a full local path is refused as the real one refuses it
  * - the worktrees live in memory over the fake repositories: `listWorktrees` lists the repository a
  *   folder is in (the main worktree, then the ones `createWorktree` made) and rejects outside one;
  *   `createWorktree` names the folder as the real one does, refuses what git would (an empty or
@@ -841,6 +852,7 @@ export class FakeBackend implements Backend {
   #appliedEffect: WindowEffect = "none";
   readonly #images = new Map<string, Uint8Array>();
   readonly #files = new Map<string, Uint8Array | "directory">();
+  readonly #gitDiffs = new Map<string, string | GitDiffRefusal>();
   #monospaceFonts: readonly string[];
   #modListFailure: Error | undefined;
   #scrollbackFailure: Error | undefined;
@@ -879,6 +891,9 @@ export class FakeBackend implements Backend {
     }
     for (const [path, entry] of Object.entries(options.files ?? {})) {
       this.#files.set(path, entry);
+    }
+    for (const [folder, entry] of Object.entries(options.gitDiffs ?? {})) {
+      this.#gitDiffs.set(folder, entry);
     }
     this.#monospaceFonts = options.monospaceFonts ?? DEFAULT_MONOSPACE_FONTS;
     this.#ai = new FakeAi(
@@ -1566,6 +1581,11 @@ export class FakeBackend implements Backend {
 
   async gitInfo(cwd: string): Promise<GitInfo | null> {
     this.#record("gitInfo", cwd);
+    return this.#repositoryAt(cwd);
+  }
+
+  /** The repository `cwd` is in (the folder that holds it or one below), or `null`. */
+  #repositoryAt(cwd: string): GitInfo | null {
     if (!isAbsolutePath(cwd)) return null;
     for (
       let folder: string | undefined = cwd;
@@ -1777,6 +1797,46 @@ export class FakeBackend implements Backend {
   setFile(path: string, content: Uint8Array | string | null): void {
     if (content === null) this.putFile(path, undefined);
     else this.putFile(path, typeof content === "string" ? encodeUtf8(content) : content);
+  }
+
+  async readGitDiff(cwd: string): Promise<GitDiff> {
+    this.#record("readGitDiff", cwd);
+    const kind = classifyPreviewPath(cwd);
+    if (kind !== "ok") return { kind: "refused", reason: kind };
+    // The diff is of the whole repository, whichever folder of it is asked about.
+    for (
+      let folder: string | undefined = cwd;
+      folder !== undefined;
+      folder = parentFolder(folder)
+    ) {
+      for (const [root, entry] of this.#gitDiffs) {
+        if (!sameFolder(root, folder)) continue;
+        return typeof entry === "string" ? { kind: "diff", text: entry } : { ...entry };
+      }
+    }
+    return this.#repositoryAt(cwd) !== null
+      ? { kind: "diff", text: "" }
+      : { kind: "refused", reason: "not-a-repository" };
+  }
+
+  /**
+   * Sets what `readGitDiff` answers for the repository at `folder`: the text of the diff, a refusal
+   * to answer with, or `null` to take the entry away (the repository then has no changes, or is no
+   * repository at all). Not a `Backend` call, so it is not recorded.
+   */
+  setGitDiff(folder: string, entry: string | GitDiffRefusal | null): void {
+    this.putGitDiff(folder, entry);
+  }
+
+  /**
+   * Where `setGitDiff` keeps the answer; a backend that keeps it somewhere else (the web one) overrides
+   * this to keep it there too.
+   */
+  protected putGitDiff(folder: string, entry: string | GitDiffRefusal | null): void {
+    for (const known of [...this.#gitDiffs.keys()]) {
+      if (sameFolder(known, folder)) this.#gitDiffs.delete(known);
+    }
+    if (entry !== null) this.#gitDiffs.set(folder, entry);
   }
 
   /** Makes `path` a folder, which a preview refuses. Not a `Backend` call. */

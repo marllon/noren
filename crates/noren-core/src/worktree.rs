@@ -251,9 +251,11 @@ impl GitCli {
         self
     }
 
-    /// Runs `git <args>` in `dir` and returns its output. The command has no terminal and asks for
-    /// nothing (no prompt for a password), and on Windows opens no window.
-    fn run<I, S>(&self, dir: &Path, args: I) -> Result<Output, WorktreeError>
+    /// The command `git <args>` in `dir`, set up the same way for every use: it has no terminal and
+    /// asks for nothing (no prompt for a password), reads nothing from the keyboard, carries the
+    /// environment this `GitCli` was given, and on Windows opens no window. Not started yet, so the
+    /// caller picks what to do with its output.
+    pub(crate) fn command<I, S>(&self, dir: &Path, args: I) -> Command
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
@@ -268,7 +270,18 @@ impl GitCli {
             command.env(key, value);
         }
         hide_window(&mut command);
-        command.output().map_err(WorktreeError::GitMissing)
+        command
+    }
+
+    /// Runs `git <args>` in `dir` and returns its output.
+    fn run<I, S>(&self, dir: &Path, args: I) -> Result<Output, WorktreeError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        self.command(dir, args)
+            .output()
+            .map_err(WorktreeError::GitMissing)
     }
 
     /// Runs `git <args>`, and turns a refusal into [`WorktreeError::Git`] with what git printed.

@@ -2,6 +2,7 @@ import { layoutPanes } from "@noren/model";
 import type { Id, Item, LayoutNode, Pane } from "@noren/model";
 import { t } from "./i18n";
 import { browserTitle } from "./browser-address";
+import { diffTitle } from "./diff-view";
 import { previewTitle } from "./preview-view";
 import { commandInfo, shortCwd } from "./pane-info";
 import type { CommandInfo } from "./pane-info";
@@ -57,6 +58,7 @@ export function isSplitItem(item: Item): boolean {
 export function paneStatusText(pane: Pane): string {
   if (pane.type === "browser") return t("pane.browser");
   if (pane.type === "preview") return t("pane.preview");
+  if (pane.type === "diff") return t("pane.diff");
   if (pane.status === "running" || pane.runningCommand !== undefined) return t("pane.running");
   if (pane.status === "exited")
     return pane.exitCode === undefined
@@ -69,6 +71,7 @@ export function paneStatusText(pane: Pane): string {
 export function paneTitleText(pane: Pane, defaultCwd?: string, home?: string): string {
   if (pane.type === "browser") return browserTitle(pane.url);
   if (pane.type === "preview") return previewTitle(pane.path);
+  if (pane.type === "diff") return diffTitle(pane.cwd);
   const cwd = pane.cwd ?? defaultCwd;
   const short = cwd !== undefined ? shortCwd(cwd, home) : "";
   return short !== "" ? short : t("pane.title");

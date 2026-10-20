@@ -49,6 +49,7 @@ const COMMANDS: &[&str] = &[
     "window_effect_set",
     "background_image_read",
     "file_preview_read",
+    "git_diff_read",
     "fonts_list_monospace",
     "link_open",
     "browser_open",

@@ -115,8 +115,8 @@ async function startSessions(
   for (const space of ws.spaces) {
     for (const item of Object.values(space.items)) {
       for (const pane of layoutPanes(item.layout)) {
-        // A browser pane and a preview pane have no shell to start: the page is shown from its
-        // address and the file is read from its path.
+        // A browser pane, a preview pane and a diff pane have no shell to start: the page is shown
+        // from its address, the file is read from its path and the diff is read from its folder.
         if (pane.type !== "terminal") continue;
         const { pane: next, reattached } = await startPane(pane, space, backend, options);
         if (next.sessionId === undefined) failedPaneIds.push(pane.id);

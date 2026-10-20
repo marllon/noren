@@ -202,7 +202,10 @@ export type Action =
    * (see `createBrowserPane`), with no shell and no folder: an address `browserUrlProblem` refuses
    * changes nothing. With `path` it is a preview pane showing that file (`createPreviewPane`), also
    * with no shell and no folder, and a path `previewPathProblem` refuses changes nothing; `url` and
-   * `path` together change nothing either.
+   * `path` together change nothing either. With `diff` set the new pane is a diff pane
+   * (`createDiffPane`) showing the git diff of `cwd` (the folder of the split pane when `cwd` is
+   * not given), with no shell: a folder `previewPathProblem` refuses, or none at all, changes
+   * nothing, and `diff` together with `url` or `path` changes nothing either.
    */
   | {
       type: "pane/split";
@@ -214,6 +217,7 @@ export type Action =
       cwd?: string;
       url?: string;
       path?: string;
+      diff?: boolean;
     }
   /**
    * Points a browser pane at another page. An address `browserUrlProblem` refuses, a pane that is

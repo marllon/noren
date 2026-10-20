@@ -7,6 +7,7 @@ import {
   aiIsOn,
   browserUrlProblem,
   layoutPanes,
+  previewPathProblem,
   resolveOutputPath,
   scrollbackAllowed,
   treeGroups,
@@ -16,6 +17,7 @@ import type {
   AgentRow,
   BrowserBounds,
   FakeSshTarget,
+  GitDiffRefusal,
   GroupNode,
   Id,
   Item,
@@ -60,6 +62,8 @@ import { tauriBridge } from "./tauri-backend";
 import { AskPanel } from "./AskPanel";
 import { BrowserPane } from "./BrowserPane";
 import { browserTitle } from "./browser-address";
+import { DiffPane } from "./DiffPane";
+import { badFolderNotice, diffLimitNotice, diffTitle, noFolderNotice } from "./diff-view";
 import { PreviewPane } from "./PreviewPane";
 import { openPathNotice, previewLimitNotice, previewTitle } from "./preview-view";
 import { askOffNotice, shellNameOf } from "./ask-panel";
@@ -278,6 +282,13 @@ export interface NorenTestHook {
   browserCalls(): { method: string; paneId: string }[];
   /** The path of every file the backend was asked to read for a preview pane, in order. */
   previewReads(): string[];
+  /** The folder of every git diff the backend was asked to read for a diff pane, in order. */
+  gitDiffReads(): string[];
+  /**
+   * Sets the git diff the backend answers for the repository at `folder`: the text `git diff` would
+   * print, or a refusal (`{ kind: "refused", reason }`); `null` takes the entry away.
+   */
+  setGitDiff(folder: string, entry: string | GitDiffRefusal | null): void;
   /** Every command line the backend was asked to run in a short process (stop commands), in order. */
   commandRuns(): { cwd: string; command: string }[];
   /** Makes the next short commands end with this exit code (0 by default). */
@@ -533,6 +544,7 @@ function ItemView({
     paneTitle: (pane) => {
       if (pane.type === "browser") return browserTitle(pane.url);
       if (pane.type === "preview") return previewTitle(pane.path);
+      if (pane.type === "diff") return diffTitle(pane.cwd);
       const cwd = pane.cwd ?? space.defaults.cwd;
       const short = cwd !== undefined ? shortCwd(cwd, home) : "";
       return short !== "" ? short : t("pane.title");
@@ -556,6 +568,17 @@ function ItemView({
       // A preview pane has no shell either: it reads its file and draws it in the page.
       if (pane.type === "preview")
         return <PreviewPane key={pane.id} backend={backend} pane={pane} />;
+      // A diff pane has no shell either: it asks git for the changes of its folder when it is on screen.
+      if (pane.type === "diff") {
+        return (
+          <DiffPane
+            key={pane.id}
+            backend={backend}
+            pane={pane}
+            visible={shown && (item.zoomedPaneId === undefined || item.zoomedPaneId === pane.id)}
+          />
+        );
+      }
       return (
         <PaneTerminal
           key={pane.id}
@@ -1202,6 +1225,43 @@ function Shell({ store }: { store: WorkspaceStore }) {
     },
     [store, showNotice],
   );
+  /**
+   * "Show git diff beside this pane": a diff pane opens beside the focused pane of the tab on screen,
+   * on the folder that pane is in now (the start folder of the space when it has none), and the
+   * keyboard stays with the pane it was in. No folder, a folder git is not run in, or a tab with no
+   * room say so in a notice and make no pane; nothing is read here, the pane asks git itself.
+   */
+  const openDiffBeside = useCallback((): void => {
+    const state = store.getState();
+    const active = activeSpaceOf(state.workspace);
+    const itemId = activeItemIdOf(state);
+    const item = itemId === undefined ? undefined : active.items[itemId];
+    const source = item && focusedPane(item);
+    if (item === undefined || source === undefined) return;
+    const cwd = source.cwd ?? active.defaults.cwd;
+    if (cwd === undefined || cwd.trim() === "") {
+      showNotice(noFolderNotice());
+      return;
+    }
+    if (previewPathProblem(cwd) !== undefined) {
+      showNotice(badFolderNotice());
+      return;
+    }
+    if (layoutPanes(item.layout).length >= DEFAULT_MAX_PANES) {
+      showNotice(diffLimitNotice(DEFAULT_MAX_PANES));
+      return;
+    }
+    state.dispatch({
+      type: "pane/split",
+      itemId: item.id,
+      paneId: source.id,
+      dir: "row",
+      side: "after",
+      diff: true,
+      cwd,
+    });
+    state.dispatch({ type: "pane/focus", itemId: item.id, paneId: source.id });
+  }, [store, showNotice]);
   /** "? text" in the palette: the dialog opens for the shell and the system of the pane in use. */
   const askForCommand = (request: string) => {
     const state = store.getState();
@@ -1400,6 +1460,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         }
         return;
       }
+      if (action.command.kind === "diff-open") {
+        if (!modalOpen.current) openDiffBeside();
+        return;
+      }
       if (action.command.kind === "quick-toggle") {
         // The window of the quick terminal is not this one: a dialog here does not stand in its way.
         toggleQuick();
@@ -1450,6 +1514,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     openLibrary,
     openAgents,
     openWorktree,
+    openDiffBeside,
     goToWaitingAgent,
     toggleQuick,
   ]);
@@ -1557,6 +1622,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
             .filter((call) => call.method.endsWith("BrowserPane"))
             .map((call) => ({ method: call.method, paneId: String(call.args[0]) })),
         previewReads: () => fake.callsTo("readFilePreview").map((call) => String(call.args[0])),
+        gitDiffReads: () => fake.callsTo("readGitDiff").map((call) => String(call.args[0])),
+        setGitDiff: (folder, entry) => fake.setGitDiff(folder, entry),
         commandRuns: () => fake.commands.map(({ cwd, command }) => ({ cwd, command })),
         failCommands: (code) => fake.setCommandExitCode(code),
         actionsReads: () => fake.callsTo("readActionsFile").length,
@@ -1847,6 +1914,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
       entry.action.command.kind === "layout-width"
     ) {
       runLayout(entry.action.command);
+    } else if (entry.action.command.kind === "diff-open") {
+      // The diff opens beside the pane in use, which keeps the keyboard.
+      openDiffBeside();
     } else if (entry.action.command.kind === "mru") {
       // No modifier is held in the palette: go straight to the tab the chord would end on.
       setPaletteOpen(false);

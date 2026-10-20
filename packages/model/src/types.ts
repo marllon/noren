@@ -120,19 +120,19 @@ export interface RunningCommand {
   text?: string;
 }
 
-/** What a pane shows: a shell, a web page, or a file. */
-export type PaneType = "terminal" | "browser" | "preview";
+/** What a pane shows: a shell, a web page, a file, or the git diff of a folder. */
+export type PaneType = "terminal" | "browser" | "preview" | "diff";
 
 export interface Pane {
   id: Id;
   type: PaneType;
   /**
-   * The session of a terminal pane. A browser pane and a preview pane never have one
-   * (`browser-has-session`, `preview-has-session`).
+   * The session of a terminal pane. A browser, preview or diff pane never has one
+   * (`browser-has-session`, `preview-has-session`, `diff-has-session`).
    */
   sessionId?: Id;
   /**
-   * The shell profile of a terminal pane. A browser pane and a preview pane have no shell and hold
+   * The shell profile of a terminal pane. A browser, preview or diff pane has no shell and holds
    * the default profile, so a terminal pane made from one (a split) starts the default shell.
    */
   profileId: string;
@@ -148,7 +148,12 @@ export interface Pane {
    * pane shows is what the file holds then, not what it held when the path was saved.
    */
   path?: string;
-  /** Folder of the shell; a shell with the Noren integration reports it at every prompt. */
+  /**
+   * Folder of the shell; a shell with the Noren integration reports it at every prompt. On a diff
+   * pane it is the folder whose git diff the pane shows: a full local path (`previewPathProblem`),
+   * present on every diff pane, fixed for the life of the pane (no shell moves it), and read again
+   * whenever the pane is shown.
+   */
   cwd?: string;
   /**
    * Branch of the git repository `cwd` is in (or the short commit of a detached `HEAD`); only

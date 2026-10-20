@@ -10,6 +10,7 @@ import type { AiBackend } from "./ai";
 import type { BackgroundImageFile } from "./background";
 import type { BrowserBounds } from "./browser";
 import type { FilePreview } from "./file-preview";
+import type { GitDiff } from "./git-diff";
 import type { Id } from "./types";
 import type { UserProfile } from "./user-profile-schema";
 import type { WindowEffect, WindowEffectReport, WindowScheme } from "./window-effect";
@@ -402,4 +403,17 @@ export interface Backend {
    * network and nothing is written.
    */
   readFilePreview(path: string): Promise<FilePreview>;
+  /**
+   * Reads the git diff of the folder `cwd` for a diff pane: what the working tree and the index
+   * hold against `HEAD` (against the empty tree when the repository has no commit yet), as the text
+   * `git diff` prints, empty when nothing changed (`parseGitDiff` reads it). The folder may be any
+   * folder inside the repository; the diff is always of the whole repository. Files git does not
+   * track are not in it. A folder that cannot be read is not an error: the answer is
+   * `{ kind: "refused", reason }` (`GIT_DIFF_REFUSALS`: a folder that is not a full local path,
+   * missing, in no repository, git not installed, a diff over `MAX_GIT_DIFF_BYTES`, git refusing),
+   * so the pane can say why. The call rejects only when the shell itself fails. Nothing is written
+   * (the index is not refreshed on disk), no program from the repository's own settings runs, and
+   * nothing is fetched from the network.
+   */
+  readGitDiff(cwd: string): Promise<GitDiff>;
 }

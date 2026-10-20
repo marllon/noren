@@ -26,6 +26,9 @@ export type ViolationCode =
   | "preview-path-invalid"
   | "preview-has-session"
   | "preview-has-url"
+  | "diff-cwd-invalid"
+  | "diff-has-session"
+  | "diff-has-url"
   | "pane-has-path"
   | "active-space-missing"
   | "active-item-missing"
@@ -100,18 +103,30 @@ function run(ws: Workspace, maxPanes: number, out: Violation[]): void {
   };
   const sessions = new Map<Id, string>();
 
-  // A browser pane shows an http or https page and a preview pane a file, and neither has a shell;
-  // a terminal pane has no page and no file, and only a preview pane has a path.
+  // A browser pane shows an http or https page, a preview pane a file and a diff pane the git diff
+  // of a folder, and none of them has a shell; a terminal pane has no page and no file, and only a
+  // preview pane has a path. The folder of a diff pane is its `cwd`.
   const checkPaneKind = (pane: Pane, path: string): void => {
     if (pane.type !== "browser" && pane.url !== undefined) {
-      add(
-        pane.type === "preview" ? "preview-has-url" : "terminal-has-url",
-        path,
-        `${pane.type} pane ${pane.id} has an address`,
-      );
+      const code =
+        pane.type === "preview"
+          ? "preview-has-url"
+          : pane.type === "diff"
+            ? "diff-has-url"
+            : "terminal-has-url";
+      add(code, path, `${pane.type} pane ${pane.id} has an address`);
     }
     if (pane.type !== "preview" && pane.path !== undefined) {
       add("pane-has-path", path, `${pane.type} pane ${pane.id} has a file path`);
+    }
+    if (pane.type === "diff") {
+      const problem = pane.cwd === undefined ? "it has none" : previewPathProblem(pane.cwd);
+      if (problem !== undefined) {
+        add("diff-cwd-invalid", path, `diff pane ${pane.id} has no usable folder: ${problem}`);
+      }
+      if (pane.sessionId !== undefined) {
+        add("diff-has-session", path, `diff pane ${pane.id} holds session ${pane.sessionId}`);
+      }
     }
     if (pane.type === "preview") {
       const problem = pane.path === undefined ? "it has none" : previewPathProblem(pane.path);

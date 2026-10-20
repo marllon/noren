@@ -1061,6 +1061,19 @@ pub async fn file_preview_read(path: String) -> Result<tauri::ipc::Response, Str
         .map_err(|e| format!("could not read the file: {e}"))
 }
 
+/// The git diff of the folder `cwd` for the diff pane: the working tree and the index against
+/// `HEAD`, as the text `git diff` prints, as JSON (`{"kind":"diff","text":...}`), or the reason
+/// there is none (`{"kind":"refused","reason":...}`): a folder that is no full local path, one
+/// that is not there, one in no repository, no `git`, a diff past the cap. A refusal is an answer,
+/// not an error. `noren-core` checks the folder and runs `git` (reading only, nothing from the
+/// repository's own settings run); the run waits on a process, so it is off the async workers.
+#[tauri::command]
+pub async fn git_diff_read(cwd: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || noren_core::read_git_diff(&cwd).to_json())
+        .await
+        .map_err(|e| format!("could not read the diff: {e}"))
+}
+
 /// The monospaced font families installed on this machine, once each and in alphabetical order.
 /// It only reads the system font folders (the smoke run may call it as well); a family name that is
 /// not the name of a font is left out, so the list is safe to show and to write into the settings.
@@ -2227,6 +2240,7 @@ mod tests {
             .invoke_handler(tauri::generate_handler![
                 background_image_read,
                 file_preview_read,
+                git_diff_read,
                 fonts_list_monospace,
                 window_effect_set,
                 scrollback_save,
@@ -2405,6 +2419,86 @@ mod tests {
         }
         let (header, _) = preview_of(&big.display().to_string(), &dir.0);
         assert_eq!(header["size"], 1024 * 1024 + 1);
+    }
+
+    fn diff_of(folder: &str, scratch: &Path) -> serde_json::Value {
+        let answer = call_command(
+            "git_diff_read",
+            serde_json::json!({ "cwd": folder }),
+            scratch,
+        )
+        .expect("an answer, even for a folder that has no diff");
+        let InvokeResponseBody::Json(json) = answer else {
+            panic!("a raw answer for a diff: it is JSON");
+        };
+        serde_json::from_str(&json).expect("a JSON answer")
+    }
+
+    #[test]
+    fn the_diff_command_answers_a_refusal_with_its_reason_and_not_an_error() {
+        let dir = TempDir::new("diff-refused");
+        for (folder, reason) in [
+            ("repo", "relative"),
+            ("\\\\server\\share\\repo", "network"),
+            ("", "invalid"),
+            (dir.0.join("none").display().to_string().as_str(), "missing"),
+        ] {
+            let answer = diff_of(folder, &dir.0);
+            assert_eq!(answer["kind"], "refused", "{folder}");
+            assert_eq!(answer["reason"], reason, "{folder}");
+            assert!(answer.get("text").is_none(), "{folder}");
+        }
+    }
+
+    #[test]
+    fn the_diff_command_reads_a_repository_through_the_real_git() {
+        let git = std::process::Command::new("git")
+            .arg("--version")
+            .output()
+            .is_ok_and(|output| output.status.success());
+        if !git {
+            eprintln!("warning: git is not installed; skipping the diff command against git");
+            return;
+        }
+        let dir = TempDir::new("diff-command");
+        let repo = dir.0.join("repo");
+        std::fs::create_dir_all(&repo).expect("create the repository folder");
+        let run = |args: &[&str]| {
+            let output = std::process::Command::new("git")
+                .args([
+                    "-c",
+                    "user.name=Noren Test",
+                    "-c",
+                    "user.email=t@example.com",
+                ])
+                .args([
+                    "-c",
+                    "commit.gpgsign=false",
+                    "-c",
+                    "init.defaultBranch=main",
+                ])
+                .args(args)
+                .current_dir(&repo)
+                .env("HOME", &dir.0)
+                .env("USERPROFILE", &dir.0)
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", dir.0.join("none"))
+                .env("GIT_CEILING_DIRECTORIES", &dir.0)
+                .output()
+                .expect("run git");
+            assert!(output.status.success(), "git {args:?} failed");
+        };
+        run(&["init", "--quiet"]);
+        std::fs::write(repo.join("a.txt"), "one\n").expect("write");
+        run(&["add", "a.txt"]);
+        run(&["commit", "--quiet", "-m", "first"]);
+        std::fs::write(repo.join("a.txt"), "one\ntwo\n").expect("write");
+
+        let answer = diff_of(&repo.display().to_string(), &dir.0);
+        assert_eq!(answer["kind"], "diff");
+        let text = answer["text"].as_str().expect("the text of the diff");
+        assert!(text.contains("diff --git a/a.txt b/a.txt"), "{text}");
+        assert!(text.contains("+two\n"), "{text}");
     }
 
     #[test]

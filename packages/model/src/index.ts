@@ -306,7 +306,12 @@ export { ManualClock } from "./clock";
 export type { Clock } from "./clock";
 export { createDefaultWorkspace } from "./default-workspace";
 export type { DefaultWorkspaceOptions } from "./default-workspace";
-export { DEFAULT_PROFILE_ID, createBrowserPane, createPreviewPane } from "./factories";
+export {
+  DEFAULT_PROFILE_ID,
+  createBrowserPane,
+  createDiffPane,
+  createPreviewPane,
+} from "./factories";
 export { createSequentialIds } from "./ids";
 export type { IdGenerator } from "./ids";
 export { SIZE_SUM_TOLERANCE, checkInvariants } from "./invariants";
@@ -411,6 +416,26 @@ export type {
   PreviewRefusalReason,
   PreviewTextKind,
 } from "./file-preview";
+export {
+  GIT_DIFF_REFUSALS,
+  MAX_GIT_DIFF_BYTES,
+  MAX_GIT_DIFF_DETAIL,
+  decodeGitDiff,
+  parseGitDiff,
+  sideBySideRows,
+  unquoteGitPath,
+} from "./git-diff";
+export type {
+  DiffCell,
+  DiffRow,
+  GitDiff,
+  GitDiffFile,
+  GitDiffHunk,
+  GitDiffLine,
+  GitDiffRefusal,
+  GitDiffRefusalReason,
+  GitDiffStatus,
+} from "./git-diff";
 export { findOutputPaths, resolveOutputPath } from "./output-paths";
 export type { OutputPathMatch, OutputPathProblem, ResolvedOutputPath } from "./output-paths";
 export { DEFAULT_AI_REPLY, FAKE_LINK_MAX_ATTEMPTS, FakeBackend } from "./fake-backend";

@@ -360,19 +360,21 @@ function checkNothingUnreadOnScreen(ws: Workspace, where: () => string): void {
 
 /**
  * Plays `STEPS` random actions per run on random workspaces. `maxPanes` goes both to the
- * generated workspaces and to the reducer; absent means the default of 4. `browserPanes` and
- * `previewPanes` make every third pane of the generated workspaces a browser or a preview pane.
+ * generated workspaces and to the reducer; absent means the default of 4. `browserPanes`,
+ * `previewPanes` and `diffPanes` make every third pane of the generated workspaces a browser, a
+ * preview or a diff pane.
  */
 function playSequences(
   numRuns: number,
   maxPanes?: number,
-  kinds: { browserPanes?: boolean; previewPanes?: boolean } = {},
+  kinds: { browserPanes?: boolean; previewPanes?: boolean; diffPanes?: boolean } = {},
 ): void {
   const generated = new Map<ActionType, number>();
   const applied = new Map<ActionType, number>();
   let noops = 0;
   let overLimit = 0;
   let previewsSeen = 0;
+  let diffsSeen = 0;
   const limit = maxPanes ?? DEFAULT_MAX_PANES;
 
   fc.assert(
@@ -381,12 +383,14 @@ function playSequences(
         ...(maxPanes === undefined ? {} : { maxPanes }),
         ...(kinds.browserPanes === true ? { browserPanes: true } : {}),
         ...(kinds.previewPanes === true ? { previewPanes: true } : {}),
+        ...(kinds.diffPanes === true ? { diffPanes: true } : {}),
       }),
       fc.gen(),
       (initial, gen) => {
         for (const space of initial.spaces) {
           for (const item of Object.values(space.items)) {
             previewsSeen += layoutPanes(item.layout).filter((p) => p.type === "preview").length;
+            diffsSeen += layoutPanes(item.layout).filter((p) => p.type === "diff").length;
           }
         }
         const { ctx: base, clock } = testContext();
@@ -477,6 +481,7 @@ function playSequences(
   expect([...generated.values()].reduce((sum, n) => sum + n, 0)).toBe(numRuns * STEPS);
   // A run asked to have preview panes must have had them to play with.
   if (kinds.previewPanes === true) expect(previewsSeen).toBeGreaterThan(0);
+  if (kinds.diffPanes === true) expect(diffsSeen).toBeGreaterThan(0);
 }
 
 describe("reducer properties", () => {
@@ -509,6 +514,26 @@ describe("reducer properties", () => {
     "property: sequences keep every invariant on workspaces with browser and preview panes",
     () => {
       playSequences(SMALL_RUNS, undefined, { browserPanes: true, previewPanes: true });
+    },
+    SEQUENCE_TIMEOUT_MS,
+  );
+
+  it(
+    "property: sequences keep every invariant on workspaces with diff panes",
+    () => {
+      playSequences(SMALL_RUNS, undefined, { diffPanes: true });
+    },
+    SEQUENCE_TIMEOUT_MS,
+  );
+
+  it(
+    "property: sequences keep every invariant on workspaces with browser, preview and diff panes",
+    () => {
+      playSequences(SMALL_RUNS, undefined, {
+        browserPanes: true,
+        previewPanes: true,
+        diffPanes: true,
+      });
     },
     SEQUENCE_TIMEOUT_MS,
   );

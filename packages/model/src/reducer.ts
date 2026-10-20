@@ -3,6 +3,7 @@ import { browserUrlProblem } from "./browser";
 import {
   DEFAULT_PROFILE_ID,
   createBrowserPane,
+  createDiffPane,
   createEmptySpace,
   createPane,
   createPreviewPane,
@@ -1138,13 +1139,22 @@ function splitPane(
     return ws;
   }
   if (url !== undefined && path !== undefined) return ws;
+  // A diff pane takes the folder it is given, else the one of the pane it is split from, and the
+  // folder has to be one git can be run in (a full local path).
+  const diffCwd = action.diff === true ? (present(action.cwd) ?? source.cwd) : undefined;
+  if (action.diff === true) {
+    if (url !== undefined || path !== undefined) return ws;
+    if (diffCwd === undefined || previewPathProblem(diffCwd) !== undefined) return ws;
+  }
   const id = idPool(ws, ctx)();
   const fresh =
-    url !== undefined
-      ? createBrowserPane(id, url)
-      : path !== undefined
-        ? createPreviewPane(id, path)
-        : createPane(id, profileId, present(action.cwd) ?? source.cwd);
+    diffCwd !== undefined
+      ? createDiffPane(id, diffCwd)
+      : url !== undefined
+        ? createBrowserPane(id, url)
+        : path !== undefined
+          ? createPreviewPane(id, path)
+          : createPane(id, profileId, present(action.cwd) ?? source.cwd);
   const layout = insertBeside(located.item.layout, source.id, action.dir, action.side, {
     kind: "pane",
     pane: fresh,

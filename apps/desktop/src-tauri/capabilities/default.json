@@ -49,6 +49,7 @@
     "allow-window-effect-set",
     "allow-background-image-read",
     "allow-file-preview-read",
+    "allow-git-diff-read",
     "allow-fonts-list-monospace",
     "allow-link-open",
     "allow-browser-open",

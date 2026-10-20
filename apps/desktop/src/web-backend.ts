@@ -1,6 +1,6 @@
 import { FakeBackend } from "@noren/model";
-import { WINDOW_EFFECT_LABELS, isWindowEffect } from "@noren/model";
-import type { GitInfo, ShellProfile, WindowEffect, Worktree } from "@noren/model";
+import { WINDOW_EFFECT_LABELS, decodeGitDiff, isWindowEffect } from "@noren/model";
+import type { GitDiffRefusal, GitInfo, ShellProfile, WindowEffect, Worktree } from "@noren/model";
 
 /** Key of `state.json` in the browser's storage (web mode only). */
 export const WEB_STATE_KEY = "noren.web.state";
@@ -77,6 +77,15 @@ export const WEB_IMAGES_KEY = "noren.web.images";
 export const WEB_FILES_KEY = "noren.web.files";
 
 /**
+ * Key of the git diffs a diff pane can read in web mode (what `readGitDiff` answers for a repository):
+ * a JSON object from the folder of the repository to the text of its diff, or to `{ "reason": ... }`
+ * (a refusal of `GIT_DIFF_REFUSALS`, with an optional `"detail"`). The e2e tests seed it before the
+ * page loads with fixture diffs; a diff placed with the `setGitDiff` hook is kept here too, so a
+ * reload finds it again. A folder with no entry here is in no repository.
+ */
+export const WEB_GIT_DIFFS_KEY = "noren.web.git-diffs";
+
+/**
  * Key of the models of the Ollama this page pretends to have installed, in web mode: a JSON list of
  * model names (`["llama3"]`). Without it there is no Ollama here, which is what most computers are.
  * The e2e tests seed it before the page loads.
@@ -117,6 +126,37 @@ export function seededUserThemes(
       if (typeof text === "string") files[id] = text;
     }
     return files;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The git diffs seeded under `WEB_GIT_DIFFS_KEY` (folder of the repository to the text of the diff,
+ * or to a refusal), or `undefined` when there is no usable seed. An entry that is neither is left out.
+ */
+export function seededGitDiffs(
+  storage: Pick<Storage, "getItem">,
+): Record<string, string | GitDiffRefusal> | undefined {
+  try {
+    const raw = storage.getItem(WEB_GIT_DIFFS_KEY);
+    if (raw === null) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    const diffs: Record<string, string | GitDiffRefusal> = {};
+    for (const [folder, entry] of Object.entries(value)) {
+      if (typeof entry === "string") {
+        diffs[folder] = entry;
+      } else if (typeof entry === "object" && entry !== null) {
+        try {
+          const answer = decodeGitDiff({ kind: "refused", ...entry });
+          if (answer.kind === "refused") diffs[folder] = answer;
+        } catch {
+          // Not a refusal: that entry is left out.
+        }
+      }
+    }
+    return diffs;
   } catch {
     return undefined;
   }
@@ -307,6 +347,7 @@ export class WebBackend extends FakeBackend {
     const mods = seededMods(storage);
     const images = seededImages(storage);
     const files = seededFiles(storage);
+    const gitDiffs = seededGitDiffs(storage);
     const scrollback = seededScrollback(storage);
     const ollamaModels = seededOllamaModels(storage);
     super({
@@ -315,6 +356,7 @@ export class WebBackend extends FakeBackend {
       ...(mods !== undefined ? { mods } : {}),
       ...(images !== undefined ? { images } : {}),
       ...(files !== undefined ? { files } : {}),
+      ...(gitDiffs !== undefined ? { gitDiffs } : {}),
       ...(scrollback !== undefined ? { scrollback } : {}),
       ...(ollamaModels !== undefined ? { ollamaModels } : {}),
       windowEffects: seededWindowEffects(storage),
@@ -363,6 +405,25 @@ export class WebBackend extends FakeBackend {
       // Storage is blocked or full: the memory copy still serves this page load.
     }
     super.putFile(path, entry);
+  }
+
+  /** Like the fake one, and kept under `WEB_GIT_DIFFS_KEY` so a reload finds the same diffs. */
+  protected override putGitDiff(folder: string, entry: string | GitDiffRefusal | null): void {
+    try {
+      const others = Object.entries(seededGitDiffs(this.#storage) ?? {}).filter(
+        ([known]) => known !== folder,
+      );
+      const diffs = Object.fromEntries(
+        [...others, ...(entry === null ? [] : [[folder, entry] as const])].map(([name, value]) => [
+          name,
+          value,
+        ]),
+      );
+      this.#storage.setItem(WEB_GIT_DIFFS_KEY, JSON.stringify(diffs));
+    } catch {
+      // Storage is blocked or full: the memory copy still serves this page load.
+    }
+    super.putGitDiff(folder, entry);
   }
 
   /** Like the fake one, and kept under `WEB_THEMES_KEY` so a reload finds the same files. */

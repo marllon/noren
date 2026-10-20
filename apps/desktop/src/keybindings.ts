@@ -39,6 +39,7 @@ export type ActionCommand =
   | { kind: "agent-waiting" }
   | { kind: "worktree-new" }
   | { kind: "worktree-remove" }
+  | { kind: "diff-open" }
   | { kind: "quick-toggle" }
   | { kind: "ask-toggle" }
   | { kind: "close" }
@@ -268,6 +269,15 @@ export const ACTIONS: readonly ActionDef[] = [
     title: "Remove worktree",
     category: "General",
     command: { kind: "worktree-remove" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
+  },
+  {
+    // The git diff of the folder of the focused pane, in a pane beside it; no chord, the palette is the way in.
+    id: "diff.open",
+    title: "Show git diff beside this pane",
+    category: "Panes",
+    command: { kind: "diff-open" },
     repeat: false,
     chords: { safe: undefined, browser: undefined },
   },

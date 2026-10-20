@@ -361,6 +361,63 @@ describe("TauriBackend", () => {
     });
   });
 
+  describe("readGitDiff", () => {
+    it("asks git_diff_read for the folder and reads a diff and a refusal from the answer", async () => {
+      const answers: Record<string, unknown> = {
+        "/work/repo": { kind: "diff", text: "diff --git a/x b/x\n" },
+        "/work/clean": { kind: "diff", text: "" },
+        "/work/plain": { kind: "refused", reason: "not-a-repository" },
+        "/work/odd": { kind: "refused", reason: "failed", detail: "fatal: x" },
+      };
+      const fake = fakeBridge({}, { git_diff_read: (args) => answers[String(args?.["cwd"])] });
+      const backend = new TauriBackend(fake.bridge);
+      expect(await backend.readGitDiff("/work/repo")).toEqual({
+        kind: "diff",
+        text: "diff --git a/x b/x\n",
+      });
+      expect(await backend.readGitDiff("/work/clean")).toEqual({ kind: "diff", text: "" });
+      expect(await backend.readGitDiff("/work/plain")).toEqual({
+        kind: "refused",
+        reason: "not-a-repository",
+      });
+      expect(await backend.readGitDiff("/work/odd")).toEqual({
+        kind: "refused",
+        reason: "failed",
+        detail: "fatal: x",
+      });
+      expect(fake.callsTo("git_diff_read").map((c) => c.args)).toEqual([
+        { cwd: "/work/repo" },
+        { cwd: "/work/clean" },
+        { cwd: "/work/plain" },
+        { cwd: "/work/odd" },
+      ]);
+    });
+
+    it("rejects an answer that is neither a diff nor a refusal it knows", async () => {
+      const bad = [
+        undefined,
+        null,
+        "diff",
+        { kind: "diff" },
+        { kind: "diff", text: 3 },
+        { kind: "refused", reason: "because" },
+        { kind: "other", text: "x" },
+      ];
+      for (const answer of bad) {
+        const fake = fakeBridge({ git_diff_read: answer });
+        await expect(new TauriBackend(fake.bridge).readGitDiff("/work/repo")).rejects.toThrow();
+      }
+    });
+
+    it("lets a failure of the command reach the caller", async () => {
+      const fake = fakeBridge();
+      fake.failing.add("git_diff_read");
+      await expect(new TauriBackend(fake.bridge).readGitDiff("/work/repo")).rejects.toThrow(
+        "git_diff_read failed",
+      );
+    });
+  });
+
   it("includes the signal when there is one", async () => {
     const fake = fakeBridge({ session_create: 5 });
     const backend = new TauriBackend(fake.bridge);

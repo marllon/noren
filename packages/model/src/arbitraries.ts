@@ -1,5 +1,5 @@
 import * as fc from "fast-check";
-import { createBrowserPane, createPreviewPane } from "./factories";
+import { createBrowserPane, createDiffPane, createPreviewPane } from "./factories";
 import {
   DEFAULT_MAX_PANES,
   type ArchivedItem,
@@ -412,7 +412,11 @@ export interface WorkspaceArbitraryOptions {
   browserPanes?: boolean;
   /** Make every third pane a preview pane (no session, a file path). Off by default. */
   previewPanes?: boolean;
+  /** Make every third pane a diff pane (no session, a folder). Off by default. */
+  diffPanes?: boolean;
 }
+
+const DIFF_FOLDERS = ["/home/user/project", "C:\\Projects\\noren", "D:/work/repo"];
 
 const PREVIEW_PATHS = ["/home/user/notes.md", "C:\\Projects\\noren\\data.json", "D:/pics/a.png"];
 
@@ -464,6 +468,11 @@ export function arbWorkspace(options: WorkspaceArbitraryOptions = {}): fc.Arbitr
     if (options.browserPanes === true) {
       ws = withReplacedPanes(ws, 1, (id, index) =>
         createBrowserPane(id, BROWSER_URLS[index % BROWSER_URLS.length] ?? ""),
+      );
+    }
+    if (options.diffPanes === true) {
+      ws = withReplacedPanes(ws, 0, (id, index) =>
+        createDiffPane(id, DIFF_FOLDERS[index % DIFF_FOLDERS.length] ?? ""),
       );
     }
     if (options.previewPanes === true) {

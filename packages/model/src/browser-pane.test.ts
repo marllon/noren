@@ -166,7 +166,7 @@ describe("persistence of a browser pane", () => {
     );
     const parsed = parseState(text);
     expect(parsed.ok).toBe(false);
-    if (!parsed.ok) expect(parsed.reason).toContain('"terminal", "browser" or "preview"');
+    if (!parsed.ok) expect(parsed.reason).toContain('"terminal", "browser", "preview" or "diff"');
   });
 
   it("refuses a file whose address is not text", () => {

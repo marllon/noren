@@ -4,6 +4,7 @@ import {
   AI_ERROR_KINDS,
   OutputStream,
   decodeFilePreview,
+  decodeGitDiff,
   fontNameList,
   sniffImageMime,
 } from "@noren/model";
@@ -22,6 +23,7 @@ import type {
   BrowserBounds,
   CreateSessionOptions,
   FilePreview,
+  GitDiff,
   GitInfo,
   Id,
   ModFile,
@@ -563,6 +565,12 @@ export class TauriBackend implements Backend {
     return decodeFilePreview(
       answer instanceof ArrayBuffer ? new Uint8Array(answer) : Uint8Array.from(answer),
     );
+  }
+
+  async readGitDiff(cwd: string): Promise<GitDiff> {
+    // A folder git cannot be run in is an answer; only an answer the shell has no right to give, or
+    // a failure of the command itself, rejects.
+    return decodeGitDiff(await this.#bridge.invoke<unknown>("git_diff_read", { cwd }));
   }
 
   /** Stops listening to `session-exit` and `config-changed`. Sessions still running will keep their ids until killed. */

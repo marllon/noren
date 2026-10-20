@@ -172,6 +172,21 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
           },
           { weight: 1, arbitrary: fc.record({ itemId, paneId: arbIdOf(paneIds) }) },
         );
+  // A page can only be changed on a browser pane, and those are a small share of the panes. Aim at
+  // one when there is one, and now and then at any pane (the reducer must leave those alone), so
+  // that a run has a real change of page to look at and does not depend on luck for one.
+  const browserTargets = items.flatMap((item) =>
+    layoutPanes(item.layout)
+      .filter((pane) => pane.type === "browser")
+      .map((pane) => ({ itemId: item.id, paneId: pane.id })),
+  );
+  const setUrlTarget: fc.Arbitrary<{ itemId: Id; paneId: Id }> =
+    browserTargets.length === 0
+      ? target
+      : fc.oneof(
+          { weight: 4, arbitrary: fc.constantFrom(...browserTargets) },
+          { weight: 1, arbitrary: target },
+        );
   const dir = fc.constantFrom("row", "column");
   const side = fc.constantFrom("before", "after");
   const direction = fc.constantFrom("left", "right", "up", "down");
@@ -415,6 +430,7 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
             cwd: arbCwd,
             url: arbBrowserUrl,
             path: arbPreviewPath,
+            diff: fc.boolean(),
           },
           { requiredKeys: ["type", "itemId", "paneId", "dir", "side"] },
         ),
@@ -422,7 +438,7 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
     ),
     weighted(
       3,
-      target.chain(({ itemId, paneId }) =>
+      setUrlTarget.chain(({ itemId, paneId }) =>
         fc.record({
           type: tag("pane/set-url"),
           itemId: fc.constant(itemId),

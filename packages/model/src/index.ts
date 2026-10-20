@@ -5,6 +5,7 @@ export const MODEL_PACKAGE_NAME = "@noren/model";
 export type {
   Backend,
   CreateSessionOptions,
+  AgentHit,
   GitInfo,
   ModFile,
   SessionExit,
@@ -229,6 +230,24 @@ export type {
   ConfigRemove,
   ConfigValue,
 } from "./config-edit";
+export {
+  AGENT_ID_PATTERN,
+  AgentCatalogSchema,
+  AgentEntrySchema,
+  DEFAULT_AGENTS_ENABLED,
+  DEFAULT_AGENT_CATALOG,
+  DEFAULT_AGENT_SCAN_SECONDS,
+  MAX_AGENT_ENTRIES,
+  MAX_AGENT_NAMES,
+  MAX_AGENT_NAME_CHARS,
+  MIN_AGENT_SCAN_SECONDS,
+  agentSettingsOf,
+  detectAgentByCommand,
+  mentionsPackage,
+  programName,
+  resolveAgent,
+} from "./agents";
+export type { AgentCatalog, AgentEntry, AgentSettings } from "./agents";
 export {
   ARCHIVE_CHECK_INTERVAL_MS,
   DEFAULT_ARCHIVE_AFTER_HOURS,

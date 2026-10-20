@@ -100,6 +100,32 @@ const item = (layout: LayoutNode, focusedPaneId: string): Item => ({
 
 const leaf = (p: Pane): LayoutNode => ({ kind: "pane", pane: p });
 
+describe("summarizeItem with agents", () => {
+  const byId: Record<string, string> = { p2: "codex", p3: "claude" };
+  const agentOf = (p: Pane): string | undefined => byId[p.id];
+  const split = (a: Pane, b: Pane, focused: string): Item =>
+    item({ kind: "split", dir: "row", sizes: [50, 50], children: [leaf(a), leaf(b)] }, focused);
+
+  it("has no agent unless it is told how to find one", () => {
+    expect(summarizeItem(item(leaf(pane("p2")), "p2"))).not.toHaveProperty("agent");
+    expect(summarizeItem(item(leaf(pane("p1")), "p1"), undefined, agentOf)).not.toHaveProperty(
+      "agent",
+    );
+  });
+
+  it("takes the agent of the focused pane, else of the first pane that has one", () => {
+    const tab = split(pane("p3"), pane("p2"), "p2");
+    expect(summarizeItem(tab, undefined, agentOf).agent).toBe("codex");
+    const other = split(pane("p1"), pane("p3"), "p1");
+    expect(summarizeItem(other, undefined, agentOf).agent).toBe("claude");
+  });
+
+  it("names the agent in the words of the indicators", () => {
+    const summary = summarizeItem(item(leaf(pane("p2")), "p2"), undefined, agentOf);
+    expect(indicatorLabels(summary)).toEqual(["Agent codex"]);
+  });
+});
+
 describe("summarizeItem", () => {
   it("has nothing to show for a plain idle pane without a folder", () => {
     expect(summarizeItem(item(leaf(pane("p1")), "p1"))).toEqual({

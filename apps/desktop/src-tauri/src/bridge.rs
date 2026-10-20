@@ -11,11 +11,11 @@ use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use std::time::Duration;
 
 use noren_core::{
-    ACTIONS_FILE_PATH, BackgroundStore, CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, GitHead,
-    MODS_DIR_NAME, ModFile, ModStore, ModWatcher, Profile, ProfileSet, SCROLLBACK_DIR_NAME,
-    ScrollbackStore, SessionEvent, SessionId, SessionManager, SpawnSpec, StateStore,
-    THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect, detect_system_profiles, read_head,
-    read_project_file, run_short,
+    ACTIONS_FILE_PATH, AgentEntry, BackgroundStore, CONFIG_FILE_NAME, ConfigStore, ConfigWatcher,
+    GitHead, MODS_DIR_NAME, ModFile, ModStore, ModWatcher, ProcessSource, Profile, ProfileSet,
+    SCROLLBACK_DIR_NAME, ScrollbackStore, SessionEvent, SessionId, SessionManager, SpawnSpec,
+    StateStore, SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect,
+    check_catalog, detect_system_profiles, read_head, read_project_file, run_short, scan_sessions,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -50,6 +50,9 @@ pub struct AppState {
     routes: Arc<Mutex<HashMap<u64, Arc<OutputRoute>>>>,
     /// The shell of the pane on screen, started before the page asked for it (see `prespawn`).
     pub(crate) prespawn: Mutex<crate::prespawn::Slot>,
+    /// The process tree of this machine, read by `agents_scan`; it keeps what it learned between
+    /// scans so the next one only refreshes.
+    processes: SystemProcesses,
 }
 
 /// What a `%NAME%` in a profile of the user is replaced with: the environment of the process.
@@ -91,6 +94,7 @@ impl AppState {
             profiles: RwLock::new(None),
             routes: Arc::default(),
             prespawn: Mutex::default(),
+            processes: SystemProcesses::new(),
         }
     }
 
@@ -946,6 +950,74 @@ pub async fn git_info(cwd: String) -> Result<Option<GitInfoDto>, String> {
         .map_err(|e| e.to_string())
 }
 
+/// One agent of the catalog the interface hands over (`agents.catalog` of `config.jsonc`).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AgentEntryDto {
+    pub id: String,
+    pub executables: Vec<String>,
+    #[serde(default)]
+    pub packages: Vec<String>,
+}
+
+impl From<AgentEntryDto> for AgentEntry {
+    fn from(entry: AgentEntryDto) -> Self {
+        Self {
+            id: entry.id,
+            executables: entry.executables,
+            packages: entry.packages,
+        }
+    }
+}
+
+/// The agent found in the session with this id.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentHitDto {
+    pub session_id: u64,
+    pub agent_id: String,
+}
+
+/// The agents under the shells of `session_ids`, by the process tree (one picture for all of
+/// them): only sessions that have an agent are listed. Reads processes and starts or writes
+/// nothing; the catalog is bounded first (`check_catalog`).
+pub fn scan_agents(
+    state: &AppState,
+    source: &dyn ProcessSource,
+    session_ids: &[u64],
+    catalog: Vec<AgentEntryDto>,
+) -> Result<Vec<AgentHitDto>, String> {
+    let catalog: Vec<AgentEntry> = catalog.into_iter().map(AgentEntry::from).collect();
+    check_catalog(&catalog).map_err(|e| e.to_string())?;
+    let roots: Vec<(SessionId, Option<u32>)> = session_ids
+        .iter()
+        .map(|id| (SessionId(*id), state.sessions.process_id(SessionId(*id))))
+        .collect();
+    Ok(scan_sessions(source, &roots, &catalog)
+        .into_iter()
+        .map(|(session, found)| AgentHitDto {
+            session_id: session.0,
+            agent_id: found.id,
+        })
+        .collect())
+}
+
+/// Asks which CLI agent runs under the shell of each session, from the process tree. The page asks
+/// on an interval; the work runs off the thread of the interface.
+#[tauri::command(rename_all = "camelCase")]
+pub async fn agents_scan(
+    app: AppHandle,
+    session_ids: Vec<u64>,
+    catalog: Vec<AgentEntryDto>,
+) -> Result<Vec<AgentHitDto>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        scan_agents(&state, &state.processes, &session_ids, catalog)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Runs `command` through the system shell in `cwd`, with no terminal and no window, and returns
 /// its exit code. The command is killed after [`PROJECT_COMMAND_TIMEOUT`].
 #[tauri::command]
@@ -1339,6 +1411,67 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&info).expect("serializes"),
             serde_json::json!({ "branch": "feature/x", "detached": false })
+        );
+    }
+
+    struct NoProcesses;
+    impl ProcessSource for NoProcesses {
+        fn snapshot(&self) -> Vec<noren_core::ProcessInfo> {
+            panic!("a scan with no live shell needs no picture");
+        }
+    }
+
+    fn agent_entry(id: &str) -> AgentEntryDto {
+        AgentEntryDto {
+            id: id.to_owned(),
+            executables: vec![id.to_owned()],
+            packages: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_scan_of_sessions_that_do_not_exist_finds_nothing() {
+        let state = detected_state();
+        let found = scan_agents(
+            &state,
+            &NoProcesses,
+            &[1, 2, 3],
+            vec![agent_entry("claude")],
+        );
+        assert_eq!(found, Ok(Vec::new()));
+    }
+
+    #[test]
+    fn a_scan_refuses_a_catalog_that_is_not_in_bounds() {
+        let state = detected_state();
+        let twice = vec![agent_entry("claude"), agent_entry("claude")];
+        assert!(scan_agents(&state, &NoProcesses, &[1], twice).is_err());
+        let blank = vec![agent_entry(" ")];
+        assert!(scan_agents(&state, &NoProcesses, &[1], blank).is_err());
+    }
+
+    #[test]
+    fn the_catalog_the_page_sends_has_the_fields_the_command_reads() {
+        let entry: AgentEntryDto =
+            serde_json::from_str(r#"{"id":"claude","executables":["claude"]}"#).expect("entry");
+        assert_eq!(entry.packages, Vec::<String>::new());
+        let with_package: AgentEntryDto =
+            serde_json::from_str(r#"{"id":"aider","executables":["aider"],"packages":["aider"]}"#)
+                .expect("entry");
+        assert_eq!(with_package.packages, vec!["aider".to_owned()]);
+        // A field the command does not know is refused instead of ignored.
+        assert!(
+            serde_json::from_str::<AgentEntryDto>(r#"{"id":"a","executables":[],"run":"x"}"#)
+                .is_err()
+        );
+        let hit = serde_json::to_value(AgentHitDto {
+            session_id: 7,
+            agent_id: "claude".to_owned(),
+        })
+        .expect("hit");
+        assert_eq!(
+            hit,
+            serde_json::json!({"sessionId": 7, "agentId": "claude"})
         );
     }
 

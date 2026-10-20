@@ -99,6 +99,7 @@ export const ptBR: Dictionary = {
   "pane.runningSome": "Executando um comando",
   "pane.lastCommand": "Último comando {command}",
   "pane.lastCommandBare": "Último comando",
+  "pane.agentLabel": "Agente {name}",
   "pane.runningLabel": "Em execução",
   "pane.unreadLabel": "Saída não lida",
   "pane.bellLabel": "Sino",
@@ -727,6 +728,20 @@ export const ptBR: Dictionary = {
     "Desligado: o Noren nunca coloca uma aba no arquivo por conta própria. Uma aba que você arquiva ou fecha não é afetada.",
   "field.archive.afterHours":
     "Quantas horas uma aba fica parada antes de ir para o arquivo: sem comando em execução, sem saída, sem nada não lido e fora da tela. Abas fixadas e favoritos nunca são arquivados. Uma fração vale (0,5 é meia hora).",
+  "field.agents":
+    "Agentes de CLI: quais programas contam como agente e com que frequência o Noren procura um sob os seus shells. Um agente aparece como um ícone na aba.",
+  "field.agents.enabled":
+    "Desligado: o Noren nunca olha os processos dos seus terminais e não mostra o ícone de agente.",
+  "field.agents.catalog":
+    "Os agentes de CLI que o Noren reconhece numa aba, pelo comando em execução e pelos programas que rodam sob o shell. Substitui a lista embutida quando presente, então copie as entradas que quiser manter.",
+  "field.agents.catalog.item": "Um agente de CLI que o Noren reconhece numa aba.",
+  "field.agents.catalog.item.id": "O nome que o Noren mostra para o agente. Único no catálogo.",
+  "field.agents.catalog.item.executables":
+    'Nomes de arquivo do programa, sem pasta, ".exe" ou ".cmd" (maiúsculas não importam): "claude" casa com claude, Claude.exe e claude.cmd, e não com claudette.',
+  "field.agents.catalog.item.packages":
+    'Nomes de pacote que identificam o agente quando ele é iniciado por um executor (node, npx, bunx, python, uv, pipx...): o executor conta como o agente quando um dos argumentos é o pacote, como em "npx pkg" ou "python -m pkg".',
+  "field.agents.scanSeconds":
+    "Quantos segundos entre duas olhadas na árvore de processos dos terminais, para achar um agente que não foi iniciado pelo prompt.",
   "field.ai":
     "A IA, desligada até você ligá-la: provedores (o Ollama deste computador e os que você adicionar) e qual deles cada função usa. O Noren nunca executa o que a IA sugere.",
   "field.ai.enabled":

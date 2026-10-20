@@ -26,6 +26,7 @@
     "allow-project-actions-read",
     "allow-project-command-run",
     "allow-git-info",
+    "allow-agents-scan",
     "allow-config-load",
     "allow-config-save",
     "allow-config-watch",

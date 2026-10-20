@@ -15,7 +15,9 @@ import type {
   AiProviderInfo,
   OllamaModels,
 } from "./ai";
+import type { AgentEntry } from "./agents";
 import type {
+  AgentHit,
   Backend,
   CreateSessionOptions,
   GitInfo,
@@ -705,6 +707,8 @@ class FakeAi implements AiBackend {
  *   command and answers the configured exit code
  * - `gitInfo` answers from fake repositories (`gitRepos`, `setGitRepo`): a folder is in the
  *   repository of the nearest folder above it (or itself) that has one
+ * - `scanAgents` answers from the process trees a test describes with `setSessionAgent` (an agent
+ *   under the shell of a session); a session that ended, or an agent not in the catalog, is left out
  * - `notify` only records the notification (`notifications`) and `isWindowFocused` answers what
  *   `setWindowFocused` said (focused at first): no notification is ever shown
  * - the quick terminal window is a flag: `quickToggle` flips `quickVisible` (hidden at first) and
@@ -748,6 +752,8 @@ export class FakeBackend implements Backend {
   readonly #host: string;
   readonly #home: string;
   readonly #sessions = new Map<SessionId, FakeSession>();
+  /** The agent each session has under its shell, as `setSessionAgent` said. */
+  readonly #sessionAgents = new Map<SessionId, string>();
   readonly #streams = new Map<SessionId, OutputStream>();
   /** What the sessions of the profiles of the user were asked to run. */
   readonly #launched = new Map<SessionId, { program: string; args: string[] }>();
@@ -1377,6 +1383,31 @@ export class FakeBackend implements Backend {
       }
     }
     return null;
+  }
+
+  /** Says that the shell of a session has this agent under it (`undefined`: none), for `scanAgents`. */
+  setSessionAgent(id: SessionId, agentId: string | undefined): void {
+    if (agentId === undefined) this.#sessionAgents.delete(id);
+    else this.#sessionAgents.set(id, agentId);
+  }
+
+  async scanAgents(
+    sessionIds: readonly SessionId[],
+    catalog: readonly AgentEntry[],
+  ): Promise<AgentHit[]> {
+    this.#record(
+      "scanAgents",
+      [...sessionIds],
+      catalog.map((entry) => entry.id),
+    );
+    const hits: AgentHit[] = [];
+    for (const sessionId of sessionIds) {
+      const agentId = this.#sessionAgents.get(sessionId);
+      const session = this.#sessions.get(sessionId);
+      if (agentId === undefined || !session?.alive) continue;
+      if (catalog.some((entry) => entry.id === agentId)) hits.push({ sessionId, agentId });
+    }
+    return hits;
   }
 
   async notify(title: string, body: string): Promise<void> {

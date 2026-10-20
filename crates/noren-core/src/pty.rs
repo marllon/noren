@@ -152,6 +152,8 @@ struct Session {
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     exited: AtomicBool,
     waiter: Mutex<Option<JoinHandle<()>>>,
+    /// The pid of the child (the shell), when the system gave one.
+    pid: Option<u32>,
 }
 
 /// Owns PTY sessions. Every session thread is joined before [`SessionManager::kill`] or
@@ -244,6 +246,7 @@ impl SessionManager {
             killer: Mutex::new(child.clone_killer()),
             exited: AtomicBool::new(false),
             waiter: Mutex::new(None),
+            pid: child.process_id(),
         });
 
         let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(CHANNEL_CAPACITY);
@@ -328,6 +331,12 @@ impl SessionManager {
         let id = SessionId(self.next_id.fetch_add(1, Ordering::SeqCst));
         lock(&self.sessions).insert(id, session);
         Ok(id)
+    }
+
+    /// The pid of the child of a live session (its shell), or `None` when the session is unknown
+    /// or the system gave no pid. The agent detector (`agents`) starts from it.
+    pub fn process_id(&self, id: SessionId) -> Option<u32> {
+        self.session(id).ok().and_then(|session| session.pid)
     }
 
     /// Sends bytes to the child's terminal input.

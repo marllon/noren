@@ -203,3 +203,50 @@ fn write_reaches_the_child() {
         assert_eq!(manager.live_threads(), 0);
     });
 }
+
+/// A shell that runs a program as a child (not as itself), for the agent detector.
+#[cfg(windows)]
+fn child_of_shell_spec() -> (SpawnSpec, &'static str) {
+    (
+        spec("cmd.exe", &["/c", "ping.exe -n 30 127.0.0.1 & rem"]),
+        "ping",
+    )
+}
+#[cfg(not(windows))]
+fn child_of_shell_spec() -> (SpawnSpec, &'static str) {
+    (spec("sh", &["-c", "sleep 30; true"]), "sleep")
+}
+
+#[test]
+fn the_agent_detector_finds_a_real_child_of_a_real_session() {
+    with_timeout("agent-detect", || {
+        use noren_core::{AgentEntry, SystemProcesses, scan_sessions};
+        let manager = SessionManager::new();
+        let (spec, program) = child_of_shell_spec();
+        let (id, rx) = start(&manager, spec);
+        let pid = manager.process_id(id);
+        assert!(pid.is_some(), "a live session has a pid");
+        let catalog = [AgentEntry {
+            id: "stand-in".to_owned(),
+            executables: vec![program.to_owned()],
+            packages: vec![],
+        }];
+        let source = SystemProcesses::new();
+        let deadline = Instant::now() + Duration::from_secs(8);
+        let found = loop {
+            let found = scan_sessions(&source, &[(id, pid)], &catalog);
+            if !found.is_empty() || Instant::now() > deadline {
+                break found;
+            }
+            thread::sleep(Duration::from_millis(100));
+        };
+        manager.kill(id).expect("kill");
+        drain_until_exit(&rx, Instant::now() + Duration::from_secs(2));
+        assert_eq!(found.len(), 1, "the child of the shell is found");
+        assert_eq!(found[0].1.id, "stand-in");
+        assert!(
+            manager.process_id(id).is_none(),
+            "a released session has no pid"
+        );
+    });
+}

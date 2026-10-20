@@ -130,6 +130,8 @@ export interface ItemSummary {
   cwd?: string;
   /** Git branch of the focused pane. */
   gitBranch?: string;
+  /** The CLI agent in the tab: the one in the focused pane, else in the first pane that has one. */
+  agent?: string;
   /** A command is running in some pane. */
   running: boolean;
   /** The command of the focused pane: the one running now, else the last one. */
@@ -144,18 +146,27 @@ export interface ItemSummary {
  * Sidebar facts of an item. A pane that exited with a code other than 0, or with none at all (the
  * shell never started or was killed), counts as an error.
  */
-export function summarizeItem(item: Item, defaultCwd?: string): ItemSummary {
+export function summarizeItem(
+  item: Item,
+  defaultCwd?: string,
+  agentOf?: (pane: Pane) => string | undefined,
+): ItemSummary {
   const panes = layoutPanes(item.layout);
   const focused: Pane | undefined =
     panes.find((pane) => pane.id === item.focusedPaneId) ?? panes[0];
   const cwd = focused?.cwd ?? defaultCwd;
   const failed = panes.find((pane) => pane.status === "exited" && pane.exitCode !== 0);
   const command = commandInfo(focused);
+  const agent =
+    agentOf === undefined
+      ? undefined
+      : ((focused && agentOf(focused)) ?? panes.map(agentOf).find((id) => id !== undefined));
   return {
     ...(cwd !== undefined && cwd.trim() !== "" ? { cwd } : {}),
     ...(focused?.gitBranch !== undefined && focused.gitBranch !== ""
       ? { gitBranch: focused.gitBranch }
       : {}),
+    ...(agent !== undefined ? { agent } : {}),
     running: panes.some((pane) => pane.status === "running" || pane.runningCommand !== undefined),
     ...(command !== undefined ? { command } : {}),
     ...(failed ? { failed: failed.exitCode ?? null } : {}),
@@ -163,6 +174,9 @@ export function summarizeItem(item: Item, defaultCwd?: string): ItemSummary {
     bell: panes.some((pane) => pane.bell),
   };
 }
+
+/** Tooltip of the agent icon: the plain name of the agent, as the catalog has it. */
+export const agentLabel = (name: string): string => t("pane.agentLabel", { name });
 
 /** Tooltip of the running indicator. */
 export const runningLabel = (): string => t("pane.runningLabel");
@@ -208,6 +222,7 @@ export function marksWords(marks: UnreadMarks): string[] {
 /** The indicators of a summary in words, in the order the sidebar draws them. */
 export function indicatorLabels(summary: ItemSummary): string[] {
   return [
+    ...(summary.agent !== undefined ? [agentLabel(summary.agent)] : []),
     ...(summary.running ? [runningLabel()] : []),
     ...(summary.failed !== undefined ? [failureLabel(summary.failed)] : []),
     ...(summary.unread ? [unreadLabel()] : []),

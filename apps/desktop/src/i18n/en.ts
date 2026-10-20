@@ -97,6 +97,7 @@ export const en = {
   "pane.runningSome": "Running a command",
   "pane.lastCommand": "Last command {command}",
   "pane.lastCommandBare": "Last command",
+  "pane.agentLabel": "Agent {name}",
   "pane.runningLabel": "Running",
   "pane.unreadLabel": "Unread output",
   "pane.bellLabel": "Bell",
@@ -723,6 +724,20 @@ export const en = {
     "Off: Noren never puts a tab in the archive on its own. A tab you archive or close yourself is not affected.",
   "field.archive.afterHours":
     "How many hours a tab is left alone before it goes to the archive: with no command running, no output, nothing unread and not on screen. Pinned tabs and favorites are never archived. A fraction is fine (0.5 is half an hour).",
+  "field.agents":
+    "CLI agents: which programs count as an agent, and how often Noren looks for one under your shells. An agent shows as an icon on its tab.",
+  "field.agents.enabled":
+    "Off: Noren never looks at the processes of your terminals and shows no agent icon.",
+  "field.agents.catalog":
+    "The CLI agents Noren recognizes in a tab, by the command being run and by the programs running under the shell. Replaces the built-in list when present, so copy the entries you want to keep.",
+  "field.agents.catalog.item": "A CLI agent Noren recognizes in a tab.",
+  "field.agents.catalog.item.id": "The name Noren shows for the agent. Unique in the catalog.",
+  "field.agents.catalog.item.executables":
+    'File names of the program, without folder, ".exe" or ".cmd" (case does not matter): "claude" matches claude, Claude.exe and claude.cmd, and not claudette.',
+  "field.agents.catalog.item.packages":
+    'Package names that identify the agent when it is started through a runner (node, npx, bunx, python, uv, pipx...): the runner counts as the agent when one of its arguments is the package, as in "npx pkg" or "python -m pkg".',
+  "field.agents.scanSeconds":
+    "How many seconds between two looks at the process tree of the terminals, to find an agent that was not started from the prompt.",
   "field.ai":
     "The AI, off until you turn it on: providers (Ollama on this computer, and any you add) and which of them each function uses. Noren never runs what the AI suggests.",
   "field.ai.enabled":

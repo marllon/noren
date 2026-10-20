@@ -8,6 +8,12 @@ import {
   MAX_AI_PROVIDERS,
   OLLAMA_PROVIDER_ID,
 } from "./ai";
+import {
+  AgentCatalogSchema,
+  DEFAULT_AGENTS_ENABLED,
+  DEFAULT_AGENT_SCAN_SECONDS,
+  MIN_AGENT_SCAN_SECONDS,
+} from "./agents";
 import { DEFAULT_ARCHIVE_AFTER_HOURS, DEFAULT_ARCHIVE_ENABLED } from "./archive";
 import { MAX_BACKGROUND_BLUR, MAX_BACKGROUND_PATH, backgroundImageProblem } from "./background";
 import { MAX_MODS, MOD_FILE_NAME_PATTERN, isReservedModName } from "./mods";
@@ -234,6 +240,25 @@ const archiveSchema = z
       "Auto-archive: tabs that nobody uses go to the archive with their saved output, and come back from the library.",
   });
 
+const agentsSchema = z
+  .strictObject({
+    enabled: setting(
+      z.boolean(),
+      "Off: Noren never looks at the processes of your terminals and shows no agent icon.",
+      DEFAULT_AGENTS_ENABLED,
+    ),
+    catalog: AgentCatalogSchema.optional(),
+    scanSeconds: setting(
+      z.number().min(MIN_AGENT_SCAN_SECONDS),
+      "How many seconds between two looks at the process tree of the terminals, to find an agent that was not started from the prompt.",
+      DEFAULT_AGENT_SCAN_SECONDS,
+    ),
+  })
+  .meta({
+    description:
+      "CLI agents: which programs count as an agent, and how often Noren looks for one under your shells. An agent shows as an icon on its tab.",
+  });
+
 const MOD_NAME_MESSAGE =
   'Not a mod file name: letters, digits, ".", "_" and "-" (the first a letter or digit), ending in ".css", and not a device name such as "con"';
 
@@ -416,6 +441,7 @@ export const ConfigSchema = z
     keybindings: keybindingsSchema.optional(),
     notifications: notificationsSchema.optional(),
     archive: archiveSchema.optional(),
+    agents: agentsSchema.optional(),
     ai: aiSchema.optional(),
   })
   .meta({

@@ -136,6 +136,7 @@ fn main() {
             bridge::project_actions_read,
             bridge::project_command_run,
             bridge::git_info,
+            bridge::agents_scan,
             bridge::config_load,
             bridge::config_save,
             bridge::config_watch,

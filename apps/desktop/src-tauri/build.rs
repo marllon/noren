@@ -26,6 +26,7 @@ const COMMANDS: &[&str] = &[
     "project_actions_read",
     "project_command_run",
     "git_info",
+    "agents_scan",
     "config_load",
     "config_save",
     "config_watch",

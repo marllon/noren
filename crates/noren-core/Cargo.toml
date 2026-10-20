@@ -21,6 +21,14 @@ fontdb = { version = "0.24.0", default-features = false, features = ["std", "fs"
 # FSEvents) instead of polling the file. 8.2.0, CC0-1.0.
 notify = "8.2.0"
 portable-pty = "0.9.0"
+# Takes the picture of the process tree (pid, parent, name, command line) that the agent detector
+# reads (`agents` module): there is no other portable way to list the descendants of a shell on
+# Windows, macOS and Linux. Only the `system` feature is on, so the CPU, disk, network and
+# component readers (and rayon) are not built; the processes are the one thing asked for.
+# 0.39.6, MIT. New in the tree: ntapi 0.4.3 (Apache-2.0 OR MIT, Windows) and objc2-io-kit 0.3.2
+# (Zlib OR Apache-2.0 OR MIT, macOS); libc, memchr, windows and objc2-core-foundation were already
+# there.
+sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 # HTTP client of the AI providers (`ai` module): requests with a streamed response body, read
 # chunk by chunk for the SSE stream. 0.13.5, MIT OR Apache-2.0 (already in the tree through Tauri).
 # The default features are off because the default TLS (rustls with aws-lc-rs) brings aws-lc-sys

@@ -461,6 +461,10 @@ body {
   color: var(--nr-muted);
 }
 
+.tab-badge[data-nr-indicator="agent"] {
+  color: var(--nr-accent);
+}
+
 .tab-badge[data-nr-indicator="running"] {
   color: var(--nr-space-color);
 }

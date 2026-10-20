@@ -320,6 +320,38 @@ describe("TauriBackend", () => {
     await expect(new TauriBackend(none.bridge).gitInfo("/tmp")).resolves.toBeNull();
   });
 
+  it("asks agents_scan for the agents under the sessions, sending the catalog as plain entries", async () => {
+    const fake = fakeBridge({ agents_scan: [{ sessionId: 3, agentId: "claude", extra: 1 }] });
+    const hits = await new TauriBackend(fake.bridge).scanAgents(
+      [3, 4],
+      [
+        { id: "claude", executables: ["claude"] },
+        { id: "aider", executables: ["aider"], packages: ["aider"] },
+      ],
+    );
+    expect(hits).toEqual([{ sessionId: 3, agentId: "claude" }]);
+    expect(fake.invocations).toEqual([
+      {
+        command: "agents_scan",
+        args: {
+          sessionIds: [3, 4],
+          catalog: [
+            { id: "claude", executables: ["claude"], packages: [] },
+            { id: "aider", executables: ["aider"], packages: ["aider"] },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("lets an agents_scan failure reach the caller", async () => {
+    const fake = fakeBridge();
+    fake.failing.add("agents_scan");
+    await expect(new TauriBackend(fake.bridge).scanAgents([1], [])).rejects.toThrow(
+      "agents_scan failed",
+    );
+  });
+
   it("lets a git_info failure reach the caller", async () => {
     const fake = fakeBridge();
     fake.failing.add("git_info");

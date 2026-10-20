@@ -386,6 +386,44 @@ describe("call log", () => {
   });
 });
 
+describe("scanAgents", () => {
+  const catalog = [
+    { id: "claude", executables: ["claude"] },
+    { id: "codex", executables: ["codex"] },
+  ];
+
+  it("answers the agent a test put under the shell of a live session", async () => {
+    const backend = new FakeBackend();
+    const a = await backend.createSession({ cols: 80, rows: 24 });
+    const b = await backend.createSession({ cols: 80, rows: 24 });
+    const c = await backend.createSession({ cols: 80, rows: 24 });
+    backend.setSessionAgent(a, "claude");
+    backend.setSessionAgent(b, "codex");
+    expect(await backend.scanAgents([a, b, c], catalog)).toEqual([
+      { sessionId: a, agentId: "claude" },
+      { sessionId: b, agentId: "codex" },
+    ]);
+    backend.setSessionAgent(a, undefined);
+    expect(await backend.scanAgents([a, b], catalog)).toEqual([{ sessionId: b, agentId: "codex" }]);
+  });
+
+  it("leaves out a session that ended, an agent the catalog lacks and an unknown session", async () => {
+    const backend = new FakeBackend();
+    const a = await backend.createSession({ cols: 80, rows: 24 });
+    const b = await backend.createSession({ cols: 80, rows: 24 });
+    backend.setSessionAgent(a, "claude");
+    backend.setSessionAgent(b, "claude");
+    await backend.kill(b);
+    expect(
+      await backend.scanAgents([a, b, 999], [{ id: "codex", executables: ["codex"] }]),
+    ).toEqual([]);
+    expect(await backend.scanAgents([a, b, 999], catalog)).toEqual([
+      { sessionId: a, agentId: "claude" },
+    ]);
+    expect(backend.callsTo("scanAgents")).toHaveLength(2);
+  });
+});
+
 describe("gitInfo", () => {
   const main = { branch: "main", detached: false };
 

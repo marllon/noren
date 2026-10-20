@@ -2,6 +2,8 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { AI_ERROR_KINDS, OutputStream, fontNameList, sniffImageMime } from "@noren/model";
 import type {
+  AgentEntry,
+  AgentHit,
   AiBackend,
   AiChatEvent,
   AiChatRequest,
@@ -413,6 +415,21 @@ export class TauriBackend implements Backend {
   async gitInfo(cwd: string): Promise<GitInfo | null> {
     const info = await this.#bridge.invoke<GitInfo | null>("git_info", { cwd });
     return info === null ? null : { branch: info.branch, detached: info.detached };
+  }
+
+  async scanAgents(
+    sessionIds: readonly SessionId[],
+    catalog: readonly AgentEntry[],
+  ): Promise<AgentHit[]> {
+    const hits = await this.#bridge.invoke<AgentHit[]>("agents_scan", {
+      sessionIds: [...sessionIds],
+      catalog: catalog.map((entry) => ({
+        id: entry.id,
+        executables: [...entry.executables],
+        packages: [...(entry.packages ?? [])],
+      })),
+    });
+    return hits.map((hit) => ({ sessionId: hit.sessionId, agentId: hit.agentId }));
   }
 
   async notify(title: string, body: string): Promise<void> {

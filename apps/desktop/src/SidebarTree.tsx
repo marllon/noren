@@ -1,5 +1,6 @@
 import {
   Bell,
+  Bot,
   ChevronDown,
   ChevronRight,
   CircleAlert,
@@ -10,6 +11,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { layoutPanes } from "@noren/model";
+import { useAgentOfPane } from "./agent-store";
 import type { GroupNode, Id, Item, Space } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
 import { PeekPopover, peekId, usePeek } from "./Peek";
@@ -17,6 +19,7 @@ import { layoutThumbnail, paneEntries } from "./item-panes";
 import type { PaneEntry } from "./item-panes";
 import { tabCount, t, useT } from "./i18n";
 import {
+  agentLabel,
   bellLabel,
   commandWords,
   exitText,
@@ -122,6 +125,11 @@ export function MarkBadges({ marks }: { marks: UnreadMarks }) {
 export function TabBadges({ summary }: { summary: ItemSummary }) {
   return (
     <span className="tab-badges" aria-hidden="true">
+      {summary.agent !== undefined && (
+        <span className="tab-badge" data-nr-indicator="agent" title={agentLabel(summary.agent)}>
+          <Bot size={12} aria-hidden="true" />
+        </span>
+      )}
       {summary.running && (
         <span className="tab-badge" data-nr-indicator="running" title={runningLabel()}>
           <LoaderCircle size={12} className="spin" aria-hidden="true" />
@@ -327,6 +335,7 @@ export function SidebarTree({
   onPeek,
 }: SidebarTreeProps) {
   const t = useT();
+  const agentOf = useAgentOfPane();
   const order = spaceItemIds(space);
   const peek = usePeek(onPeek ?? noPeek);
   // A peek whose tab left the list (closed, moved to another space) goes with it.
@@ -534,7 +543,7 @@ export function SidebarTree({
       );
     }
     const isActive = row.id === activeId;
-    const summary = summarizeItem(item, space.defaults.cwd);
+    const summary = summarizeItem(item, space.defaults.cwd, agentOf);
     const cwdText = summary.cwd !== undefined ? shortCwd(summary.cwd, home) : "";
     const hasMeta = cwdText !== "" || summary.gitBranch !== undefined;
     // The button is named by the title alone; the rest is read as its description.

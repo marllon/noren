@@ -5,6 +5,7 @@
  * the Ask panel.
  */
 
+import type { AgentEntry } from "./agents";
 import type { AiBackend } from "./ai";
 import type { BackgroundImageFile } from "./background";
 import type { UserProfile } from "./user-profile-schema";
@@ -49,6 +50,13 @@ export interface GitInfo {
   branch: string;
   /** `HEAD` holds a commit and no branch. */
   detached: boolean;
+}
+
+/** The CLI agent found under the shell of a session. */
+export interface AgentHit {
+  sessionId: SessionId;
+  /** The `id` of the catalog entry. */
+  agentId: string;
 }
 
 /** A mod of the user: the name of its file in the `mods` folder (`dark-sidebar.css`) and its CSS. */
@@ -236,6 +244,15 @@ export interface Backend {
    * Rejects only when the lookup itself fails.
    */
   gitInfo(cwd: string): Promise<GitInfo | null>;
+  /**
+   * Which CLI agent runs under the shell of each of the sessions, from the process tree of the
+   * machine: an entry of `catalog` whose executable (or, behind a runner such as `node` or
+   * `npx`, whose package) is a descendant process of the shell. One answer per session that has
+   * one, the agent nearest to the shell; a session that is gone, or has none, is left out. It only
+   * reads the list of processes. Rejects when the catalog is refused (more than 64 agents, a blank
+   * or repeated id) or the lookup fails.
+   */
+  scanAgents(sessionIds: readonly SessionId[], catalog: readonly AgentEntry[]): Promise<AgentHit[]>;
   /**
    * Shows a notification of the system with plain text (no markup). Resolves when it was handed to
    * the system; rejects when it could not be (for example the system refused). It never asks for

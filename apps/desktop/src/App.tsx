@@ -141,6 +141,7 @@ import { ModStyles } from "./ModStyles";
 import { useModFiles } from "./mods-store";
 import { importSchemeFile } from "./scheme-import";
 import { useProfiles, useProfilesProblem } from "./profiles-store";
+import { currentAgentScanner } from "./agent-service";
 import { noteArchiveActivity } from "./auto-archive-service";
 import { Library } from "./Library";
 import type { LibraryEntry } from "./library-entries";
@@ -210,6 +211,8 @@ export interface NorenTestHook {
    * an OSC 9 or OSC 777 sequence. Returns `false` when no pane has that id or it has no session.
    */
   sendOutput(paneId: string, text: string): boolean;
+  /** Puts an agent (or none) under the shell of the pane in the fake process tree, and looks at the tree now. */
+  setPaneAgent(paneId: string, agentId: string | undefined): Promise<boolean>;
   /** Every system notification the backend was asked to show, in order. None is ever shown. */
   notifications(): { title: string; body: string }[];
   /** Makes the fake window have the keyboard focus (it starts with it) or lose it. */
@@ -1232,6 +1235,18 @@ function Shell({ store }: { store: WorkspaceStore }) {
               const sessionId = layoutPanes(item.layout).find((p) => p.id === paneId)?.sessionId;
               if (sessionId === undefined) continue;
               fake.sendOutput(Number(sessionId), text);
+              return true;
+            }
+          }
+          return false;
+        },
+        setPaneAgent: async (paneId, agentId) => {
+          for (const space of store.getState().workspace.spaces) {
+            for (const item of Object.values(space.items)) {
+              const sessionId = layoutPanes(item.layout).find((p) => p.id === paneId)?.sessionId;
+              if (sessionId === undefined) continue;
+              fake.setSessionAgent(Number(sessionId), agentId);
+              await currentAgentScanner()?.scan();
               return true;
             }
           }

@@ -333,6 +333,64 @@
       "additionalProperties": false,
       "description": "Auto-archive: tabs that nobody uses go to the archive with their saved output, and come back from the library."
     },
+    "agents": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Off: Noren never looks at the processes of your terminals and shows no agent icon.",
+          "default": true,
+          "type": "boolean"
+        },
+        "catalog": {
+          "maxItems": 64,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z0-9][a-z0-9_-]*$",
+                "description": "The name Noren shows for the agent. Unique in the catalog."
+              },
+              "executables": {
+                "minItems": 1,
+                "maxItems": 16,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"
+                },
+                "description": "File names of the program, without folder, \".exe\" or \".cmd\" (case does not matter): \"claude\" matches claude, Claude.exe and claude.cmd, and not claudette."
+              },
+              "packages": {
+                "description": "Package names that identify the agent when it is started through a runner (node, npx, bunx, python, uv, pipx...): the runner counts as the agent when one of its arguments is the package, as in \"npx pkg\" or \"python -m pkg\".",
+                "maxItems": 16,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "pattern": "^@?[A-Za-z0-9][A-Za-z0-9._+-]*(\\/[A-Za-z0-9][A-Za-z0-9._+-]*)?$"
+                }
+              }
+            },
+            "required": ["id", "executables"],
+            "additionalProperties": false,
+            "description": "A CLI agent Noren recognizes in a tab."
+          },
+          "description": "The CLI agents Noren recognizes in a tab, by the command being run and by the programs running under the shell. Replaces the built-in list when present, so copy the entries you want to keep."
+        },
+        "scanSeconds": {
+          "description": "How many seconds between two looks at the process tree of the terminals, to find an agent that was not started from the prompt.",
+          "default": 3,
+          "type": "number",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false,
+      "description": "CLI agents: which programs count as an agent, and how often Noren looks for one under your shells. An agent shows as an icon on its tab."
+    },
     "ai": {
       "type": "object",
       "properties": {

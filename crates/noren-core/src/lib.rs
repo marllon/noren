@@ -1,5 +1,6 @@
 //! Noren core library. Kept free of Tauri so it can be tested on its own.
 
+pub mod agents;
 pub mod ai;
 pub mod background;
 pub mod config;
@@ -17,6 +18,11 @@ pub mod themes;
 pub mod vault;
 pub mod window;
 
+pub use agents::{
+    AgentEntry, AgentMatch, CatalogError, MAX_CATALOG_ENTRIES, MAX_ENTRY_NAMES, MAX_NAME_CHARS,
+    ProcessInfo, ProcessSource, SystemProcesses, check_catalog, find_agent, program_name,
+    scan_sessions,
+};
 pub use ai::{
     AiClient, AiError, ChatMessage, DEFAULT_TIMEOUT, OLLAMA_DEFAULT_URL, OllamaProbe, Provider,
     ProviderKind, Role, SseDecoder, SseMessage, StreamEvent, StreamParser, is_http_address,

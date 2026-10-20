@@ -268,7 +268,16 @@ export {
   startAgentState,
 } from "./agent-state";
 export type { AgentRules, AgentSignal, AgentState, AgentStateMemory } from "./agent-state";
-export { TerminalTextStripper } from "./terminal-text";
+export {
+  MAX_LAST_LINE_CHARS,
+  NO_LAST_LINE,
+  TerminalTextStripper,
+  advanceLastLine,
+  lastLineOf,
+} from "./terminal-text";
+export type { LastLineMemory } from "./terminal-text";
+export { AGENT_LINE_MAX, buildAgentList, firstWaitingAgent, truncateLine } from "./agent-list";
+export type { AgentInfo, AgentRow } from "./agent-list";
 export {
   ARCHIVE_CHECK_INTERVAL_MS,
   DEFAULT_ARCHIVE_AFTER_HOURS,

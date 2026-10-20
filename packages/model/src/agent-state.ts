@@ -1,7 +1,8 @@
 import { DEFAULT_WAITING_PATTERNS, compileAgentPattern, silenceMsOf } from "./agents";
 import type { AgentEntry } from "./agents";
 import type { Clock } from "./clock";
-import { TerminalTextStripper } from "./terminal-text";
+import { NO_LAST_LINE, TerminalTextStripper, advanceLastLine, lastLineOf } from "./terminal-text";
+import type { LastLineMemory } from "./terminal-text";
 
 // What a CLI agent is doing in its pane: working, waiting for you, or idle. Told from what the
 // agent prints (plain text, no escape sequences), from a notification it raised (OSC 9 and OSC 777
@@ -180,14 +181,16 @@ export function settleAgentState(
 /**
  * The `AgentState` of an agent over time, with a timer for the silence. Feed it what the agent
  * prints, the notifications it raises and the keys the person types; `onChange` runs when the state
- * changes. `dispose` stops the timer.
+ * changes and `onLine` when the last line of the output changes. `dispose` stops the timer.
  */
 export class AgentStateTracker {
   readonly #clock: Clock;
   #rules: AgentRules;
   readonly #onChange: ((state: AgentState) => void) | undefined;
+  readonly #onLine: (() => void) | undefined;
   readonly #stripper = new TerminalTextStripper();
   #memory: AgentStateMemory;
+  #line: LastLineMemory = NO_LAST_LINE;
   #cancel: (() => void) | undefined;
   #disposed = false;
 
@@ -195,10 +198,12 @@ export class AgentStateTracker {
     clock: Clock;
     rules: AgentRules;
     onChange?: (state: AgentState) => void;
+    onLine?: () => void;
   }) {
     this.#clock = options.clock;
     this.#rules = options.rules;
     this.#onChange = options.onChange;
+    this.#onLine = options.onLine;
     this.#memory = startAgentState(options.clock.now());
   }
 
@@ -209,6 +214,15 @@ export class AgentStateTracker {
   /** When the current state began, on the clock of the tracker. */
   get since(): number {
     return this.#memory.since;
+  }
+
+  /**
+   * The last line with something on it in the plain text of the output so far (the one still being
+   * written counts, so a prompt shows); `""` before the agent printed anything. It is cut to
+   * `MAX_LAST_LINE_CHARS`; the list of agents cuts it shorter for the screen.
+   */
+  get lastLine(): string {
+    return lastLineOf(this.#line);
   }
 
   /** The rules in force from now on (the settings file changed). */
@@ -224,6 +238,11 @@ export class AgentStateTracker {
 
   /** A chunk of the output, already plain text. */
   feedText(text: string): void {
+    if (!this.#disposed) {
+      const before = this.lastLine;
+      this.#line = advanceLastLine(this.#line, text);
+      if (this.lastLine !== before) this.#onLine?.();
+    }
     this.#signal({ kind: "output", text });
   }
 

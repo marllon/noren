@@ -144,3 +144,51 @@ export class TerminalTextStripper {
     }
   }
 }
+
+/** The longest line `advanceLastLine` keeps; the rest of a longer one is dropped. */
+export const MAX_LAST_LINE_CHARS = 400;
+/** Most of a chunk `advanceLastLine` reads (the end of it): a flood of output costs the same as a page. */
+const MAX_LAST_LINE_WINDOW = 16_000;
+
+/**
+ * The last line of the output seen so far: `done` is the last finished line that had something on
+ * it, `open` is the line still being written (it has no line end yet; a prompt stays open).
+ */
+export interface LastLineMemory {
+  readonly done: string;
+  readonly open: string;
+}
+
+export const NO_LAST_LINE: LastLineMemory = { done: "", open: "" };
+
+/** A line the way a list shows it: tabs as spaces, no space at either end. */
+function tidyLine(line: string): string {
+  return line.replace(/\t/g, " ").trim();
+}
+
+/** The memory after `text` (plain text, see `TerminalTextStripper`) came in. */
+export function advanceLastLine(memory: LastLineMemory, text: string): LastLineMemory {
+  if (text === "") return memory;
+  const joined = memory.open + text;
+  const parts = (
+    joined.length > MAX_LAST_LINE_WINDOW
+      ? joined.slice(joined.length - MAX_LAST_LINE_WINDOW)
+      : joined
+  ).split("\n");
+  const open = (parts[parts.length - 1] ?? "").slice(0, MAX_LAST_LINE_CHARS);
+  let done = memory.done;
+  for (let index = parts.length - 2; index >= 0; index--) {
+    const line = tidyLine(parts[index] ?? "").slice(0, MAX_LAST_LINE_CHARS);
+    if (line !== "") {
+      done = line;
+      break;
+    }
+  }
+  return { done, open };
+}
+
+/** The last line with something on it, the one still being written first; `""` before any output. */
+export function lastLineOf(memory: LastLineMemory): string {
+  const open = tidyLine(memory.open);
+  return open !== "" ? open : memory.done;
+}

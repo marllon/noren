@@ -35,6 +35,8 @@ export type ActionCommand =
   | { kind: "new-tab" }
   | { kind: "reopen-closed" }
   | { kind: "library" }
+  | { kind: "agents" }
+  | { kind: "agent-waiting" }
   | { kind: "quick-toggle" }
   | { kind: "ask-toggle" }
   | { kind: "close" }
@@ -231,6 +233,24 @@ export const ACTIONS: readonly ActionDef[] = [
     command: { kind: "search-all" },
     repeat: false,
     chords: { safe: "Ctrl+Alt+Shift+KeyF", browser: "Ctrl+Alt+Shift+KeyF" },
+  },
+  {
+    // The Agents panel: the agents of every space with what they do and for how long.
+    id: "agents.open",
+    title: "Open agents panel",
+    category: "General",
+    command: { kind: "agents" },
+    repeat: false,
+    chords: { safe: "Ctrl+Alt+Shift+KeyG", browser: "Ctrl+Alt+Shift+KeyG" },
+  },
+  {
+    // Goes to the agent that has waited for you longest, in any space; with none waiting it only says so.
+    id: "agents.focus-waiting",
+    title: "Go to the agent waiting for you",
+    category: "General",
+    command: { kind: "agent-waiting" },
+    repeat: false,
+    chords: { safe: "Ctrl+Alt+Shift+KeyW", browser: "Ctrl+Alt+Shift+KeyW" },
   },
   {
     id: "settings.open",

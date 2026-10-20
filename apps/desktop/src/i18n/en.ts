@@ -213,6 +213,8 @@ export const en = {
   "action.tab.library": "Open library",
   "action.quick.toggle": "Show or hide quick terminal",
   "action.ask.toggle": "Ask the AI",
+  "action.agents.open": "Open agents panel",
+  "action.agents.focus-waiting": "Go to the agent waiting for you",
   "action.tab.mru-next": "Next recent tab",
   "action.tab.mru-prev": "Previous recent tab",
   "action.tab.last-unread": "Go to last unread tab",
@@ -441,6 +443,19 @@ export const en = {
   "library.confirmDelete": "Delete",
   "library.untitled": "Untitled tab",
   "library.deletedSpace": "Deleted space",
+
+  // The Agents panel
+  "agents.label": "Agents",
+  "agents.list": "Agents of all spaces",
+  "agents.none": "No agent is running in any tab.",
+  "agents.noneWaiting": "No agent is waiting for you.",
+  "agents.state.working": "working",
+  "agents.state.waiting": "waiting for you",
+  "agents.state.idle": "idle",
+  "agents.where": "{tab} in {space}",
+  "agents.row": "Agent {name} is {state}, for {elapsed}, {where}. Go to it.",
+  "agents.rowWithLine":
+    "Agent {name} is {state}, for {elapsed}, {where}. Last line: {line}. Go to it.",
 
   // The dialog of a space
   "spaceDialog.edit": "Edit space",

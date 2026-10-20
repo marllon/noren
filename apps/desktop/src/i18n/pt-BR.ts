@@ -215,6 +215,8 @@ export const ptBR: Dictionary = {
   "action.tab.library": "Abrir a biblioteca",
   "action.quick.toggle": "Mostrar ou ocultar o terminal rápido",
   "action.ask.toggle": "Perguntar à IA",
+  "action.agents.open": "Abrir o painel de agentes",
+  "action.agents.focus-waiting": "Ir ao agente que está esperando você",
   "action.tab.mru-next": "Próxima aba recente",
   "action.tab.mru-prev": "Aba recente anterior",
   "action.tab.last-unread": "Ir para a última aba não lida",
@@ -445,6 +447,19 @@ export const ptBR: Dictionary = {
   "library.confirmDelete": "Excluir",
   "library.untitled": "Aba sem título",
   "library.deletedSpace": "Espaço excluído",
+
+  // The Agents panel
+  "agents.label": "Agentes",
+  "agents.list": "Agentes de todos os espaços",
+  "agents.none": "Nenhum agente rodando em nenhuma aba.",
+  "agents.noneWaiting": "Nenhum agente está esperando você.",
+  "agents.state.working": "trabalhando",
+  "agents.state.waiting": "esperando você",
+  "agents.state.idle": "ocioso",
+  "agents.where": "{tab} em {space}",
+  "agents.row": "Agente {name} está {state}, há {elapsed}, {where}. Ir até ele.",
+  "agents.rowWithLine":
+    "Agente {name} está {state}, há {elapsed}, {where}. Última linha: {line}. Ir até ele.",
 
   // A caixa de um espaço
   "spaceDialog.edit": "Editar espaço",

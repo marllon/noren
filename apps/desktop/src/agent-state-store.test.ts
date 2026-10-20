@@ -2,8 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ManualClock, encodeUtf8 } from "@noren/model";
 import type { Pane } from "@noren/model";
 import {
+  agentInfoOfPane,
+  agentRows,
   agentStateOfPane,
   feedAgentOutput,
+  firstWaitingAgentOf,
   forgetAgentState,
   noteAgentInput,
   noteAgentNotification,
@@ -12,7 +15,7 @@ import {
   subscribeAgentStates,
 } from "./agent-state-store";
 import { resetAgentStore, setTreeAgents } from "./agent-store";
-import { fixturePane } from "./closed-fixtures";
+import { fixturePane, fixtureSpace, fixtureTab } from "./closed-fixtures";
 import { configManager } from "./config-store";
 
 // What the agent of a pane is doing, kept per pane: the output, the notification and the keys go
@@ -175,5 +178,85 @@ describe("subscribeAgentStates", () => {
     stop();
     feedAgentOutput(p, bytes("three\n"));
     expect(calls).toBe(2);
+  });
+});
+
+describe("the list of agents", () => {
+  const waiting = "Do you want to proceed? [y/N]";
+
+  function twoSpaces() {
+    const a = pane("pa", "claude");
+    const b = pane("pb", "claude");
+    const c = pane("pc", "ls");
+    return {
+      a,
+      b,
+      c,
+      workspace: {
+        spaces: [
+          fixtureSpace("s1", [fixtureTab("i1", a), fixtureTab("i2", c)]),
+          fixtureSpace("s2", [fixtureTab("i3", b)]),
+        ],
+      },
+    };
+  }
+
+  it("keeps the last line and the time of an agent, and lists no pane without one", () => {
+    start();
+    const { a, workspace } = twoSpaces();
+    clock.advance(1000);
+    feedAgentOutput(a, bytes("\u001b[32mcompiling\u001b[0m\r\nlinking\r\n"));
+    clock.advance(2500);
+    expect(agentInfoOfPane(a)).toEqual({
+      agentId: "claude",
+      state: "working",
+      since: 1000,
+      lastLine: "linking",
+    });
+    const rows = agentRows(workspace);
+    expect(rows.map((row) => [row.paneId, row.elapsed])).toEqual([
+      ["pa", "3s"],
+      ["pb", "0s"],
+    ]);
+  });
+
+  it("starts the idle time of an agent that printed nothing the first time it is asked about", () => {
+    start();
+    const { b } = twoSpaces();
+    clock.advance(4000);
+    expect(agentInfoOfPane(b)?.since).toBe(4000);
+    clock.advance(9000);
+    expect(agentInfoOfPane(b)).toMatchObject({ state: "idle", since: 4000, lastLine: "" });
+  });
+
+  it("puts the agent that waits first, from any space, and answers none when nobody waits", () => {
+    start();
+    const { a, b, workspace } = twoSpaces();
+    feedAgentOutput(a, bytes("busy\n"));
+    expect(firstWaitingAgentOf(workspace)).toBeUndefined();
+    clock.advance(1000);
+    feedAgentOutput(b, bytes(waiting));
+    expect(firstWaitingAgentOf(workspace)).toMatchObject({ paneId: "pb", spaceId: "s2" });
+    expect(agentRows(workspace).map((row) => row.state)).toEqual(["waiting", "working"]);
+  });
+
+  it("changes the last line without telling the state listeners", () => {
+    start();
+    const { a } = twoSpaces();
+    feedAgentOutput(a, bytes("one\n"));
+    let states = 0;
+    const stop = subscribeAgentStates(() => states++);
+    feedAgentOutput(a, bytes("two\n"));
+    expect(states).toBe(0);
+    expect(agentInfoOfPane(a)?.lastLine).toBe("two");
+    stop();
+  });
+
+  it("is empty with agents off", () => {
+    start();
+    const { a, workspace } = twoSpaces();
+    feedAgentOutput(a, bytes("busy\n"));
+    configManager.apply('{ "agents": { "enabled": false } }');
+    expect(agentRows(workspace)).toEqual([]);
   });
 });

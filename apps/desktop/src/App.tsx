@@ -10,7 +10,7 @@ import {
   treeGroups,
   withMod,
 } from "@noren/model";
-import type { GroupNode, Id, Item, Pane, Space } from "@noren/model";
+import type { AgentRow, GroupNode, Id, Item, Pane, Space } from "@noren/model";
 import type { ITheme } from "@xterm/xterm";
 import type { ChangeEvent } from "react";
 import {
@@ -142,8 +142,10 @@ import { useModFiles } from "./mods-store";
 import { importSchemeFile } from "./scheme-import";
 import { useProfiles, useProfilesProblem } from "./profiles-store";
 import { currentAgentScanner } from "./agent-service";
+import { AgentsPanel } from "./AgentsPanel";
 import {
   feedAgentOutput,
+  firstWaitingAgentOf,
   forgetAgentState,
   noteAgentInput,
   noteAgentNotification,
@@ -608,6 +610,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const [searchText, setSearchText] = useState<SearchTab[] | null>(null);
   // The library (archive and closed tabs) is open.
   const [libraryOpen, setLibraryOpen] = useState(false);
+  // The Agents panel is open.
+  const [agentsOpen, setAgentsOpen] = useState(false);
   // The Ask panel was opened. It shows only where the AI is on (see `askShown` below).
   const [askOpen, setAskOpen] = useState(false);
   // A failed command sent to the Ask panel by its Explain button; `seq` tells one press from the next.
@@ -889,6 +893,37 @@ function Shell({ store }: { store: WorkspaceStore }) {
     setLibraryOpen(false);
     focusTerminal();
   }, [focusTerminal]);
+  /** Opens the Agents panel over everything else; the palette and the search give way to it. */
+  const openAgents = useCallback(() => {
+    setPaletteOpen(false);
+    setSearchText(null);
+    setAgentsOpen(true);
+  }, []);
+  /** Closes the Agents panel and gives the keyboard back to the terminal of the tab on screen. */
+  const closeAgents = useCallback(() => {
+    setAgentsOpen(false);
+    focusTerminal();
+  }, [focusTerminal]);
+  /**
+   * Goes to an agent: shows its space and tab, focuses its pane and gives it the keyboard. The tab
+   * may have been hidden until now, so the terminal is told after the render that shows it.
+   */
+  const goToAgent = useCallback(
+    (row: AgentRow) => {
+      setAgentsOpen(false);
+      dispatch({ type: "space/set-active-item", spaceId: row.spaceId, itemId: row.itemId });
+      dispatch({ type: "space/activate", spaceId: row.spaceId });
+      dispatch({ type: "pane/focus", itemId: row.itemId, paneId: row.paneId });
+      requestAnimationFrame(() => handles.current.get(row.paneId)?.focus());
+    },
+    [dispatch],
+  );
+  /** Goes to the agent that has waited for you longest; with none waiting, a notice says so. */
+  const goToWaitingAgent = useCallback(() => {
+    const row = firstWaitingAgentOf(store.getState().workspace);
+    if (row === undefined) showNotice(t("agents.noneWaiting"));
+    else goToAgent(row);
+  }, [store, showNotice, goToAgent]);
   /**
    * Brings a tab of the library back where it sat, with its saved output dimmed above a new shell
    * in its folder, and shows it.
@@ -1144,6 +1179,14 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) openLibrary();
         return;
       }
+      if (action.command.kind === "agents") {
+        if (!modalOpen.current) openAgents();
+        return;
+      }
+      if (action.command.kind === "agent-waiting") {
+        if (!modalOpen.current) goToWaitingAgent();
+        return;
+      }
       if (action.command.kind === "quick-toggle") {
         // The window of the quick terminal is not this one: a dialog here does not stand in its way.
         toggleQuick();
@@ -1192,6 +1235,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
     runLayout,
     reopenTab,
     openLibrary,
+    openAgents,
+    goToWaitingAgent,
     toggleQuick,
   ]);
 
@@ -1512,6 +1557,15 @@ function Shell({ store }: { store: WorkspaceStore }) {
       // The library takes the keyboard itself; the palette must not hand it to the terminal.
       openLibrary();
       return;
+    } else if (entry.action.command.kind === "agents") {
+      // The panel takes the keyboard itself; the palette must not hand it to the terminal.
+      openAgents();
+      return;
+    } else if (entry.action.command.kind === "agent-waiting") {
+      // The agent's pane takes the keyboard; with none waiting the terminal gets it back.
+      goToWaitingAgent();
+      setPaletteOpen(false);
+      return;
     } else if (entry.action.command.kind === "quick-toggle") {
       // The quick window takes the keyboard itself; the palette closes first so it does not hand
       // the focus back to the terminal of this window.
@@ -1775,7 +1829,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
 
   const { pending } = projectActions;
   modalOpen.current =
-    overlay !== null || pending !== null || settingsOpen || libraryOpen || commandAsk !== undefined;
+    overlay !== null ||
+    pending !== null ||
+    settingsOpen ||
+    libraryOpen ||
+    agentsOpen ||
+    commandAsk !== undefined;
   const confirmNode = pending !== null && (
     <ConfirmDialog
       title={t("runAction.title")}
@@ -1957,6 +2016,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
             onDelete={deleteFromLibrary}
             onClose={closeLibrary}
           />
+        )}
+        {agentsOpen && (
+          <AgentsPanel workspace={workspace} onPick={goToAgent} onClose={closeAgents} />
         )}
         {paletteOpen && (
           <CommandPalette

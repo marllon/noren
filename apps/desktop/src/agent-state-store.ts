@@ -1,6 +1,12 @@
 import { useSyncExternalStore } from "react";
-import { AgentStateTracker, agentSettingsOf, compileAgentRules } from "@noren/model";
-import type { AgentState, Clock, Id, Pane } from "@noren/model";
+import {
+  AgentStateTracker,
+  agentSettingsOf,
+  buildAgentList,
+  compileAgentRules,
+  firstWaitingAgent,
+} from "@noren/model";
+import type { AgentInfo, AgentRow, AgentState, Clock, Id, Pane, Workspace } from "@noren/model";
 import {
   agentOfPane,
   commandAgentOfPane,
@@ -9,6 +15,7 @@ import {
   useAgentOfPane,
 } from "./agent-store";
 import { configManager } from "./config-store";
+import { itemTitle } from "./favorites";
 import { realClock } from "./real-clock";
 
 // What each pane's agent is doing: working, waiting for you, or idle. The classifier is pure and
@@ -43,6 +50,18 @@ let clock: Clock = realClock;
 let version = 0;
 const listeners = new Set<() => void>();
 let watching = false;
+
+/**
+ * Moves when the last line of some agent changed. Apart from `version` on purpose: this one moves
+ * with every chunk of output, and only the Agents panel reads it.
+ */
+let lineVersion = 0;
+const lineListeners = new Set<() => void>();
+
+/** Moves once a second while the Agents panel is open, so the time in each state keeps counting. */
+let tickVersion = 0;
+const tickListeners = new Set<() => void>();
+let cancelTick: (() => void) | undefined;
 
 function notify(): void {
   version++;
@@ -110,6 +129,10 @@ function entryOf(pane: Pane, agentId: string): Entry {
         created.state = state;
         notify();
       },
+      onLine: () => {
+        lineVersion++;
+        for (const listener of [...lineListeners]) listener();
+      },
     }),
   };
   entries.set(pane.id, created);
@@ -168,10 +191,73 @@ export function useAgentStateOfPane(): (pane: Pane) => AgentState | undefined {
   return agentStateOfPane;
 }
 
+/**
+ * What the Agents panel knows of the agent of a pane; `undefined` when the pane has none. The state
+ * and the time in it are the tracker's (an agent that printed nothing yet starts its idle time the
+ * first time it is asked about), the last line is the last one with something on it.
+ */
+export function agentInfoOfPane(pane: Pane): AgentInfo | undefined {
+  const agentId = agentOfPane(pane);
+  if (agentId === undefined) return undefined;
+  const { tracker } = entryOf(pane, agentId);
+  return { agentId, state: tracker.state, since: tracker.since, lastLine: tracker.lastLine };
+}
+
+/** The agents of every space in the order of the Agents panel (see `buildAgentList`). */
+export function agentRows(workspace: Pick<Workspace, "spaces">): AgentRow[] {
+  return buildAgentList(workspace, agentInfoOfPane, itemTitle, clock.now());
+}
+
+/** The agent that has waited for you longest, in any space; `undefined` when none waits. */
+export function firstWaitingAgentOf(workspace: Pick<Workspace, "spaces">): AgentRow | undefined {
+  return firstWaitingAgent(agentRows(workspace));
+}
+
+function subscribeLines(onChange: () => void): () => void {
+  lineListeners.add(onChange);
+  return () => {
+    lineListeners.delete(onChange);
+  };
+}
+
+function armTick(): void {
+  cancelTick = clock.setTimer(() => {
+    tickVersion++;
+    for (const listener of [...tickListeners]) listener();
+    armTick();
+  }, 1000);
+}
+
+function subscribeTick(onChange: () => void): () => void {
+  tickListeners.add(onChange);
+  if (tickListeners.size === 1) armTick();
+  return () => {
+    tickListeners.delete(onChange);
+    if (tickListeners.size === 0) {
+      cancelTick?.();
+      cancelTick = undefined;
+    }
+  };
+}
+
+/**
+ * `agentRows` for the Agents panel: it renders again when a state, an agent or the settings change,
+ * when an agent prints a new last line, and once a second for the time in each state. The ticks run
+ * on the clock of the agent states, so a test that moves the fake clock moves them.
+ */
+export function useAgentRows(workspace: Pick<Workspace, "spaces">): AgentRow[] {
+  useAgentOfPane();
+  useSyncExternalStore(subscribeAgentStates, () => version);
+  useSyncExternalStore(subscribeLines, () => lineVersion);
+  useSyncExternalStore(subscribeTick, () => tickVersion);
+  return agentRows(workspace);
+}
+
 /** Forgets every state and puts the real clock back, so a test starts from nothing. */
 export function resetAgentStates(): void {
   for (const entry of entries.values()) entry.tracker.dispose();
   entries.clear();
   clock = realClock;
   version++;
+  lineVersion++;
 }

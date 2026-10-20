@@ -1276,7 +1276,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
   /**
    * A tab goes to a window of its own: dragged out of the window, or "Move tab to new window" in the
    * palette (the tab on screen). The window gets a space of its own, named after the tab, and the
-   * shells of the tab go on in it. A tab with a browser, preview or diff pane, too many windows, a
+   * shells of the tab go on in it. A tab with a browser pane, too many windows, a
    * page that cannot show other windows and a window the backend refuses say so in a notice and
    * leave the tab where it is.
    */

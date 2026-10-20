@@ -402,9 +402,7 @@ test("a tab with a browser pane stays in the main window and says why", async ({
   await page.goto("/?window-preview");
   await expect(row(page, "with web")).toBeVisible();
   await dragOut(page, "with web");
-  await expect(notice(page)).toHaveText(
-    "A tab with a browser, preview or diff pane stays in the main window.",
-  );
+  await expect(notice(page)).toHaveText("A tab with a browser pane stays in the main window.");
   await expect(panels(page)).toHaveCount(0);
   await expect(row(page, "with web")).toBeVisible();
   expect((await saved(page)).windows).toBeUndefined();
@@ -417,9 +415,7 @@ test("a tab with a browser pane stays in the main window and says why", async ({
   await page.keyboard.press("Control+Shift+P");
   await page.keyboard.type("Move tab to new");
   await page.keyboard.press("Enter");
-  await expect(notice(page)).toHaveText(
-    "A tab with a browser, preview or diff pane stays in the main window.",
-  );
+  await expect(notice(page)).toHaveText("A tab with a browser pane stays in the main window.");
   await expect(panels(page)).toHaveCount(0);
 });
 

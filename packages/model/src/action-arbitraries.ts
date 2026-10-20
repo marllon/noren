@@ -137,8 +137,8 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
   const itemId = arbIdOf(itemIds);
   const groupId = arbIdOf(groupIds);
   const windowId = arbIdOf(workspaceWindows(ws).map((window) => window.id));
-  // The tabs a window can show (terminals only), mostly: a workspace full of browser, preview and
-  // diff panes would otherwise leave the actions on windows nearly always refused.
+  // The tabs a window can show (none with a browser pane), mostly: a workspace full of browser
+  // panes would otherwise leave the actions on windows nearly always refused.
   const windowItemIds = ws.spaces.flatMap((space) =>
     Object.values(space.items)
       .filter(windowCanShowTab)

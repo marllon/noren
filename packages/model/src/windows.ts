@@ -85,13 +85,13 @@ export function spaceIsShown(
 }
 
 /**
- * Whether the tab can be shown by a window besides the main one: every pane of it is a terminal.
- * The page of such a window draws terminals only; the web view of a browser pane, the preview and
- * the diff stay with the main window until the windows draw those too (NOR-F15-04d), so a tab with
- * one of them stays where it is.
+ * Whether the tab can be shown by a window besides the main one: no pane of it is a browser. The
+ * page of such a window draws terminals, previews and diffs (the file and the git diff are read by
+ * the main window and sent to it); the web view of a browser pane is a child of the main window
+ * until a window can be its parent (NOR-F15-04e), so a tab with one stays where it is.
  */
 export function windowCanShowTab(item: Pick<Item, "layout">): boolean {
-  return layoutPanes(item.layout).every((pane) => pane.type === "terminal");
+  return layoutPanes(item.layout).every((pane) => pane.type !== "browser");
 }
 
 /** Whether the workspace can take one more window. */

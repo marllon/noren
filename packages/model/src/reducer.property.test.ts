@@ -103,6 +103,9 @@ const itemIdsOf = (ws: Workspace): Set<Id> =>
   new Set(ws.spaces.flatMap((space) => Object.keys(space.items)));
 const itemOf = (ws: Workspace, itemId: Id): Item | undefined =>
   ws.spaces.flatMap((space) => Object.values(space.items)).find((item) => item.id === itemId);
+/** Whether a pane of the tab is a browser pane: the one thing a window cannot show yet. */
+const hasBrowserPane = (item: Item): boolean =>
+  layoutPanes(item.layout).some((pane) => pane.type === "browser");
 /** Ids of every pane of every live item (closed and archived ones do not count). */
 const paneIdsOf = (ws: Workspace): Id[] =>
   ws.spaces
@@ -408,12 +411,16 @@ function checkWindows(ws: Workspace, next: Workspace, action: Action, where: () 
   } else if (action.type === "window/move-item") {
     const window = before.find((w) => w.id === action.windowId);
     const space = next.spaces.find((s) => s.id === window?.spaceId);
-    if (space === undefined || !Object.hasOwn(space.items, action.itemId)) {
+    const moved = space?.items[action.itemId];
+    if (space === undefined || moved === undefined) {
       fail("the tab is not in the space of the window");
     } else if (space.activeItemId !== action.itemId) {
       fail("the tab that arrived is not the one the window shows");
+    } else if (hasBrowserPane(moved)) {
+      fail("a tab with a browser pane went to a window");
     }
   } else if (action.type === "window/open-with-item") {
+    const dragged = itemOf(ws, action.itemId);
     const added = after.filter((w) => !before.some((b) => b.id === w.id));
     const space = next.spaces.find((s) => s.id === added[0]?.spaceId);
     if (after.length !== before.length + 1 || added.length !== 1 || space === undefined) {
@@ -425,8 +432,10 @@ function checkWindows(ws: Workspace, next: Workspace, action: Action, where: () 
       space.activeItemId !== action.itemId
     ) {
       fail("the tab dragged out is not alone in the space of the window as the one it shows");
-    } else if (!itemOf(ws, action.itemId) || added[0]?.returnSpaceId === undefined) {
+    } else if (dragged === undefined || added[0]?.returnSpaceId === undefined) {
       fail("the window does not remember where the tab came from");
+    } else if (hasBrowserPane(dragged)) {
+      fail("a tab with a browser pane was dragged out to a window");
     } else if (next.spaces.length !== ws.spaces.length + 1) {
       fail("dragging a tab out made other than one space");
     }
@@ -656,6 +665,19 @@ describe("reducer properties", () => {
     "property: sequences keep every invariant on workspaces that already have windows",
     () => {
       playSequences(SMALL_RUNS, undefined, { windows: true, browserPanes: true });
+    },
+    SEQUENCE_TIMEOUT_MS,
+  );
+
+  it(
+    "property: sequences keep every invariant on workspaces with windows and browser, preview and diff panes",
+    () => {
+      playSequences(SMALL_RUNS, undefined, {
+        windows: true,
+        browserPanes: true,
+        previewPanes: true,
+        diffPanes: true,
+      });
     },
     SEQUENCE_TIMEOUT_MS,
   );

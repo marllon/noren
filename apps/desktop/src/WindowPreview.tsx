@@ -1,5 +1,5 @@
 import { FakeBackend } from "@noren/model";
-import type { Id } from "@noren/model";
+import type { Backend, Id } from "@noren/model";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { backend } from "./boot";
 import { useT } from "./i18n";
@@ -7,7 +7,7 @@ import { windowPreviewEvents } from "./quick";
 import type { TerminalHandle } from "./TerminalView";
 import { WindowApp } from "./WindowApp";
 import { windowPreviewHost } from "./window-preview-host";
-import { WINDOW_ACTION_EVENT } from "./window-sync";
+import { WINDOW_ACTION_EVENT, WINDOW_READ_EVENT, WINDOW_READ_RESULT_EVENT } from "./window-sync";
 
 /** What the e2e tests read on the window panels (`window.__norenWindows`). */
 export interface WindowPreviewHook {
@@ -22,6 +22,14 @@ export interface WindowPreviewHook {
    * (the tests send what a page that is wrong, or not ours, could send, to see it refused).
    */
   ask(windowId: string, action: unknown): void;
+  /**
+   * Sends the main window a `window-read` as the page of `windowId` would, with the fields of
+   * `body` (`request`, `kind`, `itemId`, `paneId`, `path` or `cwd`) as given: the tests send what a
+   * page that is wrong, or not ours, could send, to see it ignored.
+   */
+  read(windowId: string, body: unknown): void;
+  /** What the main window answered to reads so far (`window-read-result`), oldest first. */
+  replies(): unknown[];
 }
 
 declare global {
@@ -29,6 +37,27 @@ declare global {
     __norenWindows?: WindowPreviewHook;
   }
 }
+
+/**
+ * The backend a window page gets in the preview. It is the app's own, but a real window page can
+ * read no file and run no git (its capability has no such command), so these two refuse here too:
+ * a preview or diff pane in a panel can only show what the main window read and sent.
+ */
+function windowPageBackend(real: Backend): Backend {
+  return new Proxy(real, {
+    get(target, property) {
+      if (property === "readFilePreview" || property === "readGitDiff") {
+        return () => Promise.reject(new Error("a window page cannot read files or run git"));
+      }
+      const value: unknown = Reflect.get(target, property, target);
+      return typeof value === "function"
+        ? (value as (...args: unknown[]) => unknown).bind(target)
+        : value;
+    },
+  });
+}
+
+const pageBackend = windowPageBackend(backend);
 
 /**
  * The windows besides the main one drawn as panels in a browser (`?window-preview`), each with the
@@ -43,6 +72,7 @@ export function WindowPreview() {
   const terminals = useRef(new Map<string, TerminalHandle>());
   const open = useRef<string[]>([]);
   open.current = windows.map((w) => w.id);
+  const replies = useRef<unknown[]>([]);
   // The handle of a terminal in a window that closed is not kept.
   useEffect(() => {
     for (const key of [...terminals.current.keys()]) {
@@ -67,9 +97,18 @@ export function WindowPreview() {
       ask: (windowId, action) => {
         windowPreviewEvents.emit(WINDOW_ACTION_EVENT, { windowId, action }).catch(() => undefined);
       },
+      read: (windowId, body) => {
+        const fields = typeof body === "object" && body !== null ? body : {};
+        windowPreviewEvents.emit(WINDOW_READ_EVENT, { windowId, ...fields }).catch(() => undefined);
+      },
+      replies: () => [...replies.current],
     };
+    const stop = windowPreviewEvents.listen(WINDOW_READ_RESULT_EVENT, (payload) => {
+      replies.current.push(payload);
+    });
     return () => {
       delete window.__norenWindows;
+      void stop.then((unlisten) => unlisten());
     };
   }, []);
 
@@ -99,7 +138,7 @@ export function WindowPreview() {
           </div>
           <WindowApp
             windowId={w.id as Id}
-            backend={backend}
+            backend={pageBackend}
             events={windowPreviewEvents}
             onTerminal={(paneId, handle) => {
               terminals.current.set(`${w.id}:${paneId}`, handle);

@@ -4,8 +4,10 @@ import { arbWorkspace } from "./arbitraries";
 import {
   DEFAULT_PROFILE_ID,
   createBrowserPane,
+  createDiffPane,
   createEmptySpace,
   createPane,
+  createPreviewPane,
   createTab,
 } from "./factories";
 import { checkInvariants } from "./invariants";
@@ -16,7 +18,7 @@ import { layoutPanes, liveSessionIds } from "./sessions";
 import { parseState, serializeWorkspace, workspaceWithoutSessions } from "./state";
 import { applyChecked, testContext } from "./test-helpers";
 import { MAX_EXTRA_WINDOWS } from "./types";
-import type { Space, Workspace } from "./types";
+import type { Item, Pane, Space, Workspace } from "./types";
 import { windowCanShowTab, windowShowing } from "./windows";
 
 // A tab dragged out of the window makes a space and a window of its own and goes in, in one step
@@ -132,7 +134,7 @@ describe("window/open-with-item", () => {
     expect(spaceOf(next, "sB")?.items).toEqual({});
   });
 
-  it("changes nothing for a tab that does not exist, a full house, or a tab with a pane that is no terminal", () => {
+  it("changes nothing for a tab that does not exist, a full house, or a tab with a browser pane", () => {
     const ws = workspace();
     expect(applyChecked(ws, { type: "window/open-with-item", itemId: "nope" })).toBe(ws);
     const full: Workspace = {
@@ -165,7 +167,7 @@ describe("window/open-with-item", () => {
     );
   });
 
-  it("window/move-item refuses a tab that has a pane that is no terminal too", () => {
+  it("window/move-item refuses a tab that has a browser pane too", () => {
     const browser = createTab("ib", createBrowserPane("pb", "https://example.com"), 9);
     const ws: Workspace = {
       ...workspace([{ id: "w1", spaceId: "sB" }]),
@@ -181,7 +183,98 @@ describe("window/open-with-item", () => {
     };
     expect(applyChecked(ws, { type: "window/move-item", itemId: "ib", windowId: "w1" })).toBe(ws);
   });
+});
 
+/** The tabs a window draws besides terminals, in space A: a preview alone, a diff alone and a split of three. */
+function withPanes(windows?: Workspace["windows"]): Workspace {
+  const preview = createTab("ip", createPreviewPane("pp", "/work/sA/notes.md"), 9);
+  const diff = createTab("id", createDiffPane("pd", "/work/sA"), 10);
+  const terminal: Pane = { ...createPane("pt", DEFAULT_PROFILE_ID), sessionId: "xt" };
+  const mixed: Item = {
+    ...createTab("im", terminal, 11),
+    layout: {
+      kind: "split",
+      dir: "row",
+      sizes: [34, 33, 33],
+      children: [
+        { kind: "pane", pane: terminal },
+        { kind: "pane", pane: createPreviewPane("pm", "/work/sA/README.md") },
+        { kind: "pane", pane: createDiffPane("pn", "/work/sA") },
+      ],
+    },
+  };
+  const base = workspace(windows);
+  const sA = space("sA", 1, 2, 5);
+  return {
+    ...base,
+    spaces: [
+      {
+        ...sA,
+        items: { ...sA.items, ip: preview, id: diff, im: mixed },
+        tree: [...sA.tree, ...["ip", "id", "im"].map((id) => ({ kind: "item" as const, id }))],
+      },
+      ...base.spaces.slice(1),
+    ],
+  };
+}
+
+describe("a tab with a preview or a diff pane (NOR-F15-04d)", () => {
+  it("can be shown by a window, and one with a browser pane still cannot", () => {
+    const ws = withPanes();
+    const items = ws.spaces[0]?.items ?? {};
+    for (const id of ["ip", "id", "im"]) {
+      const item = items[id];
+      expect(item && windowCanShowTab(item)).toBe(true);
+    }
+    const browser = createTab("ib", createBrowserPane("pb", "https://example.com"), 9);
+    expect(windowCanShowTab(browser)).toBe(false);
+    const withWeb: Item = {
+      ...browser,
+      layout: {
+        kind: "split",
+        dir: "row",
+        sizes: [50, 50],
+        children: [
+          { kind: "pane", pane: createPreviewPane("pw", "/work/a.md") },
+          { kind: "pane", pane: createBrowserPane("pz", "https://example.com") },
+        ],
+      },
+    };
+    expect(windowCanShowTab(withWeb)).toBe(false);
+  });
+
+  it("window/open-with-item takes it to a window of its own with its panes as they are", () => {
+    const ws = withPanes();
+    for (const itemId of ["ip", "id", "im"]) {
+      const next = applyChecked(ws, { type: "window/open-with-item", itemId });
+      const made = next.spaces.at(-1);
+      expect(Object.keys(made?.items ?? {})).toEqual([itemId]);
+      expect(made?.items[itemId]).toEqual(ws.spaces[0]?.items[itemId]);
+      expect(next.windows).toHaveLength(1);
+      expect(Object.hasOwn(spaceOf(next, "sA")?.items ?? {}, itemId)).toBe(false);
+    }
+  });
+
+  it("window/move-item takes it into the space of a window", () => {
+    const ws = withPanes([{ id: "w1", spaceId: "sB" }]);
+    const next = applyChecked(ws, { type: "window/move-item", itemId: "id", windowId: "w1" });
+    expect(Object.keys(spaceOf(next, "sB")?.items ?? {})).toEqual(["i3", "id"]);
+    expect(spaceOf(next, "sB")?.activeItemId).toBe("id");
+    expect(spaceOf(next, "sB")?.items["id"]).toEqual(ws.spaces[0]?.items["id"]);
+  });
+
+  it("window/return gives it back to the space it came from, panes unchanged", () => {
+    const ws = withPanes();
+    const out = applyChecked(ws, { type: "window/open-with-item", itemId: "im" });
+    const windowId = out.windows?.[0]?.id ?? "";
+    const back = applyChecked(out, { type: "window/return", windowId });
+    expect(back.windows).toBeUndefined();
+    expect(spaceOf(back, "sA")?.items["im"]).toEqual(ws.spaces[0]?.items["im"]);
+    expect(liveSessionIds(back)).toEqual(liveSessionIds(ws));
+  });
+});
+
+describe("window/open-with-item (saved)", () => {
   it("is saved with the window and comes back with it", async () => {
     const next = applyChecked(workspace(), { type: "window/open-with-item", itemId: "i2" });
     const text = serializeWorkspace(workspaceWithoutSessions(next));

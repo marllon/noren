@@ -534,7 +534,7 @@ export const en = {
   "window.paneElsewhere": "This pane is shown in the main window.",
   "window.preview": "Window preview",
   "window.close": "Close window",
-  "window.notice.panes": "A tab with a browser, preview or diff pane stays in the main window.",
+  "window.notice.panes": "A tab with a browser pane stays in the main window.",
   "window.notice.limit": "There are too many windows. Close one first.",
   "window.notice.inWindow": "That tab is in another window.",
   "window.notice.unavailable": "Other windows need the desktop app.",

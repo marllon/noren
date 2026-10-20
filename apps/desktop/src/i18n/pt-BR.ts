@@ -541,8 +541,7 @@ export const ptBR: Dictionary = {
   "window.paneElsewhere": "Este painel aparece na janela principal.",
   "window.preview": "Prévia da janela",
   "window.close": "Fechar janela",
-  "window.notice.panes":
-    "Uma aba com painel de navegador, prévia ou diff fica na janela principal.",
+  "window.notice.panes": "Uma aba com painel de navegador fica na janela principal.",
   "window.notice.limit": "Há janelas demais. Feche uma antes.",
   "window.notice.inWindow": "Essa aba está em outra janela.",
   "window.notice.unavailable": "As outras janelas precisam do app de desktop.",

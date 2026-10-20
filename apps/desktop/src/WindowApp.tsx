@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { createBackend } from "./backend";
 import { ContextMenu } from "./ContextMenu";
+import { DiffPane } from "./DiffPane";
 import { useT } from "./i18n";
+import { PreviewPane } from "./PreviewPane";
 import { tauriQuickEvents } from "./quick";
 import type { QuickEvents } from "./quick";
 import { SidebarTree } from "./SidebarTree";
@@ -17,8 +19,13 @@ import type { TerminalHandle } from "./TerminalView";
 import { applyTheme, terminalTheme, themeForScheme } from "./theme";
 import { TreeDnd } from "./TreeDnd";
 import { WINDOW_READY_EVENT, followTakes } from "./window-events";
-import { WINDOW_ACTION_EVENT, WINDOW_STATE_EVENT, spaceOfWindowState } from "./window-sync";
-import type { WindowAction } from "./window-sync";
+import {
+  WINDOW_ACTION_EVENT,
+  WINDOW_STATE_EVENT,
+  createWindowReads,
+  spaceOfWindowState,
+} from "./window-sync";
+import type { WindowAction, WindowReads } from "./window-sync";
 
 interface WindowAppProps {
   /** The window this page is in (`window-<id>`). */
@@ -72,12 +79,26 @@ interface WindowItemProps {
   /** The sessions this page took over: a terminal is drawn only for one of them. */
   taken: ReadonlySet<number>;
   colors: ReturnType<typeof terminalTheme>;
+  /** Where the preview and diff panes of the tab get their files and diffs from: the main window. */
+  reads: WindowReads;
   ask(action: WindowAction): void;
   onTerminal?(paneId: Id, handle: TerminalHandle): void;
 }
 
-/** The layout of one tab of the window: its panes as nested resizable panels, a terminal in each. */
-function WindowItem({ backend, item, shown, taken, colors, ask, onTerminal }: WindowItemProps) {
+/**
+ * The layout of one tab of the window: its panes as nested resizable panels, a terminal in each
+ * terminal pane and the file or the diff in each preview and diff pane.
+ */
+function WindowItem({
+  backend,
+  item,
+  shown,
+  taken,
+  colors,
+  reads,
+  ask,
+  onTerminal,
+}: WindowItemProps) {
   const t = useT();
   const context: SplitLayoutContext = {
     focusedPaneId: item.focusedPaneId,
@@ -87,8 +108,23 @@ function WindowItem({ backend, item, shown, taken, colors, ask, onTerminal }: Wi
     headers: false,
     paneTitle: () => "",
     renderPane: (pane: Pane) => {
-      // The web view of a browser pane, the preview and the diff stay with the main window until
-      // the windows draw them too: a tab that has one does not come here (`windowCanShowTab`).
+      // A preview and a diff pane have no shell: they show what the main window read for them
+      // (the page of a window can read no file and run no git), the diff while it is on screen.
+      if (pane.type === "preview") {
+        return <PreviewPane key={pane.id} backend={reads.forPane(item.id, pane.id)} pane={pane} />;
+      }
+      if (pane.type === "diff") {
+        return (
+          <DiffPane
+            key={pane.id}
+            backend={reads.forPane(item.id, pane.id)}
+            pane={pane}
+            visible={shown && (item.zoomedPaneId === undefined || item.zoomedPaneId === pane.id)}
+          />
+        );
+      }
+      // The web view of a browser pane stays a child of the main window until a window can be its
+      // parent (NOR-F15-04e): a tab that has one does not come here (`windowCanShowTab`).
       if (pane.type !== "terminal") {
         return (
           <p className="window-waiting" data-nr-part="window-pane-elsewhere">
@@ -155,7 +191,10 @@ function moveRequestOf(action: Action): WindowAction | undefined {
  * moved here arrives as an event from the Rust side (`window-take-sessions`): the page takes over
  * the output of its sessions (`attachSession`, the same processes under the same ids, with what
  * they printed before so the terminal is not drawn blank), and a terminal is drawn for a pane only
- * once its session is taken. The browser, preview and diff panes are the next task (NOR-F15-04d).
+ * once its session is taken. A preview or diff pane in a tab here shows what the main window read
+ * for it: the page asks (`window-read`, see `window-sync.ts`) and the main window checks the pane
+ * is one of this window's and answers, since the capability of this page has no command to read a
+ * file or run git. The browser pane is the next task (NOR-F15-04e).
  */
 export function WindowApp({
   windowId,
@@ -233,6 +272,10 @@ export function WindowApp({
       },
     [bus, windowId],
   );
+
+  // The files and diffs of the preview and diff panes come from the main window.
+  const reads = useMemo(() => createWindowReads(bus, windowId), [bus, windowId]);
+  useEffect(() => () => reads.stop(), [reads]);
 
   const tabs = space === undefined ? [] : tabsOf(space);
   const shownId = space === undefined ? undefined : shownTabOf(space);
@@ -319,6 +362,7 @@ export function WindowApp({
                 shown={item.id === shownId}
                 taken={taken}
                 colors={colors}
+                reads={reads}
                 ask={ask}
                 {...(onTerminal !== undefined ? { onTerminal } : {})}
               />

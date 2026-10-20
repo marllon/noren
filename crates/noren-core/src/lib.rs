@@ -4,6 +4,7 @@ pub mod agents;
 pub mod ai;
 pub mod background;
 pub mod config;
+pub mod daemon;
 pub mod fonts;
 pub mod git;
 pub mod integration;

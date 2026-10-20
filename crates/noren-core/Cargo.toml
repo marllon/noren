@@ -41,10 +41,15 @@ reqwest = { version = "0.13.5", default-features = false, features = ["native-tl
 # models of Ollama) as untyped values, so no derive macro is added. 1.0, MIT OR Apache-2.0
 # (already in the tree through Tauri).
 serde_json = "1"
-# Runtime of the AI client: reqwest is async, and `time` gives the timeouts. The client is driven
-# from a runtime the caller owns; the tests build a small current-thread one. 1.53.3, MIT
-# (already in the tree through Tauri).
-tokio = { version = "1.53.3", features = ["rt", "time", "macros"] }
+# Runtime of the AI client (reqwest is async, and `time` gives the timeouts) and of the session
+# daemon (`daemon` module). The AI client is driven from a runtime the caller owns; the tests build
+# a small current-thread one. The daemon needs three more features and nothing else: `net` for the
+# local IPC (named pipes on Windows, Unix domain sockets elsewhere, which std cannot create),
+# `io-util` for the async reads and writes of the length-prefixed frames, and `sync` for the
+# queues between the connection tasks. No multi-thread runtime: the daemon runs a current-thread
+# one and hands the blocking PTY calls to the blocking pool. 1.53.3, MIT (already in the tree
+# through Tauri).
+tokio = { version = "1.53.3", features = ["rt", "time", "macros", "net", "io-util", "sync"] }
 # `CancellationToken`: stops a request from another thread and wakes the stream that is waiting
 # for the next chunk. 0.7.20, MIT (already in the tree through Tauri).
 tokio-util = { version = "0.7.20", default-features = false }
@@ -59,6 +64,12 @@ futures-util = { version = "0.3", default-features = false }
 # (windows-native adds windows-sys and byteorder, MIT OR Apache-2.0 and Unlicense OR MIT).
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
+# The named pipe of the session daemon must be usable by the current user only: tokio can create a
+# pipe with a security descriptor of our own (`create_with_security_attributes_raw`) but offers no
+# way to build one, so the user's SID is read from the process token and turned into a DACL with
+# these calls (`daemon::ipc`). 0.61.2, MIT OR Apache-2.0 (already in the tree through tokio and
+# Tauri; only four Win32 feature flags are added to it).
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading"] }
 # macOS: the Keychain, through security-framework (already in the tree through Tauri).
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
@@ -67,3 +78,10 @@ keyring = { version = "3.6.3", default-features = false, features = ["apple-nati
 # crypto, so no system library (libdbus, OpenSSL) is needed to build it.
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
 keyring = { version = "3.6.3", default-features = false, features = ["async-secret-service", "crypto-rust"] }
+
+# The socket of the session daemon sits in a folder that must belong to the current user and be
+# closed to everyone else, so the daemon needs the effective user id (`geteuid`), which std does
+# not expose (`daemon::ipc`). 0.2, MIT OR Apache-2.0 (already in the tree through tokio, portable-pty
+# and sysinfo).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

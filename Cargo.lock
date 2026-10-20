@@ -2532,6 +2532,7 @@ dependencies = [
  "fontdb",
  "futures-util",
  "keyring",
+ "libc",
  "notify",
  "portable-pty",
  "reqwest",
@@ -2539,6 +2540,7 @@ dependencies = [
  "sysinfo",
  "tokio",
  "tokio-util",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

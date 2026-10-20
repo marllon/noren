@@ -1,6 +1,6 @@
 import { FakeBackend } from "@noren/model";
 import { WINDOW_EFFECT_LABELS, isWindowEffect } from "@noren/model";
-import type { GitInfo, ShellProfile, WindowEffect } from "@noren/model";
+import type { GitInfo, ShellProfile, WindowEffect, Worktree } from "@noren/model";
 
 /** Key of `state.json` in the browser's storage (web mode only). */
 export const WEB_STATE_KEY = "noren.web.state";
@@ -398,11 +398,32 @@ export class WebBackend extends FakeBackend {
     return inMemory;
   }
 
-  /** The repositories seeded under `WEB_GIT_KEY` (read now, so they can change), else none. */
-  override async gitInfo(cwd: string): Promise<GitInfo | null> {
+  /** Reads the repositories seeded under `WEB_GIT_KEY` (now, so they can change) into the fake ones. */
+  #readSeededRepos(): void {
     const seeded = seededGitRepos(this.#storage);
     if (seeded !== undefined) this.replaceGitRepos(seeded);
+  }
+
+  /** The repositories seeded under `WEB_GIT_KEY` (read now, so they can change), else none. */
+  override async gitInfo(cwd: string): Promise<GitInfo | null> {
+    this.#readSeededRepos();
     return super.gitInfo(cwd);
+  }
+
+  // The worktrees are over the same seeded repositories.
+  override async listWorktrees(cwd: string): Promise<Worktree[]> {
+    this.#readSeededRepos();
+    return super.listWorktrees(cwd);
+  }
+
+  override async createWorktree(cwd: string, branch: string): Promise<Worktree> {
+    this.#readSeededRepos();
+    return super.createWorktree(cwd, branch);
+  }
+
+  override async removeWorktree(cwd: string, path: string): Promise<void> {
+    this.#readSeededRepos();
+    return super.removeWorktree(cwd, path);
   }
 
   /** Keeps the broken text under a key of its own and leaves `state.json` for the next save. */

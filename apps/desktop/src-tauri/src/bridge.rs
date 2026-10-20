@@ -14,8 +14,9 @@ use noren_core::{
     ACTIONS_FILE_PATH, AgentEntry, BackgroundStore, CONFIG_FILE_NAME, ConfigStore, ConfigWatcher,
     GitHead, MODS_DIR_NAME, ModFile, ModStore, ModWatcher, ProcessSource, Profile, ProfileSet,
     SCROLLBACK_DIR_NAME, ScrollbackStore, SessionEvent, SessionId, SessionManager, SpawnSpec,
-    StateStore, SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect,
-    check_catalog, detect_system_profiles, read_head, read_project_file, run_short, scan_sessions,
+    StateStore, SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect, Worktree,
+    check_catalog, create_worktree, detect_system_profiles, list_worktrees, native_path, read_head,
+    read_project_file, remove_worktree, run_short, scan_sessions,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -948,6 +949,76 @@ pub async fn git_info(cwd: String) -> Result<Option<GitInfoDto>, String> {
     tauri::async_runtime::spawn_blocking(move || read_head(Path::new(&cwd)).map(GitInfoDto::from))
         .await
         .map_err(|e| e.to_string())
+}
+
+/// One worktree of a git repository, as the interface reads it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeDto {
+    /// The folder, in the form of the system.
+    pub path: String,
+    /// The branch checked out; `None` when `HEAD` is detached.
+    pub branch: Option<String>,
+    /// The commit `HEAD` points at.
+    pub head: Option<String>,
+    pub detached: bool,
+    /// The main worktree: the repository itself, which is never removed from the interface.
+    pub main: bool,
+    pub locked: bool,
+}
+
+impl WorktreeDto {
+    fn new(worktree: Worktree, main: bool) -> Self {
+        Self {
+            path: native_path(&worktree.path).to_string_lossy().into_owned(),
+            branch: worktree.branch,
+            head: worktree.head,
+            detached: worktree.detached,
+            main,
+            locked: worktree.locked,
+        }
+    }
+}
+
+/// The worktrees of the git repository `cwd` is in, the main one first. Runs `git`; rejects with a
+/// sentence when `git` is missing or `cwd` is in no repository.
+#[tauri::command]
+pub async fn worktree_list(cwd: String) -> Result<Vec<WorktreeDto>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let list = list_worktrees(Path::new(&cwd)).map_err(|e| e.to_string())?;
+        Ok(list
+            .into_iter()
+            .enumerate()
+            .map(|(index, worktree)| WorktreeDto::new(worktree, index == 0))
+            .collect())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Adds a worktree on `branch` next to the repository `cwd` is in (the branch is created when it
+/// does not exist) and returns it. Rejects with the reason when the branch name, the folder or
+/// git refuse.
+#[tauri::command]
+pub async fn worktree_create(cwd: String, branch: String) -> Result<WorktreeDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        create_worktree(Path::new(&cwd), &branch)
+            .map(|worktree| WorktreeDto::new(worktree, false))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Removes the worktree at `path` of the repository `cwd` is in, never forced: git refuses one
+/// with changes and its message is the rejection. The branch is kept.
+#[tauri::command]
+pub async fn worktree_remove(cwd: String, path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        remove_worktree(Path::new(&cwd), &path).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// One agent of the catalog the interface hands over (`agents.catalog` of `config.jsonc`).

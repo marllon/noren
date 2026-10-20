@@ -12,7 +12,10 @@ export type {
   SessionId,
   ShellProfile,
   Unsubscribe,
+  Worktree,
 } from "./backend";
+export type { BranchProblem } from "./worktree";
+export { branchProblem, worktreeDestination, worktreeFolderName } from "./worktree";
 export {
   MAX_MOD_BYTES,
   MAX_MODS,

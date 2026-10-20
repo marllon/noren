@@ -59,7 +59,7 @@ test("search, record a chord for New tab, and it works at once while the old cho
   await openScreen(page);
   await expect(
     screen(page).getByRole("list", { name: "Shortcuts" }).getByRole("listitem"),
-  ).toHaveCount(60);
+  ).toHaveCount(62);
 
   await screen(page).getByRole("textbox", { name: "Search shortcuts" }).fill("new tab");
   await expect(

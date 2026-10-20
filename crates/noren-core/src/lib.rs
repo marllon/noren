@@ -17,6 +17,7 @@ pub mod store;
 pub mod themes;
 pub mod vault;
 pub mod window;
+pub mod worktree;
 
 pub use agents::{
     AgentEntry, AgentMatch, CatalogError, MAX_CATALOG_ENTRIES, MAX_ENTRY_NAMES, MAX_NAME_CHARS,
@@ -58,6 +59,11 @@ pub use vault::{
     SERVICE as KEYCHAIN_SERVICE, VaultError, is_valid_provider_id,
 };
 pub use window::{EffectOutcome, WindowEffect, WindowPainter, apply_effect};
+pub use worktree::{
+    GitCli, Worktree, WorktreeError, create_worktree, list_worktrees, native_path,
+    parse_worktree_list, remove_worktree, validate_branch_name, worktree_destination,
+    worktree_folder_name,
+};
 
 /// Returns the product name.
 pub fn name() -> &'static str {

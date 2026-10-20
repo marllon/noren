@@ -69,7 +69,7 @@ import {
 import type { ClickModifiers, Selection } from "./sidebar-tree";
 import { sidebarMode } from "./layout";
 import { useLanguage, t, tabCount } from "./i18n";
-import { agentStateLabel, nothingUnreadNotice, shortCwd } from "./pane-info";
+import { agentStateLabel, nothingUnreadNotice, shortCwd, summarizeItem } from "./pane-info";
 import { peekLinesOfItem } from "./peek-source";
 import { configManager, useConfigState } from "./config-store";
 import { runLayoutCommand } from "./layout-actions";
@@ -87,6 +87,7 @@ import type { Editing } from "./SidebarTree";
 import { SpaceBackgroundDialog } from "./SpaceBackgroundDialog";
 import { SpaceDialog } from "./SpaceDialog";
 import type { SpaceFormValues } from "./SpaceDialog";
+import { NewWorktreeDialog, RemoveWorktreeDialog } from "./WorktreeDialogs";
 import { SpaceMenu } from "./SpaceMenu";
 import type { MenuPoint } from "./SpaceMenu";
 import { SpaceSwitcher } from "./SpaceSwitcher";
@@ -223,6 +224,8 @@ export interface NorenTestHook {
   sendOutput(paneId: string, text: string): boolean;
   /** Puts an agent (or none) under the shell of the pane in the fake process tree, and looks at the tree now. */
   setPaneAgent(paneId: string, agentId: string | undefined): Promise<boolean>;
+  /** Makes the fake git refuse to remove this worktree, as it refuses one with changes. */
+  setWorktreeDirty(path: string, dirty: boolean): void;
   /** Every system notification the backend was asked to show, in order. None is ever shown. */
   notifications(): { title: string; body: string }[];
   /** Makes the fake window have the keyboard focus (it starts with it) or lose it. */
@@ -612,6 +615,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const [libraryOpen, setLibraryOpen] = useState(false);
   // The Agents panel is open.
   const [agentsOpen, setAgentsOpen] = useState(false);
+  // The dialog of a git worktree that is open: the folder of the pane it was opened from is the repository.
+  const [worktreeDialog, setWorktreeDialog] = useState<{
+    kind: "new" | "remove";
+    cwd: string;
+  } | null>(null);
   // The Ask panel was opened. It shows only where the AI is on (see `askShown` below).
   const [askOpen, setAskOpen] = useState(false);
   // A failed command sent to the Ask panel by its Explain button; `seq` tells one press from the next.
@@ -899,6 +907,34 @@ function Shell({ store }: { store: WorkspaceStore }) {
     setSearchText(null);
     setAgentsOpen(true);
   }, []);
+  /**
+   * Opens the dialog of a worktree over everything else, on the repository of the folder of the
+   * focused pane (else the start folder of the space); with no folder known a notice says so.
+   */
+  const openWorktree = useCallback(
+    (kind: "new" | "remove") => {
+      setPaletteOpen(false);
+      setSearchText(null);
+      const state = store.getState();
+      const active = activeSpaceOf(state.workspace);
+      const itemId = activeItemIdOf(state);
+      const item = itemId === undefined ? undefined : active.items[itemId];
+      const cwd =
+        item !== undefined ? summarizeItem(item, active.defaults.cwd).cwd : active.defaults.cwd;
+      if (cwd === undefined || cwd.trim() === "") {
+        showNotice(t("worktree.noFolder"));
+        focusTerminal();
+        return;
+      }
+      setWorktreeDialog({ kind, cwd });
+    },
+    [store, showNotice, focusTerminal],
+  );
+  /** Closes the dialog of a worktree and gives the keyboard back to the terminal on screen. */
+  const closeWorktree = useCallback(() => {
+    setWorktreeDialog(null);
+    focusTerminal();
+  }, [focusTerminal]);
   /** Closes the Agents panel and gives the keyboard back to the terminal of the tab on screen. */
   const closeAgents = useCallback(() => {
     setAgentsOpen(false);
@@ -1187,6 +1223,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) goToWaitingAgent();
         return;
       }
+      if (action.command.kind === "worktree-new" || action.command.kind === "worktree-remove") {
+        if (!modalOpen.current) {
+          openWorktree(action.command.kind === "worktree-new" ? "new" : "remove");
+        }
+        return;
+      }
       if (action.command.kind === "quick-toggle") {
         // The window of the quick terminal is not this one: a dialog here does not stand in its way.
         toggleQuick();
@@ -1236,6 +1278,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     reopenTab,
     openLibrary,
     openAgents,
+    openWorktree,
     goToWaitingAgent,
     toggleQuick,
   ]);
@@ -1329,6 +1372,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
           }
           return false;
         },
+        setWorktreeDirty: (path, dirty) => fake.setWorktreeDirty(path, dirty),
         notifications: () => fake.notifications.map(({ title, body }) => ({ title, body })),
         setWindowFocused: (focused) => fake.setWindowFocused(focused),
         openedLinks: () => [...fake.openedLinks],
@@ -1565,6 +1609,13 @@ function Shell({ store }: { store: WorkspaceStore }) {
       // The agent's pane takes the keyboard; with none waiting the terminal gets it back.
       goToWaitingAgent();
       setPaletteOpen(false);
+      return;
+    } else if (
+      entry.action.command.kind === "worktree-new" ||
+      entry.action.command.kind === "worktree-remove"
+    ) {
+      // The dialog takes the keyboard itself; the palette must not hand it to the terminal.
+      openWorktree(entry.action.command.kind === "worktree-new" ? "new" : "remove");
       return;
     } else if (entry.action.command.kind === "quick-toggle") {
       // The quick window takes the keyboard itself; the palette closes first so it does not hand
@@ -1834,6 +1885,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     settingsOpen ||
     libraryOpen ||
     agentsOpen ||
+    worktreeDialog !== null ||
     commandAsk !== undefined;
   const confirmNode = pending !== null && (
     <ConfirmDialog
@@ -2043,6 +2095,30 @@ function Shell({ store }: { store: WorkspaceStore }) {
             os={commandAsk.os}
             onInsert={(text) => focusedHandle()?.insert(text) ?? false}
             onClose={closeCommandAsk}
+          />
+        )}
+        {worktreeDialog?.kind === "new" && (
+          <NewWorktreeDialog
+            backend={backend}
+            cwd={worktreeDialog.cwd}
+            onCreated={(worktree) => {
+              // The tab opens in the new folder and takes the keyboard like any new tab.
+              setWorktreeDialog(null);
+              newTab({ cwd: worktree.path });
+            }}
+            onClose={closeWorktree}
+          />
+        )}
+        {worktreeDialog?.kind === "remove" && (
+          <RemoveWorktreeDialog
+            backend={backend}
+            cwd={worktreeDialog.cwd}
+            onRemoved={(worktree) => {
+              setWorktreeDialog(null);
+              showNotice(t("worktree.removed", { path: worktree.path }));
+              focusTerminal();
+            }}
+            onClose={closeWorktree}
           />
         )}
         {settingsOpen && (

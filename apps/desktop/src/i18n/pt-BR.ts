@@ -217,6 +217,8 @@ export const ptBR: Dictionary = {
   "action.ask.toggle": "Perguntar à IA",
   "action.agents.open": "Abrir o painel de agentes",
   "action.agents.focus-waiting": "Ir ao agente que está esperando você",
+  "action.worktree.new": "Nova worktree",
+  "action.worktree.remove": "Remover worktree",
   "action.tab.mru-next": "Próxima aba recente",
   "action.tab.mru-prev": "Aba recente anterior",
   "action.tab.last-unread": "Ir para a última aba não lida",
@@ -460,6 +462,30 @@ export const ptBR: Dictionary = {
   "agents.row": "Agente {name} está {state}, há {elapsed}, {where}. Ir até ele.",
   "agents.rowWithLine":
     "Agente {name} está {state}, há {elapsed}, {where}. Última linha: {line}. Ir até ele.",
+
+  // Worktrees do git
+  "worktree.noFolder": "Esta aba não tem uma pasta conhecida, então não há repositório para usar.",
+  "worktree.new.title": "Nova worktree",
+  "worktree.new.branch": "Branch",
+  "worktree.new.branchHint": "Nova ou existente, por exemplo feature/login",
+  "worktree.new.folder": "Pasta: {path}",
+  "worktree.new.create": "Criar worktree",
+  "worktree.new.creating": "Criando...",
+  "worktree.loading": "Olhando o repositório...",
+  "worktree.problem.empty": "Digite o nome de uma branch.",
+  "worktree.problem.dash": "O nome de uma branch não pode começar com hífen.",
+  "worktree.problem.control": "O nome de uma branch não pode ter caracteres de controle.",
+  "worktree.remove.title": "Remover worktree",
+  "worktree.remove.pick":
+    "Escolha a worktree a remover. A worktree principal não aparece na lista.",
+  "worktree.remove.list": "Worktrees",
+  "worktree.remove.none": "Este repositório não tem outra worktree.",
+  "worktree.remove.detached": "(desanexada)",
+  "worktree.remove.confirmTitle": "Remover esta worktree?",
+  "worktree.remove.confirmMessage":
+    "A pasta da worktree é apagada; a branch {branch} fica. O git se recusa a remover uma worktree com alterações.",
+  "worktree.remove.confirm": "Remover worktree",
+  "worktree.removed": "Worktree removida: {path}",
 
   // A caixa de um espaço
   "spaceDialog.edit": "Editar espaço",

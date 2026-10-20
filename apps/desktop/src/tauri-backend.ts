@@ -25,6 +25,7 @@ import type {
   WindowEffect,
   WindowEffectReport,
   WindowScheme,
+  Worktree,
 } from "@noren/model";
 
 /** The part of a Tauri `Channel` this backend uses. */
@@ -84,6 +85,18 @@ interface AiStreamPayload {
   text?: unknown;
   kind?: unknown;
   message?: unknown;
+}
+
+/** A worktree as the bridge sends it, copied field by field so nothing else rides along. */
+function worktreeOf(raw: Worktree): Worktree {
+  return {
+    path: raw.path,
+    branch: raw.branch,
+    head: raw.head,
+    detached: raw.detached,
+    main: raw.main,
+    locked: raw.locked,
+  };
 }
 
 /** One event of the channel as the model's `AiChatEvent`, or `undefined` for something that is not one. */
@@ -415,6 +428,19 @@ export class TauriBackend implements Backend {
   async gitInfo(cwd: string): Promise<GitInfo | null> {
     const info = await this.#bridge.invoke<GitInfo | null>("git_info", { cwd });
     return info === null ? null : { branch: info.branch, detached: info.detached };
+  }
+
+  async listWorktrees(cwd: string): Promise<Worktree[]> {
+    const list = await this.#bridge.invoke<Worktree[]>("worktree_list", { cwd });
+    return list.map(worktreeOf);
+  }
+
+  async createWorktree(cwd: string, branch: string): Promise<Worktree> {
+    return worktreeOf(await this.#bridge.invoke<Worktree>("worktree_create", { cwd, branch }));
+  }
+
+  async removeWorktree(cwd: string, path: string): Promise<void> {
+    await this.#bridge.invoke("worktree_remove", { cwd, path });
   }
 
   async scanAgents(

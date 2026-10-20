@@ -215,6 +215,8 @@ export const en = {
   "action.ask.toggle": "Ask the AI",
   "action.agents.open": "Open agents panel",
   "action.agents.focus-waiting": "Go to the agent waiting for you",
+  "action.worktree.new": "New worktree",
+  "action.worktree.remove": "Remove worktree",
   "action.tab.mru-next": "Next recent tab",
   "action.tab.mru-prev": "Previous recent tab",
   "action.tab.last-unread": "Go to last unread tab",
@@ -456,6 +458,29 @@ export const en = {
   "agents.row": "Agent {name} is {state}, for {elapsed}, {where}. Go to it.",
   "agents.rowWithLine":
     "Agent {name} is {state}, for {elapsed}, {where}. Last line: {line}. Go to it.",
+
+  // Git worktrees
+  "worktree.noFolder": "This tab has no known folder, so there is no repository to use.",
+  "worktree.new.title": "New worktree",
+  "worktree.new.branch": "Branch",
+  "worktree.new.branchHint": "New or existing, for example feature/login",
+  "worktree.new.folder": "Folder: {path}",
+  "worktree.new.create": "Create worktree",
+  "worktree.new.creating": "Creating...",
+  "worktree.loading": "Looking at the repository...",
+  "worktree.problem.empty": "Type a branch name.",
+  "worktree.problem.dash": "A branch name cannot start with a dash.",
+  "worktree.problem.control": "A branch name cannot hold control characters.",
+  "worktree.remove.title": "Remove worktree",
+  "worktree.remove.pick": "Pick the worktree to remove. The main worktree is not listed.",
+  "worktree.remove.list": "Worktrees",
+  "worktree.remove.none": "This repository has no other worktree.",
+  "worktree.remove.detached": "(detached)",
+  "worktree.remove.confirmTitle": "Remove this worktree?",
+  "worktree.remove.confirmMessage":
+    "The folder of the worktree is deleted; the branch {branch} is kept. Git refuses to remove a worktree that has changes.",
+  "worktree.remove.confirm": "Remove worktree",
+  "worktree.removed": "Worktree removed: {path}",
 
   // The dialog of a space
   "spaceDialog.edit": "Edit space",

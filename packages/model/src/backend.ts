@@ -52,6 +52,20 @@ export interface GitInfo {
   detached: boolean;
 }
 
+/** One worktree of a git repository. */
+export interface Worktree {
+  /** The folder of the worktree, in the form of the system. */
+  path: string;
+  /** The branch checked out; `null` when `HEAD` is detached. */
+  branch: string | null;
+  /** The commit `HEAD` points at. */
+  head: string | null;
+  detached: boolean;
+  /** The main worktree: the repository itself, which is never removed. */
+  main: boolean;
+  locked: boolean;
+}
+
 /** The CLI agent found under the shell of a session. */
 export interface AgentHit {
   sessionId: SessionId;
@@ -244,6 +258,25 @@ export interface Backend {
    * Rejects only when the lookup itself fails.
    */
   gitInfo(cwd: string): Promise<GitInfo | null>;
+  /**
+   * The git worktrees of the repository the folder `cwd` is in, the main one first. Runs `git`.
+   * Rejects with a sentence when git is not installed or `cwd` is in no repository.
+   */
+  listWorktrees(cwd: string): Promise<Worktree[]>;
+  /**
+   * Adds a worktree on `branch` next to the repository `cwd` is in, in
+   * `<parent>/<repository>-<branch with / as ->`, and resolves with it. The branch is created from
+   * the `HEAD` of `cwd` when it does not exist and used as it is when it does. Rejects with the
+   * reason when the name is empty, starts with `-` or is not a branch name git accepts, when the
+   * folder exists, or when git refuses (a branch checked out in another worktree).
+   */
+  createWorktree(cwd: string, branch: string): Promise<Worktree>;
+  /**
+   * Removes the worktree at `path` of the repository `cwd` is in. Never forced: a worktree with
+   * changes rejects with the message of git, and the main worktree cannot be removed. The branch
+   * is kept.
+   */
+  removeWorktree(cwd: string, path: string): Promise<void>;
   /**
    * Which CLI agent runs under the shell of each of the sessions, from the process tree of the
    * machine: an entry of `catalog` whose executable (or, behind a runner such as `node` or

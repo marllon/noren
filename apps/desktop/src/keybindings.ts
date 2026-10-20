@@ -37,6 +37,8 @@ export type ActionCommand =
   | { kind: "library" }
   | { kind: "agents" }
   | { kind: "agent-waiting" }
+  | { kind: "worktree-new" }
+  | { kind: "worktree-remove" }
   | { kind: "quick-toggle" }
   | { kind: "ask-toggle" }
   | { kind: "close" }
@@ -251,6 +253,23 @@ export const ACTIONS: readonly ActionDef[] = [
     command: { kind: "agent-waiting" },
     repeat: false,
     chords: { safe: "Ctrl+Alt+Shift+KeyW", browser: "Ctrl+Alt+Shift+KeyW" },
+  },
+  {
+    // Git worktrees of the repository of the folder on screen; no chord, the palette is the way in.
+    id: "worktree.new",
+    title: "New worktree",
+    category: "General",
+    command: { kind: "worktree-new" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
+  },
+  {
+    id: "worktree.remove",
+    title: "Remove worktree",
+    category: "General",
+    command: { kind: "worktree-remove" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
   },
   {
     id: "settings.open",

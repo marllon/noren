@@ -344,6 +344,48 @@ describe("TauriBackend", () => {
     ]);
   });
 
+  it("lists, creates and removes worktrees through the worktree commands", async () => {
+    const main = {
+      path: "D:\\work\\repo",
+      branch: "main",
+      head: "abc",
+      detached: false,
+      main: true,
+      locked: false,
+    };
+    const linked = { ...main, path: "D:\\work\\repo-x", branch: "x", main: false, extra: 1 };
+    const fake = fakeBridge({
+      worktree_list: [main, linked],
+      worktree_create: linked,
+      worktree_remove: null,
+    });
+    const backend = new TauriBackend(fake.bridge);
+    await expect(backend.listWorktrees("D:\\work\\repo")).resolves.toEqual([
+      main,
+      { ...linked, extra: undefined },
+    ]);
+    const created = await backend.createWorktree("D:\\work\\repo", "x");
+    expect(created).toEqual({ ...linked, extra: undefined });
+    expect(Object.keys(created)).not.toContain("extra");
+    await backend.removeWorktree("D:\\work\\repo", "D:\\work\\repo-x");
+    expect(fake.invocations).toEqual([
+      { command: "worktree_list", args: { cwd: "D:\\work\\repo" } },
+      { command: "worktree_create", args: { cwd: "D:\\work\\repo", branch: "x" } },
+      {
+        command: "worktree_remove",
+        args: { cwd: "D:\\work\\repo", path: "D:\\work\\repo-x" },
+      },
+    ]);
+  });
+
+  it("lets a worktree failure reach the caller", async () => {
+    const fake = fakeBridge();
+    fake.failing.add("worktree_remove");
+    await expect(new TauriBackend(fake.bridge).removeWorktree("/p", "/p-x")).rejects.toThrow(
+      "worktree_remove failed",
+    );
+  });
+
   it("lets an agents_scan failure reach the caller", async () => {
     const fake = fakeBridge();
     fake.failing.add("agents_scan");

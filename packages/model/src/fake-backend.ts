@@ -26,6 +26,7 @@ import type {
   SessionId,
   ShellProfile,
   Unsubscribe,
+  Worktree,
 } from "./backend";
 import { MAX_BACKGROUND_BYTES, backgroundImageProblem, sniffImageMime } from "./background";
 import type { BackgroundImageFile } from "./background";
@@ -42,6 +43,7 @@ import { profilesProblem } from "./user-profile-schema";
 import type { UserProfile } from "./user-profile-schema";
 import { decodeUtf8, encodeUtf8 } from "./utf8";
 import { WINDOW_EFFECT_LABELS } from "./window-effect";
+import { branchProblem, worktreeDestination } from "./worktree";
 import type { WindowEffect, WindowEffectReport, WindowScheme } from "./window-effect";
 
 const ESC = "\x1b";
@@ -707,6 +709,12 @@ class FakeAi implements AiBackend {
  *   command and answers the configured exit code
  * - `gitInfo` answers from fake repositories (`gitRepos`, `setGitRepo`): a folder is in the
  *   repository of the nearest folder above it (or itself) that has one
+ * - the worktrees live in memory over the fake repositories: `listWorktrees` lists the repository a
+ *   folder is in (the main worktree, then the ones `createWorktree` made) and rejects outside one;
+ *   `createWorktree` names the folder as the real one does, refuses what git would (an empty or
+ *   dashed branch, a folder that exists, a branch checked out elsewhere) and makes the new folder a
+ *   fake repository on its branch; `removeWorktree` refuses the main worktree, a path that is none
+ *   and one marked with `setWorktreeDirty`
  * - `scanAgents` answers from the process trees a test describes with `setSessionAgent` (an agent
  *   under the shell of a session); a session that ended, or an agent not in the catalog, is left out
  * - `notify` only records the notification (`notifications`) and `isWindowFocused` answers what
@@ -763,6 +771,9 @@ export class FakeBackend implements Backend {
   readonly #actionsFiles = new Map<string, string>();
   readonly #commands: FakeCommandRun[] = [];
   readonly #gitRepos = new Map<string, GitInfo>();
+  /** The linked worktrees made by `createWorktree`, by the root of the main worktree they belong to. */
+  readonly #linkedWorktrees = new Map<string, { path: string; branch: string }[]>();
+  readonly #dirtyWorktrees = new Set<string>();
   readonly #notifications: FakeNotification[] = [];
   readonly #openedLinks: string[] = [];
   readonly #configListeners = new Set<(text: string | null) => void>();
@@ -1381,8 +1392,120 @@ export class FakeBackend implements Backend {
       for (const [root, info] of this.#gitRepos) {
         if (sameFolder(root, folder)) return { ...info };
       }
+      // A worktree made by `createWorktree` is a repository of its own, on its branch.
+      for (const linked of this.#linkedWorktrees.values()) {
+        const worktree = linked.find((candidate) => sameFolder(candidate.path, folder));
+        if (worktree !== undefined) return { branch: worktree.branch, detached: false };
+      }
     }
     return null;
+  }
+
+  async listWorktrees(cwd: string): Promise<Worktree[]> {
+    this.#record("listWorktrees", cwd);
+    const main = this.#mainWorktreeOf(cwd);
+    if (main === undefined) throw new Error(`'${cwd}' is not inside a git repository`);
+    return this.#worktreesOf(main);
+  }
+
+  async createWorktree(cwd: string, branch: string): Promise<Worktree> {
+    this.#record("createWorktree", cwd, branch);
+    const problem = branchProblem(branch);
+    if (problem === "empty") throw new Error("the branch name is empty");
+    if (problem === "dash") throw new Error("a branch name cannot start with '-'");
+    if (problem !== undefined || /[\s~^:?*[\\]|\.\.|\.lock$|\/$|^\//.test(branch)) {
+      throw new Error(`'${branch}' is not a valid branch name`);
+    }
+    const main = this.#mainWorktreeOf(cwd);
+    if (main === undefined) throw new Error(`'${cwd}' is not inside a git repository`);
+    const destination = worktreeDestination(main, branch);
+    if (destination === undefined) throw new Error(`'${main}' has no folder next to it`);
+    const worktrees = this.#worktreesOf(main);
+    const holder = worktrees.find((worktree) => worktree.branch === branch);
+    if (holder !== undefined) {
+      throw new Error(`fatal: '${branch}' is already used by worktree at '${holder.path}'`);
+    }
+    if (worktrees.some((worktree) => sameFolder(worktree.path, destination))) {
+      throw new Error(
+        `the folder '${destination}' already exists, so the worktree was not created`,
+      );
+    }
+    const linked = this.#linkedWorktrees.get(main) ?? [];
+    linked.push({ path: destination, branch });
+    this.#linkedWorktrees.set(main, linked);
+    const created = this.#worktreesOf(main).find((worktree) => worktree.path === destination);
+    if (created === undefined) throw new Error("the new worktree was not listed");
+    return created;
+  }
+
+  async removeWorktree(cwd: string, path: string): Promise<void> {
+    this.#record("removeWorktree", cwd, path);
+    const main = this.#mainWorktreeOf(cwd);
+    if (main === undefined) throw new Error(`'${cwd}' is not inside a git repository`);
+    if (sameFolder(main, path)) {
+      throw new Error(`'${path}' is the main worktree of the repository and cannot be removed`);
+    }
+    const linked = this.#linkedWorktrees.get(main) ?? [];
+    const target = linked.find((worktree) => sameFolder(worktree.path, path));
+    if (target === undefined) throw new Error(`'${path}' is not a worktree of this repository`);
+    if ([...this.#dirtyWorktrees].some((dirty) => sameFolder(dirty, target.path))) {
+      throw new Error(
+        `fatal: '${target.path}' contains modified or untracked files, use --force to delete it`,
+      );
+    }
+    this.#linkedWorktrees.set(
+      main,
+      linked.filter((worktree) => worktree !== target),
+    );
+  }
+
+  /** The root of the main worktree of the fake repository `cwd` is in, or `undefined` outside one. */
+  #mainWorktreeOf(cwd: string): string | undefined {
+    if (!isAbsolutePath(cwd)) return undefined;
+    for (
+      let folder: string | undefined = cwd;
+      folder !== undefined;
+      folder = parentFolder(folder)
+    ) {
+      for (const [main, linked] of this.#linkedWorktrees) {
+        if (linked.some((worktree) => sameFolder(worktree.path, folder))) return main;
+      }
+      for (const [root] of this.#gitRepos) {
+        if (sameFolder(root, folder)) return root;
+      }
+    }
+    return undefined;
+  }
+
+  #worktreesOf(main: string): Worktree[] {
+    const head = "0123456789abcdef0123456789abcdef01234567";
+    const info = this.#gitRepos.get(main);
+    return [
+      {
+        path: main,
+        branch: info?.detached === true ? null : (info?.branch ?? null),
+        head,
+        detached: info?.detached === true,
+        main: true,
+        locked: false,
+      },
+      ...(this.#linkedWorktrees.get(main) ?? []).map((worktree) => ({
+        path: worktree.path,
+        branch: worktree.branch,
+        head,
+        detached: false,
+        main: false,
+        locked: false,
+      })),
+    ];
+  }
+
+  /** Makes `removeWorktree` refuse this worktree, as git refuses one with changes; `false` cleans it. */
+  setWorktreeDirty(path: string, dirty: boolean): void {
+    for (const known of [...this.#dirtyWorktrees]) {
+      if (sameFolder(known, path)) this.#dirtyWorktrees.delete(known);
+    }
+    if (dirty) this.#dirtyWorktrees.add(path);
   }
 
   /** Says that the shell of a session has this agent under it (`undefined`: none), for `scanAgents`. */

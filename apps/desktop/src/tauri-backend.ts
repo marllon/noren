@@ -31,6 +31,7 @@ import type {
   GitInfo,
   Id,
   ModFile,
+  OllamaMemoryReading,
   OllamaModels,
   SessionExit,
   SessionId,
@@ -186,6 +187,26 @@ function tauriAi(bridge: TauriBridge): AiBackend {
     async listOllamaModels(): Promise<OllamaModels> {
       const found = await bridge.invoke<{ found: boolean; models: string[] }>("ai_ollama_models");
       return found.found ? { found: true, models: [...found.models] } : { found: false };
+    },
+
+    async ollamaMemory(model: string): Promise<OllamaMemoryReading | null> {
+      const memory = await bridge.invoke<{ bytes: number; vramBytes: number } | null>(
+        "ai_ollama_memory",
+        { model },
+      );
+      // The Rust side already refuses anything but whole numbers of 0 or more; a page that is
+      // handed something else is not handed a measurement.
+      if (
+        memory === null ||
+        typeof memory !== "object" ||
+        !Number.isSafeInteger(memory.bytes) ||
+        !Number.isSafeInteger(memory.vramBytes) ||
+        memory.bytes < 0 ||
+        memory.vramBytes < 0
+      ) {
+        return null;
+      }
+      return { bytes: memory.bytes, vramBytes: memory.vramBytes };
     },
 
     async testConnection(providerId: string): Promise<AiConnectionResult> {

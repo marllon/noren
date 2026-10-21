@@ -121,6 +121,9 @@ class ScriptedAi implements AiBackend {
   async listOllamaModels(): Promise<OllamaModels> {
     return { found: false };
   }
+  async ollamaMemory(): Promise<null> {
+    return null;
+  }
   async testConnection(): Promise<AiConnectionResult> {
     return { ok: true };
   }
@@ -734,6 +737,221 @@ describe("runBench: cancelling", () => {
   });
 });
 
+describe("runBench: the memory of the model", () => {
+  const LOADED = { bytes: 5_137_025_024, vramBytes: 4_000_000_000 };
+  const LM_STUDIO: AiProviderInfo = {
+    id: "lmstudio",
+    kind: "openai-compatible",
+    baseUrl: "http://localhost:1234/v1",
+    model: "",
+    hasKey: false,
+  };
+  const answer = (request: AiChatRequest): string => rightAnswer(taskOf(request));
+
+  it("fills memory with what Ollama says, asked once after the last task", async () => {
+    const backend = new FakeBackend({
+      ollamaModels: ["llama3.2"],
+      aiReply: answer,
+      ollamaMemory: LOADED,
+    });
+    const run = await runBench({
+      ai: backend.ai,
+      provider: OLLAMA,
+      model: "llama3.2",
+      tasks: SUITE.slice(0, 3),
+      now: steppingClock(),
+    });
+    expect(run.state).toBe("complete");
+    expect(run.memory).toEqual({ source: "ollama", ...LOADED });
+    const asked = backend.callsTo("ai.ollamaMemory");
+    expect(asked.map((call) => call.args)).toEqual([["llama3.2"]]);
+    // After every task: the model is loaded by then.
+    const methods = backend.calls.map((call) => call.method);
+    expect(methods.lastIndexOf("ai.chat")).toBeLessThan(methods.indexOf("ai.ollamaMemory"));
+    expect(benchRunSchema.parse(JSON.parse(JSON.stringify(run)))).toEqual(run);
+  });
+
+  it("asks for the model of the run, also when the model comes from the provider", async () => {
+    const backend = new FakeBackend({
+      ollamaModels: ["llama3.2"],
+      aiReply: answer,
+      ollamaMemory: LOADED,
+    });
+    await runBench({
+      ai: backend.ai,
+      provider: { ...OLLAMA, model: " qwen2.5:7b " },
+      model: " ",
+      tasks: SUITE.slice(0, 1),
+      now: steppingClock(),
+    });
+    expect(backend.callsTo("ai.ollamaMemory").map((call) => call.args)).toEqual([["qwen2.5:7b"]]);
+  });
+
+  it("is null when Ollama does not have the model loaded, and the run is complete", async () => {
+    const backend = new FakeBackend({ ollamaModels: ["llama3.2"], aiReply: answer });
+    const run = await runBench({
+      ai: backend.ai,
+      provider: OLLAMA,
+      model: "llama3.2",
+      tasks: SUITE.slice(0, 3),
+      now: steppingClock(),
+    });
+    expect(backend.callsTo("ai.ollamaMemory")).toHaveLength(1);
+    expect(run.memory).toBeNull();
+    expect(run.state).toBe("complete");
+    expect(run.tasks).toHaveLength(3);
+  });
+
+  it("is null when asking rejects, and the run is complete with every task", async () => {
+    const backend = new FakeBackend({
+      ollamaModels: ["llama3.2"],
+      aiReply: answer,
+      ollamaMemory: () => {
+        throw new Error("the bridge is gone");
+      },
+    });
+    const run = await runBench({
+      ai: backend.ai,
+      provider: OLLAMA,
+      model: "llama3.2",
+      tasks: SUITE.slice(0, 3),
+      now: steppingClock(),
+    });
+    expect(backend.callsTo("ai.ollamaMemory")).toHaveLength(1);
+    expect(run.memory).toBeNull();
+    expect(run.state).toBe("complete");
+    expect(run.tasks.map((r) => r.ok)).toEqual([true, true, true]);
+  });
+
+  it("is null for a backend that has no such method, or one that answers something invalid", async () => {
+    const base = new FakeBackend({ ollamaModels: ["llama3.2"], aiReply: answer });
+    const options = {
+      provider: OLLAMA,
+      model: "m",
+      tasks: SUITE.slice(0, 2),
+    };
+    const without = Object.create(base.ai) as AiBackend;
+    (without as { ollamaMemory?: unknown }).ollamaMemory = undefined;
+    expect((await runBench({ ...options, ai: without, now: steppingClock() })).memory).toBeNull();
+    const bad: unknown[] = [
+      { bytes: -1, vramBytes: 0 },
+      { bytes: 1.5, vramBytes: 0 },
+      { bytes: "9", vramBytes: 0 },
+      { bytes: 9, vramBytes: Number.NaN },
+      { bytes: Number.MAX_SAFE_INTEGER + 1, vramBytes: 0 },
+      { bytes: 9 },
+      undefined,
+    ];
+    for (const reading of bad) {
+      const ai = Object.create(base.ai) as AiBackend;
+      ai.ollamaMemory = () => Promise.resolve(reading as never);
+      const run = await runBench({ ...options, ai, now: steppingClock() });
+      expect(run.memory, JSON.stringify(reading)).toBeNull();
+      expect(run.state).toBe("complete");
+    }
+  });
+
+  it("never asks for a provider that is not Ollama", async () => {
+    const backend = new FakeBackend({
+      ollamaModels: ["llama3.2"],
+      aiReply: answer,
+      ollamaMemory: LOADED,
+    });
+    const run = await runBench({
+      ai: backend.ai,
+      provider: LM_STUDIO,
+      model: "m",
+      tasks: SUITE.slice(0, 2),
+      now: steppingClock(),
+    });
+    expect(backend.callsTo("ai.ollamaMemory")).toHaveLength(0);
+    expect(run.memory).toBeNull();
+  });
+
+  it("measures a run that was cancelled with some tasks done", async () => {
+    const controller = new AbortController();
+    let asked = 0;
+    const backend = new FakeBackend({
+      ollamaModels: ["llama3.2"],
+      aiReply: (request) => {
+        asked += 1;
+        if (asked === 3) controller.abort();
+        return rightAnswer(taskOf(request));
+      },
+      ollamaMemory: LOADED,
+    });
+    const run = await runBench({
+      ai: backend.ai,
+      provider: OLLAMA,
+      model: "m",
+      tasks: SUITE.slice(0, 6),
+      now: steppingClock(),
+      signal: controller.signal,
+    });
+    expect(run.state).toBe("cancelled");
+    expect(run.tasks).toHaveLength(2);
+    expect(backend.callsTo("ai.ollamaMemory")).toHaveLength(1);
+    expect(run.memory).toEqual({ source: "ollama", ...LOADED });
+    expect(benchRunSchema.parse(JSON.parse(JSON.stringify(run)))).toEqual(run);
+  });
+
+  it("does not ask when no task was done", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const backend = new FakeBackend({
+      ollamaModels: ["llama3.2"],
+      aiReply: answer,
+      ollamaMemory: LOADED,
+    });
+    const cancelled = await runBench({
+      ai: backend.ai,
+      provider: OLLAMA,
+      model: "m",
+      tasks: SUITE.slice(0, 3),
+      now: steppingClock(),
+      signal: controller.signal,
+    });
+    expect(cancelled.tasks).toEqual([]);
+    const empty = await runBench({
+      ai: backend.ai,
+      provider: OLLAMA,
+      model: "m",
+      tasks: [],
+      now: steppingClock(),
+    });
+    expect(empty.tasks).toEqual([]);
+    expect(backend.callsTo("ai.ollamaMemory")).toHaveLength(0);
+    expect([cancelled.memory, empty.memory]).toEqual([null, null]);
+  });
+
+  it("asks also when every call failed, since the tasks were done (and failed)", async () => {
+    // No Ollama on the fake computer: every chat ends with an error event.
+    const backend = new FakeBackend({ ollamaMemory: LOADED });
+    const run = await runBench({
+      ai: backend.ai,
+      provider: OLLAMA,
+      model: "m",
+      tasks: SUITE.slice(0, 2),
+      now: steppingClock(),
+    });
+    expect(run.tasks.every((r) => r.error !== null)).toBe(true);
+    expect(backend.callsTo("ai.ollamaMemory")).toHaveLength(1);
+  });
+
+  it("reports the memory of the model the function names, per model", async () => {
+    const backend = new FakeBackend({
+      ollamaModels: ["llama3.2"],
+      aiReply: answer,
+      ollamaMemory: (model) => (model === "big" ? { bytes: 9, vramBytes: 3 } : null),
+    });
+    const options = { ai: backend.ai, provider: OLLAMA, tasks: SUITE.slice(0, 1) };
+    const big = await runBench({ ...options, model: "big", now: steppingClock() });
+    const small = await runBench({ ...options, model: "small", now: steppingClock() });
+    expect(big.memory).toEqual({ source: "ollama", bytes: 9, vramBytes: 3 });
+    expect(small.memory).toBeNull();
+  });
+});
+
 describe("runBench: a provider that is not on this computer", () => {
   const remote: [string, string][] = [
     ["a hosted API", "https://api.openai.com/v1"],
@@ -881,6 +1099,43 @@ describe("the result", () => {
     expect(benchRunSchema.safeParse({ ...run, version: 2 }).success).toBe(false);
     expect(benchRunSchema.safeParse({ ...run, startedAt: "yesterday" }).success).toBe(false);
     expect(benchRunSchema.safeParse({ ...run, memory: { mb: 100 } }).success).toBe(false);
+  });
+
+  it("takes memory as null or as the strict object of Ollama, and refuses the rest", async () => {
+    const run = await sampleRun();
+    const withMemory = (memory: unknown): boolean =>
+      benchRunSchema.safeParse({ ...run, memory }).success;
+    expect(withMemory(null)).toBe(true);
+    expect(withMemory({ source: "ollama", bytes: 5_137_025_024, vramBytes: 0 })).toBe(true);
+    expect(withMemory({ source: "ollama", bytes: 0, vramBytes: 0 })).toBe(true);
+    expect(withMemory({ source: "ollama", bytes: Number.MAX_SAFE_INTEGER, vramBytes: 1 })).toBe(
+      true,
+    );
+    expect(withMemory({ source: "ollama", bytes: -1, vramBytes: 0 })).toBe(false);
+    expect(withMemory({ source: "ollama", bytes: 10, vramBytes: -1 })).toBe(false);
+    expect(withMemory({ source: "ollama", bytes: 1.5, vramBytes: 0 })).toBe(false);
+    expect(withMemory({ source: "ollama", bytes: 10, vramBytes: 0.1 })).toBe(false);
+    expect(withMemory({ source: "ollama", bytes: "10", vramBytes: 0 })).toBe(false);
+    expect(withMemory({ source: "ollama", bytes: Number.NaN, vramBytes: 0 })).toBe(false);
+    expect(withMemory({ source: "ollama", bytes: Number.POSITIVE_INFINITY, vramBytes: 0 })).toBe(
+      false,
+    );
+    expect(withMemory({ source: "ollama", bytes: 2 ** 60, vramBytes: 0 })).toBe(false);
+    expect(withMemory({ source: "ollama", bytes: 10 })).toBe(false);
+    expect(withMemory({ bytes: 10, vramBytes: 0 })).toBe(false);
+    expect(withMemory({ source: "lmstudio", bytes: 10, vramBytes: 0 })).toBe(false);
+    expect(withMemory({ source: "ollama", bytes: 10, vramBytes: 0, mb: 1 })).toBe(false);
+    expect(withMemory(undefined)).toBe(false);
+    expect(withMemory(12)).toBe(false);
+  });
+
+  it("keeps the version and reads a file written before the memory was measured", async () => {
+    const run = await sampleRun();
+    const old = JSON.parse(JSON.stringify({ ...run, memory: null })) as unknown;
+    expect(benchRunSchema.parse(old).memory).toBeNull();
+    expect(BENCH_RUN_VERSION).toBe(1);
+    const withMemory = { ...run, memory: { source: "ollama", bytes: 7, vramBytes: 3 } };
+    expect(benchRunSchema.parse(JSON.parse(JSON.stringify(withMemory)))).toEqual(withMemory);
   });
 
   it("names the file from the date alone, in UTC", () => {

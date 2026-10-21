@@ -110,6 +110,15 @@ export interface AiProviderInfo {
 /** What asking Ollama for its models found. Ollama not running is `found: false`, not an error. */
 export type OllamaModels = { found: true; models: string[] } | { found: false };
 
+/**
+ * What Ollama holds in memory for a model it has loaded, in bytes: the whole model (`bytes`) and the
+ * part of it in video memory (`vramBytes`). Whole numbers of 0 or more.
+ */
+export interface OllamaMemoryReading {
+  bytes: number;
+  vramBytes: number;
+}
+
 /** Why a call to a provider failed: the kinds of the errors of the AI client. */
 export const AI_ERROR_KINDS = [
   "invalid-request",
@@ -190,6 +199,14 @@ export interface AiBackend {
   setKey(providerId: string, key: string): Promise<void>;
   /** The models Ollama has installed, asked at the address of the pre-defined provider. Never rejects for a missing Ollama. */
   listOllamaModels(): Promise<OllamaModels>;
+  /**
+   * The memory Ollama holds for `model` while it is loaded (`GET /api/ps` of the pre-defined
+   * Ollama; no other provider is ever asked). `null` when Ollama is not there, does not answer in
+   * time, answers something that is not Ollama's, does not have the model loaded or reports a
+   * number that is not a whole number of 0 or more: a measurement that is missing, never a failure.
+   * A model with no tag is the `latest` one.
+   */
+  ollamaMemory(model: string): Promise<OllamaMemoryReading | null>;
   /**
    * Checks that the provider answers and accepts its stored key, by reading its list of models: no
    * model is needed and nothing is billed. Resolves with the outcome. Rejects only when the test

@@ -765,6 +765,7 @@ fn call_commands(state: AiState, calls: Vec<(&str, serde_json::Value)>) -> Vec<C
             ai_providers,
             ai_configure,
             ai_ollama_models,
+            ai_ollama_memory,
             ai_test_connection,
             ai_set_key,
             ai_cancel
@@ -1121,10 +1122,14 @@ async fn a_provider_of_the_settings_answers_with_its_key_and_stops_when_it_leave
 const TAGS: &str =
     r#"{"models":[{"name":"llama3.2:latest","size":1},{"name":"qwen2.5-coder:7b"}]}"#;
 
-/// An Ollama that lists two models, and a `/v1/models` that accepts anyone.
+const PS: &str = r#"{"models":[{"name":"llama3.2:latest","model":"llama3.2:latest","size":2019393189,"size_vram":1500000000}]}"#;
+
+/// An Ollama that lists two models, has `llama3.2` loaded, and a `/v1/models` that accepts anyone.
 fn fake_ollama(request: &Recorded, stream: &mut TcpStream, _: &Signals) {
     if request.request_line.starts_with("GET /api/tags ") {
         respond(stream, "200 OK", TAGS);
+    } else if request.request_line.starts_with("GET /api/ps ") {
+        respond(stream, "200 OK", PS);
     } else if request.request_line.starts_with("GET /v1/models ") {
         respond(stream, "200 OK", r#"{"data":[]}"#);
     } else {
@@ -1184,6 +1189,47 @@ async fn ollama_with_no_models_is_found_and_ollama_that_is_absent_is_not() {
     let client = AiClient::new(Duration::from_millis(500)).expect("client");
     let state = AiState::new(Arc::new(MemoryVault::new()), Vec::new(), client);
     assert_eq!(state.ollama_models().await, none);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_memory_of_a_loaded_model_is_read_from_ollama_and_only_from_ollama() {
+    let server = TestServer::start(fake_ollama);
+    let state = state_with_ollama_at(&server.url, Arc::new(MemoryVault::new()), 1500);
+    let memory = state.ollama_memory("llama3.2").await;
+    assert_eq!(
+        memory,
+        Some(OllamaMemoryInfo {
+            bytes: 2_019_393_189,
+            vram_bytes: 1_500_000_000
+        })
+    );
+    assert_eq!(server.request(0).request_line, "GET /api/ps HTTP/1.1");
+    // The page reads it as `{ bytes, vramBytes }`.
+    assert_eq!(
+        serde_json::to_value(memory).expect("json"),
+        serde_json::json!({ "bytes": 2_019_393_189_u64, "vramBytes": 1_500_000_000_u64 })
+    );
+    // A model that is not loaded.
+    assert_eq!(state.ollama_memory("mistral").await, None);
+
+    // A provider of the settings is never asked, whatever its address answers.
+    let other = TestServer::start(fake_ollama);
+    let state = state_with_ollama_at(&closed_port_url(), Arc::new(MemoryVault::new()), 1500);
+    state
+        .configure(&[dto(
+            "work",
+            "openai-compatible",
+            &format!("{}/v1", other.url),
+            "llama3.2",
+        )])
+        .expect("configured");
+    assert_eq!(state.ollama_memory("llama3.2").await, None);
+    assert_eq!(other.request_count(), 0);
+
+    // Ollama that is absent, and a state with no Ollama at all.
+    let client = AiClient::new(Duration::from_millis(500)).expect("client");
+    let state = AiState::new(Arc::new(MemoryVault::new()), Vec::new(), client);
+    assert_eq!(state.ollama_memory("llama3.2").await, None);
 }
 
 // ---- the connection test --------------------------------------------------------------------
@@ -1335,6 +1381,11 @@ fn the_page_hands_over_the_providers_and_asks_for_models_and_a_test_through_the_
             ("ai_providers", serde_json::json!({})),
             ("ai_ollama_models", serde_json::json!({})),
             (
+                "ai_ollama_memory",
+                serde_json::json!({ "model": "llama3.2" }),
+            ),
+            ("ai_ollama_memory", serde_json::json!({ "model": "nobody" })),
+            (
                 "ai_test_connection",
                 serde_json::json!({ "providerId": "work" }),
             ),
@@ -1375,6 +1426,14 @@ fn the_page_hands_over_the_providers_and_asks_for_models_and_a_test_through_the_
         models,
         serde_json::json!({ "found": true, "models": ["llama3.2:latest", "qwen2.5-coder:7b"] })
     );
+
+    let memory = json_of(answers.next().expect("memory").expect("memory"));
+    assert_eq!(
+        memory,
+        serde_json::json!({ "bytes": 2_019_393_189_u64, "vramBytes": 1_500_000_000_u64 })
+    );
+    let not_loaded = json_of(answers.next().expect("not loaded").expect("not loaded"));
+    assert_eq!(not_loaded, serde_json::Value::Null);
 
     let tested = json_of(answers.next().expect("test").expect("test"));
     assert_eq!(tested, serde_json::json!({ "ok": true }));

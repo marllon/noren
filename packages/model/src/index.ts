@@ -152,6 +152,7 @@ export type {
   AiProviderConfig,
   AiProviderInfo,
   AiProviderKind,
+  OllamaMemoryReading,
   OllamaModels,
 } from "./ai";
 export { REDACTION_KINDS, redactSecrets, redactionMarker } from "./redact";
@@ -546,6 +547,7 @@ export type {
   BenchProgress,
   BenchRun,
   BenchTaskRun,
+  BenchMemory,
   BenchTotals,
   RunBenchOptions,
 } from "./bench-runner";

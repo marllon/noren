@@ -1026,6 +1026,40 @@ describe("TauriBackend ai", () => {
     });
   });
 
+  it("reads the memory of a loaded model through ai_ollama_memory, or null", async () => {
+    const loaded = fakeBridge({ ai_ollama_memory: { bytes: 5137025024, vramBytes: 4000000000 } });
+    await expect(new TauriBackend(loaded.bridge).ai.ollamaMemory("llama3.2")).resolves.toEqual({
+      bytes: 5137025024,
+      vramBytes: 4000000000,
+    });
+    expect(loaded.invocations).toEqual([
+      { command: "ai_ollama_memory", args: { model: "llama3.2" } },
+    ]);
+    // Not loaded, no Ollama, or anything that is not two whole numbers of 0 or more: no measurement.
+    for (const answer of [
+      null,
+      undefined,
+      "12",
+      { bytes: -1, vramBytes: 0 },
+      { bytes: 1.5, vramBytes: 0 },
+      { bytes: 9, vramBytes: "0" },
+      { bytes: 9 },
+      { bytes: 2 ** 60, vramBytes: 0 },
+    ]) {
+      const fake = fakeBridge({ ai_ollama_memory: answer });
+      await expect(
+        new TauriBackend(fake.bridge).ai.ollamaMemory("llama3.2"),
+        JSON.stringify(answer),
+      ).resolves.toBeNull();
+    }
+    // A bridge that fails rejects, as the other AI calls do; the bench turns it into no memory.
+    const broken = fakeBridge();
+    broken.failing.add("ai_ollama_memory");
+    await expect(new TauriBackend(broken.bridge).ai.ollamaMemory("m")).rejects.toThrow(
+      /ai_ollama_memory failed/,
+    );
+  });
+
   it("tests a connection through ai_test_connection: ok, or a failure with its kind and message", async () => {
     const ok = fakeBridge({ ai_test_connection: { ok: true } });
     await expect(new TauriBackend(ok.bridge).ai.testConnection("my-openai")).resolves.toEqual({

@@ -51,6 +51,57 @@ describe("FakeBackend ai.listOllamaModels", () => {
   });
 });
 
+describe("FakeBackend ai.ollamaMemory", () => {
+  it("says no model is loaded unless it was given a reading", async () => {
+    await expect(new FakeBackend().ai.ollamaMemory("llama3.2")).resolves.toBeNull();
+  });
+
+  it("answers the reading it was given for any model, or one per model", async () => {
+    const reading = { bytes: 2_000_000_000, vramBytes: 1_500_000_000 };
+    const backend = new FakeBackend({ ollamaMemory: reading });
+    await expect(backend.ai.ollamaMemory("a")).resolves.toEqual(reading);
+    await expect(backend.ai.ollamaMemory("b")).resolves.toEqual(reading);
+    backend.setOllamaMemory((model) => (model === "big" ? { bytes: 9, vramBytes: 0 } : null));
+    await expect(backend.ai.ollamaMemory("big")).resolves.toEqual({ bytes: 9, vramBytes: 0 });
+    await expect(backend.ai.ollamaMemory("small")).resolves.toBeNull();
+    backend.setOllamaMemory(null);
+    await expect(backend.ai.ollamaMemory("big")).resolves.toBeNull();
+    expect(backend.callsTo("ai.ollamaMemory").map((call) => call.args)).toEqual([
+      ["a"],
+      ["b"],
+      ["big"],
+      ["small"],
+      ["big"],
+    ]);
+  });
+
+  it("hands out a copy, and takes a reading that is not whole numbers of 0 or more as none", async () => {
+    const reading = { bytes: 5, vramBytes: 1 };
+    const backend = new FakeBackend({ ollamaMemory: reading });
+    const first = await backend.ai.ollamaMemory("m");
+    if (first !== null) first.bytes = 99;
+    await expect(backend.ai.ollamaMemory("m")).resolves.toEqual(reading);
+    for (const bad of [
+      { bytes: -1, vramBytes: 0 },
+      { bytes: 1.5, vramBytes: 0 },
+      { bytes: 1, vramBytes: Number.NaN },
+      { bytes: Number.MAX_SAFE_INTEGER + 1, vramBytes: 0 },
+    ]) {
+      backend.setOllamaMemory(bad);
+      await expect(backend.ai.ollamaMemory("m"), JSON.stringify(bad)).resolves.toBeNull();
+    }
+  });
+
+  it("rejects when the function of the test throws", async () => {
+    const backend = new FakeBackend({
+      ollamaMemory: () => {
+        throw new Error("boom");
+      },
+    });
+    await expect(backend.ai.ollamaMemory("m")).rejects.toThrow("boom");
+  });
+});
+
 describe("FakeBackend ai.providers and ai.configure", () => {
   it("lists only the pre-defined Ollama until the providers of the settings are handed over", async () => {
     const backend = new FakeBackend();

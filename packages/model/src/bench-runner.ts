@@ -7,6 +7,7 @@ import {
   type AiChatMessage,
   type AiErrorKind,
   type AiProviderInfo,
+  OLLAMA_PROVIDER_ID,
 } from "./ai";
 import { checkBenchAnswer, type BenchKind, type BenchTask } from "./bench-suite";
 
@@ -107,6 +108,17 @@ function sameTotals(a: BenchTotals, b: BenchTotals): boolean {
   );
 }
 
+/** What Ollama held in memory for the model after the run, in bytes (whole numbers of 0 or more). */
+const memorySchema = z.strictObject({
+  source: z.literal("ollama"),
+  /** The whole model (`size` of `/api/ps`). */
+  bytes: z.number().int().nonnegative(),
+  /** The part of it in video memory (`size_vram` of `/api/ps`). */
+  vramBytes: z.number().int().nonnegative(),
+});
+
+export type BenchMemory = z.infer<typeof memorySchema>;
+
 export const benchRunSchema = z
   .strictObject({
     version: z.literal(BENCH_RUN_VERSION),
@@ -125,8 +137,11 @@ export const benchRunSchema = z
     planned: z.number().int().nonnegative(),
     tasks: z.array(taskRunSchema),
     totals: z.strictObject({ overall: totalsSchema, byKind: kindTotalsSchema }),
-    /** The memory the model used, measured in NOR-F16-02b; `null` until then. */
-    memory: z.null(),
+    /**
+     * The memory Ollama held for the model once the tasks were done (NOR-F16-02d); `null` for any other
+     * provider, when Ollama did not say, or when no task was done. A file written before that has `null`.
+     */
+    memory: memorySchema.nullable(),
   })
   .superRefine((run, ctx) => {
     const issue = (message: string): void => {
@@ -309,6 +324,9 @@ let runCounter = 0;
  *   which `checkBenchAnswer` judges. The time to the first non-empty delta and to the last event are
  *   read from `now`; the tokens per second are the count over the total time: the one the provider
  *   reported with `done` (`tokensSource: "stream"`), or else the estimate of `estimateTokens`.
+ * - With the pre-defined Ollama and at least one task done, the memory it holds for the model is read
+ *   once the tasks are over (`ai.ollamaMemory`, also after a cancel); no other provider is asked, and a
+ *   reading that fails or is invalid is `memory: null`.
  * - A call that fails (an `error` event, or `chat` rejecting) is a failed task with the kind of the
  *   error, and the run goes on with the next task.
  * - When `signal` aborts, the request in flight is cancelled with `ai.cancel`, no further task is
@@ -450,6 +468,9 @@ export async function runBench(options: RunBenchOptions): Promise<BenchRun> {
     signal?.removeEventListener("abort", onAbort);
   }
 
+  // Also for a run that was cancelled with some tasks done: the model is still loaded.
+  const memory = await readMemory(ai, provider, model, results.length);
+
   return benchRunSchema.parse({
     version: BENCH_RUN_VERSION,
     startedAt: new Date(startMs).toISOString(),
@@ -459,8 +480,35 @@ export async function runBench(options: RunBenchOptions): Promise<BenchRun> {
     planned: tasks.length,
     tasks: results,
     totals: summarizeBenchTasks(results),
-    memory: null,
+    memory,
   });
+}
+
+/**
+ * The memory Ollama holds for `model`, or `null`. Only the pre-defined Ollama is asked (any other
+ * provider has no `/api/ps`), and only after a task was done: a model that never answered is not
+ * known to be loaded. A rejection or a reading that is not whole numbers of 0 or more is `null`,
+ * so the memory never stops a run that has its answers.
+ */
+async function readMemory(
+  ai: AiBackend,
+  provider: AiProviderInfo,
+  model: string,
+  tasksDone: number,
+): Promise<BenchMemory | null> {
+  if (provider.id !== OLLAMA_PROVIDER_ID || tasksDone === 0) return null;
+  try {
+    const reading = await ai.ollamaMemory(model);
+    if (reading === null || reading === undefined) return null;
+    const checked = memorySchema.safeParse({
+      source: "ollama",
+      bytes: reading.bytes,
+      vramBytes: reading.vramBytes,
+    });
+    return checked.success ? checked.data : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---- The file ----

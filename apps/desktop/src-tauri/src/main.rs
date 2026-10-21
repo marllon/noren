@@ -172,6 +172,7 @@ fn main() {
             ai::ai_providers,
             ai::ai_configure,
             ai::ai_ollama_models,
+            ai::ai_ollama_memory,
             ai::ai_test_connection,
             ai::ai_set_key,
             ai::ai_chat_stream,

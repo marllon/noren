@@ -100,9 +100,34 @@ A call that fails (an `error` event, `chat` rejecting, or an answer that ends wi
 
 **Cancelling.** When `signal` aborts, the request in flight is cancelled with `ai.cancel`, no further task is sent and the result is `cancelled` with the tasks that were done; the one cut short is not among them. A task that ended with `done` before the cancel took effect is kept. `planned` tells how many tasks the run was asked to do.
 
-**The result.** `runBench` returns a `BenchRun` (and `benchRunSchema` reads it back from JSON): `version`, `startedAt` (ISO 8601, UTC), the `provider` (`id`, `kind` and `baseUrl`; never a key), the `model`, the `state` (`complete` or `cancelled`), `planned`, the `tasks`, the `totals` and `memory`, which is `null` until the memory of the model is measured. Its file is `bench-results/<YYYY-MM-DD-HHmmss>.json`, named from the start of the run in UTC by `benchResultPath`. The memory read from Ollama is not done yet (NOR-F16-02d).
+**The result.** `runBench` returns a `BenchRun` (and `benchRunSchema` reads it back from JSON): `version`, `startedAt` (ISO 8601, UTC), the `provider` (`id`, `kind` and `baseUrl`; never a key), the `model`, the `state` (`complete` or `cancelled`), `planned`, the `tasks`, the `totals` and `memory`, which is `null` or the memory of the model (below). Its file is `bench-results/<YYYY-MM-DD-HHmmss>.json`, named from the start of the run in UTC by `benchResultPath`.
 
 **Tokens of the stream.** When the provider reports how many tokens the answer has, that count is used and the task is marked `tokensSource: "stream"`; the tokens per second are then the count over the total time. For the chat completions format (Ollama, LM Studio and the rest) the request asks for it with `stream_options: { include_usage: true }` and the count is `usage.completion_tokens` of the last chunk, the one with no `choices`; for the Anthropic format it is `usage.output_tokens` of `message_delta`. The Rust parser puts it in the `done` it ends the stream with (`StreamEvent::Done { output_tokens }`), the bridge passes it on and the page gets `{ type: "done", outputTokens }`. A server that sends no count, or a count that is not a whole number of 0 or more, leaves it out: the task keeps the estimate and nothing fails. A count of 0 next to an answer that has text also keeps the estimate, and a failed call never uses a count. The two sources can be mixed in one run (a result is still valid), so the medians of the tokens per second are only comparable between runs of the same source. `FakeBackend` reports a count with `aiTokens` / `setAiTokens` (a number or a function of the request).
+
+## The memory of the model
+
+When the provider is the pre-defined Ollama (`id` `ollama`) and at least one task was done, `runBench` asks for the memory of the model once the tasks are over, with `AiBackend.ollamaMemory(model)`, and stores it in `memory`:
+
+```json
+{ "source": "ollama", "bytes": 5137025024, "vramBytes": 4000000000 }
+```
+
+`bytes` is `size` of `GET /api/ps` (the whole model as Ollama holds it) and `vramBytes` is `size_vram` (the part in video memory); both are whole numbers of 0 or more, and the schema is strict (no other key, no other `source`). The time between the last task and the question is short, so the model is still loaded unless Ollama's own timer unloaded it.
+
+`memory` is `null` when:
+
+- the provider is not Ollama (LM Studio and the rest have no such answer: they are never asked);
+- no task was done (a cancelled run with none, or an empty list);
+- Ollama is not running, does not answer within 3 s, answers with a status that is not 2xx or with something that is not what Ollama sends;
+- the model is not among the loaded ones (`llama3` and `llama3:latest` are the same model; `llama3:8b` is another);
+- `size` or `size_vram` of the model is negative, has a fraction, is text or is missing;
+- asking rejects or answers something the schema refuses.
+
+None of these fails the run: the tasks are kept and the state is what it was. A cancelled run with some tasks done is measured too. A file written before the memory was measured has `memory: null` and still reads; `BENCH_RUN_VERSION` stays 1.
+
+The Rust side is `AiClient::ollama_memory` in `crates/noren-core/src/ai.rs` (the tests start a local HTTP server and cover a name, a name with `:latest`, a model that is not loaded, invalid numbers, a status 500 and an answer that is not Ollama's), the Tauri command is `ai_ollama_memory` (main window only) and `FakeBackend` takes `ollamaMemory` (a reading, or a function of the model name) and `setOllamaMemory`.
+
+**Real servers.** The bench has been run against the fake provider and the local test server; a run against Ollama and LM Studio needs one of them running on this computer. In NOR-F16-02d neither answered (`curl` to `127.0.0.1:11434/api/tags` and `127.0.0.1:1234/v1/models` found nothing), so that run was skipped. With Ollama running, `curl -s http://127.0.0.1:11434/api/ps` shows the fields the parser reads: `models[].name`, `models[].model`, `models[].size` and `models[].size_vram`.
 
 Run the tests of the runner with `pnpm exec vitest run packages/model/src/bench-runner.test.ts`.
 

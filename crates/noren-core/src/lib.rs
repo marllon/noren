@@ -29,8 +29,9 @@ pub use agents::{
     scan_sessions,
 };
 pub use ai::{
-    AiClient, AiError, ChatMessage, DEFAULT_TIMEOUT, OLLAMA_DEFAULT_URL, OllamaProbe, Provider,
-    ProviderKind, Role, SseDecoder, SseMessage, StreamEvent, StreamParser, is_http_address,
+    AiClient, AiError, ChatMessage, DEFAULT_TIMEOUT, OLLAMA_DEFAULT_URL, OllamaMemory, OllamaProbe,
+    Provider, ProviderKind, Role, SseDecoder, SseMessage, StreamEvent, StreamParser,
+    is_http_address,
 };
 // Re-exported so the app can cancel a request without depending on tokio-util itself.
 pub use background::{BackgroundError, BackgroundStore, MAX_BACKGROUND_BYTES, sniff_image};

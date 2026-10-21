@@ -7,6 +7,7 @@
     "allow-ai-providers",
     "allow-ai-configure",
     "allow-ai-ollama-models",
+    "allow-ai-ollama-memory",
     "allow-ai-test-connection",
     "allow-ai-set-key",
     "allow-ai-chat-stream",

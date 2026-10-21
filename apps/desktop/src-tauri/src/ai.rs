@@ -20,7 +20,8 @@ use std::sync::{Arc, Mutex};
 
 use noren_core::{
     AiClient, AiError, CancellationToken, ChatMessage, DEFAULT_TIMEOUT, KeyVault, KeyringVault,
-    OllamaProbe, Provider, ProviderKind, Role, StreamEvent, is_http_address, is_valid_provider_id,
+    OllamaMemory, OllamaProbe, Provider, ProviderKind, Role, StreamEvent, is_http_address,
+    is_valid_provider_id,
 };
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -67,6 +68,23 @@ pub struct ProviderConfigDto {
 pub struct OllamaModels {
     pub found: bool,
     pub models: Vec<String>,
+}
+
+/// What `ai_ollama_memory` finds: the memory Ollama holds for a loaded model, in bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OllamaMemoryInfo {
+    pub bytes: u64,
+    pub vram_bytes: u64,
+}
+
+impl From<OllamaMemory> for OllamaMemoryInfo {
+    fn from(memory: OllamaMemory) -> Self {
+        OllamaMemoryInfo {
+            bytes: memory.bytes,
+            vram_bytes: memory.vram_bytes,
+        }
+    }
 }
 
 /// How a connection test ended. A failure is an answer, not an error of the command: `kind` is
@@ -328,6 +346,17 @@ impl AiState {
         }
     }
 
+    /// Asks the pre-defined Ollama how much memory `model` takes while it is loaded. Ollama not
+    /// running, not being Ollama, not having the model loaded or reporting a number that makes
+    /// no sense is `None`, not an error. It never asks any other provider.
+    pub async fn ollama_memory(&self, model: &str) -> Option<OllamaMemoryInfo> {
+        let ollama = self.find(OLLAMA_ID)?;
+        self.client
+            .ollama_memory(&ollama.base_url, model)
+            .await
+            .map(OllamaMemoryInfo::from)
+    }
+
     /// Tests the connection to `provider_id` with its key from the vault: the provider has to
     /// answer and accept the key. The outcome is the report; `Err` only when the test could not
     /// even start (a bad id, no such provider, a vault that cannot be read). No text of the
@@ -484,6 +513,15 @@ pub async fn ai_configure(
 #[tauri::command]
 pub async fn ai_ollama_models(state: State<'_, AiState>) -> Result<OllamaModels, String> {
     Ok(state.ollama_models().await)
+}
+
+/// The memory Ollama holds for a model it has loaded, or `null` when there is none to report.
+#[tauri::command]
+pub async fn ai_ollama_memory(
+    state: State<'_, AiState>,
+    model: String,
+) -> Result<Option<OllamaMemoryInfo>, String> {
+    Ok(state.ollama_memory(&model).await)
 }
 
 /// Tests the connection to a provider with its key from the keychain.

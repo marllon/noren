@@ -7,6 +7,7 @@ const COMMANDS: &[&str] = &[
     "ai_providers",
     "ai_configure",
     "ai_ollama_models",
+    "ai_ollama_memory",
     "ai_test_connection",
     "ai_set_key",
     "ai_chat_stream",

@@ -13,6 +13,7 @@ import type {
   AiErrorKind,
   AiProviderConfig,
   AiProviderInfo,
+  OllamaMemoryReading,
   OllamaModels,
 } from "./ai";
 import type { AgentEntry } from "./agents";
@@ -203,6 +204,13 @@ export interface FakeBackendOptions {
    * is left out, as the Rust side does. Defaults to none.
    */
   aiTokens?: AiTokens;
+  /**
+   * What the fake Ollama reports as the memory of a loaded model (`ai.ollamaMemory`): a reading
+   * for every model, or a function of the model name (`null` says it is not loaded). A reading that
+   * is not made of whole numbers of 0 or more is `null`, as the Rust side does. Defaults to none:
+   * no model is loaded. A function that throws makes the call reject.
+   */
+  ollamaMemory?: OllamaMemoryFake;
 }
 
 /** What the fake provider answers when a test did not say. */
@@ -571,6 +579,13 @@ type AiReply = string | ((request: AiChatRequest) => string);
 /** The count of tokens the fake provider reports: a number, a function of the request, or none. */
 export type AiTokens = number | ((request: AiChatRequest) => number | undefined) | undefined;
 
+/** The memory the fake Ollama reports: a reading for every model, a function of the model name, or none. */
+export type OllamaMemoryFake =
+  | OllamaMemoryReading
+  | ((model: string) => OllamaMemoryReading | null | undefined)
+  | null
+  | undefined;
+
 /** What the fake computer's keychain, providers and Ollama hold, behind `FakeBackend.ai`. */
 class FakeAi implements AiBackend {
   #providers: AiProviderConfig[] = [];
@@ -586,6 +601,7 @@ class FakeAi implements AiBackend {
   readonly #held = new Set<() => void>();
   #reply: AiReply;
   #tokens: AiTokens;
+  #memory: OllamaMemoryFake;
 
   constructor(
     private readonly record: (method: FakeAiMethod, ...args: unknown[]) => void,
@@ -593,9 +609,11 @@ class FakeAi implements AiBackend {
     keys: Record<string, string> | undefined,
     reply: AiReply | undefined,
     tokens: AiTokens,
+    memory: OllamaMemoryFake,
   ) {
     this.#reply = reply ?? DEFAULT_AI_REPLY;
     this.#tokens = tokens;
+    this.#memory = memory;
     if (ollamaModels !== undefined) this.#ollama = [...ollamaModels];
     for (const [id, key] of Object.entries(keys ?? {})) this.#keys.set(id, key);
   }
@@ -645,6 +663,17 @@ class FakeAi implements AiBackend {
   async listOllamaModels(): Promise<OllamaModels> {
     this.record("ai.listOllamaModels");
     return this.#ollama === null ? { found: false } : { found: true, models: [...this.#ollama] };
+  }
+
+  async ollamaMemory(model: string): Promise<OllamaMemoryReading | null> {
+    this.record("ai.ollamaMemory", model);
+    const reading = typeof this.#memory === "function" ? this.#memory(model) : this.#memory;
+    if (reading === null || reading === undefined) return null;
+    const whole = (n: unknown): n is number =>
+      typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
+    return whole(reading.bytes) && whole(reading.vramBytes)
+      ? { bytes: reading.bytes, vramBytes: reading.vramBytes }
+      : null;
   }
 
   async testConnection(providerId: string): Promise<AiConnectionResult> {
@@ -786,6 +815,11 @@ class FakeAi implements AiBackend {
     this.#tokens = tokens;
   }
 
+  /** Changes the memory the fake Ollama reports from now on; `null` or `undefined` loads no model. */
+  setMemory(memory: OllamaMemoryFake): void {
+    this.#memory = memory;
+  }
+
   /** Changes what the fake provider answers from now on; `undefined` goes back to the default. */
   setReply(reply: AiReply | undefined): void {
     this.#reply = reply ?? DEFAULT_AI_REPLY;
@@ -892,7 +926,8 @@ class FakeAi implements AiBackend {
  *   that is not there, or Anthropic without a key, or `setAiConnectionResult` chose the answer (a
  *   key in its text is taken out). `ai.chat` is answered by a fake provider (`aiReply`,
  *   `setAiReply`) in deltas, a word at a time, then one `done` (which carries `outputTokens` when
- *   `aiTokens` or `setAiTokens` gives a count, as a provider that reports its usage); it ends with an `error` instead when
+ *   `aiTokens` or `setAiTokens` gives a count, as a provider that reports its usage); `ai.ollamaMemory(model)`
+ *   answers what `ollamaMemory` or `setOllamaMemory` says (`null` when none); it ends with an `error` instead when
  *   the connection test would fail, and a `cancel` in between ends it with `error` of kind
  *   `cancelled`. `holdAiAnswer(true)` makes the answers wait after their first piece, so a test can
  *   stop one in the middle. Calls are recorded as `ai.providers`, `ai.setKey` (without the key), `ai.chat` (with
@@ -1001,6 +1036,7 @@ export class FakeBackend implements Backend {
       options.aiKeys,
       options.aiReply,
       options.aiTokens,
+      options.ollamaMemory,
     );
     this.ai = this.#ai;
     this.#commandExitCode = options.commandExitCode ?? 0;
@@ -1051,6 +1087,14 @@ export class FakeBackend implements Backend {
    */
   setAiTokens(tokens: AiTokens): void {
     this.#ai.setTokens(tokens);
+  }
+
+  /**
+   * Changes the memory the fake Ollama reports for a loaded model from now on: a reading for every
+   * model, or a function of the model name; `null` loads no model. Not a `Backend` call.
+   */
+  setOllamaMemory(memory: OllamaMemoryFake): void {
+    this.#ai.setMemory(memory);
   }
 
   /**

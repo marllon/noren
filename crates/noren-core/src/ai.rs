@@ -40,6 +40,8 @@ const CONNECTION_TEST_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_ERROR_BODY_BYTES: usize = 8 * 1024;
 /// Largest list of models accepted from Ollama.
 const MAX_TAGS_BYTES: usize = 1024 * 1024;
+/// The largest whole number a JavaScript number holds exactly (2^53 - 1).
+const MAX_EXACT_JSON_INTEGER: u64 = (1 << 53) - 1;
 /// Longest line the stream decoder keeps while waiting for its end.
 const MAX_SSE_LINE_BYTES: usize = 1024 * 1024;
 /// Longest reason shown for an error, in characters.
@@ -681,6 +683,14 @@ pub enum OllamaProbe {
     NotFound,
 }
 
+/// What Ollama says a loaded model takes: the whole model and the part of it held in video memory,
+/// both in bytes (`size` and `size_vram` of `/api/ps`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OllamaMemory {
+    pub bytes: u64,
+    pub vram_bytes: u64,
+}
+
 /// The client of the providers. Cheap to clone.
 #[derive(Debug, Clone)]
 pub struct AiClient {
@@ -914,6 +924,79 @@ impl AiClient {
             _ => OllamaProbe::NotFound,
         }
     }
+
+    /// The memory Ollama holds for `model`, read from `GET /api/ps` at `base_url` (the root, or
+    /// the `/v1` address of a provider). `None` when Ollama does not answer, answers something
+    /// else, does not have the model loaded or reports a number that is not a whole number of 0
+    /// or more: a measurement that is missing, never an error. The wait is as short as the
+    /// probe's.
+    pub async fn ollama_memory(&self, base_url: &str, model: &str) -> Option<OllamaMemory> {
+        let root = base_url.trim().trim_end_matches('/');
+        let root = root.strip_suffix("/v1").unwrap_or(root);
+        if !(root.starts_with("http://") || root.starts_with("https://")) {
+            return None;
+        }
+        let read = async {
+            let response = self.http.get(format!("{root}/api/ps")).send().await.ok()?;
+            if !response.status().is_success() {
+                return None;
+            }
+            let mut stream = pin!(response.bytes_stream());
+            let bytes = self
+                .read_limited(&mut stream, MAX_TAGS_BYTES, &CancellationToken::new())
+                .await
+                .ok()?;
+            memory_of(&bytes, model)
+        };
+        tokio::time::timeout(self.timeout.min(OLLAMA_PROBE_TIMEOUT), read)
+            .await
+            .ok()
+            .flatten()
+    }
+}
+
+/// Ollama names a model with a tag and calls the one with no tag `latest`: `llama3` and
+/// `llama3:latest` are the same model. A colon only starts a tag after the last slash (the
+/// address of a registry can hold a port).
+fn with_default_tag(name: &str) -> String {
+    let name = name.trim();
+    let after_path = name.rsplit('/').next().unwrap_or(name);
+    if after_path.contains(':') {
+        name.to_string()
+    } else {
+        format!("{name}:latest")
+    }
+}
+
+/// Finds `model` in the body of `GET /api/ps` and reads its memory. `None` when the body is not
+/// what Ollama sends, when the model is not among the loaded ones or when its `size` or
+/// `size_vram` is not a whole number of 0 or more.
+fn memory_of(body: &[u8], model: &str) -> Option<OllamaMemory> {
+    let wanted = with_default_tag(model);
+    if wanted == ":latest" {
+        return None;
+    }
+    let value: Value = serde_json::from_slice(body).ok()?;
+    let entry = value.get("models")?.as_array()?.iter().find(|entry| {
+        ["name", "model"].iter().any(|key| {
+            entry
+                .get(key)
+                .and_then(Value::as_str)
+                .is_some_and(|name| with_default_tag(name) == wanted)
+        })
+    })?;
+    // `as_u64` refuses a negative number, a fraction and a text; the page reads the numbers as
+    // JavaScript numbers, so one it cannot hold exactly is no measurement either.
+    let whole = |key: &str| {
+        entry
+            .get(key)?
+            .as_u64()
+            .filter(|n| *n <= MAX_EXACT_JSON_INTEGER)
+    };
+    Some(OllamaMemory {
+        bytes: whole("size")?,
+        vram_bytes: whole("size_vram")?,
+    })
 }
 
 /// Puts the key in the header its kind of provider reads. A key that is blank counts as none:
@@ -2239,6 +2322,221 @@ mod tests {
         assert_eq!(
             client(250).detect_ollama("localhost:11434").await,
             OllamaProbe::NotFound
+        );
+    }
+
+    const PS_BODY: &str = r#"{"models":[
+        {"name":"llama3:latest","model":"llama3:latest","size":5137025024,"size_vram":4000000000},
+        {"name":"qwen2.5-coder:7b","model":"qwen2.5-coder:7b","size":4683087332,"size_vram":0}
+    ]}"#;
+
+    /// An Ollama whose `/api/ps` answers `body` with `status`; any other path is a 404.
+    fn ollama_ps(status: &'static str, body: &'static str) -> TestServer {
+        TestServer::start(move |request, stream, _| {
+            if request.request_line.starts_with("GET /api/ps ") {
+                respond(stream, status, "application/json", body);
+            } else {
+                respond(stream, "404 Not Found", "text/plain", "");
+            }
+        })
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_memory_of_a_loaded_model_is_found_by_its_name() {
+        let server = ollama_ps("200 OK", PS_BODY);
+        // The address of the provider (with `/v1`) and the root both work.
+        for base in [format!("{}/v1", server.url), server.url.clone()] {
+            assert_eq!(
+                client(2000).ollama_memory(&base, "qwen2.5-coder:7b").await,
+                Some(OllamaMemory {
+                    bytes: 4_683_087_332,
+                    vram_bytes: 0
+                })
+            );
+            // A model with no tag is the `latest` one, and the other way round.
+            let llama = Some(OllamaMemory {
+                bytes: 5_137_025_024,
+                vram_bytes: 4_000_000_000,
+            });
+            assert_eq!(client(2000).ollama_memory(&base, "llama3").await, llama);
+            assert_eq!(
+                client(2000).ollama_memory(&base, "llama3:latest").await,
+                llama
+            );
+        }
+        assert_eq!(server.request(0).request_line, "GET /api/ps HTTP/1.1");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_memory_is_found_by_the_model_field_and_by_a_name_with_no_tag() {
+        // Only `model` names the first, and the name of the second has no tag.
+        let server = ollama_ps(
+            "200 OK",
+            r#"{"models":[{"model":"phi3:latest","size":10,"size_vram":4},{"name":"gemma2","size":7,"size_vram":7}]}"#,
+        );
+        let ask = |model: &'static str| {
+            let url = server.url.clone();
+            async move { client(2000).ollama_memory(&url, model).await }
+        };
+        assert_eq!(
+            ask("phi3").await,
+            Some(OllamaMemory {
+                bytes: 10,
+                vram_bytes: 4
+            })
+        );
+        assert_eq!(
+            ask("gemma2:latest").await,
+            Some(OllamaMemory {
+                bytes: 7,
+                vram_bytes: 7
+            })
+        );
+        // A different tag is a different model.
+        assert_eq!(ask("phi3:mini").await, None);
+        assert_eq!(ask("gemma2:2b").await, None);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_model_that_is_not_loaded_has_no_memory() {
+        let server = ollama_ps("200 OK", PS_BODY);
+        for model in [
+            "mistral",
+            "llama3:8b",
+            "llama",
+            "coder:7b",
+            "",
+            "  ",
+            ":latest",
+        ] {
+            assert_eq!(
+                client(2000).ollama_memory(&server.url, model).await,
+                None,
+                "{model:?}"
+            );
+        }
+        let empty = ollama_ps("200 OK", r#"{"models":[]}"#);
+        assert_eq!(client(2000).ollama_memory(&empty.url, "llama3").await, None);
+    }
+
+    #[test]
+    fn a_number_that_is_not_a_whole_number_of_zero_or_more_is_no_memory() {
+        let valid = r#"{"name":"m:latest","size":100,"size_vram":50}"#;
+        let bad = [
+            r#"{"name":"m:latest","size":-1,"size_vram":50}"#,
+            r#"{"name":"m:latest","size":100,"size_vram":-5}"#,
+            r#"{"name":"m:latest","size":100.5,"size_vram":50}"#,
+            r#"{"name":"m:latest","size":100,"size_vram":0.5}"#,
+            r#"{"name":"m:latest","size":"100","size_vram":50}"#,
+            r#"{"name":"m:latest","size":100,"size_vram":"lots"}"#,
+            r#"{"name":"m:latest","size":null,"size_vram":50}"#,
+            r#"{"name":"m:latest","size":100}"#,
+            r#"{"name":"m:latest","size_vram":50}"#,
+            r#"{"name":"m:latest","size":1e3,"size_vram":50}"#,
+            r#"{"name":"m:latest","size":100,"size_vram":9007199254740992}"#,
+            r#"{"name":"m:latest","size":18446744073709551616,"size_vram":50}"#,
+        ];
+        assert_eq!(
+            memory_of(format!(r#"{{"models":[{valid}]}}"#).as_bytes(), "m"),
+            Some(OllamaMemory {
+                bytes: 100,
+                vram_bytes: 50
+            })
+        );
+        for entry in bad {
+            let body = format!(r#"{{"models":[{entry}]}}"#);
+            assert_eq!(memory_of(body.as_bytes(), "m"), None, "{entry}");
+        }
+        // The largest number a page holds exactly is accepted.
+        assert_eq!(
+            memory_of(
+                br#"{"models":[{"name":"m","size":9007199254740991,"size_vram":0}]}"#,
+                "m"
+            ),
+            Some(OllamaMemory {
+                bytes: 9_007_199_254_740_991,
+                vram_bytes: 0
+            })
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn invalid_numbers_over_http_are_no_memory_and_the_valid_ones_stay() {
+        let server = ollama_ps(
+            "200 OK",
+            r#"{"models":[{"name":"bad:latest","size":-3,"size_vram":1},{"name":"good:latest","size":9,"size_vram":2}]}"#,
+        );
+        assert_eq!(client(2000).ollama_memory(&server.url, "bad").await, None);
+        assert_eq!(
+            client(2000).ollama_memory(&server.url, "good").await,
+            Some(OllamaMemory {
+                bytes: 9,
+                vram_bytes: 2
+            })
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn memory_is_none_when_ollama_fails_or_is_not_ollama() {
+        let ask = |server: &TestServer| {
+            let url = server.url.clone();
+            async move { client(1000).ollama_memory(&url, "llama3").await }
+        };
+        // A status that is not a success, with a good body.
+        let failed = ollama_ps("500 Internal Server Error", PS_BODY);
+        assert_eq!(ask(&failed).await, None);
+        let missing = ollama_ps("404 Not Found", PS_BODY);
+        assert_eq!(ask(&missing).await, None);
+        // Not what Ollama sends.
+        for body in [
+            "<html>hello</html>",
+            "",
+            "[]",
+            r#"{"models":"llama3"}"#,
+            r#"{"data":[]}"#,
+            r#"{"models":[1,"llama3",null]}"#,
+        ] {
+            assert_eq!(ask(&ollama_ps("200 OK", body)).await, None, "{body:?}");
+        }
+        // A server that answers every path with a page, as one that is not Ollama would.
+        let other =
+            TestServer::start(|_, stream, _| respond(stream, "200 OK", "text/html", "<html>"));
+        assert_eq!(ask(&other).await, None);
+        // Nothing listens: the port was just released.
+        let port = TcpListener::bind("127.0.0.1:0")
+            .expect("bind")
+            .local_addr()
+            .expect("addr")
+            .port();
+        assert_eq!(
+            client(1000)
+                .ollama_memory(&format!("http://127.0.0.1:{port}"), "llama3")
+                .await,
+            None
+        );
+        // An answer that never comes ends at the short timeout.
+        let silent = TestServer::start(|_, stream, signals| stall(stream, signals));
+        let started = Instant::now();
+        assert_eq!(client(250).ollama_memory(&silent.url, "llama3").await, None);
+        assert!(started.elapsed() < Duration::from_secs(3));
+        // Not an address at all.
+        assert_eq!(
+            client(250).ollama_memory("localhost:11434", "llama3").await,
+            None
+        );
+    }
+
+    #[test]
+    fn a_default_tag_is_added_only_after_the_last_slash() {
+        assert_eq!(with_default_tag("llama3"), "llama3:latest");
+        assert_eq!(with_default_tag(" llama3:8b "), "llama3:8b");
+        assert_eq!(
+            with_default_tag("localhost:5000/team/llama3"),
+            "localhost:5000/team/llama3:latest"
+        );
+        assert_eq!(
+            with_default_tag("localhost:5000/team/llama3:8b"),
+            "localhost:5000/team/llama3:8b"
         );
     }
 

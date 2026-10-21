@@ -1140,9 +1140,13 @@ pub async fn fonts_list_monospace() -> Result<Vec<String>, String> {
 /// the look `scheme` names (`dark` or `light`: the kind of a theme that was chosen; `system`: the
 /// mode of the system), and answers what it has: a system that cannot paint it keeps the window
 /// opaque and the answer says why. The outcome goes to the log.
+///
+/// The caller is taken as a `Window`: Tauri refuses a `WebviewWindow` argument from a window that
+/// has a browser pane's web view as a child (the main window while a pane is open, or a window that
+/// holds a tab with one), and changing the theme must work then.
 #[tauri::command]
 pub async fn window_effect_set<R: tauri::Runtime>(
-    window: tauri::WebviewWindow<R>,
+    window: tauri::Window<R>,
     effect: String,
     scheme: String,
 ) -> Result<crate::window_effect::EffectReportDto, String> {
@@ -2279,6 +2283,17 @@ mod tests {
         args: serde_json::Value,
         pictures: &Path,
     ) -> Result<InvokeResponseBody, serde_json::Value> {
+        call_command_after(cmd, args, pictures, |_| {})
+    }
+
+    /// [`call_command`] with `prepare` run on the app once the `main` window exists and before the
+    /// call: what a test needs to have in place (a browser pane open in the window, say).
+    fn call_command_after(
+        cmd: &str,
+        args: serde_json::Value,
+        pictures: &Path,
+        prepare: impl FnOnce(&tauri::AppHandle<tauri::test::MockRuntime>),
+    ) -> Result<InvokeResponseBody, serde_json::Value> {
         use tauri::ipc::{CallbackFn, InvokeBody};
         use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
         use tauri::webview::InvokeRequest;
@@ -2304,6 +2319,7 @@ mod tests {
         let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
             .build()
             .expect("build the mock window");
+        prepare(app.handle());
         let url = if cfg!(windows) {
             "http://tauri.localhost"
         } else {
@@ -2660,6 +2676,31 @@ mod tests {
                 Some(format!("'{effect}' is not a window effect").as_str())
             );
         }
+    }
+
+    #[test]
+    fn the_effect_is_set_from_the_main_window_with_a_browser_pane_open() {
+        // Tauri stops calling a window a webview window while a web view of a pane is a child of it,
+        // and refused the command when it asked for a `WebviewWindow` (finding 259). The mock paints
+        // nothing, so what is checked is that the call is answered and not refused, and that the
+        // answer names what was asked.
+        let dir = TempDir::new("effect-with-a-pane");
+        let answer = call_command_after(
+            "window_effect_set",
+            serde_json::json!({ "effect": "mica", "scheme": "dark" }),
+            &dir.0,
+            |app| {
+                crate::browser_pane::open_a_pane_in_main(app);
+                assert!(app.get_webview_window("main").is_none());
+            },
+        )
+        .expect("the effect is set, the call is not refused");
+        let InvokeResponseBody::Json(json) = answer else {
+            panic!("a raw answer for a report");
+        };
+        let report: serde_json::Value = serde_json::from_str(&json).expect("a report");
+        assert_eq!(report["requested"], "mica");
+        assert!(report["applied"].is_string());
     }
 
     #[test]

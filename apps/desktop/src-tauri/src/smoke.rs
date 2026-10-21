@@ -94,15 +94,19 @@ pub fn smoke_effect() -> WindowEffect {
 /// applied, or the opaque fallback with the reason. A system that cannot paint the effect is not a
 /// failure (the window stays opaque); the check fails only when the window cannot be reached.
 fn check_window_effect(app: &AppHandle) -> Result<(), String> {
-    // Looked up as a webview window on purpose: the effect needs the API of one, and this runs
-    // before the browser pane of the smoke run opens a child web view in the window.
-    let window = app
-        .get_webview_window("main")
-        .ok_or_else(|| "the main window does not exist".to_string())?;
-    // No scheme: the smoke run leaves the mode of the window as the system has it.
-    let outcome = window_effect::apply_on_main_thread(&window, smoke_effect(), None)?;
+    let outcome = apply_smoke_effect(app)?;
     print_line(&format!("SMOKE {}", outcome.log_line()));
     Ok(())
+}
+
+/// Gives the main window [`smoke_effect`] the way the `window_effect_set` command does, and answers
+/// what it has. The window is looked up as a `Window`, so this works while a browser pane has a web
+/// view as a child of it too. No scheme: the smoke run leaves the mode of the window as the system
+/// has it.
+pub(crate) fn apply_smoke_effect(app: &AppHandle) -> Result<noren_core::EffectOutcome, String> {
+    let window = crate::lifecycle::main_window(app)
+        .ok_or_else(|| "the main window does not exist".to_string())?;
+    window_effect::apply_on_main_thread(&window, smoke_effect(), None)
 }
 
 /// Lists the monospaced fonts of the machine (the same call as the `fonts_list_monospace` command)

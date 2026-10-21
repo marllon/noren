@@ -6,7 +6,7 @@
 //! [`apply_on_main_thread`] runs it where the system wants it (macOS only lets the main thread touch
 //! a window).
 //!
-//! `window-vibrancy` is a direct dependency, although Tauri uses it too (`WebviewWindow::set_effects`),
+//! `window-vibrancy` is a direct dependency, although Tauri uses it too (`Window::set_effects`),
 //! because the Tauri call drops the result: it cannot say whether the system painted the effect,
 //! and the log and the settings screen have to say so. The window is created transparent
 //! (tauri.conf.json), which is what lets an effect show through the page.
@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use noren_core::{EffectOutcome, WindowEffect, WindowPainter, apply_effect};
 use serde::Serialize;
-use tauri::{Runtime, Theme, WebviewWindow};
+use tauri::{Runtime, Theme, Window};
 use window_vibrancy::{NSVisualEffectMaterial, NSVisualEffectState};
 
 /// How long the caller waits for the main thread to paint. A window that does not answer in this
@@ -26,7 +26,10 @@ const MAIN_THREAD_TIMEOUT: Duration = Duration::from_secs(10);
 /// Paints on a native window with `window-vibrancy`. Every call goes to the system and comes back
 /// with its answer; on a system that does not have the effect that answer is an error, which
 /// [`apply_effect`] turns into the opaque fallback.
-pub struct NativePainter<'a, R: Runtime>(pub &'a WebviewWindow<R>);
+///
+/// It takes the window as a `Window`: Tauri stops calling a window a webview window while a web view
+/// of a browser pane is a child of it, and the effect is the window's, not the page's.
+pub struct NativePainter<'a, R: Runtime>(pub &'a Window<R>);
 
 fn text(error: window_vibrancy::Error) -> String {
     error.to_string()
@@ -75,7 +78,7 @@ impl<R: Runtime> WindowPainter for NativePainter<'_, R> {
 /// Must not be called from the main thread itself: it waits for the main thread to answer. The
 /// Tauri commands that call it are `async`, which runs them elsewhere.
 pub fn apply_on_main_thread<R: Runtime>(
-    window: &WebviewWindow<R>,
+    window: &Window<R>,
     requested: WindowEffect,
     scheme: Option<Theme>,
 ) -> Result<EffectOutcome, String> {

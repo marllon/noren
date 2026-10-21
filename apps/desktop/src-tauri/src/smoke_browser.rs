@@ -366,6 +366,15 @@ fn run(
     check_window_hidden(app)?;
     print_line("SMOKE browser pane open, the main window still found and hidden");
 
+    // Changing the theme or the effect of the window works with the pane open: the command
+    // `window_effect_set` takes the caller as a `Window`, as this call does (finding 259). A system
+    // that cannot paint the effect keeps the window opaque, which is an answer and not a failure.
+    let outcome = crate::smoke::apply_smoke_effect(app)?;
+    print_line(&format!(
+        "SMOKE browser pane open, the window effect was set ({})",
+        outcome.log_line()
+    ));
+
     // The page tried to go to an address of the app; it must still be the one running.
     match server.hear(STAY_WAIT, "it stayed where it was")? {
         Heard::After(href) if href == first => {}

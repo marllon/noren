@@ -8,6 +8,7 @@ All notable changes to Noren are recorded here. The format follows
 
 ### Fixed
 
+- **The theme and the window effect change while a browser pane is open**: changing the theme (which also sets the Mica, Acrylic or vibrancy effect behind the window) was refused with "current webview is not a WebviewWindow" while a browser pane was open, because Tauri stops calling a window a webview window once a web view is a child of it. The command now takes the window that calls it as a window.
 - **The main window is found while a browser pane is open**: quitting from the tray icon, "Open Noren", a `noren://` link or a second launch bringing the window up, and the focus read that decides whether a notification is shown all missed the main window while a browser pane was open, because Tauri stops calling a window a webview window once a web view is a child of it. They now look the window up as a window.
 
 ### Added

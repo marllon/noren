@@ -29,6 +29,11 @@ function code(text: string): string {
 
 const pageSources = sources(here).map(({ file, text }) => ({ file, text: code(text) }));
 
+// The one file that may start a Worker: the host of the plugins, which runs each plugin in a Worker
+// made from a blob (NOR-F18-01c, docs/SECURITY_REVIEW.md section 1). Any other file that starts one
+// fails the guard below until someone decides it is safe.
+const MAY_START_A_WORKER = ["plugin-host.ts"];
+
 describe("what the page may not do", () => {
   it.each([
     ["window.open", /\bwindow\.open\s*\(|\bopen\s*\(\s*["'`]https?:/],
@@ -49,9 +54,20 @@ describe("what the page may not do", () => {
     ["WebSocket", /\bnew\s+WebSocket\s*\(/],
     ["EventSource", /\bnew\s+EventSource\s*\(/],
     ["a WebLinksAddon with the default handler", /new\s+WebLinksAddon\s*\(\s*\)/],
-  ])("does not use %s", (_what, pattern) => {
-    const offenders = pageSources.filter(({ text }) => pattern.test(text)).map(({ file }) => file);
+  ])("does not use %s", (what, pattern) => {
+    const exempt = what === "a worker" ? MAY_START_A_WORKER : [];
+    const offenders = pageSources
+      .filter(({ file, text }) => pattern.test(text) && !exempt.includes(file))
+      .map(({ file }) => file);
     expect(offenders).toEqual([]);
+  });
+
+  it("keeps the Worker to the host of the plugins, and the host does start one", () => {
+    expect(MAY_START_A_WORKER).toHaveLength(1);
+    const hosts = pageSources
+      .filter(({ text }) => /\bnew\s+Worker\s*\(/.test(text))
+      .map(({ file }) => file);
+    expect(hosts).toEqual(MAY_START_A_WORKER);
   });
 
   it("gives the terminal a handler for OSC 8 links that does not open a window", () => {

@@ -10,6 +10,7 @@ import { t, tabCount } from "./i18n";
 import { actionName, categoryName } from "./i18n/names";
 import { ACTIONS } from "./keybindings";
 import type { ActionDef, ChordMap } from "./keybindings";
+import type { PluginActionView } from "./plugin-host";
 import { shortCwd, summarizeItem } from "./pane-info";
 import { formatChord } from "./shortcuts-screen";
 import type { SpaceThemeOption } from "./space-theme";
@@ -81,8 +82,22 @@ export interface SpaceThemeEntry extends EntryBase {
   current: boolean;
 }
 
+/** An action a running plugin put in the palette; choosing it tells that plugin. */
+export interface PluginEntry extends EntryBase {
+  kind: "plugin";
+  pluginId: string;
+  actionId: string;
+}
+
 export type PaletteEntry =
-  TabEntry | SpaceEntry | ActionEntry | ProfileEntry | FolderEntry | ThemeEntry | SpaceThemeEntry;
+  | TabEntry
+  | SpaceEntry
+  | ActionEntry
+  | ProfileEntry
+  | FolderEntry
+  | ThemeEntry
+  | PluginEntry
+  | SpaceThemeEntry;
 export type EntryKind = PaletteEntry["kind"];
 
 /**
@@ -95,7 +110,7 @@ export type Scope = "all" | "tab" | "space" | "action";
 const SCOPE_KINDS: Readonly<Record<Exclude<Scope, "all">, readonly EntryKind[]>> = {
   tab: ["tab"],
   space: ["space"],
-  action: ["action", "profile", "folder", "theme", "space-theme"],
+  action: ["action", "profile", "folder", "theme", "plugin", "space-theme"],
 };
 
 export const PREFIXES: Readonly<Record<string, Exclude<Scope, "all">>> = {
@@ -135,6 +150,8 @@ export interface EntrySources {
    * where the AI is off nothing offers it.
    */
   aiOn?: boolean;
+  /** The palette actions of the plugins that run (empty or left out: no plugin entries). */
+  pluginActions?: readonly PluginActionView[];
 }
 
 /** The list of "Set theme for this space": one entry per option, `Use global theme` last. */
@@ -267,7 +284,16 @@ export function buildEntries(sources: EntrySources): PaletteEntry[] {
       current: choice === null,
     });
   }
-  return [...tabs, ...spaces, ...actions, ...profiles, ...folders, ...themes];
+  const plugins = (sources.pluginActions ?? []).map((action): PluginEntry => ({
+    kind: "plugin",
+    id: `plugin:${action.pluginId}:${action.actionId}`,
+    title: action.label,
+    detail: t("palette.pluginAction", { name: action.pluginName }),
+    keywords: [action.pluginName, action.pluginId, "plugin"],
+    pluginId: action.pluginId,
+    actionId: action.actionId,
+  }));
+  return [...tabs, ...spaces, ...actions, ...profiles, ...folders, ...themes, ...plugins];
 }
 
 /**
@@ -329,6 +355,7 @@ const KIND_ORDER: readonly EntryKind[] = [
   "profile",
   "folder",
   "theme",
+  "plugin",
   "space-theme",
 ];
 

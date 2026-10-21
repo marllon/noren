@@ -4,6 +4,7 @@ import type {
   BenchHardware,
   GitDiffRefusal,
   GitInfo,
+  PluginFolder,
   ShellProfile,
   WindowEffect,
   Worktree,
@@ -52,6 +53,11 @@ export const WEB_THEMES_KEY = "noren.web.themes";
  * with the `setMod` hook is kept here, so a reload finds it again.
  */
 export const WEB_MODS_KEY = "noren.web.mods";
+/**
+ * Plugin folders for a test (NOR-F18-01c): a JSON list of `{ folder, manifest, main }` (text) or
+ * `{ folder, error }` that `listPlugins` answers instead of the example plugin.
+ */
+export const WEB_PLUGINS_KEY = "noren.web.plugins";
 
 /**
  * Key of the scrollback snapshots in web mode (`scrollback/<paneId>.txt` of the real app): a JSON
@@ -131,6 +137,28 @@ export function seededMods(storage: Pick<Storage, "getItem">): Record<string, st
       if (typeof text === "string") files[name] = text;
     }
     return files;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The plugin folders seeded under `WEB_PLUGINS_KEY`, or `undefined` when there is no usable seed. */
+export function seededPlugins(storage: Pick<Storage, "getItem">): PluginFolder[] | undefined {
+  try {
+    const raw = storage.getItem(WEB_PLUGINS_KEY);
+    if (raw === null) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (!Array.isArray(value)) return undefined;
+    const folders: PluginFolder[] = [];
+    for (const entry of value as unknown[]) {
+      if (typeof entry !== "object" || entry === null) continue;
+      const { folder, manifest, main, error } = entry as Record<string, unknown>;
+      if (typeof folder !== "string") continue;
+      if (typeof manifest === "string" && typeof main === "string") {
+        folders.push({ folder, manifest, main });
+      } else if (typeof error === "string") folders.push({ folder, error });
+    }
+    return folders;
   } catch {
     return undefined;
   }
@@ -428,6 +456,8 @@ export class WebBackend extends FakeBackend {
       config: seededConfig(storage),
     });
     this.#storage = storage;
+    const plugins = seededPlugins(storage);
+    if (plugins !== undefined) this.setPlugins(plugins);
   }
 
   /** A browser window has no effect of its own to paint; the desktop app does. */

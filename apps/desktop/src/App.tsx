@@ -128,6 +128,8 @@ import { currentResolver, isRecording, useKeybindings } from "./keybindings-stor
 import { resolveBindings } from "./keybindings";
 import type { ActionCommand } from "./keybindings";
 import { buildEntries, buildSpaceThemeEntries } from "./palette";
+import { currentPluginHost, pluginTrafficLog, usePluginActions } from "./plugin-host";
+import type { PluginStatus, PluginTraffic } from "./plugin-host";
 import type { PaletteEntry } from "./palette";
 import { typesText } from "./split-keys";
 import { DropZones, TreeDnd } from "./TreeDnd";
@@ -273,6 +275,10 @@ export interface NorenTestHook {
   setWorktreeDirty(path: string, dirty: boolean): void;
   /** Sets the containers the fake Docker lists as running; `error` makes it fail with that sentence instead. */
   setDockerContainers(containers: string[], error?: string): void;
+  /** What the plugins posted to the app and what the app posted back, in order (the answers carry `error` or `result`). */
+  pluginTraffic(): PluginTraffic[];
+  /** One status per folder of `plugins/`: running, failed or invalid, with the reason. */
+  pluginStatus(): readonly PluginStatus[];
   /** Every system notification the backend was asked to show, in order. None is ever shown. */
   notifications(): { title: string; body: string }[];
   /** Makes the fake window have the keyboard focus (it starts with it) or lose it. */
@@ -1741,6 +1747,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
         },
         setWorktreeDirty: (path, dirty) => fake.setWorktreeDirty(path, dirty),
         setDockerContainers: (containers, error) => fake.setDockerContainers(containers, error),
+        pluginTraffic: () => [...pluginTrafficLog],
+        pluginStatus: () => currentPluginHost()?.status() ?? [],
         notifications: () => fake.notifications.map(({ title, body }) => ({ title, body })),
         setWindowFocused: (focused) => fake.setWindowFocused(focused),
         openedLinks: () => [...fake.openedLinks],
@@ -1949,6 +1957,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
       }
     });
   }, [quickChord, showNotice]);
+  // The actions the plugins put in the palette; the list is read again whenever a plugin changes it.
+  const pluginActions = usePluginActions();
   const paletteEntries = useMemo(
     () =>
       !paletteOpen
@@ -1963,6 +1973,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
               folders: recentFolders(),
               themes: { list: themes, choice: themeChoice },
               aiOn,
+              pluginActions,
             }),
     [
       paletteOpen,
@@ -1975,6 +1986,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
       themeChoice,
       themes,
       aiOn,
+      pluginActions,
       language,
     ],
   );
@@ -1985,6 +1997,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     else if (entry.kind === "space") activateSpace(entry.spaceId);
     else if (entry.kind === "profile") newTab({ profileId: entry.profileId });
     else if (entry.kind === "folder") newTab({ cwd: entry.path });
+    else if (entry.kind === "plugin") currentPluginHost()?.choose(entry.pluginId, entry.actionId);
     else if (entry.kind === "space-theme") {
       // Enter gives the theme to the active space (state.json); null takes it back.
       dispatch({ type: "space/set-theme", spaceId: space.id, themeId: entry.themeId });

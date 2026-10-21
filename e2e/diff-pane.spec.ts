@@ -321,9 +321,10 @@ test.describe("restoring a diff pane", () => {
     expect(await reads(page)).toEqual([REPO]);
     expect(errors).toEqual([]);
     const origin = new URL(page.url()).origin;
-    expect(requests.filter((url) => !url.startsWith(origin) && !url.startsWith("data:"))).toEqual(
-      [],
-    );
+    // The Worker of the example plugin is a blob made by the page itself (NOR-F18-01c).
+    const own = (url: string) =>
+      url.startsWith(origin) || url.startsWith(`blob:${origin}/`) || url.startsWith("data:");
+    expect(requests.filter((url) => !own(url))).toEqual([]);
   });
 
   test("each kind of change shows what it is", async ({ page }) => {

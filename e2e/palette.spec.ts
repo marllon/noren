@@ -123,13 +123,13 @@ test("the chord shown follows the preset", async ({ page }) => {
 test("the prefixes > @ # limit the list to actions, tabs or spaces", async ({ page }) => {
   await twoSpaces(page);
   await page.keyboard.press("Control+Shift+P");
-  // Nothing typed: every kind is listed.
+  // Nothing typed: every kind is listed (the last is the action of the example plugin).
   await expect
     .poll(() => kinds(page))
-    .toEqual(["tab", "space", "action", "profile", "folder", "theme"]);
+    .toEqual(["tab", "space", "action", "profile", "folder", "theme", "plugin"]);
   await page.keyboard.type(">");
-  // Under > the commands: actions, profiles, recent folders and themes.
-  await expect.poll(() => kinds(page)).toEqual(["action", "profile", "folder", "theme"]);
+  // Under > the commands: actions, profiles, recent folders, themes and plugin actions.
+  await expect.poll(() => kinds(page)).toEqual(["action", "profile", "folder", "theme", "plugin"]);
   await page.keyboard.press("Backspace");
   await page.keyboard.type("@");
   await expect.poll(() => kinds(page)).toEqual(["tab"]);

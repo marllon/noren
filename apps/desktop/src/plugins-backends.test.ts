@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TauriBackend } from "./tauri-backend";
 import type { TauriBridge } from "./tauri-backend";
-import { WebBackend } from "./web-backend";
+import { WEB_PLUGINS_KEY, WebBackend } from "./web-backend";
 
 // The plugin folders through the two backends the app runs on: the Tauri one (`plugins_list` of
 // src-tauri/src/bridge.rs) and the web one, which lists the example plugin like `FakeBackend`.
@@ -57,6 +57,35 @@ describe("TauriBackend plugins", () => {
 describe("WebBackend plugins", () => {
   it("lists the example plugin, as the fake backend does", async () => {
     const storage = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
+    const folders = await new WebBackend(storage).listPlugins();
+    expect(folders.map((folder) => folder.folder)).toEqual(["new-tab-action"]);
+  });
+
+  it("lists the folders seeded under noren.web.plugins instead of the example, and drops what is not a folder", async () => {
+    const seed = JSON.stringify([
+      { folder: "a", manifest: "{}", main: "// a" },
+      { folder: "b", error: "plugin.json not found" },
+      { folder: "c", manifest: "{}" },
+      { manifest: "{}", main: "x" },
+      7,
+    ]);
+    const storage = {
+      getItem: (key: string) => (key === WEB_PLUGINS_KEY ? seed : null),
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    };
+    await expect(new WebBackend(storage).listPlugins()).resolves.toEqual([
+      { folder: "a", manifest: "{}", main: "// a" },
+      { folder: "b", error: "plugin.json not found" },
+    ]);
+  });
+
+  it("keeps the example when the seed is not a list", async () => {
+    const storage = {
+      getItem: (key: string) => (key === WEB_PLUGINS_KEY ? "{}" : null),
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    };
     const folders = await new WebBackend(storage).listPlugins();
     expect(folders.map((folder) => folder.folder)).toEqual(["new-tab-action"]);
   });

@@ -323,12 +323,14 @@ fn the_content_security_policy_is_strict() {
         sources(&csp, "connect-src"),
         ["ipc:", "http://ipc.localhost"]
     );
+    // The one door to a Worker: the plugins run in Workers made from a blob (NOR-F18-01c). A Worker
+    // keeps the policy of the page, so `script-src 'self'` still stops eval and imports from outside.
+    assert_eq!(sources(&csp, "worker-src"), ["blob:"]);
     for directive in [
         "object-src",
         "base-uri",
         "form-action",
         "frame-src",
-        "worker-src",
         "media-src",
         "manifest-src",
     ] {

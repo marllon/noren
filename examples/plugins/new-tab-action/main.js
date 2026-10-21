@@ -12,8 +12,9 @@ const ask = (method, params) =>
 
 ask("palette.register", { id: "open-tab", label: "Open a new tab (example plugin)" });
 
-// The app tells the plugin which action was chosen. How that message is delivered is settled with
-// the host that runs the plugin (NOR-F18-01c); this is the shape the example expects.
+// The app tells the plugin which action was chosen with a message { event: "action", id }, where id
+// is the one given to palette.register. Every answer to a request comes the same way, as
+// { version, id, result } or { version, id, error }, and is not an event.
 globalThis.onmessage = (event) => {
   const message = event.data;
   if (message && message.event === "action" && message.id === "open-tab") {

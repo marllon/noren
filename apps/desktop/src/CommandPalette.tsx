@@ -39,6 +39,7 @@ const KINDS: readonly EntryKind[] = [
   "profile",
   "folder",
   "theme",
+  "plugin",
   "space-theme",
 ];
 

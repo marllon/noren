@@ -32,7 +32,7 @@
         "base-uri": "'none'",
         "form-action": "'none'",
         "frame-src": "'none'",
-        "worker-src": "'none'",
+        "worker-src": "blob:",
         "media-src": "'none'",
         "manifest-src": "'none'"
       }

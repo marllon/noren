@@ -122,3 +122,60 @@ describe("the new kinds and the prefixes", () => {
     expect(kindsOf(entries, "")).toEqual(["tab", "space", "action"]);
   });
 });
+
+describe("plugin entries", () => {
+  const pluginActions = [
+    {
+      pluginId: "new-tab-action",
+      pluginName: "New tab action",
+      actionId: "open-tab",
+      label: "Open a new tab (example plugin)",
+    },
+    {
+      pluginId: "other",
+      pluginName: "Other plugin",
+      actionId: "open-tab",
+      label: "Open a new tab (example plugin)",
+    },
+  ];
+
+  async function withPlugins(): Promise<PaletteEntry[]> {
+    const backend = new FakeBackend();
+    const newId = createSequentialIds("p");
+    const restored = await restoreWorkspace(backend, { defaults: { newId, clock } });
+    const store = createWorkspaceStore({ backend, workspace: restored.workspace, newId, clock });
+    return buildEntries({ workspace: store.getState().workspace, chords: {}, pluginActions });
+  }
+
+  it("lists one entry per action with the label as the title and the plugin name in the detail", async () => {
+    const entries = await withPlugins();
+    expect(ofKind(entries, "plugin")).toMatchObject([
+      {
+        id: "plugin:new-tab-action:open-tab",
+        title: "Open a new tab (example plugin)",
+        detail: "Plugin · New tab action",
+        pluginId: "new-tab-action",
+        actionId: "open-tab",
+      },
+      { id: "plugin:other:open-tab", detail: "Plugin · Other plugin", pluginId: "other" },
+    ]);
+  });
+
+  it("finds an action by its label or by the name of its plugin, with no prefix and under >", async () => {
+    const entries = await withPlugins();
+    expect(searchEntries(entries, "example plugin").map((e) => e.kind)).toEqual([
+      "plugin",
+      "plugin",
+    ]);
+    expect(searchEntries(entries, ">other plugin").map((e) => e.id)).toEqual([
+      "plugin:other:open-tab",
+    ]);
+    expect(kindsOf(entries, "@")).toEqual(["tab"]);
+    expect(kindsOf(entries, "#")).toEqual(["space"]);
+  });
+
+  it("lists none when the sources carry no plugin action", async () => {
+    const entries = await entriesFor("noren-dusk", false);
+    expect(ofKind(entries, "plugin")).toEqual([]);
+  });
+});

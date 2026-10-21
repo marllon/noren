@@ -19,12 +19,14 @@ import { createBackend, insideTauri } from "./backend";
 import { startBackgroundImages } from "./background-image-store";
 import { followWindowClose } from "./close-handler";
 import { aiProvidersSync, configManager } from "./config-store";
+import { appApiHost } from "./api-bridge";
 import { loadHome } from "./home";
 import { liveEntriesOf, startLiveGroups } from "./live-groups-service";
 import { realClock } from "./real-clock";
 import { migrateLegacySettings } from "./legacy-settings";
 import type { LegacyStorageArea } from "./legacy-settings";
 import { startMods } from "./mods-store";
+import { recordPluginTraffic, startPlugins } from "./plugin-host";
 import { osNameOf } from "./os-name";
 import { windowPreviewEnabled } from "./quick";
 import { notificationSettings } from "./notification-settings";
@@ -233,6 +235,15 @@ export async function bootWorkspace(
       // And what the agents are doing goes out as events to the clients that subscribed (NOR-F17-01f).
       setAgentStateReporter(createAgentStateReporter(tauriBridge()));
     }
+    // The plugins of the folder `plugins/`: each valid one runs in a Worker tied to its broker, and
+    // the actions it registers reach the palette. Started once; a folder that cannot be read, a
+    // plugin that is invalid or one that fails never stops the app (the host only records it).
+    startPlugins({
+      backend: target,
+      apiHost: appApiHost({ store, backend: target, tail: apiTail, notifier, routing }),
+      // In the web build a test reads what the plugins were told (the test hook).
+      ...(target instanceof FakeBackend ? { observe: recordPluginTraffic } : {}),
+    });
     // The window shows the theme of the active space, if it has one, from the first frame.
     followActiveSpaceTheme(store);
     // And the mods of the active space.

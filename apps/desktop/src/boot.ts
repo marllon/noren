@@ -139,8 +139,16 @@ export async function bootWorkspace(
     setRestoredScrollback(snapshots?.texts ?? new Map());
     const home = await loadHome();
     const notifier = new SystemNotifier({ backend: target, settings: notificationSettings });
+    // Where a new tab goes (NOR-F17-03b, 03c): the first rule of `routing.rules` of the settings that
+    // matches, read at every new tab of the window and every call of the local API.
+    const platform = osNameOf(navigator.userAgent) === "Windows" ? "windows" : "unix";
+    const routing = () => ({
+      rules: configManager.state.config.routing?.rules,
+      context: { platform, home } as const,
+    });
     const store = createWorkspaceStore({
       backend: target,
+      routing,
       ...(home !== undefined ? { home } : {}),
       workspace: restored.workspace,
       failedPaneIds: restored.failedPaneIds,
@@ -201,18 +209,13 @@ export async function bootWorkspace(
       ).catch(() => undefined);
       // The local API (NOR-F17-01c): the calls the server of the app validated run here, in the
       // window that owns the workspace, and are answered through `api_respond`.
-      // A tab it makes with no space goes where `routing.rules` of the settings say (NOR-F17-03b);
-      // the rules are read from the settings at every call.
-      const platform = osNameOf(navigator.userAgent) === "Windows" ? "windows" : "unix";
+      // A tab it makes with no space goes where `routing.rules` of the settings say (NOR-F17-03b).
       startLocalApi({
         store,
         backend: target,
         tail: apiTail,
         notifier,
-        routing: () => ({
-          rules: configManager.state.config.routing?.rules,
-          context: { platform, home },
-        }),
+        routing,
         bridge: tauriBridge(),
       });
       // And what the agents are doing goes out as events to the clients that subscribed (NOR-F17-01f).

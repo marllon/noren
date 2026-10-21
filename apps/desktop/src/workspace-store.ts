@@ -1,6 +1,7 @@
 import {
   DEFAULT_PROFILE_ID,
   StateWriter,
+  destinationOfNewTab,
   isPaneVisible,
   lastUnread,
   layoutPanes,
@@ -19,6 +20,7 @@ import type {
   Id,
   Item,
   LayoutNode,
+  NewTabRouting,
   SystemNotificationEvent,
   Pane,
   PaneAttentionEvent,
@@ -84,8 +86,10 @@ export interface WorkspaceState {
   /** Runs an action through the reducer, schedules the save and ends the sessions it dropped. */
   dispatch(action: Action): void;
   /**
-   * Makes a new tab in the active space and activates it. It starts with the profile and folder of
-   * the space unless the options name others.
+   * Makes a new tab and activates it. It goes where the first rule of `routing.rules` that matches
+   * its folder and profile says (a space, and a group in it); without rules or a match, to the
+   * active space. A space that is not the active one becomes it. It starts with the profile and
+   * folder of its space unless the options name others.
    */
   newTab(options?: NewTabOptions): void;
   /**
@@ -175,6 +179,12 @@ export interface WorkspaceStoreOptions {
    * bell, a notification of a program, a long command that ended). Without it, nothing is sent.
    */
   notifier?: SystemNotifier;
+  /**
+   * The routing rules for the new tabs (NOR-F17-03c), asked at every `newTab` so a change in the
+   * settings counts at once. Without it, or when it throws or answers no rules, a new tab goes to
+   * the active space.
+   */
+  routing?: () => NewTabRouting | undefined;
   onError?(error: unknown): void;
 }
 
@@ -372,12 +382,28 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
         }
       },
 
-      newTab(options = {}) {
+      newTab(request = {}) {
+        const before = get().workspace;
+        const destination = destinationOfNewTab(
+          before,
+          { cwd: request.cwd, profileId: request.profileId },
+          options.routing,
+        );
+        const inActive = destination.spaceId === before.activeSpaceId;
         get().dispatch({
           type: "item/create",
-          ...(options.profileId !== undefined ? { profileId: options.profileId } : {}),
-          ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+          ...(!inActive ? { spaceId: destination.spaceId } : {}),
+          ...(destination.groupId !== undefined
+            ? { placement: { to: "tree" as const, groupId: destination.groupId } }
+            : {}),
+          ...(request.profileId !== undefined ? { profileId: request.profileId } : {}),
+          ...(request.cwd !== undefined ? { cwd: request.cwd } : {}),
         });
+        // The tab was made in a space the person is not looking at: show it (a space another
+        // window shows stays there, and the tab is in it). Nothing made, nothing to show.
+        if (!inActive && get().workspace !== before) {
+          get().dispatch({ type: "space/activate", spaceId: destination.spaceId });
+        }
       },
 
       adoptSession(sessionId) {

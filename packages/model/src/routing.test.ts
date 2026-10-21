@@ -7,6 +7,7 @@ import {
   MAX_ROUTING_PATTERN,
   MAX_ROUTING_RULES,
   commandMatches,
+  destinationOfNewTab,
   globMatchesPath,
   routeNewTab,
 } from "./routing";
@@ -474,5 +475,57 @@ describe("routing properties", () => {
         },
       ),
     );
+  });
+});
+
+describe("destinationOfNewTab", () => {
+  const active = { spaceId: "s-work" };
+  const routing = (rules: RoutingRule[] | undefined) => () => ({ rules, context: UNIX });
+
+  it("asks the rules about the folder and the profile asked for, else the defaults of the active space", () => {
+    const withDefaults: Workspace = {
+      ...ws,
+      spaces: ws.spaces.map((s) =>
+        s.id === "s-work" ? { ...s, defaults: { ...s.defaults, cwd: "/w", profileId: "pwsh" } } : s,
+      ),
+    };
+    const rules = [
+      rule({ cwd: "/asked", command: "^bash$", space: "Play" }),
+      rule({ cwd: "/w", command: "^pwsh$", space: "Play" }),
+    ];
+    // Both come from the call.
+    expect(
+      destinationOfNewTab(withDefaults, { cwd: "/asked", profileId: "bash" }, routing(rules)),
+    ).toEqual({ spaceId: "s-play" });
+    // Neither does: the defaults of the active space answer.
+    expect(destinationOfNewTab(withDefaults, {}, routing(rules))).toEqual({ spaceId: "s-play" });
+    // The folder asked for hides the default one.
+    expect(destinationOfNewTab(withDefaults, { cwd: "/else" }, routing(rules))).toEqual(active);
+  });
+
+  it("uses the default profile when neither the call nor the space name one", () => {
+    const rules = [rule({ command: "^default$", space: "Play" })];
+    expect(destinationOfNewTab(ws, {}, routing(rules))).toEqual({ spaceId: "s-play" });
+  });
+
+  it("gives the group of the rule, and the active space when nothing matches", () => {
+    const rules = [rule({ cwd: "/a", space: "Work", group: "Api" })];
+    expect(destinationOfNewTab(ws, { cwd: "/a" }, routing(rules))).toEqual({
+      spaceId: "s-work",
+      groupId: "g-api",
+    });
+    expect(destinationOfNewTab(ws, { cwd: "/b" }, routing(rules))).toEqual(active);
+  });
+
+  it("counts a missing getter, no answer, no rules and a getter that throws as no rules", () => {
+    expect(destinationOfNewTab(ws, { cwd: "/a" }, undefined)).toEqual(active);
+    expect(destinationOfNewTab(ws, { cwd: "/a" }, () => undefined)).toEqual(active);
+    expect(destinationOfNewTab(ws, { cwd: "/a" }, routing(undefined))).toEqual(active);
+    expect(destinationOfNewTab(ws, { cwd: "/a" }, routing([]))).toEqual(active);
+    expect(
+      destinationOfNewTab(ws, { cwd: "/a" }, () => {
+        throw new Error("unreadable");
+      }),
+    ).toEqual(active);
   });
 });

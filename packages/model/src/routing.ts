@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_PROFILE_ID } from "./factories";
 import { treeGroups } from "./tree";
 import type { Id, Workspace } from "./types";
 
@@ -117,6 +118,14 @@ export interface RoutingContext {
   platform: RoutingPlatform;
   /** The home folder of the user, which `~` stands for. Without it `~` in a glob matches nothing. */
   home?: string | undefined;
+}
+
+/** The rules for a new tab and what matching them depends on, as the app has them now. */
+export interface NewTabRouting {
+  /** `routing.rules` of the settings; none when the user wrote none. */
+  rules: readonly RoutingRule[] | undefined;
+  /** The kind of system and the home folder, which the match reads as arguments. */
+  context: RoutingContext;
 }
 
 /** Where the rules send a tab: the space, and the group in it when the rule names one. */
@@ -291,4 +300,34 @@ export function routeNewTab(
     return { spaceId: space.id, groupId: group.id };
   }
   return undefined;
+}
+
+/**
+ * Where a new tab of the app goes, for the page and for the local API alike: the destination of the
+ * first routing rule that matches, else the active space. What the tab would have used without a
+ * rule is what the rules are asked about: the folder is the one asked for, else the start folder of
+ * the active space; the command is the profile asked for, else the profile of the active space,
+ * else the default one. `routing` is read now, so a change in the settings counts at the next tab;
+ * a getter that throws, or answers nothing or no rules, counts as no rules and the tab is still
+ * made. Never throws.
+ */
+export function destinationOfNewTab(
+  workspace: Pick<Workspace, "spaces" | "activeSpaceId">,
+  params: { cwd?: string | undefined; profileId?: string | undefined },
+  routing: (() => NewTabRouting | undefined) | undefined,
+): RoutingDestination {
+  const active: RoutingDestination = { spaceId: workspace.activeSpaceId };
+  let rules: NewTabRouting | undefined;
+  try {
+    rules = routing?.();
+  } catch {
+    return active;
+  }
+  if (rules === undefined || rules.rules === undefined || rules.rules.length === 0) return active;
+  const defaults = workspace.spaces.find((s) => s.id === workspace.activeSpaceId)?.defaults;
+  const target = {
+    cwd: params.cwd ?? defaults?.cwd,
+    command: params.profileId ?? defaults?.profileId ?? DEFAULT_PROFILE_ID,
+  };
+  return routeNewTab(rules.rules, target, workspace, rules.context) ?? active;
 }

@@ -2,8 +2,8 @@ import type { Action } from "./actions";
 import { keySequences } from "./api-keys";
 import type { Backend, CreateSessionOptions, SessionId } from "./backend";
 import { DEFAULT_PROFILE_ID } from "./factories";
-import { routeNewTab } from "./routing";
-import type { RoutingContext, RoutingDestination, RoutingRule } from "./routing";
+import { destinationOfNewTab } from "./routing";
+import type { NewTabRouting, RoutingDestination } from "./routing";
 import { layoutPanes } from "./sessions";
 import { spaceSessionEnv } from "./session-env";
 import { spaceItemIds, treeGroups } from "./tree";
@@ -124,12 +124,7 @@ export interface ApiNotification {
 }
 
 /** The rules for a new tab and what matching them depends on, as the app has them now. */
-export interface ApiRouting {
-  /** `routing.rules` of the settings; none when the user wrote none. */
-  rules: readonly RoutingRule[] | undefined;
-  /** The kind of system and the home folder, which the match reads as arguments. */
-  context: RoutingContext;
-}
+export type ApiRouting = NewTabRouting;
 
 /** What the dispatcher needs from the app. */
 export interface ApiHost {
@@ -497,42 +492,17 @@ async function dropShell(host: ApiHost, id: SessionId): Promise<void> {
   }
 }
 
-/**
- * Where a tab with no `space` goes: the destination of the first routing rule that matches its
- * folder and its profile, else the active space. What the tab would have used without a rule (the
- * folder and profile defaults of the active space) is what the rules are asked about. A host whose
- * rules cannot be read counts as one with no rules: the tab is still made.
- */
-function chooseDestination(
-  host: ApiHost,
-  ws: Workspace,
-  params: { cwd?: string; profile?: string },
-): RoutingDestination {
-  const active: RoutingDestination = { spaceId: ws.activeSpaceId };
-  let routing: ApiRouting | undefined;
-  try {
-    routing = host.routing?.();
-  } catch {
-    return active;
-  }
-  if (routing === undefined || routing.rules === undefined || routing.rules.length === 0) {
-    return active;
-  }
-  const defaults = ws.spaces.find((s) => s.id === ws.activeSpaceId)?.defaults;
-  const target = {
-    cwd: params.cwd ?? defaults?.cwd,
-    command: params.profile ?? defaults?.profileId ?? DEFAULT_PROFILE_ID,
-  };
-  return routeNewTab(routing.rules, target, ws, routing.context) ?? active;
-}
-
 async function createItem(
   host: ApiHost,
   params: { space?: string; cwd?: string; profile?: string },
 ): Promise<ApiOutcome> {
   const ws = host.workspace();
   const destination: RoutingDestination =
-    params.space !== undefined ? { spaceId: params.space } : chooseDestination(host, ws, params);
+    params.space !== undefined
+      ? { spaceId: params.space }
+      : destinationOfNewTab(ws, { cwd: params.cwd, profileId: params.profile }, () =>
+          host.routing?.(),
+        );
   const space = ws.spaces.find((s) => s.id === destination.spaceId);
   if (space === undefined) {
     return failure("not_found", `no space has the id ${shorten(destination.spaceId)}`);

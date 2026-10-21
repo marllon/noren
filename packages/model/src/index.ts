@@ -519,10 +519,12 @@ export {
   RoutingSchema,
   commandMatches,
   commandPatternProblem,
+  destinationOfNewTab,
   globMatchesPath,
   routeNewTab,
 } from "./routing";
 export type {
+  NewTabRouting,
   RoutingContext,
   RoutingDestination,
   RoutingPlatform,

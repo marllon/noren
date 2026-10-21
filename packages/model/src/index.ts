@@ -570,6 +570,22 @@ export {
 } from "./bench-results";
 export type { SavedBenchRun } from "./bench-results";
 export {
+  BENCH_CSV_HEADER,
+  benchCsvText,
+  benchDefaultEdits,
+  benchScoreboard,
+  benchScoreboardCsv,
+  knownAiProviderIds,
+  recommendBenchModel,
+} from "./bench-scoreboard";
+export type {
+  BenchApplyResult,
+  BenchKindScore,
+  BenchScoreRow,
+  BenchTarget,
+  BenchTokensSource,
+} from "./bench-scoreboard";
+export {
   BENCH_DISTRIBUTION,
   benchTaskSchema,
   checkBenchAnswer,

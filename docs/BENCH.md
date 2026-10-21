@@ -148,3 +148,27 @@ Run the tests of the runner with `pnpm exec vitest run packages/model/src/bench-
 **The page checks the run twice.** The core keeps text and does not know the schema. `saveBenchRun(backend, run)` checks the run with `benchRunSchema` and rejects, calling the backend not at all, when it is not valid; `loadBenchRuns(backend)` checks every listed file again and leaves out the ones that are not JSON or not a valid run, so a file edited by hand or written by a later version never stops the list. A backend that cannot read the folder rejects.
 
 Run the tests with `pnpm exec vitest run packages/model/src/bench-results.test.ts` and `cargo test -p noren-core bench`.
+
+## The scoreboard
+
+`packages/model/src/bench-scoreboard.ts` turns the saved runs (`SavedBenchRun[]` of `loadBenchRuns`) into a scoreboard, picks the model to suggest as the default, writes the edit of the settings that makes it the default and writes the table as CSV. It is pure TypeScript (no file, no DOM, no Tauri); the screen that shows it is a later task (NOR-F16-03b).
+
+**One row for each model.** `benchScoreboard(saved)` makes a row for each pair of provider id and model, from the newest run of the pair (by `startedAt`, compared as a time, so `…09Z` is older than `…09.5Z`; the same moment goes to the later file, `-2` after the file with no suffix). A row has the rank, the provider, the model, how many runs the pair has (`runs`), the file and start time of the newest run, its `state` (`complete` or `cancelled`), `planned`, `done` and `errors`, the accuracy of the run and of each kind, the medians (time to the first piece, total time, tokens per second), `tokensSource` (`stream`, `estimate`, `mixed` when the run has both, or `null` when no task has a reading) and `memory`. An older run only adds to `runs`; it never changes the numbers.
+
+**The order.** Accuracy, highest first; a tie goes to the lower median total time (a row with none, because every call failed, comes last); then the provider id and the model, as plain text. A run that was cancelled is listed like the others, with the tasks it did, and is never recommended.
+
+**The recommendation.** `recommendBenchModel(rows)` picks the model to suggest as the default for this computer:
+
+1. Only a row whose newest run is `complete` and has an accuracy above 0 can be picked (`recommendable`). A model whose newest run was cancelled is out even if an older run was complete: the newest run is the one that says how the model does now.
+2. The highest accuracy wins.
+3. A tie goes to the lower median total time (no median comes last).
+4. Still tied, the smaller memory (`memory.bytes`; a row with no reading comes after one that has it).
+5. Still tied, the provider id and then the model, so the answer never depends on the order of the files.
+
+No row that can be picked (no runs, only cancelled runs, or no answer right anywhere) is `undefined`: nothing is recommended, and the screen should say so instead of picking a model. Memory is only read from Ollama, so on a tie of accuracy and time an Ollama model with a reading comes before a model of another provider.
+
+**Making it the default.** `benchDefaultEdits({ provider, model }, knownProviderIds)` gives the edits for `editConfigText` that set `ai.defaults.ask`, `ai.defaults.explain` and `ai.defaults.command` (the three `AI_FUNCTIONS`, each with its `provider` and its `model`), and nothing else: it does not turn `ai.enabled` on. `knownProviderIds` is `knownAiProviderIds(config.ai?.providers)`, which is `ollama` and the ids listed in `ai.providers`. The result is `{ ok: true, edits }`, or `{ ok: false, reason }` with no edits for a provider the settings do not know (`unknown-provider`: they would not pass the schema) or a model that is blank or longer than `MAX_AI_MODEL` (`bad-model`). The comments and the other settings of the file stay, because `editConfigText` only replaces or inserts the values.
+
+**The CSV.** `benchScoreboardCsv(rows)` writes `BENCH_CSV_HEADER` (`rank,provider_id,model,runs,file,started_at,state,planned,done,errors,accuracy,accuracy_command,accuracy_explain,accuracy_summarize,median_first_chunk_ms,median_total_ms,median_tokens_per_second,tokens_source,memory_bytes,memory_vram_bytes,recommended`) and a record for each row, cells separated by a comma and every line, the last too, ended by `\n`. Numbers are written with `String` (a point, no grouping, no locale) and an empty cell is a number there is no reading for. A cell is put in quotes, with each quote doubled, when it has a comma, a quote or a line break (RFC 4180). The model name and the provider id come from the provider, so a text that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets an apostrophe in front (`=1+1` is written `'=1+1`) and a spreadsheet shows it as text instead of running it. `recommended` is `true` on the row `recommendBenchModel` picks.
+
+Run the tests with `pnpm exec vitest run packages/model/src/bench-scoreboard.test.ts`.

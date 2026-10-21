@@ -194,6 +194,9 @@ Cutting a release, in order:
    installers come from this last step.
 3. Push the tag. When the workflow finishes, open the draft release on GitHub, add the two Windows
    installers by hand, and publish.
+4. Optionally make the winget, Scoop and AUR manifests from those same files with
+   `pnpm packages:generate --deb <the deb>` and submit them by hand; see [PACKAGES.md](PACKAGES.md).
+   The generator writes under `target/packages/<version>/` and submits nothing.
 
 `pnpm workflows:check` validates every file in `.github/workflows` (YAML syntax, the runner label
 `[self-hosted, linux, noren]` on every job, no sudo, apt or hosted runner label, the tag and draft

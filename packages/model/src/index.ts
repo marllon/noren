@@ -8,6 +8,7 @@ export type {
   BrowserOpenOptions,
   CreateSessionOptions,
   AgentHit,
+  BenchResultFile,
   GitInfo,
   ModFile,
   SessionExit,
@@ -548,6 +549,24 @@ export type {
   BenchTotals,
   RunBenchOptions,
 } from "./bench-runner";
+export {
+  MAX_BENCH_RESULT_BYTES,
+  MAX_BENCH_RESULTS,
+  MAX_BENCH_SUFFIX,
+  benchFileName,
+  benchStampOfStartedAt,
+  benchStartedAtOf,
+  compareBenchFileNamesNewestFirst,
+  freeBenchFileName,
+  isBenchResultText,
+  isBenchStamp,
+  loadBenchRuns,
+  parseBenchFileName,
+  parseBenchResult,
+  saveBenchRun,
+  serializeBenchRun,
+} from "./bench-results";
+export type { SavedBenchRun } from "./bench-results";
 export {
   BENCH_DISTRIBUTION,
   benchTaskSchema,

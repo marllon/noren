@@ -22,6 +22,7 @@ import type {
   AttachSessionOptions,
   Backend,
   BackgroundImageFile,
+  BenchResultFile,
   BrowserBounds,
   BrowserOpenOptions,
   CreateSessionOptions,
@@ -447,6 +448,15 @@ export class TauriBackend implements Backend {
 
   async saveUserTheme(id: string, text: string): Promise<void> {
     await this.#bridge.invoke("theme_save", { id, content: text });
+  }
+
+  saveBenchResult(text: string): Promise<string> {
+    return this.#bridge.invoke<string>("bench_save", { content: text });
+  }
+
+  async listBenchResults(): Promise<BenchResultFile[]> {
+    const files = await this.#bridge.invoke<BenchResultFile[]>("bench_list");
+    return files.map(({ name, text }) => ({ name, text }));
   }
 
   async listMods(): Promise<ModFile[]> {

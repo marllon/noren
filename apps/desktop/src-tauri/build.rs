@@ -38,6 +38,8 @@ const COMMANDS: &[&str] = &[
     "config_watch",
     "theme_list",
     "theme_save",
+    "bench_list",
+    "bench_save",
     "scrollback_load",
     "scrollback_list",
     "scrollback_save",

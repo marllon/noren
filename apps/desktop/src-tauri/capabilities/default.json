@@ -38,6 +38,8 @@
     "allow-config-watch",
     "allow-theme-list",
     "allow-theme-save",
+    "allow-bench-list",
+    "allow-bench-save",
     "allow-scrollback-load",
     "allow-scrollback-list",
     "allow-scrollback-save",

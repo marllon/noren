@@ -12,12 +12,13 @@ use std::time::Duration;
 
 use noren_core::daemon::LinkState;
 use noren_core::{
-    ACTIONS_FILE_PATH, AgentEntry, BackgroundStore, CONFIG_FILE_NAME, ConfigStore, ConfigWatcher,
-    GitHead, MODS_DIR_NAME, ModFile, ModStore, ModWatcher, ProcessSource, Profile, ProfileSet,
-    SCROLLBACK_DIR_NAME, ScrollbackStore, SessionEvent, SessionId, SpawnSpec, SshProfile,
-    StateStore, SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect, Worktree,
-    check_catalog, create_worktree, detect_system_profiles, list_worktrees, native_path, read_head,
-    read_project_file, remove_worktree, run_short, scan_sessions,
+    ACTIONS_FILE_PATH, AgentEntry, BENCH_DIR_NAME, BackgroundStore, BenchFile, BenchStore,
+    CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, GitHead, MODS_DIR_NAME, ModFile, ModStore,
+    ModWatcher, ProcessSource, Profile, ProfileSet, SCROLLBACK_DIR_NAME, ScrollbackStore,
+    SessionEvent, SessionId, SpawnSpec, SshProfile, StateStore, SystemProcesses, THEMES_DIR_NAME,
+    ThemeStore, UserProfile, WindowEffect, Worktree, check_catalog, create_worktree,
+    detect_system_profiles, list_worktrees, native_path, read_head, read_project_file,
+    remove_worktree, run_short, scan_sessions,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -965,6 +966,85 @@ pub async fn theme_save(
     content: String,
 ) -> Result<(), String> {
     state.save(&id, &content)
+}
+
+/// One result of the bench as the interface sees it: the name of its file and its text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BenchFileDto {
+    pub name: String,
+    pub text: String,
+}
+
+impl From<BenchFile> for BenchFileDto {
+    fn from(file: BenchFile) -> Self {
+        Self {
+            name: file.name,
+            text: file.text,
+        }
+    }
+}
+
+/// The folder of the bench results, `bench-results` in the app data folder next to `state.json`.
+pub struct BenchState {
+    pub store: BenchStore,
+    writing_allowed: bool,
+}
+
+impl BenchState {
+    pub fn new(store: BenchStore) -> Self {
+        Self {
+            store,
+            writing_allowed: true,
+        }
+    }
+
+    /// The same, but `save` refuses: the smoke run must leave the files of the user as they are.
+    /// Listing still works (it only reads, and never creates the folder).
+    pub fn without_writing(mut self) -> Self {
+        self.writing_allowed = false;
+        self
+    }
+
+    /// The results in the folder, newest first (see [`BenchStore::list`]).
+    pub fn list(&self) -> Result<Vec<BenchFileDto>, String> {
+        self.store
+            .list()
+            .map(|files| files.into_iter().map(BenchFileDto::from).collect())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Writes the run in `text`, named from its start time, and returns the name of the file.
+    pub fn save(&self, text: &str) -> Result<String, String> {
+        if !self.writing_allowed {
+            return Err("this run does not write bench results".to_owned());
+        }
+        self.store.save(text).map_err(|e| e.to_string())
+    }
+}
+
+/// Builds the store for the bench results: the `bench-results` folder inside the app data folder,
+/// next to `state.json`. Only resolves the path: the folder is created when a result is first saved.
+pub fn bench_store(app: &AppHandle) -> Result<BenchStore, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("could not find the app data folder: {e}"))?;
+    Ok(BenchStore::new(dir.join(BENCH_DIR_NAME)))
+}
+
+/// The bench results saved so far, newest first. Validating them against the schema of a run
+/// belongs to the interface.
+#[tauri::command]
+pub async fn bench_list(state: State<'_, BenchState>) -> Result<Vec<BenchFileDto>, String> {
+    state.list()
+}
+
+/// Writes the run in `content` to `bench-results/<start time>.json` atomically, creating the folder
+/// when there is none, and returns the name of the file. The name is made from the `startedAt` of
+/// the run: the interface does not name files.
+#[tauri::command]
+pub async fn bench_save(state: State<'_, BenchState>, content: String) -> Result<String, String> {
+    state.save(&content)
 }
 
 /// The folder of the scrollback snapshots of the panes, next to `state.json`.
@@ -2103,6 +2183,71 @@ mod tests {
         let message = state.save("lagoon", "{}").expect_err("the save is refused");
         assert!(message.contains("does not write"));
         assert!(!folder.exists(), "the themes folder was created");
+        assert_eq!(state.list(), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn bench_state_saves_and_lists_through_its_store() {
+        let dir = TempDir::new("bench-round-trip");
+        let folder = dir.0.join("not-yet").join(BENCH_DIR_NAME);
+        let state = BenchState::new(BenchStore::new(&folder));
+        assert_eq!(state.list(), Ok(Vec::new()));
+        assert!(!folder.exists(), "listing created the bench results folder");
+        let older = "{\"startedAt\":\"2026-10-20T14:05:09.000Z\"}";
+        let newer = "{\"startedAt\":\"2026-10-20T14:06:00.000Z\"}";
+        assert_eq!(state.save(older), Ok("2026-10-20-140509.json".to_owned()));
+        assert_eq!(state.save(newer), Ok("2026-10-20-140600.json".to_owned()));
+        assert_eq!(
+            std::fs::read_to_string(folder.join("2026-10-20-140509.json")).expect("read"),
+            older
+        );
+        assert_eq!(
+            state.list(),
+            Ok(vec![
+                BenchFileDto {
+                    name: "2026-10-20-140600.json".to_owned(),
+                    text: newer.to_owned()
+                },
+                BenchFileDto {
+                    name: "2026-10-20-140509.json".to_owned(),
+                    text: older.to_owned()
+                },
+            ])
+        );
+    }
+
+    #[test]
+    fn bench_save_refuses_what_is_not_a_run_and_failures_are_messages() {
+        let dir = TempDir::new("bench-bad-run");
+        let folder = dir.0.join(BENCH_DIR_NAME);
+        let state = BenchState::new(BenchStore::new(&folder));
+        let message = state
+            .save("{\"startedAt\":\"../../config\"}")
+            .expect_err("refused");
+        assert!(message.starts_with("the bench result is not a run"));
+        assert!(!folder.exists());
+        assert!(!dir.0.join("config.json").exists());
+
+        // A file where the folder should be: the text cannot go there, and the message says so.
+        let blocked = dir.0.join("blocked");
+        std::fs::write(&blocked, b"in the way").expect("write");
+        let message = BenchState::new(BenchStore::new(&blocked))
+            .save("{\"startedAt\":\"2026-10-20T14:05:09Z\"}")
+            .expect_err("fails");
+        assert!(message.starts_with("could not write the bench result"));
+    }
+
+    #[test]
+    fn bench_state_without_writing_lists_but_does_not_write() {
+        // The smoke run: saving would make the folder and the file of the user.
+        let dir = TempDir::new("bench-no-write");
+        let folder = dir.0.join("not-yet");
+        let state = BenchState::new(BenchStore::new(&folder)).without_writing();
+        let message = state
+            .save("{\"startedAt\":\"2026-10-20T14:05:09Z\"}")
+            .expect_err("the save is refused");
+        assert!(message.contains("does not write"));
+        assert!(!folder.exists(), "the bench results folder was created");
         assert_eq!(state.list(), Ok(Vec::new()));
     }
 

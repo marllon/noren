@@ -131,6 +131,12 @@ export interface ModFile {
   text: string;
 }
 
+/** A bench result on disk: the name of its file in `bench-results` (`2026-10-20-140509.json`) and its JSON text. */
+export interface BenchResultFile {
+  name: string;
+  text: string;
+}
+
 export interface Backend {
   /** The AI providers: which ones there are, their keys, Ollama's models and the connection test. */
   readonly ai: AiBackend;
@@ -284,6 +290,24 @@ export interface Backend {
    * (`serializeTheme`). Rejects when the file cannot be written.
    */
   saveUserTheme(id: string, text: string): Promise<void>;
+  /**
+   * Writes the result of a bench run, the JSON of a `BenchRun`, to `bench-results/<name>.json` in
+   * the data folder of the app, atomically, and resolves with the name of the file. The caller does
+   * not name the file: it is `<YYYY-MM-DD-HHmmss>.json` from the `startedAt` of the run (UTC), and
+   * `<...>-2.json`, `-3`, ... when that second already has a file, so a result is never replaced.
+   * Rejects, writing nothing, when `text` is not a JSON object with an ISO 8601 `startedAt` in UTC,
+   * is larger than `MAX_BENCH_RESULT_BYTES` or cannot be written. Whether it is a valid run is the
+   * caller's job (`saveBenchRun` checks it with `benchRunSchema` first).
+   */
+  saveBenchResult(text: string): Promise<string>;
+  /**
+   * The saved bench results, newest first (by start time, then by the number in the second): at
+   * most `MAX_BENCH_RESULTS`. The folder missing is no files. A file is left out when its name is
+   * not one `saveBenchResult` writes, when it is a folder, is not UTF-8 text, is not shaped like a
+   * JSON object or is larger than `MAX_BENCH_RESULT_BYTES`. Whether what is left is a valid run is
+   * the caller's job (`loadBenchRuns`). Rejects when the folder cannot be read.
+   */
+  listBenchResults(): Promise<BenchResultFile[]>;
   /**
    * The CSS files of the user (`mods/*.css` next to `config.jsonc`), in the order of the file
    * names. The folder missing is no files. A file is left out when its name is not a mod name

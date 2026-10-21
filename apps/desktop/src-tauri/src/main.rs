@@ -36,7 +36,9 @@ use tauri::{Listener, Manager, RunEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 
 use ai::AiState;
-use bridge::{AppState, BackgroundState, ConfigState, ModState, ScrollbackState, ThemeState};
+use bridge::{
+    AppState, BackgroundState, BenchState, ConfigState, ModState, ScrollbackState, ThemeState,
+};
 use daemon_link::{DEFAULT_ENDPOINT_NAME, DaemonSettings, Host};
 use pane_sessions::PaneBook;
 
@@ -201,6 +203,8 @@ fn main() {
             bridge::config_watch,
             bridge::theme_list,
             bridge::theme_save,
+            bridge::bench_list,
+            bridge::bench_save,
             bridge::scrollback_load,
             bridge::scrollback_list,
             bridge::scrollback_save,
@@ -287,6 +291,13 @@ fn main() {
                         themes.without_writing()
                     } else {
                         themes
+                    });
+                    // The smoke run lists the bench results of the user (a read) but never writes one.
+                    let bench = BenchState::new(bridge::bench_store(app.handle())?);
+                    app.manage(if smoke {
+                        bench.without_writing()
+                    } else {
+                        bench
                     });
                     // The smoke run reads the scrollback snapshots of the user but never writes or
                     // removes one.

@@ -11,17 +11,17 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use noren_core::{
-    BackgroundStore, CONFIG_FILE_NAME, ConfigStore, MODS_DIR_NAME, ModStore, ProcessSource,
-    SCROLLBACK_DIR_NAME, ScrollbackStore, SessionId, StateStore, SystemProcesses, THEMES_DIR_NAME,
-    ThemeStore, WindowEffect, is_powershell,
+    BENCH_DIR_NAME, BackgroundStore, BenchStore, CONFIG_FILE_NAME, ConfigStore, MODS_DIR_NAME,
+    ModStore, ProcessSource, SCROLLBACK_DIR_NAME, ScrollbackStore, SessionId, StateStore,
+    SystemProcesses, THEMES_DIR_NAME, ThemeStore, WindowEffect, is_powershell,
 };
 use serde_json::{Value, json};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Listener, Manager};
 
 use crate::bridge::{
-    self, AppState, BackgroundState, ConfigState, ModState, STATE_FILE_NAME, ScrollbackState,
-    ThemeState,
+    self, AppState, BackgroundState, BenchState, ConfigState, ModState, STATE_FILE_NAME,
+    ScrollbackState, ThemeState,
 };
 use crate::daemon_link::Placement;
 use crate::deeplink::{self, Links};
@@ -608,12 +608,13 @@ pub fn deeplink_target(args: &[String]) -> Result<DeepLinkTarget, String> {
 }
 
 /// Every file of the app for a smoke run that must not touch the files of the user, kept in one
-/// folder of its own: the saved state (empty), the settings, the themes, the scrollback snapshots,
+/// folder of its own: the saved state (empty), the settings, the themes, the bench results, the scrollback snapshots,
 /// the mods and the pictures of a background (relative paths are inside the folder).
 pub struct SandboxStores {
     pub state: StateStore,
     pub config: ConfigStore,
     pub themes: ThemeStore,
+    pub bench: BenchStore,
     pub scrollback: ScrollbackStore,
     pub mods: ModStore,
     pub background: BackgroundStore,
@@ -625,6 +626,7 @@ pub fn sandbox_stores(dir: &Path) -> SandboxStores {
         state: StateStore::new(dir.join(STATE_FILE_NAME)),
         config: ConfigStore::new(dir.join(CONFIG_FILE_NAME)),
         themes: ThemeStore::new(dir.join(THEMES_DIR_NAME)),
+        bench: BenchStore::new(dir.join(BENCH_DIR_NAME)),
         scrollback: ScrollbackStore::new(dir.join(SCROLLBACK_DIR_NAME)),
         mods: ModStore::new(dir.join(MODS_DIR_NAME)),
         background: BackgroundStore::new(dir.to_path_buf()),
@@ -639,6 +641,7 @@ pub fn manage_sandbox_stores(app: &tauri::App, dir: &Path) {
     app.manage(stores.state);
     app.manage(ConfigState::new(stores.config));
     app.manage(ThemeState::new(stores.themes));
+    app.manage(BenchState::new(stores.bench));
     app.manage(ScrollbackState::new(stores.scrollback));
     app.manage(ModState::new(stores.mods).without_watching());
     app.manage(BackgroundState::new(stores.background));
@@ -1086,6 +1089,8 @@ mod tests {
         assert_eq!(stores.config.path(), first.state_dir.join("config.jsonc"));
         // And the themes folder.
         assert_eq!(stores.themes.dir(), first.state_dir.join("themes"));
+        // And the bench results.
+        assert_eq!(stores.bench.dir(), first.state_dir.join("bench-results"));
         // And the mods folder.
         assert_eq!(stores.mods.dir(), first.state_dir.join("mods"));
         // And the scrollback snapshots.

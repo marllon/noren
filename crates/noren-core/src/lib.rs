@@ -3,6 +3,7 @@
 pub mod agents;
 pub mod ai;
 pub mod background;
+pub mod bench;
 pub mod config;
 pub mod daemon;
 pub mod fonts;
@@ -33,6 +34,10 @@ pub use ai::{
 };
 // Re-exported so the app can cancel a request without depending on tokio-util itself.
 pub use background::{BackgroundError, BackgroundStore, MAX_BACKGROUND_BYTES, sniff_image};
+pub use bench::{
+    BENCH_DIR_NAME, BenchError, BenchFile, BenchStore, MAX_BENCH_BYTES, MAX_BENCH_RESULTS,
+    is_valid_bench_stamp,
+};
 pub use config::{CONFIG_FILE_NAME, ConfigError, ConfigStore, ConfigWatcher};
 pub use fonts::{MAX_FONT_NAME_CHARS, is_font_name, list_monospace_families, monospace_families};
 pub use git::{GitHead, read_head};

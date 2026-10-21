@@ -21,6 +21,7 @@ import type {
   AttachSessionOptions,
   Backend,
   BrowserOpenOptions,
+  BenchResultFile,
   CreateSessionOptions,
   GitInfo,
   ModFile,
@@ -34,6 +35,16 @@ import type {
 } from "./backend";
 import { MAX_BACKGROUND_BYTES, backgroundImageProblem, sniffImageMime } from "./background";
 import type { BackgroundImageFile } from "./background";
+import {
+  MAX_BENCH_RESULT_BYTES,
+  MAX_BENCH_RESULTS,
+  benchStampOfStartedAt,
+  benchStartedAtOf,
+  compareBenchFileNamesNewestFirst,
+  freeBenchFileName,
+  isBenchResultText,
+  parseBenchFileName,
+} from "./bench-results";
 import { ManualClock } from "./clock";
 import type { Clock } from "./clock";
 import { sameFolder } from "./deep-link";
@@ -149,6 +160,8 @@ export interface FakeBackendOptions {
   config?: string | null;
   /** Initial theme files of the user, by theme id (the text of `themes/<id>.json`). */
   userThemes?: Record<string, string>;
+  /** Initial bench result files, by file name (the text of `bench-results/<name>`). */
+  benchResults?: Record<string, string>;
   /** Initial mod files of the user, by file name (the text of `mods/<name>.css`). */
   mods?: Record<string, string>;
   /** Initial scrollback snapshots, by pane id (the text of `scrollback/<paneId>.txt`). */
@@ -824,6 +837,10 @@ class FakeAi implements AiBackend {
  * - the theme files of the user live in memory too: `saveUserTheme` writes one as the app does
  *   (an id that is not a theme id is refused, as the real one refuses it), `setUserTheme` puts a
  *   file there as if it had been placed by hand, `listUserThemes` answers them in the order of the ids
+ * - the bench result files live in memory: `saveBenchResult` names and writes one as the app does
+ *   (the name from the `startedAt` of the run, a suffix when the second is taken, nothing replaced,
+ *   text that is no run of a known time refused), `setBenchResult` puts a file there as if it had
+ *   been placed by hand, and `listBenchResults` answers the ones the real folder would list, newest first
  * - the mod files of the user live in memory: `setMod` puts a file there, edits it or removes it as
  *   a person with an editor would, and tells whoever called `watchMods`; `listMods` answers the
  *   ones the real folder would list (a valid name, not too large, at most `MAX_MODS`) by name
@@ -893,6 +910,7 @@ export class FakeBackend implements Backend {
   readonly #windowClosedListeners = new Set<(windowId: Id) => void>();
   readonly #configListeners = new Set<(text: string | null) => void>();
   readonly #userThemes = new Map<string, string>();
+  readonly #benchResults = new Map<string, string>();
   readonly #mods = new Map<string, string>();
   readonly #scrollback = new Map<string, string>();
   readonly #modListeners = new Set<(files: ModFile[]) => void>();
@@ -905,6 +923,8 @@ export class FakeBackend implements Backend {
   #modListFailure: Error | undefined;
   #scrollbackFailure: Error | undefined;
   #userThemeSaveFailure: Error | undefined;
+  #benchSaveFailure: Error | undefined;
+  #benchListFailure: Error | undefined;
   #config: string | null;
   #configSaveFailure: Error | undefined;
   #windowFocused = true;
@@ -926,6 +946,9 @@ export class FakeBackend implements Backend {
     this.#config = options.config ?? null;
     for (const [id, text] of Object.entries(options.userThemes ?? {})) {
       this.#userThemes.set(id, text);
+    }
+    for (const [name, text] of Object.entries(options.benchResults ?? {})) {
+      this.#benchResults.set(name, text);
     }
     for (const [name, text] of Object.entries(options.mods ?? {})) {
       this.#mods.set(name, text);
@@ -1524,6 +1547,64 @@ export class FakeBackend implements Backend {
   /** Makes `saveUserTheme` reject with `error` (the disk refused); `undefined` undoes it. */
   setUserThemeSaveFailure(error: Error | undefined): void {
     this.#userThemeSaveFailure = error;
+  }
+
+  async saveBenchResult(text: string): Promise<string> {
+    this.#record("saveBenchResult", text);
+    if (this.#benchSaveFailure) throw this.#benchSaveFailure;
+    if (new TextEncoder().encode(text).length > MAX_BENCH_RESULT_BYTES) {
+      throw new Error(`the bench result is larger than ${MAX_BENCH_RESULT_BYTES} bytes`);
+    }
+    const stamp = benchStampOfStartedAt(benchStartedAtOf(text));
+    if (stamp === undefined) {
+      throw new Error("the bench result is not a run: startedAt is not an ISO 8601 time in UTC");
+    }
+    const name = freeBenchFileName(stamp, new Set(this.#benchResults.keys()));
+    if (name === undefined) {
+      throw new Error(`there are already too many bench results from the second ${stamp}`);
+    }
+    this.#benchResults.set(name, text);
+    return name;
+  }
+
+  async listBenchResults(): Promise<BenchResultFile[]> {
+    this.#record("listBenchResults");
+    if (this.#benchListFailure) throw this.#benchListFailure;
+    return [...this.#benchResults.entries()]
+      .filter(
+        ([name, text]) =>
+          parseBenchFileName(name) !== undefined &&
+          new TextEncoder().encode(text).length <= MAX_BENCH_RESULT_BYTES &&
+          isBenchResultText(text),
+      )
+      .sort(([a], [b]) => compareBenchFileNamesNewestFirst(a, b))
+      .slice(0, MAX_BENCH_RESULTS)
+      .map(([name, text]) => ({ name, text }));
+  }
+
+  /**
+   * Puts the bench result file `bench-results/<name>` in place with `text` (`null` removes it), as
+   * if somebody had placed it by hand: any name goes, so a test can leave a file the real folder
+   * would not list. Not a `Backend` call, so it is not recorded.
+   */
+  setBenchResult(name: string, text: string | null): void {
+    if (text === null) this.#benchResults.delete(name);
+    else this.#benchResults.set(name, text);
+  }
+
+  /** The bench result files as they are now, by file name (every file, listed or not). */
+  get benchResultFiles(): Readonly<Record<string, string>> {
+    return Object.fromEntries(this.#benchResults);
+  }
+
+  /** Makes `saveBenchResult` reject with `error` (the disk refused); `undefined` undoes it. */
+  setBenchSaveFailure(error: Error | undefined): void {
+    this.#benchSaveFailure = error;
+  }
+
+  /** Makes `listBenchResults` reject with `error` (the folder cannot be read); `undefined` undoes it. */
+  setBenchListFailure(error: Error | undefined): void {
+    this.#benchListFailure = error;
   }
 
   async listMods(): Promise<ModFile[]> {

@@ -100,6 +100,24 @@ A call that fails (an `error` event, `chat` rejecting, or an answer that ends wi
 
 **Cancelling.** When `signal` aborts, the request in flight is cancelled with `ai.cancel`, no further task is sent and the result is `cancelled` with the tasks that were done; the one cut short is not among them. A task that ended with `done` before the cancel took effect is kept. `planned` tells how many tasks the run was asked to do.
 
-**The result.** `runBench` returns a `BenchRun` (and `benchRunSchema` reads it back from JSON): `version`, `startedAt` (ISO 8601, UTC), the `provider` (`id`, `kind` and `baseUrl`; never a key), the `model`, the `state` (`complete` or `cancelled`), `planned`, the `tasks`, the `totals` and `memory`, which is `null` until the memory of the model is measured. Its file is `bench-results/<YYYY-MM-DD-HHmmss>.json`, named from the start of the run in UTC by `benchResultPath`. Writing it is not done yet (NOR-F16-02b), nor are the real token counts of the stream and the memory read from Ollama.
+**The result.** `runBench` returns a `BenchRun` (and `benchRunSchema` reads it back from JSON): `version`, `startedAt` (ISO 8601, UTC), the `provider` (`id`, `kind` and `baseUrl`; never a key), the `model`, the `state` (`complete` or `cancelled`), `planned`, the `tasks`, the `totals` and `memory`, which is `null` until the memory of the model is measured. Its file is `bench-results/<YYYY-MM-DD-HHmmss>.json`, named from the start of the run in UTC by `benchResultPath`. The real token counts of the stream and the memory read from Ollama are not done yet (NOR-F16-02c).
 
 Run the tests of the runner with `pnpm exec vitest run packages/model/src/bench-runner.test.ts`.
+
+## The results on disk
+
+`Backend.saveBenchResult(text)` writes a run and `Backend.listBenchResults()` lists the ones written. The code is `crates/noren-core/src/bench.rs` (`BenchStore`, no Tauri), the commands `bench_save` and `bench_list` in the Tauri app (the main window only), `FakeBackend` for the tests and the web demo (in memory only, so a web page forgets its results when it is closed) and `packages/model/src/bench-results.ts` for the page.
+
+**The folder.** `bench-results/` in the data folder of the app, next to `state.json`. It is created when the first result is saved; listing never creates it, and a folder that is not there is no results.
+
+**The name is not the caller's.** `saveBenchResult` takes only the text of the run. The file name is built from its `startedAt` (an ISO 8601 time in UTC, the form `Date.toISOString` writes): `2026-10-20T14:05:09.123Z` is `2026-10-20-140509.json`, the same name `benchResultPath` gives. A name has to be exactly `YYYY-MM-DD-HHmmss` with a real month, day and time (a slash, `..`, a drive, an absolute path or another shape is refused before anything is written), so the path can never leave the folder. A text that is not a JSON object with such a `startedAt` is refused too.
+
+**Two runs in the same second** (a second window, a script) are `2026-10-20-140509.json`, then `-2.json`, `-3.json`; a file is never replaced, and the call resolves with the name it was written under. Up to 999 files fit in one second.
+
+**Writing** is atomic (a temporary file beside it, then a rename), the same way as `state.json`. A text over 1 MiB (`MAX_BENCH_RESULT_BYTES`; a run of the 60 tasks is about 30 KiB) is refused.
+
+**Listing** returns `{ name, text }` newest first: by start time, and `-3` before `-2` before the file with no suffix. At most 100 are returned (`MAX_BENCH_RESULTS`). A file is left out when its name is not one the app writes, when it is a folder or a link to one, is not UTF-8 text, is not shaped like a JSON object or is over 1 MiB; a file that is left out does not count toward the 100.
+
+**The page checks the run twice.** The core keeps text and does not know the schema. `saveBenchRun(backend, run)` checks the run with `benchRunSchema` and rejects, calling the backend not at all, when it is not valid; `loadBenchRuns(backend)` checks every listed file again and leaves out the ones that are not JSON or not a valid run, so a file edited by hand or written by a later version never stops the list. A backend that cannot read the folder rejects.
+
+Run the tests with `pnpm exec vitest run packages/model/src/bench-results.test.ts` and `cargo test -p noren-core bench`.

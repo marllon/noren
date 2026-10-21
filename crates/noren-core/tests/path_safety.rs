@@ -8,8 +8,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use noren_core::{
-    BackgroundError, BackgroundStore, ModStore, ScrollbackStore, ThemeError, ThemeStore,
-    is_valid_mod_file_name, is_valid_pane_id, is_valid_theme_id,
+    BackgroundError, BackgroundStore, BenchError, BenchStore, ModStore, ScrollbackStore,
+    ThemeError, ThemeStore, is_valid_bench_stamp, is_valid_mod_file_name, is_valid_pane_id,
+    is_valid_theme_id,
 };
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -224,6 +225,85 @@ fn saving_a_theme_writes_only_inside_its_folder() {
             "outside"
         ]
     );
+}
+
+#[test]
+fn saving_a_bench_result_with_a_hostile_stamp_or_start_time_writes_nothing_anywhere() {
+    let sandbox = Sandbox::new("bench");
+    fs::write(sandbox.outside().join("escape.json"), "secret").unwrap();
+    let store = BenchStore::new(sandbox.inside().join("bench-results"));
+    let before = sandbox.tree();
+    for stamp in HOSTILE_STEMS {
+        match store.save_stamped(stamp, "{}") {
+            Err(BenchError::InvalidStamp(refused)) => assert_eq!(&refused, stamp),
+            other => panic!("{stamp:?}: {other:?}"),
+        }
+        assert!(!is_valid_bench_stamp(stamp), "{stamp:?}");
+    }
+    for stamp in [
+        "../outside/escape",
+        "..\\outside\\escape",
+        "../../escape",
+        "../bench-results/x",
+        "2026-10-20-140509/../../outside/escape",
+    ] {
+        assert!(matches!(
+            store.save_stamped(stamp, "{}"),
+            Err(BenchError::InvalidStamp(_))
+        ));
+    }
+    // The name comes from the text of the run, so a hostile `startedAt` is the other way in.
+    for started_at in [
+        "../../outside/escape",
+        "2026-10-20T14:05:09Z/../../outside/escape",
+        "2026-10-20T14:05:09.Z/..",
+        "..",
+        "C:\\escape",
+    ] {
+        let text = format!("{{\"startedAt\":{started_at:?}}}");
+        assert!(
+            matches!(store.save(&text), Err(BenchError::InvalidRun(_))),
+            "{started_at:?}"
+        );
+    }
+    assert_eq!(
+        sandbox.tree(),
+        before,
+        "a refused save must not create the folder or a file"
+    );
+    assert_eq!(
+        fs::read_to_string(sandbox.outside().join("escape.json")).unwrap(),
+        "secret"
+    );
+}
+
+#[test]
+fn saving_a_bench_result_writes_only_inside_its_folder_and_listing_never_reads_outside() {
+    let sandbox = Sandbox::new("bench-ok");
+    let results = sandbox.inside().join("bench-results");
+    let store = BenchStore::new(&results);
+    let name = store
+        .save("{\"startedAt\":\"2026-10-20T14:05:09.000Z\"}")
+        .expect("save");
+    assert_eq!(name, "2026-10-20-140509.json");
+    assert_eq!(
+        sandbox.tree(),
+        [
+            "inside",
+            "inside/bench-results",
+            "inside/bench-results/2026-10-20-140509.json",
+            "outside"
+        ]
+    );
+    // A file with a good name next to the folder is not listed.
+    fs::write(
+        sandbox.inside().join("2026-10-21-000000.json"),
+        "{\"startedAt\":\"2026-10-21T00:00:00Z\"}",
+    )
+    .unwrap();
+    let listed = store.list().expect("list");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].name, name);
 }
 
 #[test]

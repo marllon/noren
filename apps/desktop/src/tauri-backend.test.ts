@@ -779,6 +779,33 @@ describe("TauriBackend", () => {
     ]);
   });
 
+  it("saves a bench result through bench_save with the text untouched and resolves with the file name", async () => {
+    const text = '{\r\n  "startedAt": "2026-10-20T14:05:09.000Z", "model": "café"\r\n}\r\n';
+    const fake = fakeBridge({ bench_save: "2026-10-20-140509.json" });
+    await expect(new TauriBackend(fake.bridge).saveBenchResult(text)).resolves.toBe(
+      "2026-10-20-140509.json",
+    );
+    expect(fake.invocations).toEqual([{ command: "bench_save", args: { content: text } }]);
+  });
+
+  it("lists the bench results through bench_list as name and text, in the order the Rust side sent", async () => {
+    const files = [
+      { name: "2026-10-21-000000.json", text: "{}" },
+      { name: "2026-10-20-140509.json", text: '{"a":1}' },
+    ];
+    const fake = fakeBridge({ bench_list: files });
+    await expect(new TauriBackend(fake.bridge).listBenchResults()).resolves.toEqual(files);
+    expect(fake.invocations).toEqual([{ command: "bench_list", args: undefined }]);
+  });
+
+  it("lets a bench_list and a bench_save failure reach the caller", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    fake.failing.add("bench_list").add("bench_save");
+    await expect(backend.listBenchResults()).rejects.toThrow("bench_list failed");
+    await expect(backend.saveBenchResult("{}")).rejects.toThrow("bench_save failed");
+  });
+
   it("loads, saves and deletes a scrollback snapshot through the scrollback commands, by pane id", async () => {
     const fake = fakeBridge({ scrollback_load: "old text\nlines" });
     const backend = new TauriBackend(fake.bridge);

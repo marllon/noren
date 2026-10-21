@@ -162,6 +162,7 @@ fn only_the_main_window_may_call_what_owns_or_changes_the_workspace() {
         "config_save",
         "config_watch",
         "theme_save",
+        "bench_save",
         "scrollback_save",
         "scrollback_delete",
         "profiles_set_user",

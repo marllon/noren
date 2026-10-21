@@ -20,6 +20,7 @@ use std::fmt;
 
 use serde_json::{Map, Value, json};
 
+use super::events::{EventFilter, EventKind};
 use crate::daemon::protocol::{FRAME_HEADER_BYTES, MAX_FRAME_BYTES, ProtocolError};
 
 /// The version of the conversation described above.
@@ -40,6 +41,9 @@ pub const MAX_SEND_KEYS: usize = 64;
 pub const MAX_KEY_CHARS: usize = 32;
 /// Most lines one `terminal.read` asks for.
 pub const MAX_READ_LINES: u32 = 10_000;
+/// Most entries `types` of `events.subscribe` may hold (there are fewer kinds; this bounds the
+/// work on a hostile list).
+pub const MAX_EVENT_TYPES: usize = 16;
 
 /// The methods a client may call. The list is closed: anything else is `unknown_method`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -318,9 +322,23 @@ pub fn parse_auth(payload: &[u8]) -> Result<AuthMessage, ApiError> {
     Ok(AuthMessage { version, token })
 }
 
-/// Reads a request. On an error the id is returned when it could be read, so the answer can
-/// carry it.
-pub fn parse_request(payload: &[u8]) -> Result<(u64, ApiCall), (Option<u64>, ApiError)> {
+/// What a client may ask after the authentication: a call for the handler, or a subscription to
+/// events, which the server answers itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClientRequest {
+    Call(ApiCall),
+    Subscribe(EventFilter),
+}
+
+/// The name of the request that subscribes to events. It is not an [`ApiMethod`]: the handler
+/// never sees it.
+pub const SUBSCRIBE_METHOD: &str = "events.subscribe";
+
+/// A request that failed: the id when it could be read, and the error.
+type Failure = (Option<u64>, ApiError);
+
+/// Reads the three fields every request has, and nothing else: `id`, `method` and `params`.
+fn parse_envelope(payload: &[u8]) -> Result<(u64, String, Option<Value>), Failure> {
     let mut map = parse_json_object(payload).map_err(|e| (None, e))?;
     let id = map.get("id").and_then(Value::as_u64);
     let Some(id_value) = id else {
@@ -342,15 +360,84 @@ pub fn parse_request(payload: &[u8]) -> Result<(u64, ApiCall), (Option<u64>, Api
             shorten(extra)
         ))));
     }
+    Ok((id_value, method, params))
+}
+
+fn unknown_method(method: &str) -> ApiError {
+    ApiError::new(
+        ApiErrorCode::UnknownMethod,
+        format!("unknown method {}", shorten(method)),
+    )
+}
+
+/// Reads a request for the handler. On an error the id is returned when it could be read, so the
+/// answer can carry it. `events.subscribe` is not here: see [`parse_client_request`].
+pub fn parse_request(payload: &[u8]) -> Result<(u64, ApiCall), (Option<u64>, ApiError)> {
+    let (id, method, params) = parse_envelope(payload)?;
+    let fail = |e: ApiError| (Some(id), e);
     let Some(method) = ApiMethod::from_name(&method) else {
-        return Err(fail(ApiError::new(
-            ApiErrorCode::UnknownMethod,
-            format!("unknown method {}", shorten(&method)),
-        )));
+        return Err(fail(unknown_method(&method)));
     };
     parse_call(method, params)
-        .map(|call| (id_value, call))
+        .map(|call| (id, call))
         .map_err(fail)
+}
+
+/// Reads a request of an authenticated connection: a call of [`ApiMethod`] or `events.subscribe`.
+pub fn parse_client_request(
+    payload: &[u8],
+) -> Result<(u64, ClientRequest), (Option<u64>, ApiError)> {
+    let (id, method, params) = parse_envelope(payload)?;
+    let fail = |e: ApiError| (Some(id), e);
+    if method == SUBSCRIBE_METHOD {
+        return parse_subscribe(params)
+            .map(|filter| (id, ClientRequest::Subscribe(filter)))
+            .map_err(fail);
+    }
+    let Some(method) = ApiMethod::from_name(&method) else {
+        return Err(fail(unknown_method(&method)));
+    };
+    parse_call(method, params)
+        .map(|call| (id, ClientRequest::Call(call)))
+        .map_err(fail)
+}
+
+/// Checks the parameters of `events.subscribe`: `types` (a list of the kinds of event, each a
+/// name of [`EventKind`], not empty; absent means all of them) and `sessionId` (text, not empty;
+/// absent means every session). A repeated kind counts once.
+pub fn parse_subscribe(params: Option<Value>) -> Result<EventFilter, ApiError> {
+    let mut fields = Fields::new(params)?;
+    let kinds = match fields.0.remove("types") {
+        None | Some(Value::Null) => EventKind::ALL.to_vec(),
+        Some(Value::Array(items)) => {
+            if items.is_empty() {
+                return Err(ApiError::params("\"types\" must not be empty"));
+            }
+            if items.len() > MAX_EVENT_TYPES {
+                return Err(ApiError::params(format!(
+                    "\"types\" has more than {MAX_EVENT_TYPES} entries"
+                )));
+            }
+            let mut kinds = Vec::new();
+            for item in items {
+                let kind = item
+                    .as_str()
+                    .and_then(EventKind::from_name)
+                    .ok_or_else(|| {
+                        let known: Vec<_> = EventKind::ALL.iter().map(|k| k.name()).collect();
+                        ApiError::params(format!("\"types\" holds only {}", known.join(" or ")))
+                    })?;
+                if !kinds.contains(&kind) {
+                    kinds.push(kind);
+                }
+            }
+            kinds
+        }
+        Some(_) => return Err(ApiError::params("\"types\" must be a list")),
+    };
+    let session_id = fields.optional_text("sessionId", MAX_ID_CHARS, TextRule::Line)?;
+    fields.finish()?;
+    Ok(EventFilter { kinds, session_id })
 }
 
 /// Checks the parameters of `method`.
@@ -836,5 +923,112 @@ mod tests {
         assert!(shown.len() < 60, "{shown}");
         assert!(!shown.contains('\n'));
         assert!(shown.ends_with("...\""));
+    }
+
+    fn subscribe(params: Value) -> Result<EventFilter, ApiError> {
+        parse_subscribe(Some(params))
+    }
+
+    #[test]
+    fn a_subscription_names_its_kinds_and_maybe_one_session() {
+        assert_eq!(
+            subscribe(json!({})).unwrap(),
+            EventFilter {
+                kinds: EventKind::ALL.to_vec(),
+                session_id: None
+            }
+        );
+        assert_eq!(
+            parse_subscribe(None).unwrap().kinds,
+            EventKind::ALL.to_vec()
+        );
+        let filter = subscribe(json!({ "types": ["agent.state"], "sessionId": "s1" })).unwrap();
+        assert_eq!(filter.kinds, vec![EventKind::AgentState]);
+        assert_eq!(filter.session_id.as_deref(), Some("s1"));
+        // A repeated kind counts once, in the order given.
+        let filter = subscribe(json!({
+            "types": ["agent.state", "terminal.output", "agent.state"]
+        }))
+        .unwrap();
+        assert_eq!(
+            filter.kinds,
+            vec![EventKind::AgentState, EventKind::TerminalOutput]
+        );
+        assert_eq!(
+            filter.result(),
+            json!({ "types": ["agent.state", "terminal.output"], "sessionId": null })
+        );
+    }
+
+    #[test]
+    fn a_subscription_that_does_not_fit_is_invalid_params() {
+        let many: Vec<_> = (0..=MAX_EVENT_TYPES).map(|_| "agent.state").collect();
+        let bad = [
+            json!({ "types": [] }),
+            json!({ "types": ["terminal.input"] }),
+            json!({ "types": ["agent.state", "events.dropped"] }),
+            json!({ "types": ["Terminal.Output"] }),
+            json!({ "types": [1] }),
+            json!({ "types": [null] }),
+            json!({ "types": "agent.state" }),
+            json!({ "types": many }),
+            json!({ "sessionId": "" }),
+            json!({ "sessionId": 3 }),
+            json!({ "sessionId": "a
+b" }),
+            json!({ "sessionId": "x".repeat(MAX_ID_CHARS + 1) }),
+            json!({ "extra": true }),
+            json!({ "types": ["agent.state"], "session": "s" }),
+        ];
+        for params in bad {
+            let error = subscribe(params.clone()).expect_err(&params.to_string());
+            assert_eq!(error.code, ApiErrorCode::InvalidParams, "{params}");
+        }
+        assert_eq!(
+            parse_subscribe(Some(json!([]))).unwrap_err().code,
+            ApiErrorCode::InvalidParams
+        );
+        assert!(subscribe(json!({ "sessionId": "x".repeat(MAX_ID_CHARS) })).is_ok());
+    }
+
+    #[test]
+    fn a_client_request_is_a_call_or_a_subscription_and_nothing_else() {
+        let (id, parsed) = parse_client_request(
+            br#"{"id":4,"method":"events.subscribe","params":{"types":["terminal.output"]}}"#,
+        )
+        .unwrap();
+        assert_eq!(id, 4);
+        assert!(matches!(parsed, ClientRequest::Subscribe(_)));
+        let (_, parsed) = parse_client_request(br#"{"id":5,"method":"spaces.list"}"#).unwrap();
+        assert_eq!(parsed, ClientRequest::Call(ApiCall::SpacesList));
+        // The subscription is not a call of the handler.
+        assert_eq!(SUBSCRIBE_METHOD, "events.subscribe");
+        assert_eq!(ApiMethod::from_name(SUBSCRIBE_METHOD), None);
+        assert_eq!(
+            code_of(request(r#"{"id":6,"method":"events.subscribe"}"#)),
+            ApiErrorCode::UnknownMethod
+        );
+        // The errors carry the id as for a call.
+        for (text, code) in [
+            (
+                r#"{"id":7,"method":"events.subscribe","params":{"types":[]}}"#,
+                ApiErrorCode::InvalidParams,
+            ),
+            (
+                r#"{"id":7,"method":"events.unsubscribe"}"#,
+                ApiErrorCode::UnknownMethod,
+            ),
+            (
+                r#"{"id":7,"method":"events.subscribe","extra":1}"#,
+                ApiErrorCode::InvalidRequest,
+            ),
+        ] {
+            let (id, error) = parse_client_request(text.as_bytes()).unwrap_err();
+            assert_eq!((id, error.code), (Some(7), code), "{text}");
+        }
+        assert_eq!(
+            parse_client_request(b"nope").unwrap_err().1.code,
+            ApiErrorCode::InvalidJson
+        );
     }
 }

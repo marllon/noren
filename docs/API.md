@@ -47,6 +47,31 @@ server  {"id":7,"error":{"code":"invalid_params","message":"..."}}
 | `shutting_down`                                          | Noren is closing                                                                                                                                                                                                                                          |
 | `internal`                                               | something broke inside Noren                                                                                                                                                                                                                              |
 
+## Events
+
+A client may ask to be told what happens in the terminals instead of asking again and again. Send `events.subscribe`; from then on the server writes event messages in the same stream as the answers, with no `id`:
+
+```text
+client  {"id":3,"method":"events.subscribe","params":{"types":["terminal.output","agent.state"],"sessionId":"s1"}}
+server  {"id":3,"result":{"types":["terminal.output","agent.state"],"sessionId":"s1"}}
+server  {"event":"terminal.output","data":{"sessionId":"s1","text":"hello\r\n"}}
+server  {"event":"agent.state","data":{"sessionId":"s1","state":"working"}}
+server  {"event":"events.dropped","data":{"count":12}}
+```
+
+| Event             | `data`                                                   | When                                                                |
+| ----------------- | -------------------------------------------------------- | ------------------------------------------------------------------- |
+| `terminal.output` | `{ sessionId, text }`                                    | a terminal printed `text` (as the shell wrote it, escapes included) |
+| `agent.state`     | `{ sessionId, state: "waiting" \| "working" \| "idle" }` | an agent in the session changed state                               |
+| `events.dropped`  | `{ count }`                                              | you were too slow and `count` events were left out (see below)      |
+
+- `events.subscribe` takes `types` (a list of `terminal.output` and `agent.state`, at least one; absent means both) and `sessionId` (one session; absent means every session). An unknown type, an empty list, an empty `sessionId` or an extra field is `invalid_params` and changes nothing.
+- A connection gets events only after it authenticated **and** subscribed. Subscribing again replaces the filter (events the old filter had queued are not sent). There is no unsubscribe: close the connection.
+- Events are in the same stream as the answers. An event may come between a request and its answer; the answers keep the order of the requests; the events keep the order they happened in. Read frames in a loop and tell them apart by the field: `event` for an event, `id` for an answer.
+- A long output comes as several `terminal.output` events in a row (a piece is at most 256 KiB of text, cut at a character boundary), which joined make the text.
+- **If you do not read.** Noren keeps up to 64 events waiting for you. Past that it drops the new ones for you alone (nobody else is slowed down), and when it has sent what was waiting it tells you with `events.dropped` how many it left out. Your connection stays open. Read the connection quickly, or ask for less (`sessionId`, `types`).
+- Noren sends no event for output or states that happened before you subscribed. What Noren publishes, and from where, is described in the changelog as it is added.
+
 ## Methods
 
 Names of things are the ids that `spaces.list` shows. A terminal is named by the id of its pane.
@@ -88,4 +113,4 @@ socket.write(frame({ id: 1, method: "spaces.list", params: {} }));
 
 ## Not here yet
 
-Events (terminal output, the state of an agent) pushed to a client are NOR-F17-01e, and the `noren` command line that wraps this API is NOR-F17-02.
+The server side of the events is done (NOR-F17-01e), but the app does not publish anything yet: the terminal output and the state of the agents reach the server in NOR-F17-01f, so today `events.subscribe` is answered and no event comes. The `noren` command line that wraps this API is NOR-F17-02.

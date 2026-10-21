@@ -12,15 +12,16 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use noren_core::api::{
-    API_PROTOCOL_VERSION, ApiCall, ApiConfig, ApiError, ApiFuture, ApiHandler, ApiServer, ApiToken,
-    TokenOrigin, api_endpoint, load_or_create_token, to_frame,
+    API_PROTOCOL_VERSION, AgentState, ApiCall, ApiConfig, ApiError, ApiEvent, ApiFuture,
+    ApiHandler, ApiServer, ApiToken, EventPublisher, MAX_OUTPUT_CHUNK_BYTES, TokenOrigin,
+    api_endpoint, load_or_create_token, to_frame,
 };
 use noren_core::daemon::ipc::{self, ClientStream};
 use noren_core::daemon::protocol::MAX_FRAME_BYTES;
 use noren_core::daemon::{Endpoint, FrameError, read_frame, write_frame};
 use serde_json::{Value, json};
 use tokio::io::AsyncWriteExt;
-use tokio::sync::Barrier;
+use tokio::sync::{Barrier, Notify};
 
 /// Longest a whole test may take.
 const TEST_TIMEOUT: Duration = Duration::from_secs(60);
@@ -59,6 +60,8 @@ struct FakeHandler {
     calls: Mutex<Vec<ApiCall>>,
     /// Two calls for the terminal `meet` finish only when both are inside the handler.
     meeting: Barrier,
+    /// A call for the terminal `gate` finishes when a test lets it.
+    gate: Notify,
 }
 
 impl FakeHandler {
@@ -66,6 +69,7 @@ impl FakeHandler {
         Arc::new(Self {
             calls: Mutex::new(Vec::new()),
             meeting: Barrier::new(2),
+            gate: Notify::new(),
         })
     }
 
@@ -84,6 +88,10 @@ impl ApiHandler for FakeHandler {
                     "meet" => {
                         self.meeting.wait().await;
                         Ok(json!({ "text": "met" }))
+                    }
+                    "gate" => {
+                        self.gate.notified().await;
+                        Ok(json!({ "text": "opened" }))
                     }
                     "slow" => {
                         tokio::time::sleep(Duration::from_secs(3600)).await;
@@ -147,6 +155,13 @@ impl Client {
 
     async fn send(&mut self, message: Value) {
         self.send_payload(message.to_string().as_bytes()).await;
+    }
+
+    /// Writes a message and does not mind if the server has already closed the connection (it
+    /// does so as soon as it has refused the authentication that came before).
+    async fn send_if_open(&mut self, message: Value) {
+        let frame = to_frame(message.to_string().as_bytes()).expect("a frame");
+        let _ = write_frame(&mut self.0, &frame).await;
     }
 
     async fn try_recv(&mut self) -> Result<Value, FrameError> {
@@ -358,7 +373,7 @@ async fn a_request_before_the_authentication_is_refused_and_the_handler_is_not_c
         let mut client = Client::connect(running.server.endpoint()).await;
         client.auth_with(&"0".repeat(64)).await;
         client
-            .send(json!({ "id": 2, "method": "terminal.send", "params": { "terminal": "t", "text": "rm -rf /" } }))
+            .send_if_open(json!({ "id": 2, "method": "terminal.send", "params": { "terminal": "t", "text": "rm -rf /" } }))
             .await;
         assert_eq!(error_code(&client.recv().await), "unauthorized");
         assert!(client.is_closed().await);
@@ -702,6 +717,532 @@ async fn the_token_file_is_created_reused_and_regenerated_when_it_is_corrupt() {
         drop(second);
 
         fs::remove_dir_all(&dir).unwrap();
+    })
+    .await;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------------------------
+
+fn output(session: &str, text: &str) -> ApiEvent {
+    ApiEvent::TerminalOutput {
+        session_id: session.into(),
+        text: text.into(),
+    }
+}
+
+fn agent(session: &str, state: AgentState) -> ApiEvent {
+    ApiEvent::AgentState {
+        session_id: session.into(),
+        state,
+    }
+}
+
+fn is_event(frame: &Value) -> bool {
+    frame.get("event").is_some()
+}
+
+impl Client {
+    async fn subscribe(&mut self, id: u64, params: Value) -> Value {
+        self.call(id, "events.subscribe", params).await
+    }
+
+    /// The next frame, which must be an event (`{ event, data }`, with no `id`).
+    async fn recv_event(&mut self) -> Value {
+        let frame = self.recv().await;
+        assert!(is_event(&frame), "an event was expected: {frame}");
+        assert!(frame.get("id").is_none(), "an event has no id: {frame}");
+        frame
+    }
+
+    /// Whether nothing at all comes for a moment.
+    async fn nothing_comes(&mut self) -> bool {
+        self.is_open_and_quiet().await
+    }
+}
+
+fn event_frame(name: &str, data: Value) -> Value {
+    json!({ "event": name, "data": data })
+}
+
+fn output_frame(session: &str, text: &str) -> Value {
+    event_frame(
+        "terminal.output",
+        json!({ "sessionId": session, "text": text }),
+    )
+}
+
+fn state_frame(session: &str, state: &str) -> Value {
+    event_frame(
+        "agent.state",
+        json!({ "sessionId": session, "state": state }),
+    )
+}
+
+#[tokio::test]
+async fn a_subscriber_receives_the_events_that_are_published() {
+    within(async {
+        let running = start();
+        let publisher = running.server.publisher();
+        let mut client = Client::open(&running).await;
+        let answer = client
+            .subscribe(
+                1,
+                json!({ "types": ["terminal.output", "agent.state"], "sessionId": "s1" }),
+            )
+            .await;
+        assert_eq!(
+            answer,
+            json!({
+                "id": 1,
+                "result": { "types": ["terminal.output", "agent.state"], "sessionId": "s1" }
+            })
+        );
+        assert_eq!(publisher.subscribers(), 1);
+        publisher.publish(output("s1", "hello\r\n\u{1b}[31mred\u{1b}[0m \"q\" é😀"));
+        publisher.publish(agent("s1", AgentState::Working));
+        publisher.publish(agent("s1", AgentState::Waiting));
+        publisher.publish(agent("s1", AgentState::Idle));
+        assert_eq!(
+            client.recv_event().await,
+            output_frame("s1", "hello\r\n\u{1b}[31mred\u{1b}[0m \"q\" é😀")
+        );
+        for state in ["working", "waiting", "idle"] {
+            assert_eq!(client.recv_event().await, state_frame("s1", state));
+        }
+        // The handler never heard of the subscription, and the connection still answers.
+        assert_eq!(running.handler.calls(), vec![]);
+        let answer = client.call(2, "spaces.list", json!({})).await;
+        assert_eq!(answer, json!({ "id": 2, "result": { "spaces": [] } }));
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_subscription_with_no_types_takes_both_kinds_and_every_session() {
+    within(async {
+        let running = start();
+        let publisher = running.server.publisher();
+        let mut client = Client::open(&running).await;
+        let answer = client.subscribe(1, json!({})).await;
+        assert_eq!(
+            answer["result"],
+            json!({ "types": ["terminal.output", "agent.state"], "sessionId": null })
+        );
+        publisher.publish(output("a", "1"));
+        publisher.publish(agent("b", AgentState::Idle));
+        assert_eq!(client.recv_event().await, output_frame("a", "1"));
+        assert_eq!(client.recv_event().await, state_frame("b", "idle"));
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_connection_that_did_not_subscribe_or_did_not_authenticate_gets_no_event() {
+    within(async {
+        let running = start();
+        let publisher = running.server.publisher();
+        // Connected, never authenticated: it holds a connection and waits for the first message.
+        let mut silent = Client::connect(running.server.endpoint()).await;
+        // Authenticated, never subscribed.
+        let mut quiet = Client::open(&running).await;
+        // Refused for its token: told so, closed, and nothing else.
+        let mut refused = Client::connect(running.server.endpoint()).await;
+        refused.auth_with(&"0".repeat(64)).await;
+        assert_eq!(error_code(&refused.recv().await), "unauthorized");
+        assert!(refused.is_closed().await);
+        // A request for events before the authentication is refused, and the connection closes.
+        let mut early = Client::connect(running.server.endpoint()).await;
+        early
+            .send(json!({ "id": 1, "method": "events.subscribe", "params": {} }))
+            .await;
+        assert_eq!(error_code(&early.recv().await), "unauthenticated");
+        assert!(early.is_closed().await);
+        assert_eq!(publisher.subscribers(), 0);
+
+        publisher.publish(output("s", "secret"));
+        publisher.publish(agent("s", AgentState::Working));
+        assert!(silent.nothing_comes().await);
+        assert!(quiet.nothing_comes().await);
+        // The authenticated one is served as ever, and its next frame is the answer.
+        let answer = quiet.call(1, "spaces.list", json!({})).await;
+        assert_eq!(answer["id"], 1);
+        assert!(quiet.nothing_comes().await);
+        // The one that was silent can still authenticate and is not given what came before.
+        silent.auth_with(&running.token).await;
+        assert_eq!(silent.recv().await["type"], "welcome");
+        assert!(silent.nothing_comes().await);
+        assert_eq!(running.handler.calls(), vec![ApiCall::SpacesList]);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn the_filter_takes_events_by_type_and_by_session() {
+    within(async {
+        let running = start();
+        let publisher = running.server.publisher();
+        let mut only_output = Client::open(&running).await;
+        let mut only_state = Client::open(&running).await;
+        let mut session_a = Client::open(&running).await;
+        let mut output_of_b = Client::open(&running).await;
+        only_output
+            .subscribe(1, json!({ "types": ["terminal.output"] }))
+            .await;
+        only_state
+            .subscribe(1, json!({ "types": ["agent.state"] }))
+            .await;
+        session_a.subscribe(1, json!({ "sessionId": "a" })).await;
+        output_of_b
+            .subscribe(1, json!({ "types": ["terminal.output"], "sessionId": "b" }))
+            .await;
+
+        publisher.publish(output("a", "a1"));
+        publisher.publish(agent("a", AgentState::Working));
+        publisher.publish(output("b", "b1"));
+        publisher.publish(agent("b", AgentState::Waiting));
+        publisher.publish(output("ab", "ab1"));
+        publisher.publish(output("a", "a2"));
+
+        for expected in [
+            output_frame("a", "a1"),
+            output_frame("b", "b1"),
+            output_frame("ab", "ab1"),
+            output_frame("a", "a2"),
+        ] {
+            assert_eq!(only_output.recv_event().await, expected);
+        }
+        assert!(only_output.nothing_comes().await);
+        for expected in [state_frame("a", "working"), state_frame("b", "waiting")] {
+            assert_eq!(only_state.recv_event().await, expected);
+        }
+        assert!(only_state.nothing_comes().await);
+        for expected in [
+            output_frame("a", "a1"),
+            state_frame("a", "working"),
+            output_frame("a", "a2"),
+        ] {
+            assert_eq!(session_a.recv_event().await, expected);
+        }
+        assert!(session_a.nothing_comes().await);
+        assert_eq!(output_of_b.recv_event().await, output_frame("b", "b1"));
+        assert!(output_of_b.nothing_comes().await);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_filter_that_does_not_fit_is_invalid_params_and_changes_nothing() {
+    within(async {
+        let running = start();
+        let publisher = running.server.publisher();
+        let mut client = Client::open(&running).await;
+        let bad = [
+            json!({ "types": [] }),
+            json!({ "types": ["terminal.input"] }),
+            json!({ "types": ["agent.state", "nope"] }),
+            json!({ "types": "agent.state" }),
+            json!({ "types": [5] }),
+            json!({ "sessionId": "" }),
+            json!({ "sessionId": 5 }),
+            json!({ "sessionId": "a\nb" }),
+            json!({ "sessionId": "x".repeat(129) }),
+            json!({ "extra": 1 }),
+            json!({ "types": ["agent.state"], "session": "s" }),
+            json!([]),
+        ];
+        for (n, params) in (1u64..).zip(bad) {
+            let answer = client.subscribe(n, params.clone()).await;
+            assert_eq!(
+                (answer["id"].as_u64(), error_code(&answer)),
+                (Some(n), "invalid_params"),
+                "{params}"
+            );
+        }
+        // Nothing was subscribed by any of them, and the connection is open.
+        assert_eq!(publisher.subscribers(), 0);
+        publisher.publish(output("s", "x"));
+        assert!(client.nothing_comes().await);
+        // The same goes for a request with an extra field, or a method that is not there.
+        client
+            .send(json!({ "id": 90, "method": "events.subscribe", "extra": true }))
+            .await;
+        assert_eq!(error_code(&client.recv().await), "invalid_request");
+        let answer = client.call(91, "events.unsubscribe", json!({})).await;
+        assert_eq!(error_code(&answer), "unknown_method");
+        assert_eq!(publisher.subscribers(), 0);
+        // A bad filter does not undo a good one.
+        client
+            .subscribe(100, json!({ "types": ["terminal.output"] }))
+            .await;
+        let answer = client.subscribe(101, json!({ "types": [] })).await;
+        assert_eq!(error_code(&answer), "invalid_params");
+        publisher.publish(output("s", "still"));
+        assert_eq!(client.recv_event().await, output_frame("s", "still"));
+        assert_eq!(running.handler.calls(), vec![]);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn subscribing_again_replaces_the_filter() {
+    within(async {
+        let running = start();
+        let publisher = running.server.publisher();
+        let mut client = Client::open(&running).await;
+        client
+            .subscribe(1, json!({ "types": ["terminal.output"] }))
+            .await;
+        publisher.publish(output("s", "first"));
+        assert_eq!(client.recv_event().await, output_frame("s", "first"));
+        let answer = client
+            .subscribe(2, json!({ "types": ["agent.state"], "sessionId": "t" }))
+            .await;
+        assert_eq!(
+            answer["result"],
+            json!({ "types": ["agent.state"], "sessionId": "t" })
+        );
+        assert_eq!(publisher.subscribers(), 1);
+        publisher.publish(output("s", "no longer"));
+        publisher.publish(agent("s", AgentState::Idle));
+        publisher.publish(agent("t", AgentState::Waiting));
+        assert_eq!(client.recv_event().await, state_frame("t", "waiting"));
+        assert!(client.nothing_comes().await);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn an_event_comes_between_requests_and_their_answers_keep_the_order_of_the_requests() {
+    within(async {
+        let running = start();
+        let publisher = running.server.publisher();
+        let mut client = Client::open(&running).await;
+        client.subscribe(1, json!({})).await;
+
+        // A call that waits in the handler: the event comes while it waits, before its answer.
+        client
+            .send(json!({ "id": 2, "method": "terminal.read", "params": { "terminal": "gate" } }))
+            .await;
+        publisher.publish(output("s", "while you wait"));
+        assert_eq!(
+            client.recv_event().await,
+            output_frame("s", "while you wait")
+        );
+        running.handler.gate.notify_one();
+        let answer = client.recv().await;
+        assert_eq!(
+            (answer["id"].as_u64(), answer["result"]["text"].as_str()),
+            (Some(2), Some("opened"))
+        );
+
+        // Several requests one behind the other, with events published among them: the answers
+        // come in the order of the requests, the events in the order they were published, and
+        // none is lost or cut.
+        for id in 3..=6u64 {
+            client
+                .send(json!({ "id": id, "method": "spaces.list", "params": {} }))
+                .await;
+            publisher.publish(output("s", &format!("e{id}")));
+        }
+        let mut answers = Vec::new();
+        let mut events = Vec::new();
+        while answers.len() < 4 || events.len() < 4 {
+            let frame = client.recv().await;
+            if is_event(&frame) {
+                events.push(frame);
+            } else {
+                answers.push(frame["id"].as_u64().expect("an answer with an id"));
+            }
+        }
+        assert_eq!(answers, vec![3, 4, 5, 6]);
+        assert_eq!(
+            events,
+            (3..=6)
+                .map(|id| output_frame("s", &format!("e{id}")))
+                .collect::<Vec<_>>()
+        );
+        assert!(client.nothing_comes().await);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn two_connections_with_their_own_filters_each_get_theirs() {
+    within(async {
+        let running = start();
+        let publisher = running.server.publisher();
+        let mut first = Client::open(&running).await;
+        let mut second = Client::open(&running).await;
+        first
+            .subscribe(1, json!({ "types": ["terminal.output"], "sessionId": "a" }))
+            .await;
+        second
+            .subscribe(1, json!({ "types": ["agent.state"] }))
+            .await;
+        assert_eq!(publisher.subscribers(), 2);
+        publisher.publish(output("a", "x"));
+        publisher.publish(agent("a", AgentState::Working));
+        publisher.publish(agent("b", AgentState::Idle));
+        publisher.publish(output("b", "y"));
+        assert_eq!(first.recv_event().await, output_frame("a", "x"));
+        assert!(first.nothing_comes().await);
+        assert_eq!(second.recv_event().await, state_frame("a", "working"));
+        assert_eq!(second.recv_event().await, state_frame("b", "idle"));
+        assert!(second.nothing_comes().await);
+
+        // A connection that leaves stops being a subscriber, and the other goes on.
+        drop(first);
+        for _ in 0..50 {
+            if publisher.subscribers() == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert_eq!(publisher.subscribers(), 1);
+        publisher.publish(agent("c", AgentState::Waiting));
+        assert_eq!(second.recv_event().await, state_frame("c", "waiting"));
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_publisher_is_cloneable_and_works_from_other_threads() {
+    within(async {
+        let running = start();
+        let mut client = Client::open(&running).await;
+        client.subscribe(1, json!({})).await;
+        let publisher: EventPublisher = running.server.publisher();
+        let threads: Vec<_> = (0..4)
+            .map(|n| {
+                let publisher = publisher.clone();
+                std::thread::spawn(move || publisher.publish(output(&format!("t{n}"), "x")))
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        let mut sessions = Vec::new();
+        for _ in 0..4 {
+            let frame = client.recv_event().await;
+            sessions.push(frame["data"]["sessionId"].as_str().unwrap().to_owned());
+        }
+        sessions.sort();
+        assert_eq!(sessions, ["t0", "t1", "t2", "t3"]);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_long_output_comes_in_frames_that_fit_and_make_the_text_again() {
+    within(async {
+        let running = start();
+        let publisher = running.server.publisher();
+        let mut client = Client::open(&running).await;
+        client
+            .subscribe(1, json!({ "types": ["terminal.output"] }))
+            .await;
+        // Control characters take six characters each in JSON, and a text of this size has
+        // more than a frame holds in any case.
+        let text = format!(
+            "{}é{}",
+            "\u{1}".repeat(MAX_OUTPUT_CHUNK_BYTES + 5),
+            "z".repeat(MAX_OUTPUT_CHUNK_BYTES)
+        );
+        publisher.publish(output("big", &text));
+        let mut joined = String::new();
+        while joined.len() < text.len() {
+            let frame = client.recv_event().await;
+            assert_eq!(frame["data"]["sessionId"], "big");
+            let piece = frame["data"]["text"].as_str().unwrap();
+            assert!(piece.len() <= MAX_OUTPUT_CHUNK_BYTES);
+            joined.push_str(piece);
+        }
+        assert_eq!(joined, text);
+        assert!(client.nothing_comes().await);
+        // A text that fits goes whole.
+        let whole = "w".repeat(MAX_OUTPUT_CHUNK_BYTES);
+        publisher.publish(output("big", &whole));
+        assert_eq!(client.recv_event().await, output_frame("big", &whole));
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_client_that_does_not_read_costs_the_others_nothing_and_is_told_what_it_missed() {
+    within(async {
+        let running = start_with(ApiConfig {
+            event_queue: 4,
+            ..ApiConfig::default()
+        });
+        let publisher = running.server.publisher();
+        let mut slow = Client::open(&running).await;
+        let mut fast = Client::open(&running).await;
+        slow.subscribe(1, json!({ "sessionId": "slow" })).await;
+        fast.subscribe(1, json!({ "sessionId": "fast" })).await;
+
+        // Far more than the queue and the buffers of the pipe can hold, to a client that does
+        // not read. The publisher must come back without waiting for it.
+        const SENT: u64 = 400;
+        let flood = publisher.clone();
+        let text = "x".repeat(100 * 1024);
+        let flooding = tokio::task::spawn_blocking(move || {
+            for _ in 0..SENT {
+                flood.publish(output("slow", &text));
+            }
+        });
+        tokio::time::timeout(STEP, flooding)
+            .await
+            .expect("the publisher was held back by a client that does not read")
+            .unwrap();
+
+        // The other client hears at once, and its requests are answered.
+        publisher.publish(output("fast", "quick"));
+        assert_eq!(fast.recv_event().await, output_frame("fast", "quick"));
+        assert_eq!(fast.call(2, "spaces.list", json!({})).await["id"], 2);
+        // The server takes new connections too.
+        let mut late = Client::open(&running).await;
+        assert_eq!(late.call(1, "spaces.list", json!({})).await["id"], 1);
+
+        // When the slow client reads at last it finds what fitted, in order, and a warning with
+        // how many it missed; what it got and what it missed make what was published.
+        let (mut got, mut missed, mut warnings) = (0u64, 0u64, 0u64);
+        while got + missed < SENT {
+            let frame = slow.recv().await;
+            match frame["event"].as_str() {
+                Some("terminal.output") => got += 1,
+                Some("events.dropped") => {
+                    let count = frame["data"]["count"].as_u64().unwrap();
+                    assert!(count > 0);
+                    missed += count;
+                    warnings += 1;
+                }
+                _ => panic!("unexpected frame with {} bytes", frame.to_string().len()),
+            }
+        }
+        assert_eq!(got + missed, SENT);
+        assert!(missed > 0, "nothing was dropped");
+        assert!(warnings > 0);
+        assert!(got >= 1);
+        // It is still connected and served.
+        assert_eq!(slow.call(3, "spaces.list", json!({})).await["id"], 3);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn the_events_stop_when_the_server_stops() {
+    within(async {
+        let mut running = start();
+        let publisher = running.server.publisher();
+        let mut client = Client::open(&running).await;
+        client.subscribe(1, json!({})).await;
+        running.server.shutdown();
+        assert!(client.is_closed().await);
+        // The publisher outlives the server and does nothing.
+        publisher.publish(output("s", "x"));
+        assert_eq!(publisher.subscribers(), 0);
     })
     .await;
 }

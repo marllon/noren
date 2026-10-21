@@ -6,6 +6,8 @@
 //! - [`protocol`]: the versioned messages (pure, no I/O) and the check of every parameter.
 //! - [`token`]: the secret the first message of a connection must carry, kept in a file of the
 //!   user.
+//! - [`events`]: what the server pushes to a client that subscribed (terminal output, the state
+//!   of an agent) and the [`EventPublisher`] whoever owns the sessions uses.
 //! - [`ApiServer`]: listens on its own endpoint, authenticates every connection, calls the
 //!   handler.
 //!
@@ -27,11 +29,20 @@
 //! | Time to authenticate | [`ApiConfig::handshake_timeout`], 5 s by default |
 //! | Time for one request | [`ApiConfig::request_timeout`], 30 s by default |
 //! | Connections at once | [`ApiConfig::max_connections`], 32 by default; one more is closed unanswered |
+//! | Events waiting for one client | [`ApiConfig::event_queue`], 64 by default; past it new events are dropped for that client and it is told with `events.dropped` |
 //!
 //! A connection serves one request at a time, in order; connections run side by side. A request
 //! that is invalid (bad JSON, unknown method, wrong parameters) gets an error and the connection
 //! stays open; an authentication that fails, a request before the authentication and a frame
 //! that cannot be read get an error and the connection is closed.
+//!
+//! ## Events
+//!
+//! After the authentication a client may send `events.subscribe` (the server answers it itself;
+//! the handler never sees it). From then on the server writes `{ event, data }` frames in the
+//! same stream as the answers: an event can come between a request and its answer, never in the
+//! middle of a frame, and the answers keep the order of the requests. A connection that did not
+//! subscribe, or did not authenticate, gets none. The details are in [`events`].
 
 use std::future::Future;
 use std::io;
@@ -42,6 +53,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, split};
+use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
@@ -49,11 +61,19 @@ use crate::daemon::frame::{FrameError, read_frame, write_frame};
 use crate::daemon::ipc::{Endpoint, Listener};
 use crate::daemon::protocol::{MAX_FRAME_BYTES, ProtocolError};
 
+use events::{Feed, Hub};
+
+pub mod events;
 pub mod protocol;
 mod token;
 
+pub use events::{
+    AgentState, ApiEvent, DROPPED_EVENT, EventFilter, EventKind, EventPublisher,
+    MAX_OUTPUT_CHUNK_BYTES,
+};
 pub use protocol::{
-    API_PROTOCOL_VERSION, ApiCall, ApiError, ApiErrorCode, ApiMethod, SplitDirection, to_frame,
+    API_PROTOCOL_VERSION, ApiCall, ApiError, ApiErrorCode, ApiMethod, ClientRequest,
+    SUBSCRIBE_METHOD, SplitDirection, to_frame,
 };
 pub use token::{ApiToken, TOKEN_BYTES, TOKEN_HEX_CHARS, TokenOrigin, load_or_create_token};
 
@@ -62,6 +82,9 @@ pub const DEFAULT_API_NAME: &str = "default";
 
 /// Pause after a failed accept, so a persistent failure does not spin.
 const ACCEPT_RETRY: Duration = Duration::from_millis(200);
+
+/// Longest a closing connection waits to write what it still owes a client that does not read.
+const CLOSE_DRAIN: Duration = Duration::from_secs(2);
 
 /// The endpoint of the API called `name` for the current user. It is `api-<name>` among the
 /// endpoints of [`Endpoint::named`], so it is never the daemon's.
@@ -85,6 +108,8 @@ pub struct ApiConfig {
     pub handshake_timeout: Duration,
     pub request_timeout: Duration,
     pub max_connections: usize,
+    /// How many events may wait for one subscribed client; at least 1.
+    pub event_queue: usize,
 }
 
 impl Default for ApiConfig {
@@ -93,6 +118,7 @@ impl Default for ApiConfig {
             handshake_timeout: Duration::from_secs(5),
             request_timeout: Duration::from_secs(30),
             max_connections: 32,
+            event_queue: 64,
         }
     }
 }
@@ -102,6 +128,7 @@ pub struct ApiServer {
     endpoint: Endpoint,
     shutdown: CancellationToken,
     thread: Option<JoinHandle<()>>,
+    publisher: EventPublisher,
 }
 
 impl ApiServer {
@@ -115,10 +142,13 @@ impl ApiServer {
         config: ApiConfig,
     ) -> io::Result<Self> {
         let shutdown = CancellationToken::new();
+        let hub = Hub::new(config.event_queue);
+        let publisher = EventPublisher::new(Arc::clone(&hub));
         let context = Arc::new(Context {
             token,
             handler,
             config,
+            hub,
         });
         let (ready_tx, ready_rx) = std::sync::mpsc::channel::<io::Result<()>>();
         let thread = thread::Builder::new().name("noren-api".into()).spawn({
@@ -131,6 +161,7 @@ impl ApiServer {
                 endpoint,
                 shutdown,
                 thread: Some(thread),
+                publisher,
             }),
             Ok(Err(e)) => {
                 let _ = thread.join();
@@ -145,6 +176,12 @@ impl ApiServer {
 
     pub fn endpoint(&self) -> &Endpoint {
         &self.endpoint
+    }
+
+    /// The way to push events to the clients that subscribed. Clone it and give it to whatever
+    /// owns the sessions; it keeps working (and does nothing) after the server stops.
+    pub fn publisher(&self) -> EventPublisher {
+        self.publisher.clone()
     }
 
     /// Stops accepting, closes every connection and waits for the thread. Does nothing the
@@ -168,6 +205,7 @@ struct Context {
     token: ApiToken,
     handler: Arc<dyn ApiHandler>,
     config: ApiConfig,
+    hub: Arc<Hub>,
 }
 
 fn run(
@@ -228,7 +266,33 @@ async fn serve(mut listener: Listener, context: Arc<Context>, shutdown: Cancella
     listener.cleanup();
 }
 
+/// What the writer of a connection is asked to send.
+enum Outgoing {
+    /// An answer or an error.
+    Payload(Vec<u8>),
+    /// The answer to `events.subscribe`, then the events that were queued for the new filter.
+    Subscribed { payload: Vec<u8>, feed: Feed },
+}
+
+/// Takes the connection out of the list of subscribers when its task ends, however it ends.
+struct Registration {
+    hub: Arc<Hub>,
+    connection: u64,
+}
+
+impl Drop for Registration {
+    fn drop(&mut self) {
+        self.hub.unsubscribe(self.connection);
+    }
+}
+
 /// One connection, from the first message to the close. Never panics on what a client sends.
+///
+/// After the authentication two things run side by side: one reads requests and runs them one at
+/// a time, and one writes to the client everything that is due (the answers in the order they
+/// were made, and the events of the subscription). Only the second touches the stream for
+/// writing, so a frame is never cut by another, and a client that does not read stops only its
+/// own connection.
 async fn serve_connection<S>(stream: S, context: Arc<Context>, shutdown: CancellationToken)
 where
     S: AsyncRead + AsyncWrite + Send + Unpin,
@@ -241,29 +305,138 @@ where
         let _ = writer.shutdown().await;
         return;
     }
+    let registration = Registration {
+        hub: Arc::clone(&context.hub),
+        connection: context.hub.next_connection_id(),
+    };
+    {
+        let (out, queue) = mpsc::channel(4);
+        let requests = read_requests(
+            &mut reader,
+            out,
+            &context,
+            &shutdown,
+            registration.connection,
+        );
+        let writing = write_outgoing(&mut writer, queue);
+        tokio::pin!(requests, writing);
+        tokio::select! {
+            () = &mut requests => {
+                // The sender is gone: let the writer finish what is already queued.
+                let _ = tokio::time::timeout(CLOSE_DRAIN, &mut writing).await;
+            }
+            _ = &mut writing => {}
+        }
+    }
+    drop(registration);
+    let _ = writer.shutdown().await;
+}
+
+/// Reads the requests of an authenticated connection until it ends, answering through `out`.
+async fn read_requests<R>(
+    reader: &mut R,
+    out: mpsc::Sender<Outgoing>,
+    context: &Arc<Context>,
+    shutdown: &CancellationToken,
+    connection: u64,
+) where
+    R: AsyncRead + Unpin,
+{
     loop {
         let payload = tokio::select! {
             biased;
             () = shutdown.cancelled() => break,
-            frame = read_frame(&mut reader) => match frame {
+            frame = read_frame(reader) => match frame {
                 Ok(payload) => payload,
                 Err(e) => {
                     if let Some(error) = frame_error(&e) {
-                        let _ = send_error(&mut writer, None, &error).await;
+                        let _ = out
+                            .send(Outgoing::Payload(protocol::error_payload(None, &error)))
+                            .await;
                     }
                     break;
                 }
             },
         };
-        let answer = match protocol::parse_request(&payload) {
-            Err((id, error)) => protocol::error_payload(id, &error),
-            Ok((id, call)) => dispatch(&context, id, call).await,
+        let outgoing = match protocol::parse_client_request(&payload) {
+            Err((id, error)) => Outgoing::Payload(protocol::error_payload(id, &error)),
+            Ok((id, ClientRequest::Call(call))) => {
+                Outgoing::Payload(dispatch(context, id, call).await)
+            }
+            Ok((id, ClientRequest::Subscribe(filter))) => {
+                // Registered before the answer is sent, so an event published once the client
+                // has the answer is never missed; the events wait behind the answer.
+                let payload = protocol::result_payload(id, &filter.result());
+                let feed = context.hub.subscribe(connection, filter);
+                Outgoing::Subscribed { payload, feed }
+            }
         };
-        if send_payload(&mut writer, &answer).await.is_err() {
+        if out.send(outgoing).await.is_err() {
             break;
         }
     }
-    let _ = writer.shutdown().await;
+}
+
+/// Writes answers and events to the client until the answers are over (the reading side ended)
+/// or a write fails.
+async fn write_outgoing<W>(writer: &mut W, mut queue: mpsc::Receiver<Outgoing>) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    let mut feed: Option<Feed> = None;
+    loop {
+        tokio::select! {
+            // Answers first, so they keep their order against a stream of events.
+            biased;
+            outgoing = queue.recv() => match outgoing {
+                None => return Ok(()),
+                Some(Outgoing::Payload(payload)) => send_payload(writer, &payload).await?,
+                Some(Outgoing::Subscribed { payload, feed: new }) => {
+                    send_payload(writer, &payload).await?;
+                    feed = Some(new);
+                }
+            },
+            event = next_event(&mut feed) => match event {
+                // The queue of an old subscription ended: a new one is on its way, or the
+                // connection is closing.
+                None => feed = None,
+                Some(event) => {
+                    if let Some(feed) = &feed {
+                        send_event(writer, feed, &event).await?;
+                    }
+                }
+            },
+        }
+    }
+}
+
+/// The next queued event, or never when there is no subscription.
+async fn next_event(feed: &mut Option<Feed>) -> Option<ApiEvent> {
+    match feed {
+        Some(feed) => feed.events.recv().await,
+        None => std::future::pending().await,
+    }
+}
+
+/// Sends one event, then, if the queue has emptied and events were left out, says how many.
+async fn send_event<W>(writer: &mut W, feed: &Feed, event: &ApiEvent) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    let payload = event.payload();
+    if payload.len() > MAX_FRAME_BYTES {
+        // Only a session id past all reason makes an event that big (the text is cut before).
+        feed.note_missed();
+    } else {
+        send_payload(writer, &payload).await?;
+    }
+    if feed.events.is_empty() {
+        let missed = feed.take_dropped();
+        if missed > 0 {
+            send_payload(writer, &events::dropped_payload(missed)).await?;
+        }
+    }
+    Ok(())
 }
 
 /// The first message: `Some(())` when the client may go on. Every other outcome has sent its

@@ -81,14 +81,23 @@ export class FakeUpdates {
     return { ...info };
   }
 
-  install(): void {
+  /**
+   * Downloads and installs the update found. The first quarter of the package is told, then the
+   * install waits for `pause` (a test that wants to see a download half way holds it), then the
+   * rest comes. With no `pause` the three pieces come one after the other.
+   */
+  async install(pause?: Promise<void>): Promise<void> {
     this.#requireConfigured();
     const pending = this.#pending;
     if (pending === undefined) throw new Error(UPDATE_MESSAGES.nothingToInstall);
     const total = pending.release.bytes ?? DEFAULT_PACKAGE_BYTES;
-    for (const downloaded of [Math.floor(total / 4), Math.floor(total / 2), total]) {
+    const pieces = [Math.floor(total / 4), Math.floor(total / 2), total];
+    const tell = (downloaded: number) => {
       for (const listener of [...this.#listeners]) listener({ downloaded, total });
-    }
+    };
+    tell(pieces[0] ?? 0);
+    if (pause !== undefined) await pause;
+    for (const downloaded of pieces.slice(1)) tell(downloaded);
     if (pending.release.refusal !== undefined) {
       throw new Error(`the update was refused: ${pending.release.refusal}`);
     }

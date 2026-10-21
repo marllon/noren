@@ -188,6 +188,8 @@ import { downloadText } from "./download-text";
 import { appSpaceSyncPort } from "./space-sync";
 import { runScreenReaderToggle } from "./screen-reader-action";
 import { runSyncCommand } from "./sync-run";
+import { saveBeforeExit } from "./exit-save";
+import { UpdateController } from "./update-controller";
 import {
   commitSpaceImport,
   exportFailureNotice,
@@ -383,6 +385,11 @@ export interface NorenTestHook {
    * shows up here.
    */
   updateCalls(): string[];
+  /** The methods of the backend called, in order, among `methods` (to see what came before an install). */
+  backendCalls(methods: string[]): string[];
+  /** Holds the next installs a quarter of the way through the download until `releaseUpdateInstall`. */
+  holdUpdateInstall(): void;
+  releaseUpdateInstall(): void;
   /** The versions the page asked to install and the update accepted, in order. */
   installedUpdates(): string[];
   /**
@@ -1058,6 +1065,15 @@ function Shell({ store }: { store: WorkspaceStore }) {
   // the settings screen. The answer is a notice; with no remote it says where to connect. One step
   // at a time, so a second press while git works is ignored.
   const syncRunning = useRef(false);
+  // The update of the app (NOR-F20-02b): the Updates section of the settings and the palette command
+  // "Check for updates" drive this one controller. Nothing calls it but the person; the install saves
+  // what closing the app saves first (`saveBeforeExit`).
+  const updates = useMemo(() => new UpdateController(backend, saveBeforeExit), []);
+  const checkForUpdates = useCallback(() => {
+    updates.requestReveal();
+    openSettings();
+    void updates.check();
+  }, [updates]);
   // The spaces and profiles of this window, for the sync to write as files and to make from files.
   const spaceSync = useMemo(() => appSpaceSyncPort(store, backend), [store]);
   const runSync = useCallback(
@@ -1789,6 +1805,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) runSync(action.command.kind === "sync-pull" ? "pull" : "push");
         return;
       }
+      if (action.command.kind === "update-check") {
+        if (!modalOpen.current) checkForUpdates();
+        return;
+      }
       if (action.command.kind === "focus-sidebar") {
         if (!modalOpen.current) focusSidebar();
         return;
@@ -1831,6 +1851,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     terminalAction,
     runLayout,
     toggleScreenReader,
+    checkForUpdates,
     reopenTab,
     openLibrary,
     openAgents,
@@ -1869,6 +1890,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
   useEffect(() => {
     if (backend instanceof FakeBackend) {
       const fake = backend;
+      // The function that lets a held install go on (`holdUpdateInstall`).
+      let releaseUpdate: (() => void) | undefined;
       const current = () => {
         const state = store.getState();
         const itemId = activeItemIdOf(state);
@@ -1991,6 +2014,18 @@ function Shell({ store }: { store: WorkspaceStore }) {
           fake.setSyncGistFailure(message === null ? undefined : new Error(message)),
         updateCalls: () =>
           fake.calls.filter((call) => call.method.startsWith("update")).map((call) => call.method),
+        backendCalls: (methods) =>
+          fake.calls
+            .map((call) => call.method as string)
+            .filter((method) => methods.includes(method)),
+        holdUpdateInstall: () => {
+          releaseUpdate?.();
+          releaseUpdate = fake.holdUpdateInstall();
+        },
+        releaseUpdateInstall: () => {
+          releaseUpdate?.();
+          releaseUpdate = undefined;
+        },
         installedUpdates: () => fake.installedUpdates(),
         updateStep: async (step) => {
           if (step === "status") return fake.updateStatus();
@@ -2292,6 +2327,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
     ) {
       closePalette();
       runSync(entry.action.command.kind === "sync-pull" ? "pull" : "push");
+      return;
+    } else if (entry.action.command.kind === "update-check") {
+      // The settings screen shows the check, and takes the keyboard itself.
+      setPaletteOpen(false);
+      checkForUpdates();
       return;
     } else if (entry.action.command.kind === "ask-toggle") {
       // The panel takes the keyboard itself; the palette must not hand it to the terminal.
@@ -2823,6 +2863,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
           <SettingsDialog
             backend={backend}
             spaceSync={spaceSync}
+            updates={updates}
             onInsert={(text) => focusedHandle()?.insert(text) ?? false}
             onClose={() => {
               closeSettings();

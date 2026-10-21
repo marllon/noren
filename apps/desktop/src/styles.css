@@ -4166,3 +4166,36 @@ body {
   font-size: 12px;
   word-break: break-all;
 }
+
+/* The update of the app in the settings screen: the check, the notes of a new version and the download. */
+.settings-update,
+.settings-update-release {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settings-update-notes {
+  align-self: stretch;
+  max-height: 160px;
+  overflow: auto;
+  padding: 6px 8px;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.settings-update-progress {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: 4px;
+}
+
+.settings-update-progress progress {
+  width: 100%;
+}

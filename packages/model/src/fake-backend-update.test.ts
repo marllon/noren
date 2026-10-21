@@ -178,6 +178,32 @@ describe("FakeBackend update: install", () => {
     expect((await backend.updateStatus()).pending?.version).toBe("0.2.0");
   });
 
+  it("can be held a quarter of the way through the download, and goes on when released", async () => {
+    const backend = new FakeBackend();
+    backend.setUpdateRelease({ ...RELEASE, bytes: 400 });
+    const told: UpdateProgress[] = [];
+    backend.onUpdateProgress((progress) => told.push(progress));
+    await backend.updateCheck();
+    const release = backend.holdUpdateInstall();
+    let done = false;
+    const installing = backend.updateInstall().then(() => {
+      done = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(told).toEqual([{ downloaded: 100, total: 400 }]);
+    expect(done).toBe(false);
+    expect(backend.installedUpdates()).toEqual([]);
+    release();
+    await installing;
+    expect(told.map((progress) => progress.downloaded)).toEqual([100, 200, 400]);
+    expect(backend.installedUpdates()).toEqual(["0.2.0"]);
+    // Released: the next install is not held.
+    backend.setUpdateRelease({ ...RELEASE, version: "0.3.0", bytes: 400 });
+    await backend.updateCheck();
+    await backend.updateInstall();
+    expect(backend.installedUpdates()).toEqual(["0.2.0", "0.3.0"]);
+  });
+
   it("records the calls it was asked, with no argument that could carry anything", async () => {
     const backend = new FakeBackend();
     backend.setUpdateRelease(RELEASE);

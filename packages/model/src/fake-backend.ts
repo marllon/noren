@@ -1100,6 +1100,7 @@ export class FakeBackend implements Backend {
   /** The update of the app: the feed in memory and the update the last check found. */
   #updates = new FakeUpdates();
   #updateFailure: Error | undefined;
+  #updatePause: Promise<void> | undefined;
   /** The local record of the space files: file name to the space it stands for and the hash then. */
   #syncSpaceLinks = new Map<string, { spaceId: string; hash: string }>();
   #syncApplied = false;
@@ -2200,7 +2201,7 @@ export class FakeBackend implements Backend {
   async updateInstall(): Promise<void> {
     this.#record("updateInstall");
     if (this.#updateFailure) throw this.#updateFailure;
-    this.#updates.install();
+    await this.#updates.install(this.#updatePause);
   }
 
   onUpdateProgress(callback: (progress: UpdateProgress) => void): Unsubscribe {
@@ -2230,6 +2231,22 @@ export class FakeBackend implements Backend {
   /** The versions `updateInstall` was asked to install and accepted, in order. */
   installedUpdates(): string[] {
     return this.#updates.installed();
+  }
+
+  /**
+   * Holds the next installs half way through the download (a quarter of the package told, the rest
+   * not yet) until the function this returns is called, so a test can see the progress on screen.
+   * Not a `Backend` call.
+   */
+  holdUpdateInstall(): () => void {
+    let release: () => void = () => undefined;
+    this.#updatePause = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return () => {
+      release();
+      this.#updatePause = undefined;
+    };
   }
 
   /** Makes `updateCheck` and `updateInstall` reject with `error` (the server cannot be reached); `undefined` undoes it. */

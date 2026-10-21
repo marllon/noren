@@ -42,6 +42,7 @@ const SECTIONS = [
   "Mods",
   "Gallery",
   "Sync",
+  "Updates",
   "Import",
 ] as const;
 

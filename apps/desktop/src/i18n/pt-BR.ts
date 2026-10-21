@@ -634,6 +634,55 @@ export const ptBR: Dictionary = {
     "Não há token do GitHub guardado. Salve um em Configurações, na seção Sincronização.",
   "action.sync.pull": "Trazer configurações (pull)",
   "action.sync.push": "Enviar configurações (push)",
+  "action.app.check-updates": "Verificar atualizações",
+  "settings.updates": "Atualizações",
+  "update.hint":
+    "O Noren só procura uma versão nova quando você pede. Nada é verificado, baixado ou instalado sozinho.",
+  "update.check": "Verificar atualizações",
+  "update.install": "Baixar e instalar",
+  "update.installHint":
+    "Instalar primeiro salva suas abas, depois baixa o pacote, confere a assinatura com a chave de atualização desta versão e só então roda o instalador. No Windows o Noren fecha quando o instalador começa.",
+  "update.checking": "Procurando uma versão nova...",
+  "update.current": "O Noren {version} é a versão mais recente.",
+  "update.current.noVersion": "Você está na versão mais recente.",
+  "update.available": "O Noren {version} está disponível. Você tem a {current}.",
+  "update.published": "Lançada em {date}.",
+  "update.notes": "Notas da versão",
+  "update.notes.none": "Esta versão não tem notas.",
+  "update.saving": "Salvando suas abas antes da atualização...",
+  "update.downloading": "Baixando o Noren {version}...",
+  "update.installed": "O Noren {version} está instalado. Reinicie o Noren para usá-lo.",
+  "update.progress.label": "Download da atualização",
+  "update.progress.starting": "Começando o download...",
+  "update.progress.of": "{percent}% ({done} de {total})",
+  "update.progress.unknownSize": "{done} baixados",
+  "update.failure.noKey":
+    "Esta versão ainda não consegue se atualizar: não tem a chave de atualização para conferir um pacote. Nada foi verificado nem instalado.",
+  "update.failure.off": "Esta execução não atualiza.",
+  "update.failure.signature":
+    "A atualização foi recusada: a assinatura não corresponde ao pacote e à chave de atualização desta versão. Nada foi instalado.",
+  "update.failure.signatureText":
+    "A atualização foi recusada: a assinatura ou a chave de atualização não é válida. Nada foi instalado.",
+  "update.failure.signedVersion":
+    "A atualização foi recusada: o pacote foi assinado para a versão {signed}, não para a {announced}. Nada foi instalado.",
+  "update.failure.signedVersionMissing":
+    "A atualização foi recusada: a assinatura não diz para qual versão foi feita. Nada foi instalado.",
+  "update.failure.noPackage":
+    "A versão mais nova não tem pacote para este computador. Nada foi instalado.",
+  "update.failure.unreachable":
+    "Não foi possível falar com o servidor de atualização. Confira sua conexão e tente de novo.",
+  "update.failure.timeout":
+    "O servidor de atualização demorou demais para responder. Tente de novo mais tarde.",
+  "update.failure.server":
+    "O servidor de atualização respondeu com um erro ({status}). Tente de novo mais tarde.",
+  "update.failure.tooLarge": "A atualização é maior do que o Noren aceita, então não foi baixada.",
+  "update.failure.feed":
+    "Não foi possível ler a lista de versões: ela não está no formato que o Noren espera.",
+  "update.failure.nothingToInstall":
+    "Não há atualização para instalar. Verifique as atualizações primeiro.",
+  "update.failure.busy": "Outro passo da atualização ainda está em andamento.",
+  "update.failure.install": "Não foi possível instalar a atualização: {reason}",
+  "update.failure.other": "A atualização não funcionou: {reason}",
   "settings.modMissing": "não está na pasta, então é ignorado",
   "settings.modEarlier": "Mover {name} para antes",
   "settings.modLater": "Mover {name} para depois",
@@ -957,7 +1006,7 @@ export const ptBR: Dictionary = {
     "Ligue a IA acima, escolha um provedor e um modelo para cada função e pressione Salvar.",
   "providers.ollamaModels": "Modelos do Ollama",
   "providers.checkAgain": "Verificar o Ollama de novo",
-  "providers.testOllama": "Testar a conexão com o Ollama",
+  "providers.testOllama": "Testar conexão com o Ollama",
   "providers.test": "Testar conexão",
   "providers.summary": "{kind}, {url}, modelo {model}",
   "providers.keyStored": "Há uma chave de API guardada no cofre de chaves.",
@@ -967,7 +1016,7 @@ export const ptBR: Dictionary = {
   "providers.storeKey": "Guardar chave",
   "providers.removeKeyLabel": "Remover chave de {id}",
   "providers.removeKey": "Remover chave",
-  "providers.testLabel": "Testar a conexão com {id}",
+  "providers.testLabel": "Testar conexão com {id}",
   "providers.removeProviderLabel": "Remover o provedor {id}",
   "providers.removeProvider": "Remover provedor",
   "providers.addGroup": "Adicionar um provedor",

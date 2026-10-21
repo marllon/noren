@@ -601,7 +601,7 @@ test.describe("the AI", () => {
     const work = ai.getByRole("group", { name: "work", exact: true });
     await expect(work).toContainText("OpenAI-compatible, https://llm.example.com/v1, modelo big");
     await expect(work).toContainText("Nenhuma chave de API guardada.");
-    await button(work, "Testar a conexão com work").click();
+    await button(work, "Testar conexão com work").click();
     await expect(work.locator('[data-nr-part="settings-ai-provider-note"]')).toHaveText(
       "A conexão funciona.",
     );

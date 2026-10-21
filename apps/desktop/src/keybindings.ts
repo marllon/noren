@@ -62,6 +62,7 @@ export type ActionCommand =
   | { kind: "import-space" }
   | { kind: "sync-pull" }
   | { kind: "sync-push" }
+  | { kind: "update-check" }
   | { kind: "focus-sidebar" }
   | LayoutCommand
   | { kind: "last-unread" }
@@ -379,6 +380,14 @@ export const ACTIONS: readonly ActionDef[] = [
     title: "Push settings",
     category: "General",
     command: { kind: "sync-push" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
+  },
+  {
+    id: "app.check-updates",
+    title: "Check for updates",
+    category: "General",
+    command: { kind: "update-check" },
     repeat: false,
     chords: { safe: undefined, browser: undefined },
   },

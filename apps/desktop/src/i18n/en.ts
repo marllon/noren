@@ -625,6 +625,52 @@ export const en = {
   "settings.gistNoToken": "No GitHub token is stored. Save one in Settings, in the Sync section.",
   "action.sync.pull": "Pull settings",
   "action.sync.push": "Push settings",
+  "action.app.check-updates": "Check for updates",
+  "settings.updates": "Updates",
+  "update.hint":
+    "Noren looks for a new version only when you ask. Nothing is checked, downloaded or installed by itself.",
+  "update.check": "Check for updates",
+  "update.install": "Download and install",
+  "update.installHint":
+    "Installing saves your tabs first, then downloads the package, checks its signature against the update key of this build and only then runs the installer. On Windows Noren closes when the installer starts.",
+  "update.checking": "Looking for a new version...",
+  "update.current": "Noren {version} is the latest version.",
+  "update.current.noVersion": "You have the latest version.",
+  "update.available": "Noren {version} is available. You have {current}.",
+  "update.published": "Released {date}.",
+  "update.notes": "Release notes",
+  "update.notes.none": "This release has no notes.",
+  "update.saving": "Saving your tabs before the update...",
+  "update.downloading": "Downloading Noren {version}...",
+  "update.installed": "Noren {version} is installed. Restart Noren to use it.",
+  "update.progress.label": "Download of the update",
+  "update.progress.starting": "Starting the download...",
+  "update.progress.of": "{percent}% ({done} of {total})",
+  "update.progress.unknownSize": "{done} downloaded",
+  "update.failure.noKey":
+    "This build cannot update yet: it has no update key to check an update against. Nothing was checked or installed.",
+  "update.failure.off": "This run does not update.",
+  "update.failure.signature":
+    "The update was refused: its signature does not match the package and the update key of this build. Nothing was installed.",
+  "update.failure.signatureText":
+    "The update was refused: its signature or the update key is not valid. Nothing was installed.",
+  "update.failure.signedVersion":
+    "The update was refused: the package was signed for version {signed}, not for {announced}. Nothing was installed.",
+  "update.failure.signedVersionMissing":
+    "The update was refused: its signature does not say which version it was made for. Nothing was installed.",
+  "update.failure.noPackage":
+    "The newest release has no package for this computer. Nothing was installed.",
+  "update.failure.unreachable":
+    "The update server could not be reached. Check your connection and try again.",
+  "update.failure.timeout": "The update server took too long to answer. Try again later.",
+  "update.failure.server": "The update server answered with an error ({status}). Try again later.",
+  "update.failure.tooLarge": "The update is larger than Noren accepts, so it was not downloaded.",
+  "update.failure.feed":
+    "The list of releases could not be read: it is not in the format Noren expects.",
+  "update.failure.nothingToInstall": "There is no update to install. Check for updates first.",
+  "update.failure.busy": "Another step of the update is still running.",
+  "update.failure.install": "The update could not be installed: {reason}",
+  "update.failure.other": "The update did not work: {reason}",
   "settings.modMissing": "not in the folder, so it is ignored",
   "settings.modEarlier": "Move {name} earlier",
   "settings.modLater": "Move {name} later",

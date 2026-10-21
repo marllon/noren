@@ -51,6 +51,7 @@ The **safe** preset is the default. It does not fight the shell: Ctrl+T, Ctrl+W 
 | Import color scheme...        | none                  | none                  |
 | Pull settings                 | none                  | none                  |
 | Push settings                 | none                  | none                  |
+| Check for updates             | none                  | none                  |
 | Set theme for this space      | none                  | none                  |
 | Switch sidebar side           | none                  | none                  |
 | Widen / narrow sidebar        | none                  | none                  |
@@ -81,7 +82,7 @@ The chosen preset is a setting of `config.jsonc`: `"keybindings": { "preset": "s
 
 The user's own chords (the overrides) are still provisional: they live in the browser storage under `noren.ui.keybindings`, as `{"overrides": {"<action id>": "<chord>" | null}}`, until the file gets a place for them. A value that is missing, not JSON or not an object falls back to no overrides; an override for an unknown action, or with a chord that cannot match, is dropped. Earlier builds kept the preset here too (`{"preset": ..., "overrides": ...}`): it is moved into the file once, at the first start, and removed from this key.
 
-"Open settings", "Focus sidebar" (see [The sidebar by keyboard](#the-sidebar-by-keyboard)), "Import color scheme..." (category General: it opens a file picker, see [THEMING.md](THEMING.md)), "Pull settings" and "Push settings" (category General: they sync the settings through git, see [ARCHITECTURE.md](ARCHITECTURE.md#sync-through-git)), "Set theme for this space" and the layout actions (category **Layout**, see below) have no key by default; record one for them in the shortcuts screen if you want.
+"Open settings", "Focus sidebar" (see [The sidebar by keyboard](#the-sidebar-by-keyboard)), "Import color scheme..." (category General: it opens a file picker, see [THEMING.md](THEMING.md)), "Pull settings" and "Push settings" (category General: they sync the settings through git, see [ARCHITECTURE.md](ARCHITECTURE.md#sync-through-git)), "Check for updates" (category General: it opens the Updates section of the settings and checks, see [ARCHITECTURE.md](ARCHITECTURE.md#the-update-of-the-app)), "Set theme for this space" and the layout actions (category **Layout**, see below) have no key by default; record one for them in the shortcuts screen if you want.
 
 ## Layout actions
 

@@ -14,6 +14,7 @@ import { startLocalApi } from "./api-bridge";
 import { startSessionLinks } from "./session-link-store";
 import { armAgentResumes } from "./resume-restore";
 import { resumeService } from "./resume-service";
+import { setExitSave } from "./exit-save";
 import { restoreKeepingSessions, withoutReattachedSnapshots } from "./boot-sessions";
 import { setAgentStateClock, setAgentStateReporter } from "./agent-state-store";
 import { archiveClock, startAutoArchive } from "./auto-archive-service";
@@ -241,6 +242,9 @@ export async function bootWorkspace(
       });
     };
     const closeLimit = () => closeLimitMs(pushOnCloseAllowed(configManager.state.config.sync));
+    // The installer of an update ends the app without the close of the window, so the screen of the
+    // update runs this same save, with the same limit, before it asks for the install (NOR-F20-02b).
+    setExitSave(() => saveWithin(closeSave, realClock, closeLimit()));
     if (target instanceof FakeBackend) {
       // The web build has no window to close: a test runs the same save, with the same limit, and
       // reads what the push on close did and what it recorded.

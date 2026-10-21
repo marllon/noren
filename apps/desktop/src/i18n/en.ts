@@ -23,6 +23,9 @@ export const en = {
 
   // The window
   "window.sidebar": "Sidebar",
+  "window.ownSidebar": "Window sidebar",
+  "window.ownTerminal": "Window terminal",
+  "window.ownTerminalNth": "Window terminal {n} of {total}",
   "window.content": "Content",
   "window.newTab": "New tab",
   "window.resizeSidebar": "Resize sidebar",
@@ -719,9 +722,10 @@ export const en = {
   "agents.state.waiting": "waiting for you",
   "agents.state.idle": "idle",
   "agents.where": "{tab} in {space}",
-  "agents.row": "Agent {name} is {state}, for {elapsed}, {where}. Go to it.",
-  "agents.rowWithLine":
-    "Agent {name} is {state}, for {elapsed}, {where}. Last line: {line}. Go to it.",
+  // The name of a row starts with what the row shows, in the same order, so the visible text is part
+  // of it (a person who speaks the name of the button says what they see).
+  "agents.row": "{name}, {state}, {elapsed}, {where}. Go to it.",
+  "agents.rowWithLine": "{name}, {state}, {elapsed}, {where}, {line}. Go to it.",
 
   // Git worktrees
   "worktree.noFolder": "This tab has no known folder, so there is no repository to use.",

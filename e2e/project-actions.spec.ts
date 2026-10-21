@@ -7,6 +7,7 @@ import {
   seedActionsFile,
   seedSidebarState,
 } from "./sidebar-fixture";
+import { expectNoAxeViolations } from "./axe-fixture";
 
 interface Hook {
   lines(): string[];
@@ -253,4 +254,21 @@ test("a failing stop command keeps the action running and says why", async ({ pa
   await button(page, "Stop Loop").click();
   await expect(page.locator('[data-nr-part="pane-notice"]')).toContainText("ended with code 7");
   await expect(button(page, "Stop Loop")).toBeVisible();
+});
+
+test("axe: the header of the actions, idle, running and with a failure showing, has no violation", async ({
+  page,
+}) => {
+  await openWithActions(page);
+  await expect(button(page, "Start Loop")).toBeVisible();
+  await expectNoAxeViolations(page, "project actions header, idle");
+  await button(page, "Start Loop").click();
+  await confirm(page).getByRole("button", { name: "Run", exact: true }).click();
+  await expect(button(page, "Stop Loop")).toBeVisible();
+  await expect(header(page).locator('[data-nr-indicator="running"]')).toHaveCount(1);
+  await expectNoAxeViolations(page, "project actions header, running");
+  await page.evaluate(() => (window as HookWindow).__norenTest?.failCommands(7));
+  await button(page, "Stop Loop").click();
+  await expect(page.locator('[data-nr-part="pane-notice"]')).toContainText("ended with code 7");
+  await expectNoAxeViolations(page, "project actions header, with a notice");
 });

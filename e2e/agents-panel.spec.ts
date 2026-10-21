@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { seedConfig } from "./settings-fixture";
 import { afterNextFrame } from "./frames";
+import { expectNoAxeViolations } from "./axe-fixture";
 
 // The Agents panel (Ctrl+Alt+Shift+G) and its shortcut to the agent that waits for you
 // (Ctrl+Alt+Shift+W). Three agents run in three spaces, one in each state; the fake backend plays
@@ -160,7 +161,7 @@ test("the panel lists the agents of three spaces: waiting, working, then idle, w
   // The words for assistive technology are on each row's button.
   await expect(
     panel(page).getByRole("button", {
-      name: "Agent beta is working, for 2s, Tab 1 in Two. Last line: ✻ Thinking… (2s). Go to it.",
+      name: "beta, working, 2s, Tab 1 in Two, ✻ Thinking… (2s). Go to it.",
       exact: true,
     }),
   ).toBeVisible();
@@ -311,7 +312,7 @@ test("the panel and the commands are in Portuguese when the language is", async 
   await expect(row.locator('[data-nr-part="agents-elapsed"]')).toHaveText("1m 05s");
   await expect(
     dialog.getByRole("button", {
-      name: "Agente alpha está esperando você, há 1m 05s, Aba 1 em Main. Última linha: Shall I continue?. Ir até ele.",
+      name: "alpha, esperando você, 1m 05s, Aba 1 em Main, Shall I continue?. Ir até ele.",
       exact: true,
     }),
   ).toBeVisible();
@@ -334,4 +335,22 @@ test("with agents turned off, nothing is listed", async ({ page }) => {
   await page.keyboard.press("Control+Shift+Alt+G");
   await expect(rows(page)).toHaveCount(0);
   await expect(panel(page).locator('[data-nr-part="agents-empty"]')).toBeVisible();
+});
+
+test.describe("accessibility", () => {
+  test("axe: the panel with no agent has no violation", async ({ page }) => {
+    await start(page);
+    await page.keyboard.press("Control+Shift+Alt+G");
+    await expect(panel(page).locator('[data-nr-part="agents-empty"]')).toBeVisible();
+    await expectNoAxeViolations(page, "Agents panel, empty");
+  });
+
+  test("axe: the panel with a waiting, a working and an idle agent has no violation", async ({
+    page,
+  }) => {
+    await threeAgents(page);
+    await page.keyboard.press("Control+Shift+Alt+G");
+    await expect.poll(() => states(page)).toEqual(["waiting", "working", "idle"]);
+    await expectNoAxeViolations(page, "Agents panel, three agents");
+  });
 });

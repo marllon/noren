@@ -1,7 +1,7 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { setPaneHeaders } from "./settings-fixture";
 
 // The preview pane (NOR-F15-02a): a pane that shows a file. The state is restored with panes of
@@ -528,18 +528,13 @@ test.describe("under the policy of the app", () => {
 });
 
 test.describe("for people who use a keyboard or a screen reader", () => {
-  test("axe finds no serious violation on a text, a markdown, a picture and a refused file", async ({
+  test("axe: no violation on a text, a markdown, a picture and a refused file", async ({
     page,
   }) => {
     await start(page, SIX);
-    for (const name of ["notes", "picture", "log", "binary"]) {
+    for (const name of ["notes", "picture", "log", "data", "broken", "binary", "split"]) {
       await goTo(page, name);
-      const { violations } = await new AxeBuilder({ page }).analyze();
-      const blocking = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
-      const report = blocking.map(
-        (v) => `${v.impact ?? "?"} ${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`,
-      );
-      expect(report, `serious or critical violations on ${name}`).toEqual([]);
+      await expectNoAxeViolations(page, name);
     }
   });
 });

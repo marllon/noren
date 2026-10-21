@@ -1,4 +1,4 @@
-import { treeItemIds } from "@noren/model";
+import { layoutPanes, treeItemIds } from "@noren/model";
 import type { Action, Backend, Id, Item, Pane, Space } from "@noren/model";
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
@@ -153,6 +153,7 @@ function WindowItem({
           </p>
         );
       }
+      const panes = layoutPanes(item.layout);
       const session = pane.sessionId === undefined ? undefined : Number(pane.sessionId);
       if (session === undefined || !taken.has(session)) {
         return (
@@ -170,6 +171,14 @@ function WindowItem({
           <TerminalView
             backend={backend}
             attach={session}
+            label={
+              panes.length > 1
+                ? t("window.ownTerminalNth", {
+                    n: panes.findIndex((p) => p.id === pane.id) + 1,
+                    total: panes.length,
+                  })
+                : t("window.ownTerminal")
+            }
             theme={colors}
             active={shown && pane.id === item.focusedPaneId}
             onReady={(handle) => onTerminal?.(pane.id, handle)}
@@ -338,7 +347,7 @@ export function WindowApp({
             <aside
               className="sidebar window-sidebar"
               data-nr-part="window-sidebar"
-              aria-label={t("window.sidebar")}
+              aria-label={t("window.ownSidebar")}
               style={{ width: SIDEBAR_WIDTH }}
             >
               <SidebarTree

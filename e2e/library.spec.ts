@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { seedConfig } from "./settings-fixture";
 
 // The auto-archive and the library. A tab nobody uses goes to the archive after `archive.afterHours`
@@ -177,7 +178,9 @@ test("an idle tab goes to the archive and comes back from the library with its f
   await expect(rows(page).first()).toContainText("Main");
 
   const shells = (await sessionStarts(page)).length;
-  await library(page).getByRole("button", { name: "Restore alpha", exact: true }).click();
+  await library(page)
+    .getByRole("button", { name: /^Restore alpha / })
+    .click();
   await expect(library(page)).toBeHidden();
   // Back where it was, shown, with its folder and its old output.
   await expect.poll(() => labels(page)).toEqual(["alpha", "beta"]);
@@ -336,7 +339,9 @@ test("the library lists the archive and the closed tabs, searches by title and f
 
   // A closed tab comes back from the library too, as it does from the shortcut.
   const shells = (await sessionStarts(page)).length;
-  await library(page).getByRole("button", { name: "Restore delta", exact: true }).click();
+  await library(page)
+    .getByRole("button", { name: /^Restore delta / })
+    .click();
   await expect(library(page)).toBeHidden();
   await expectRestored(page, delta, shells);
   expect(await labels(page)).toEqual(["keeper", "delta"]);
@@ -406,4 +411,48 @@ test("the arrows and Enter drive the list from the search box", async ({ page })
   await page.keyboard.press("Enter");
   await expect(library(page)).toBeHidden();
   await expect(tab(page, name)).toHaveAttribute("aria-current", "true");
+});
+
+test.describe("accessibility", () => {
+  test("axe: the library with nothing in it has no violation", async ({ page }) => {
+    await seedConfig(page, ONE_HOUR);
+    await page.goto("/");
+    await waitForPrompt(page);
+    await openLibrary(page);
+    await expect(rows(page)).toHaveCount(0);
+    await expectNoAxeViolations(page, "library, empty");
+  });
+
+  test("axe: the library with an archived and a closed tab, a search without a match and the question to delete has no violation", async ({
+    page,
+  }) => {
+    await seedConfig(page, ONE_HOUR);
+    await page.goto("/");
+    await waitForPrompt(page);
+    await makeTab(page, "alpha", true);
+    const beta = await makeTab(page, "beta");
+    await makeTab(page, "keeper");
+    await showTab(page, beta.name);
+    await page.keyboard.press(CLOSE);
+    await expect(tab(page, beta.name)).toHaveCount(0);
+    await showTab(page, "keeper");
+    await advance(page, 62 * MINUTE);
+    await expect.poll(() => labels(page)).toEqual(["keeper"]);
+
+    await openLibrary(page);
+    await expect(rows(page)).toHaveCount(1);
+    await expectNoAxeViolations(page, "library, archive");
+    await section(page, "Closed").click();
+    await expect(rows(page)).toHaveCount(1);
+    await expectNoAxeViolations(page, "library, closed tabs");
+    await search(page).fill("zzz");
+    await expect(library(page).getByRole("status")).toHaveText("No matches");
+    await expectNoAxeViolations(page, "library, no match");
+    await search(page).fill("");
+    await library(page).getByRole("button", { name: "Delete beta", exact: true }).click();
+    await expect(
+      page.getByRole("alertdialog", { name: "Delete from library", exact: true }),
+    ).toBeVisible();
+    await expectNoAxeViolations(page, "library, delete question");
+  });
 });

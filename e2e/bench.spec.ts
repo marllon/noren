@@ -4,6 +4,7 @@ import type { BenchRun } from "../packages/model/src/bench-runner";
 import { BENCH_CSV_HEADER } from "../packages/model/src/bench-scoreboard";
 import { parseConfigText } from "../packages/model/src/config";
 import { BIG, GONE, LLAMA, PHI_CANCELLED, QWEN, seedBench } from "./bench-fixture";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { cancelSettings, configText, openSettings, seedConfig } from "./settings-fixture";
 
 // The bench scoreboard in the AI section of the settings screen: the saved results (seeded as files
@@ -331,5 +332,34 @@ test.describe("in Portuguese", () => {
     await expect(part.locator('[data-nr-part="settings-bench-badge"]')).toHaveText("Recomendado");
     await button(part, "Usar o modelo recomendado").click();
     await expect(noteOf(part)).toContainText("agora é o padrão de Perguntar, Explicar e Comando");
+  });
+});
+
+test.describe("accessibility", () => {
+  test("axe: the scoreboard with no result has no violation", async ({ page }) => {
+    await start(page, { file: FILE });
+    const part = await openBench(page);
+    await part.scrollIntoViewIfNeeded();
+    await expectNoAxeViolations(page, "bench scoreboard, empty");
+  });
+
+  test("axe: the scoreboard with finished and cancelled runs, and with its notes, has no violation", async ({
+    page,
+  }) => {
+    await start(page, { file: FILE, runs: [BIG, QWEN, LLAMA, PHI_CANCELLED, GONE] });
+    const part = await openBench(page);
+    await expect(rowsOf(part)).toHaveCount(5);
+    await part.scrollIntoViewIfNeeded();
+    await expectNoAxeViolations(page, "bench scoreboard, with results");
+    await button(part, "Use the recommended model").click();
+    await expect(noteOf(part)).toBeVisible();
+    await expectNoAxeViolations(page, "bench scoreboard, with a note");
+  });
+
+  test("axe: the scoreboard with only a cancelled run has no violation", async ({ page }) => {
+    await start(page, { file: FILE, runs: [PHI_CANCELLED] });
+    const part = await openBench(page);
+    await expect(rowsOf(part)).toHaveCount(1);
+    await expectNoAxeViolations(page, "bench scoreboard, cancelled run only");
   });
 });

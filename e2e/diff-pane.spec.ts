@@ -1,7 +1,7 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { setPaneHeaders } from "./settings-fixture";
 
 // The diff pane (NOR-F15-03): a pane that shows the git diff of a folder, with the files that
@@ -848,7 +848,7 @@ test.describe("in a split", () => {
 });
 
 test.describe("for people who use a keyboard or a screen reader", () => {
-  test("axe finds no serious violation on a diff, a one-sided change, a binary file, a clean repository and a refusal", async ({
+  test("axe: no violation on a diff, a one-sided change, a binary file, a clean repository and a refusal", async ({
     page,
   }) => {
     await start(
@@ -860,14 +860,7 @@ test.describe("for people who use a keyboard or a screen reader", () => {
       ],
       { diffs: { [REPO]: SAMPLE, "/work/clean": "" } },
     );
-    const check = async (what: string): Promise<void> => {
-      const { violations } = await new AxeBuilder({ page }).analyze();
-      const blocking = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
-      const report = blocking.map(
-        (v) => `${v.impact ?? "?"} ${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`,
-      );
-      expect(report, `serious or critical violations on ${what}`).toEqual([]);
-    };
+    const check = (what: string): Promise<void> => expectNoAxeViolations(page, what);
     await expect(fileButtons(page)).toHaveCount(SAMPLE_FILES.length);
     await check("a modified file");
     await pick(page, "src/added.ts");

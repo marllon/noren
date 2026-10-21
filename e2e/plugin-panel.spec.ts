@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { answersTo, plugin, seedPlugins, statuses } from "./plugins-fixture";
 
 // The panel of a plugin (NOR-F18-01d). The page is the web build with the fake backend, which lists
@@ -242,4 +243,17 @@ test("a second panel replaces the first", async ({ page }) => {
   await expect(panel(page)).toHaveCount(1);
   await expect(panel(page).getByRole("heading", { name: "Second" })).toBeVisible();
   await expect(panel(page)).toHaveAttribute("data-nr-plugin", "second");
+});
+
+test("axe: the panel of the example plugin has no violation", async ({ page }) => {
+  await start(page);
+  await choose(page, "show the panel");
+  await expect(panel(page)).toBeVisible();
+  await expect(
+    page
+      .frameLocator('iframe[data-nr-part="plugin-panel-frame"]')
+      .getByRole("heading", { name: "Hello from the plugin" }),
+  ).toBeVisible();
+  // The frame is sandboxed with no script allowed, so axe cannot enter it: it checks the page around it.
+  await expectNoAxeViolations(page, "plugin panel", { sandboxedFrame: true });
 });

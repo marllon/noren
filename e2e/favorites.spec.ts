@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { seedSidebarState } from "./sidebar-fixture";
 
 // The Favorites grid (global, at the top of the sidebar) and the Pinned list (per space, above the
@@ -187,4 +188,22 @@ test("with nothing pinned the list is gone and a zone over New tab takes the dro
     }),
   ).toBeVisible();
   await expect(zone).toHaveCount(0);
+});
+
+test("axe: the grid with favorites, one of them the tab on screen, has no violation", async ({
+  page,
+}) => {
+  await row(page, "scratch").click({ button: "right" });
+  await menuItem(page, "Add to favorites").click();
+  await row(page, "deploy").click({ button: "right" });
+  await menuItem(page, "Add to favorites").click();
+  await row(page, "api").click({ button: "right" });
+  await menuItem(page, "Add to favorites").click();
+  await expect(grid(page).getByRole("button")).toHaveCount(3);
+  await favorite(page, "scratch").click();
+  await expect(favorite(page, "scratch")).toHaveAttribute("aria-current", "true");
+  await expectNoAxeViolations(page, "favorites grid");
+  await spaceButton(page, "Other").click();
+  await expect(favorite(page, "scratch")).not.toHaveAttribute("aria-current", "true");
+  await expectNoAxeViolations(page, "favorites grid, in another space");
 });

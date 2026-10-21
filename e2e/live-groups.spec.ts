@@ -1,6 +1,6 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { seedGitRepos } from "./sidebar-fixture";
 
 // Live groups in the sidebar (NOR-F17-04b): "New group of worktrees" in the palette makes a group
@@ -147,20 +147,11 @@ test("the arrows walk from the group into its entries and Delete leaves them alo
   await expect(groups(page).first()).toBeFocused();
 });
 
-test("axe: a sidebar with a live group has no serious violation", async ({ page }) => {
+test("axe: a sidebar with a live group has no violation", async ({ page }) => {
   await startInRepo(page);
   await runFromPalette(page, "New group of worktrees");
   await expect(entries(page)).toHaveCount(1);
-  // The line of the command the tab ran (`cd`) has a contrast of 4.23, below the 4.5 axe asks for:
-  // that is the sidebar of every tab, not the entries of a live group, and is left out here.
-  const { violations } = await new AxeBuilder({ page })
-    .exclude('[data-nr-part="item-command"]')
-    .analyze();
-  const blocking = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
-  expect(
-    blocking.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`),
-    "serious or critical violations",
-  ).toEqual([]);
+  await expectNoAxeViolations(page, "sidebar with a live group");
 });
 
 test("a folder with no repository makes a group that says why it lists nothing", async ({
@@ -189,4 +180,17 @@ test("with no known folder the command only says so and makes no group", async (
       .filter({ hasText: "no known folder" }),
   ).toBeVisible();
   await expect(groups(page)).toHaveCount(0);
+});
+
+test("axe: a group that says why it lists nothing has no violation", async ({ page }) => {
+  await seedGitRepos(page, { [REPO]: "main" });
+  await page.goto("/");
+  await expect(tabs(page)).toHaveCount(1);
+  await run(page, "cd /elsewhere");
+  await expect(cwdOf(tabs(page).first())).toHaveText("/elsewhere");
+  await runFromPalette(page, "New group of worktrees");
+  await expect(tree(page).locator('[data-nr-part="live-error"]')).toContainText(
+    "Could not update:",
+  );
+  await expectNoAxeViolations(page, "live group with an error");
 });

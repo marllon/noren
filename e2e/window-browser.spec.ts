@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { clicksReachThePage } from "./sidebar-fixture";
 
 // The browser pane in a window besides the main one (NOR-F15-04e). A tab with a browser pane goes to
@@ -619,4 +620,12 @@ test("two windows each keep the web view of their own pane, and the tab that sta
   );
   await expect(panels(page)).toHaveCount(1);
   await expect.poll(parents).toEqual([null, null, second]);
+});
+
+test("axe: a window with a browser pane has no violation", async ({ page }) => {
+  await open(page);
+  await show(page, "web");
+  const panel = await dragToPanel(page, "web");
+  await expect(addressIn(panel)).toHaveValue(WEB_URL);
+  await expectNoAxeViolations(page, "window with a browser pane");
 });

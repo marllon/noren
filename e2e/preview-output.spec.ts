@@ -1,4 +1,4 @@
-import AxeBuilder from "@axe-core/playwright";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
@@ -430,9 +430,7 @@ test.describe("a path in the output", () => {
     expect(await paneIds(page)).toEqual(["t1"]);
   });
 
-  test("has no serious accessibility violation with the preview open and the notice shown", async ({
-    page,
-  }) => {
+  test("axe: no violation with the preview open and the notice shown", async ({ page }) => {
     await start(page, "\\\\server\\share\\work");
     await print(page, "./notes.md");
     await clickFirstRow(page, 30, true);
@@ -441,12 +439,7 @@ test.describe("a path in the output", () => {
     await clickFirstRow(page, 40, true);
     await expect(previewPane(page)).toBeVisible();
     await expect(previewBody(page).locator("h3")).toHaveText("Notes");
-    const { violations } = await new AxeBuilder({ page }).analyze();
-    const blocking = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
-    const report = blocking.map(
-      (v) => `${v.impact ?? "?"} ${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`,
-    );
-    expect(report).toEqual([]);
+    await expectNoAxeViolations(page, "preview opened from the output");
   });
 });
 

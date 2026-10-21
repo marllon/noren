@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { expectNoAxeViolations } from "./axe-fixture";
 import {
   closeShortcutsScreen,
   openSettings,
@@ -244,4 +245,13 @@ test("the key inside the window and the palette entry show and hide the quick wi
   await page.keyboard.press("Enter");
   await expect.poll(() => app(page, "quickToggles")).toBe(2);
   expect(await app(page, "quickVisible")).toBe(false);
+});
+
+test("axe: the quick window, hidden, shown with its shell and with the promote button waiting, has no violation", async ({
+  page,
+}) => {
+  await open(page);
+  await expectNoAxeViolations(page, "quick window, hidden");
+  await showQuick(page);
+  await expectNoAxeViolations(page, "quick window, shown");
 });

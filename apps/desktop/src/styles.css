@@ -417,6 +417,11 @@ body {
   background: color-mix(in srgb, var(--nr-text) 8%, transparent);
 }
 
+/* The muted text of the button on its hover tint is pulled toward the text color to stay readable (4.5:1). */
+.new-tab:hover {
+  color: color-mix(in srgb, var(--nr-muted) 70%, var(--nr-text));
+}
+
 .tab-button[data-nr-state="active"] {
   border-color: var(--nr-border);
   background: color-mix(in srgb, var(--nr-space-color) 16%, var(--nr-surface));
@@ -708,8 +713,9 @@ body {
   white-space: nowrap;
 }
 
+/* The accent alone is 3.75:1 on the tint of a selected row: pulled toward the text color it reaches 4.5:1. */
 [data-nr-state="failed"] > .command-code {
-  color: var(--nr-accent);
+  color: color-mix(in srgb, var(--nr-accent) 70%, var(--nr-text));
 }
 
 /*
@@ -1455,6 +1461,8 @@ body {
 
 .preview-path {
   flex: none;
+  margin: 0;
+  font-weight: normal;
   padding: 4px 8px;
   border-bottom: 1px solid var(--nr-border);
   background: var(--nr-surface);
@@ -3221,6 +3229,11 @@ body {
   background: color-mix(in srgb, var(--nr-text) 12%, transparent);
 }
 
+/* The muted text on the tint is pulled toward the text color to stay readable (4.5:1). */
+.library-row[data-nr-state="selected"] :is(.library-cwd, .library-meta, .library-snippet) {
+  color: color-mix(in srgb, var(--nr-muted) 70%, var(--nr-text));
+}
+
 .library-open {
   display: flex;
   flex: 1 1 auto;
@@ -3363,6 +3376,12 @@ body {
   background: color-mix(in srgb, var(--nr-text) 12%, transparent);
 }
 
+/* The muted text on the tint is pulled toward the text color to stay readable (4.5:1). */
+.agents-row:hover :is(.agents-elapsed, .agents-where, .agents-line),
+.agents-row:focus-within :is(.agents-elapsed, .agents-where, .agents-line) {
+  color: color-mix(in srgb, var(--nr-muted) 70%, var(--nr-text));
+}
+
 .agents-open {
   display: flex;
   flex-wrap: wrap;
@@ -3388,7 +3407,8 @@ body {
 
 .agents-state {
   flex: none;
-  color: var(--agent-color);
+  /* The accent of "working" alone is 4.3:1 on the surface: a little of the text color gets it past 4.5:1. */
+  color: color-mix(in srgb, var(--agent-color) 80%, var(--nr-text));
 }
 
 .agents-elapsed {

@@ -22,14 +22,23 @@ describe("the elements an answer is drawn with", () => {
     );
   });
 
-  it("puts the headings of an answer below the title of the panel", () => {
+  it("puts the headings of an answer below the title of the panel, never skipping a level", () => {
     const markup = html("# one\n\n## two\n\n#### four\n\n###### six");
     expect(markup).toContain("<h3>one</h3>");
     expect(markup).toContain("<h4>two</h4>");
-    expect(markup).toContain("<h6>four</h6>");
+    expect(markup).toContain("<h5>four</h5>");
     expect(markup).toContain("<h6>six</h6>");
     expect(markup).not.toContain("<h1");
     expect(markup).not.toContain("<h2");
+  });
+
+  it("starts at a level 3 whatever level the answer began with, and steps back by what was written", () => {
+    const markup = html("### a\n\n#### b\n\n##### c\n\n### d");
+    expect(markup).toContain("<h3>a</h3>");
+    expect(markup).toContain("<h4>b</h4>");
+    expect(markup).toContain("<h5>c</h5>");
+    expect(markup).toContain("<h3>d</h3>");
+    expect(html("## only")).toContain("<h3>only</h3>");
   });
 
   it("draws lists, numbered ones from where they start", () => {

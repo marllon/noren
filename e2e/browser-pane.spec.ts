@@ -1,6 +1,6 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { openSettings, seedConfig, settingsScreen } from "./settings-fixture";
 
 // The browser pane (NOR-F15-01b). Ctrl+click on an address in the output opens a pane beside the
@@ -572,21 +572,16 @@ test.describe("the web view goes with its pane", () => {
 });
 
 test.describe("accessibility", () => {
-  test("axe finds no serious violation with a browser pane open, or with a reason showing", async ({
+  test("axe: a browser pane open, and one with a reason showing, have no violation", async ({
     page,
   }) => {
     const id = await start(page);
     await openPane(page, id);
+    await expect(address(page)).toBeVisible();
+    await expectNoAxeViolations(page, "browser pane");
     await submit(page, "file:///C:/x");
     await expect(problem(page)).toBeVisible();
-    const { violations } = await new AxeBuilder({ page }).analyze();
-    const blocking = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
-    const report = blocking.map(
-      (v) =>
-        `${v.impact ?? "?"} ${v.id}: ${v.help}\n` +
-        v.nodes.map((n) => `    ${n.target.join(" ")}\n    ${n.failureSummary ?? ""}`).join("\n"),
-    );
-    expect(report).toEqual([]);
+    await expectNoAxeViolations(page, "browser pane, with a reason");
   });
 
   test("the bar is reached with the keyboard and named for assistive technology", async ({

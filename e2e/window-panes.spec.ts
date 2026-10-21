@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { clicksReachThePage } from "./sidebar-fixture";
 
 // The preview and diff panes in a window besides the main one (NOR-F15-04d). A tab with one of
@@ -504,4 +505,45 @@ test("the panes come back with the window after a reload, and with the tab when 
   await expect(
     page.locator('[data-nr-part="item-view"]:not([hidden]) [data-nr-part="preview-markdown"]'),
   ).toContainText("Some bold words");
+});
+
+test.describe("accessibility", () => {
+  // One window in each test: the sidebars and the terminals of two windows of the preview page carry
+  // the same names, which two windows of the real app never share (each is a page of its own).
+  test("axe: a window with a markdown preview has no violation", async ({ page }) => {
+    await open(page);
+    const notes = await dragToPanel(page, "notes");
+    await expect(markdownIn(notes)).toContainText("Some bold words");
+    await expectNoAxeViolations(page, "window with a preview");
+  });
+
+  test("axe: a window with a picture has no violation", async ({ page }) => {
+    await open(page);
+    const picture = await dragToPanel(page, "picture");
+    await expect(picture.locator('[data-nr-part="preview-image"]')).toBeVisible();
+    await expectNoAxeViolations(page, "window with a picture");
+  });
+
+  test("axe: a window that says the file is missing has no violation", async ({ page }) => {
+    await open(page);
+    const lost = await dragToPanel(page, "lost");
+    await expect(lost.locator('[data-nr-part="preview-problem"]')).toBeVisible();
+    await expectNoAxeViolations(page, "window with a missing file");
+  });
+
+  test("axe: a window with a diff has no violation", async ({ page }) => {
+    await open(page);
+    const changes = await dragToPanel(page, "changes");
+    await expect(diffFilesIn(changes)).toHaveCount(SAMPLE_FILE_COUNT);
+    await expectNoAxeViolations(page, "window with a diff");
+  });
+
+  test("axe: a window that says the folder is in no repository has no violation", async ({
+    page,
+  }) => {
+    await open(page);
+    const norepo = await dragToPanel(page, "norepo");
+    await expect(norepo.locator('[data-nr-part="diff-problem"]')).toBeVisible();
+    await expectNoAxeViolations(page, "window with a folder in no repository");
+  });
 });

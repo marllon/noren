@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { expectNoAxeViolations } from "./axe-fixture";
 
 // The live group of SSH hosts (NOR-F17-04c): "New group of SSH hosts" in the palette makes a group
 // whose entries are the hosts of the ~/.ssh/config. In web mode the fake backend answers with its
@@ -59,4 +60,13 @@ test("clicking a host opens one tab of the group and types ssh <host> in it", as
   await tree(page).getByRole("treeitem", { name: "db.internal", exact: true }).click();
   await expect(tabs(page)).toHaveCount(2);
   await expect(tabs(page).nth(1)).toHaveAttribute("aria-selected", "true");
+});
+
+test("axe: a group of SSH hosts has no violation", async ({ page }) => {
+  await page.goto("/");
+  await expect(tabs(page)).toHaveCount(1);
+  await expect(page.locator("textarea.xterm-helper-textarea").first()).toBeAttached();
+  await runFromPalette(page, "New group of SSH hosts");
+  await expect(entries(page)).toHaveCount(3);
+  await expectNoAxeViolations(page, "live group of SSH hosts");
 });

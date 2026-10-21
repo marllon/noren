@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { closeShortcutsScreen, openShortcutsScreen, seedConfig } from "./settings-fixture";
 import { afterNextFrame } from "./frames";
+import { expectNoAxeViolations } from "./axe-fixture";
 
 // The Ask panel (Ctrl+Shift+A): chips that read the terminal, the preview of exactly what will be
 // sent (with the secrets already swapped for markers), the answer in pieces drawn as Markdown, the
@@ -683,5 +684,58 @@ test.describe("opening, closing and the shortcut", () => {
     await expect(panel(page)).toHaveCount(0);
     await page.keyboard.press("Control+Alt+K");
     await expect(panel(page)).toBeVisible();
+  });
+});
+
+test.describe("accessibility", () => {
+  test("axe: the panel open and empty, with the chips and the question, has no violation", async ({
+    page,
+  }) => {
+    await start(page);
+    await openAsk(page);
+    await expectNoAxeViolations(page, "Ask panel, empty");
+    await button(panel(page), "@ Tab").click();
+    await expect(
+      panel(page).getByRole("group", { name: "Tabs to add", exact: true }),
+    ).toBeVisible();
+    await expectNoAxeViolations(page, "Ask panel, with the list of tabs to add");
+  });
+
+  test("axe: the preview, the answer drawn as Markdown with a code block and the failure have no violation", async ({
+    page,
+  }) => {
+    await start(page);
+    await say(page, "needle-beta");
+    await setReply(
+      page,
+      "## Plan\n\nUse **strong** and `inline`.\n\n1. First\n2. Second\n\n- a bullet\n\n```sh\nls -la\n```\n",
+    );
+    await openAsk(page);
+    await button(panel(page), "Last output").click();
+    await previewQuestion(page, "show me");
+    await expectNoAxeViolations(page, "Ask panel, preview");
+    await send(page);
+    await expect(
+      panel(page).locator('[data-nr-part="ask-answer"]').getByRole("heading", { name: "Plan" }),
+    ).toBeVisible();
+    await expectNoAxeViolations(page, "Ask panel, answer");
+  });
+
+  test("axe: a provider that cannot answer and a panel with nobody to ask have no violation", async ({
+    page,
+  }) => {
+    await start(page, { ollama: null });
+    await openAsk(page);
+    await previewQuestion(page, "hello?");
+    await send(page, "failed");
+    await expect(exchange(page, "failed").getByRole("alert")).toBeVisible();
+    await expectNoAxeViolations(page, "Ask panel, failure");
+  });
+
+  test("axe: the panel with no provider, only the steps, has no violation", async ({ page }) => {
+    await start(page, { file: FILE_UNNAMED, ollama: null });
+    await page.keyboard.press("Control+Shift+A");
+    await expect(panel(page).locator('[data-nr-part="ask-steps"]')).toBeVisible();
+    await expectNoAxeViolations(page, "Ask panel, no provider");
   });
 });

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { clicksReachThePage, seedSidebarState, sidebarState } from "./sidebar-fixture";
 
 // The sidebar of a window besides the main one (NOR-F15-04c): the page of a window draws the tabs of
@@ -154,7 +155,7 @@ test("the window draws the sidebar of its space: the tabs, the one on screen mar
   page,
 }) => {
   const { panel } = await openWithWindow(page);
-  const sidebar = panel.getByRole("complementary", { name: "Sidebar", exact: true });
+  const sidebar = panel.getByRole("complementary", { name: "Window sidebar", exact: true });
   await expect(sidebar).toBeVisible();
   await expect(panelRow(panel, "scratch")).toHaveAttribute("aria-current", "true");
   await expect(newTabButton(panel)).toBeVisible();
@@ -490,4 +491,12 @@ test("a tab behind the one a window shows keeps its mark until the window shows 
     .poll(async () => (await windowSpace(page, "w1")).items["j2"]?.layout.pane?.unread ?? false)
     .toBe(false);
   expect((await windowSpace(page, "w1")).items["j2"]?.layout.pane?.bell ?? false).toBe(false);
+});
+
+test("axe: a window with the sidebar of its space, a second tab and an unread one has no violation", async ({
+  page,
+}) => {
+  const { panel } = await openWithWindow(page);
+  await addTab(panel, 2);
+  await expectNoAxeViolations(page, "window with its sidebar");
 });

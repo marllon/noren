@@ -10,6 +10,11 @@ interface ConfirmDialogProps {
   detail?: string;
   /** Styles the confirm button as destructive. Defaults to true. */
   danger?: boolean;
+  /**
+   * The level of the title. A question asked inside a settings section sits below that section's
+   * heading, so it takes that level and the headings after it do not skip one.
+   */
+  titleLevel?: 2 | 4;
   onConfirm(): void;
   onCancel(): void;
 }
@@ -21,6 +26,7 @@ export function ConfirmDialog({
   confirmLabel,
   detail,
   danger = true,
+  titleLevel = 2,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -28,6 +34,7 @@ export function ConfirmDialog({
   const titleId = useId();
   const messageId = useId();
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const Title = `h${titleLevel}` as "h2" | "h4";
 
   useEffect(() => {
     cancelRef.current?.focus();
@@ -50,7 +57,7 @@ export function ConfirmDialog({
         aria-describedby={messageId}
         onKeyDown={onKeyDown}
       >
-        <h2 id={titleId}>{title}</h2>
+        <Title id={titleId}>{title}</Title>
         <p id={messageId} className="dialog-message">
           {message}
         </p>

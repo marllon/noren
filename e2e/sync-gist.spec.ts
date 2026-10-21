@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { cancelSettings, configText, openSettings, seedConfig } from "./settings-fixture";
 
 // The sync through a secret GitHub gist in the Sync section of the settings screen, in the palette
@@ -665,4 +666,47 @@ test("removing the token stops Pull and Push of the palette from reaching the gi
     "No GitHub token is stored. Save one in Settings, in the Sync section.",
   );
   expect((await calls(page)).filter((call) => call.method === "syncGistPush")).toEqual([]);
+});
+
+test.describe("accessibility", () => {
+  test("axe: the section with the gist chosen, the token stored and a gist connected has no violation", async ({
+    page,
+  }) => {
+    await start(page, { gists: { [GIST]: { files: { "config.jsonc": THEIRS } } } }, GIST_METHOD);
+    const { sync } = await openSync(page);
+    await sync.scrollIntoViewIfNeeded();
+    await expectNoAxeViolations(page, "Sync section, gist without a token");
+    await saveToken(sync);
+    await expectNoAxeViolations(page, "Sync section, gist with a token");
+    await idBox(sync).fill(GIST);
+    await button(sync, "Connect").click();
+    await expect(status(sync)).toContainText(`Connected to the gist ${GIST}.`);
+    await expectNoAxeViolations(page, "Sync section, gist connected");
+  });
+
+  test("axe: the section with a public gist warning, a conflict and a failure has no violation", async ({
+    page,
+  }) => {
+    await start(
+      page,
+      {
+        localFiles: { "config.jsonc": MINE },
+        gists: { [GIST]: { public: true, files: { "config.jsonc": THEIRS } } },
+      },
+      GIST_METHOD,
+    );
+    const { sync } = await openSync(page);
+    await saveToken(sync);
+    await idBox(sync).fill(GIST);
+    await button(sync, "Connect").click();
+    await expect(publicWarning(sync)).toBeVisible();
+    await expectNoAxeViolations(page, "Sync section, public gist");
+    await button(sync, "Pull").click();
+    await expect(note(sync)).toContainText("Pull stopped");
+    await expectNoAxeViolations(page, "Sync section, gist conflict");
+    await page.evaluate(() => (window as HookWindow).__norenTest?.failSyncGist("GitHub is down"));
+    await button(sync, "Push").click();
+    await expect(note(sync)).toContainText("Could not push");
+    await expectNoAxeViolations(page, "Sync section, gist failure");
+  });
 });

@@ -100,15 +100,17 @@ export function AgentsPanel({ workspace, onPick, onClose }: AgentsPanelProps) {
                     onClick={() => onPick(row)}
                   >
                     <span className="agent-dot" aria-hidden="true" />
+                    {/* The spaces between the parts are not drawn (they are flex items), but they keep the
+                        words of one part from running into the next in the text a tool reads. */}
                     <span className="agents-name" data-nr-part="agents-name">
                       {row.agentId}
-                    </span>
+                    </span>{" "}
                     <span className="agents-state" data-nr-part="agents-state">
                       {state}
-                    </span>
+                    </span>{" "}
                     <span className="agents-elapsed" data-nr-part="agents-elapsed">
                       {row.elapsed}
-                    </span>
+                    </span>{" "}
                     <span className="agents-where" data-nr-part="agents-where">
                       <span
                         className="agents-space-dot"
@@ -116,7 +118,7 @@ export function AgentsPanel({ workspace, onPick, onClose }: AgentsPanelProps) {
                         style={{ background: row.spaceColor }}
                       />
                       {where}
-                    </span>
+                    </span>{" "}
                     {row.lastLine !== "" && (
                       <span className="agents-line" data-nr-part="agents-line">
                         {row.lastLine}

@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { BENCH_MODEL_CATALOG, recommendedBenchModels } from "../packages/model/src/bench-models";
 import type { BenchHardware } from "../packages/model/src/bench-models";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { cancelSettings, openSettings, seedConfig } from "./settings-fixture";
 
 // The recommended models in the AI section of the settings screen: the memory of the computer is
@@ -432,5 +433,45 @@ test.describe("in Portuguese", () => {
     await expect(part.locator('[data-nr-part="settings-models-empty"]')).toContainText(
       "Nenhum modelo da lista cabe neste computador",
     );
+  });
+});
+
+test.describe("accessibility", () => {
+  test("axe: the list for a computer with video memory, and its install question, has no violation", async ({
+    page,
+  }) => {
+    await start(page, { hardware: ram(16, 24) });
+    const part = await openModels(page);
+    await expect(rowsOf(part)).toHaveCount(13);
+    await part.scrollIntoViewIfNeeded();
+    await expectNoAxeViolations(page, "recommended models");
+    await button(part, `Install qwen2.5-coder:32b`).click();
+    await expect(question(page, "Install qwen2.5-coder:32b?")).toBeVisible();
+    await expectNoAxeViolations(page, "install question of a model");
+  });
+
+  test("axe: the list for a small computer has no violation", async ({ page }) => {
+    await start(page, { hardware: ram(8) });
+    const part = await openModels(page);
+    await expect(rowsOf(part)).toHaveCount(5);
+    await expectNoAxeViolations(page, "recommended models, 8 GiB");
+  });
+
+  test("axe: the part when nothing fits, and when the memory is not known, has no violation", async ({
+    page,
+  }) => {
+    await start(page);
+    const screen = await openSettings(page);
+    const part = models(screen.getByRole("region", { name: "AI", exact: true }));
+    await expect(warningOf(part)).toBeVisible();
+    await part.scrollIntoViewIfNeeded();
+    await expectNoAxeViolations(page, "recommended models, memory not known");
+  });
+
+  test("axe: the part when no model fits has no violation", async ({ page }) => {
+    await start(page, { hardware: ram(1) });
+    const part = await openModels(page);
+    await expect(part.locator('[data-nr-part="settings-models-empty"]')).toBeVisible();
+    await expectNoAxeViolations(page, "recommended models, nothing fits");
   });
 });

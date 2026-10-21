@@ -190,6 +190,7 @@ export function ModelsPanel({ backend, onInsert }: ModelsPanelProps) {
             detail={pending.command}
             confirmLabel={t("models.confirmButton")}
             danger={false}
+            titleLevel={4}
             onCancel={closeQuestion}
             onConfirm={confirm}
           />

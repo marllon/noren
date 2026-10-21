@@ -235,7 +235,7 @@ test.describe("the library and the dialogs of a space", () => {
 
     await sections.getByRole("tab", { name: /^Fechadas/ }).click();
     await expect(library.getByRole("list", { name: "Fechadas", exact: true })).toBeVisible();
-    await expect(button(library, "Restaurar api")).toBeVisible();
+    await expect(library.getByRole("button", { name: /^Restaurar api / })).toBeVisible();
     await library.getByRole("textbox", { name: "Buscar na biblioteca" }).fill("zzz-nothing");
     await expect(library.getByText("Nenhum resultado", { exact: true })).toBeVisible();
     await expectNoEnglish(library);

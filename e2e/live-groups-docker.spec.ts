@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { expectNoAxeViolations } from "./axe-fixture";
 
 // The live group of running containers (NOR-F17-04d): "New group of running containers" in the
 // palette makes a group whose entries are the containers `docker ps` lists. In web mode the fake
@@ -84,4 +85,27 @@ test("with Docker missing the group is empty and says why", async ({ page }) => 
     "Could not update: docker not found",
   );
   await expect(tabs(page)).toHaveCount(1);
+});
+
+test("axe: a group of containers has no violation", async ({ page }) => {
+  await page.goto("/");
+  await expect(tabs(page)).toHaveCount(1);
+  await expect(page.locator("textarea.xterm-helper-textarea").first()).toBeAttached();
+  await runFromPalette(page, "New group of running containers");
+  await expect(entries(page)).toHaveCount(3);
+  await expectNoAxeViolations(page, "live group of containers");
+});
+
+test("axe: a group that says why it is empty has no violation", async ({ page }) => {
+  await page.goto("/");
+  await expect(tabs(page)).toHaveCount(1);
+  await expect(page.locator("textarea.xterm-helper-textarea").first()).toBeAttached();
+  await page.evaluate(() =>
+    (window as HookWindow).__norenTest?.setDockerContainers([], "docker not found"),
+  );
+  await runFromPalette(page, "New group of running containers");
+  await expect(tree(page).locator('[data-nr-part="live-error"]')).toContainText(
+    "Could not update: docker not found",
+  );
+  await expectNoAxeViolations(page, "live group of containers, with an error");
 });

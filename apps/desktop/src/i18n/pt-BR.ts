@@ -24,6 +24,9 @@ export const ptBR: Dictionary = {
 
   // The window
   "window.sidebar": "Barra lateral",
+  "window.ownSidebar": "Barra lateral da janela",
+  "window.ownTerminal": "Terminal da janela",
+  "window.ownTerminalNth": "Terminal {n} de {total} da janela",
   "window.content": "Conteúdo",
   "window.newTab": "Nova aba",
   "window.resizeSidebar": "Redimensionar a barra lateral",
@@ -730,9 +733,8 @@ export const ptBR: Dictionary = {
   "agents.state.waiting": "esperando você",
   "agents.state.idle": "ocioso",
   "agents.where": "{tab} em {space}",
-  "agents.row": "Agente {name} está {state}, há {elapsed}, {where}. Ir até ele.",
-  "agents.rowWithLine":
-    "Agente {name} está {state}, há {elapsed}, {where}. Última linha: {line}. Ir até ele.",
+  "agents.row": "{name}, {state}, {elapsed}, {where}. Ir até ele.",
+  "agents.rowWithLine": "{name}, {state}, {elapsed}, {where}, {line}. Ir até ele.",
 
   // Worktrees do git
   "worktree.noFolder": "Esta aba não tem uma pasta conhecida, então não há repositório para usar.",

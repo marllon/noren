@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { FAKE_GALLERY_LAGOON } from "../packages/model/src/gallery-fixture";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { cancelSettings, configText, openSettings, seedConfig } from "./settings-fixture";
 
 // The Sync section of the settings screen and the "Pull settings" and "Push settings" commands of
@@ -320,4 +321,43 @@ test("a conflict and a failure reach the notice of the palette commands too", as
   await page.evaluate(() => (window as HookWindow).__norenTest?.failSync("git is not installed"));
   await runCommand(page, "push settings", "Push settings");
   await expect(notice(page)).toHaveText("Could not read the sync status: git is not installed");
+});
+
+test.describe("accessibility", () => {
+  test("axe: the section not connected, then connected with files to send, has no violation", async ({
+    page,
+  }) => {
+    await start(page, { localFiles: { "config.jsonc": MINE } });
+    const { sync } = await openSync(page);
+    await expect(status(sync)).toHaveText("Not connected to a remote.");
+    await sync.scrollIntoViewIfNeeded();
+    await expectNoAxeViolations(page, "Sync section, not connected");
+    await connect(sync);
+    await expect(sync.locator('[data-nr-part="settings-sync-pending"]')).toBeVisible();
+    await expectNoAxeViolations(page, "Sync section, connected");
+  });
+
+  test("axe: the section with a refused address, a conflict and a failure of git has no violation", async ({
+    page,
+  }) => {
+    await start(
+      page,
+      { localFiles: { "config.jsonc": MINE }, remoteFiles: { "config.jsonc": THEIRS } },
+      MINE,
+    );
+    const { sync } = await openSync(page);
+    await connect(sync, "http://example.com/me/noren-settings.git");
+    await expect(note(sync)).toContainText("This is not a usable remote");
+    await expectNoAxeViolations(page, "Sync section, refused address");
+    await connect(sync);
+    await button(sync, "Pull").click();
+    await expect(note(sync)).toContainText("Pull stopped");
+    await expectNoAxeViolations(page, "Sync section, conflict");
+    await page.evaluate(() =>
+      (window as HookWindow).__norenTest?.failSync("git is not installed: install it"),
+    );
+    await button(sync, "Push").click();
+    await expect(note(sync)).toContainText("Could not push");
+    await expectNoAxeViolations(page, "Sync section, failure");
+  });
 });

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { cancelSettings, configText, openSettings, seedConfig } from "./settings-fixture";
 
 // The AI providers in the settings screen (Ollama and its models, the providers of the file with
@@ -455,5 +456,52 @@ test.describe("the AI in one space", () => {
       "title",
       "The AI is off in the settings, so it is off in every space",
     );
+  });
+});
+
+test.describe("accessibility", () => {
+  test("axe: Ollama with its models and the providers of the file, with their notes, have no violation", async ({
+    page,
+  }) => {
+    await start(page, { file: FILE, ollama: ["llama3", "qwen2"] });
+    const ai = await openAi(page);
+    await expect(group(ai, "Ollama").getByRole("status").first()).toContainText("with 2 models");
+    await group(ai, "Ollama").scrollIntoViewIfNeeded();
+    await expectNoAxeViolations(page, "AI providers");
+    const spare = group(ai, "spare");
+    await button(spare, "Test connection to spare").click();
+    await expect(note(spare)).toContainText("The connection failed");
+    await button(group(ai, "work"), "Store key of work").click();
+    await expect(note(group(ai, "work"))).toHaveText("Paste the key in the box first.");
+    await spare.scrollIntoViewIfNeeded();
+    await expectNoAxeViolations(page, "AI providers, with notes");
+    await field(spare, "API key for spare").fill(KEY);
+    await button(spare, "Store key of spare").click();
+    await expect(note(spare)).toHaveText("The key is stored in the keychain.");
+    await expectNoAxeViolations(page, "AI providers, with a key stored");
+  });
+
+  test("axe: the steps when nothing can answer have no violation", async ({ page }) => {
+    await start(page);
+    const ai = await openAi(page);
+    await expect(steps(ai)).toBeVisible();
+    await steps(ai).scrollIntoViewIfNeeded();
+    await expectNoAxeViolations(page, "AI providers, steps");
+  });
+
+  test("axe: the form that adds a provider, with its refusals, has no violation", async ({
+    page,
+  }) => {
+    await start(page, { file: FILE });
+    const ai = await openAi(page);
+    const form = group(ai, "Add a provider");
+    await form.scrollIntoViewIfNeeded();
+    await expectNoAxeViolations(page, "add provider form");
+    await field(form, "Provider id").fill("work");
+    await field(form, "Provider address").fill("ftp://host/v1");
+    await field(form, "Provider model").fill("m");
+    await button(form, "Add provider").click();
+    await expect(field(form, "Provider id")).toHaveAttribute("aria-invalid", "true");
+    await expectNoAxeViolations(page, "add provider form, with refusals");
   });
 });

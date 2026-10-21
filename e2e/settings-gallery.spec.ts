@@ -8,6 +8,7 @@ import {
   FAKE_GALLERY_LAGOON,
   FAKE_GALLERY_MOD,
 } from "../packages/model/src/gallery-fixture";
+import { expectNoAxeViolations } from "./axe-fixture";
 import { cancelSettings, openSettings } from "./settings-fixture";
 
 // The gallery section of the settings screen (NOR-F18-02b): the index (here a fixture seeded under
@@ -199,4 +200,29 @@ test("a theme that passes the hash but is not a theme is said so and left out of
   await page.keyboard.press("Control+Shift+P");
   await page.keyboard.type(">theme: broken");
   await expect(page.locator('[data-nr-part="palette"]').getByRole("option")).toHaveCount(0);
+});
+
+test.describe("accessibility", () => {
+  test("axe: the gallery with new, outdated and up to date items has no violation", async ({
+    page,
+  }) => {
+    const gallery = await start(page);
+    await expect(row(gallery, "Lagoon")).toHaveCount(1);
+    await gallery.scrollIntoViewIfNeeded();
+    await expectNoAxeViolations(page, "gallery");
+  });
+
+  test("axe: the gallery with an installed item, a hash that does not match and a broken theme has no violation", async ({
+    page,
+  }) => {
+    const gallery = await start(page);
+    await gallery.getByRole("button", { name: "Install Lagoon", exact: true }).click();
+    await expect(row(gallery, "Lagoon").getByRole("status")).toHaveText("Lagoon is installed.");
+    await gallery.getByRole("button", { name: "Install Tampered", exact: true }).click();
+    await expect(row(gallery, "Tampered").getByRole("status")).toContainText("Could not install");
+    await gallery.getByRole("button", { name: "Install Broken", exact: true }).click();
+    await expect(row(gallery, "Broken").getByRole("status")).toContainText("not a usable theme");
+    await gallery.scrollIntoViewIfNeeded();
+    await expectNoAxeViolations(page, "gallery, with notes");
+  });
 });

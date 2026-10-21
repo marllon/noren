@@ -18,8 +18,34 @@ function describeViolations(
   );
 }
 
-/** Runs axe on the page as it is now and fails with the nodes of every violation, of any impact. */
-export async function expectNoAxeViolations(page: Page, surface: string): Promise<void> {
-  const { violations } = await new AxeBuilder({ page }).analyze();
+/**
+ * Runs axe on the page as it is now and fails with the nodes of every violation, of any impact.
+ *
+ * `sandboxedFrame` is for the one frame the app draws that no script can enter on purpose: the
+ * sandboxed frame of a plugin panel, whose content is the plugin's. Axe cannot run inside it and
+ * waits for it a minute by default, and the default mode hangs on it, so the page is analyzed in
+ * the legacy mode with a short wait. No rule is changed and nothing is left out: the page around the
+ * frame and the frame element itself (its title, its place) are checked as always; axe only reports
+ * the content of the frame as "not tested" (the `frame-tested` rule, in `incomplete`).
+ */
+export async function expectNoAxeViolations(
+  page: Page,
+  surface: string,
+  options: { sandboxedFrame?: boolean } = {},
+): Promise<void> {
+  // Axe reads the colors the page has right now: a fade or a slide that is still running (a list
+  // that comes in, a space that changes) would be read half way. The animations that end are let to
+  // end; the ones that never end (a pulse, a spinner) are left running.
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+        .map((animation) => animation.finished.catch(() => undefined)),
+    ),
+  );
+  const builder = new AxeBuilder({ page });
+  if (options.sandboxedFrame === true) builder.setLegacyMode(true).options({ frameWaitTime: 2000 });
+  const { violations } = await builder.analyze();
   expect(describeViolations(violations), `axe violations on ${surface}`).toEqual([]);
 }

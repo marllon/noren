@@ -193,7 +193,14 @@ export function Library({
                 <button
                   type="button"
                   className="library-open"
-                  aria-label={t("library.restore", { title: entry.title })}
+                  aria-label={[
+                    t("library.restore", { title: entry.title }),
+                    entry.cwdShort ?? "",
+                    `${entry.spaceName} · ${entry.when}`,
+                    entry.snippet ?? "",
+                  ]
+                    .filter((part) => part !== "")
+                    .join(" ")}
                   onClick={() => onRestore(entry)}
                 >
                   <span
@@ -201,13 +208,15 @@ export function Library({
                     aria-hidden="true"
                     style={{ background: entry.spaceColor }}
                   />
-                  <span className="library-title">{entry.title}</span>
+                  {/* The spaces between the parts are not drawn (they are flex items), but they keep the
+                      words of one part from running into the next in the text a tool reads. */}
+                  <span className="library-title">{entry.title}</span>{" "}
                   <span className="library-cwd" data-nr-part="library-cwd">
                     {entry.cwdShort ?? ""}
-                  </span>
+                  </span>{" "}
                   <span className="library-meta">
                     {entry.spaceName} · {entry.when}
-                  </span>
+                  </span>{" "}
                   {entry.snippet !== undefined && (
                     <span className="library-snippet" data-nr-part="library-snippet">
                       {entry.snippet}

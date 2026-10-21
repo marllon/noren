@@ -116,10 +116,10 @@ export function PreviewView({ path, content, imageUrl }: PreviewViewProps) {
       role="group"
       aria-label={t("preview.pane")}
     >
-      <div className="preview-path" data-nr-part="preview-path" title={path}>
+      <h2 className="preview-path" data-nr-part="preview-path" title={path}>
         <span className="sr-only">{t("preview.path")}: </span>
         {path}
-      </div>
+      </h2>
       <div
         className="preview-body"
         data-nr-part="preview-body"

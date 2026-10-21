@@ -21,7 +21,7 @@ describe("a preview pane", () => {
     const markup = view({ type: "text", text: "hello" });
     expect(markup).toContain('role="group"');
     expect(markup).toContain('aria-label="File preview"');
-    expect(markup).toMatch(/<div class="preview-path"[^>]*title="\/home\/me\/notes.md"/);
+    expect(markup).toMatch(/<h2 class="preview-path"[^>]*title="\/home\/me\/notes.md"/);
     expect(markup).toContain(PATH);
     expect(markup).toMatch(/<div class="preview-body"[^>]*tabindex="0"/);
     expect(markup).toContain('role="region"');

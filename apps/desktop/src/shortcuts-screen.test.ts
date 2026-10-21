@@ -78,7 +78,7 @@ describe("filterRows", () => {
 
   it("matches the category", () => {
     const spaces = ids("spaces");
-    expect(spaces).toHaveLength(10);
+    expect(spaces).toHaveLength(12);
     expect(spaces.every((id) => id.startsWith("space."))).toBe(true);
   });
 

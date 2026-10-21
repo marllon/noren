@@ -39,6 +39,11 @@ const MAY_START_A_WORKER = ["plugin-host.ts"];
 // a frame fails the guard below until someone decides it is safe.
 const MAY_MAKE_A_FRAME = ["PluginPanel.tsx"];
 
+// The one file that may make a link element: the save of a file the person asked for ("Export
+// space", NOR-F18-03b), which clicks an anchor with the `download` attribute whose address is a
+// `blob:` URL of the text it was given. Any other file that makes a link fails the guard below.
+const MAY_MAKE_A_LINK = ["download-text.ts"];
+
 describe("what the page may not do", () => {
   it.each([
     ["window.open", /\bwindow\.open\s*\(|\bopen\s*\(\s*["'`]https?:/],
@@ -61,7 +66,13 @@ describe("what the page may not do", () => {
     ["a WebLinksAddon with the default handler", /new\s+WebLinksAddon\s*\(\s*\)/],
   ])("does not use %s", (what, pattern) => {
     const exempt =
-      what === "a worker" ? MAY_START_A_WORKER : what === "an iframe" ? MAY_MAKE_A_FRAME : [];
+      what === "a worker"
+        ? MAY_START_A_WORKER
+        : what === "an iframe"
+          ? MAY_MAKE_A_FRAME
+          : what === "a link element"
+            ? MAY_MAKE_A_LINK
+            : [];
     const offenders = pageSources
       .filter(({ file, text }) => pattern.test(text) && !exempt.includes(file))
       .map(({ file }) => file);
@@ -74,6 +85,20 @@ describe("what the page may not do", () => {
       .filter(({ text }) => /\bnew\s+Worker\s*\(/.test(text))
       .map(({ file }) => file);
     expect(hosts).toEqual(MAY_START_A_WORKER);
+  });
+
+  it("keeps the link element to the save of a file, which downloads a blob of its own text", () => {
+    expect(MAY_MAKE_A_LINK).toHaveLength(1);
+    const links = pageSources
+      .filter(({ text }) => /<a\s|createElement\(\s*["']a["']/.test(text))
+      .map(({ file }) => file);
+    expect(links).toEqual(MAY_MAKE_A_LINK);
+    const save = pageSources.find(({ file }) => file === "download-text.ts")?.text ?? "";
+    // The address is a blob made here, the link is a download, and nothing else is navigated to.
+    expect(save).toMatch(/URL\.createObjectURL\(new Blob\(/);
+    expect(save).toMatch(/anchor\.href = url;/);
+    expect(save).toMatch(/anchor\.download = fileName;/);
+    expect(save.match(/\.href\s*=/g)).toHaveLength(1);
   });
 
   it("keeps the frame to the panel of a plugin, which has an empty sandbox and a page of its own", () => {

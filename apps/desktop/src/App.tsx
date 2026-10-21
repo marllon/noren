@@ -6,6 +6,7 @@ import {
   PaneLocationTracker,
   aiIsOn,
   browserUrlProblem,
+  exportSpace,
   layoutPanes,
   mainWindowSpaces,
   previewPathProblem,
@@ -171,7 +172,16 @@ import { spaceModOptions } from "./mod-options";
 import { ModStyles } from "./ModStyles";
 import { useModFiles } from "./mods-store";
 import { importSchemeFile } from "./scheme-import";
-import { useProfiles, useProfilesProblem } from "./profiles-store";
+import { downloadText } from "./download-text";
+import {
+  commitSpaceImport,
+  exportFailureNotice,
+  exportFileName,
+  exportNotice,
+  readSpaceFile,
+} from "./space-file-io";
+import { takenProfileIds } from "./profile-import";
+import { getProfiles, syncProfiles, useProfiles, useProfilesProblem } from "./profiles-store";
 import { currentAgentScanner } from "./agent-service";
 import { AgentsPanel } from "./AgentsPanel";
 import {
@@ -935,6 +945,43 @@ function Shell({ store }: { store: WorkspaceStore }) {
     // So picking the same file again (after fixing it) is a change the input reports.
     input.value = "";
   };
+  // "Export space": the active space as a `.noren-space.json` the system saves (a download), with
+  // the variables and commands that looked like secrets left out and named in the notice.
+  const exportActiveSpace = useCallback(() => {
+    const active = activeSpaceOf(store.getState().workspace);
+    const made = exportSpace(active, { profiles: configManager.state.config.profiles ?? [] });
+    if (!made.ok) {
+      showNotice(exportFailureNotice(active.name, made.error));
+      return;
+    }
+    const fileName = exportFileName(active.name);
+    downloadText(fileName, made.text);
+    showNotice(exportNotice(active.name, fileName, made.removed));
+  }, [store, showNotice]);
+  // "Import space...": like the color scheme, a hidden file input the palette clicks. The file is
+  // checked and planned first; its new profiles go to `config.jsonc`, then the space is made. A file
+  // that is not a space file says why in a notice and changes nothing.
+  const spaceInput = useRef<HTMLInputElement>(null);
+  const openSpacePicker = useCallback(() => spaceInput.current?.click(), []);
+  const onSpaceFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (file === undefined) return;
+    const settings = configManager.state.config;
+    void readSpaceFile(file, settings.profiles ?? [], takenProfileIds(settings, getProfiles()))
+      .then((read) =>
+        read.ok
+          ? commitSpaceImport(read.plan, {
+              settings: configManager,
+              syncProfiles: () => syncProfiles(backend, configManager.state.config.profiles ?? []),
+              importSpace: (spaceFile) => dispatch({ type: "space/import", file: spaceFile }),
+            })
+          : read.message,
+      )
+      .then(showNotice);
+    // So picking the same file again (after fixing it) is a change the input reports.
+    input.value = "";
+  };
   useEffect(() => {
     if (profilesProblem !== undefined) {
       showNotice(`The profiles in config.jsonc were not applied. ${profilesProblem}`);
@@ -1608,6 +1655,14 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) openSchemePicker();
         return;
       }
+      if (action.command.kind === "export-space") {
+        if (!modalOpen.current) exportActiveSpace();
+        return;
+      }
+      if (action.command.kind === "import-space") {
+        if (!modalOpen.current) openSpacePicker();
+        return;
+      }
       if (action.command.kind === "focus-sidebar") {
         if (!modalOpen.current) focusSidebar();
         return;
@@ -2064,6 +2119,14 @@ function Shell({ store }: { store: WorkspaceStore }) {
       closePalette();
       openSchemePicker();
       return;
+    } else if (entry.action.command.kind === "import-space") {
+      closePalette();
+      openSpacePicker();
+      return;
+    } else if (entry.action.command.kind === "export-space") {
+      closePalette();
+      exportActiveSpace();
+      return;
     } else if (entry.action.command.kind === "ask-toggle") {
       // The panel takes the keyboard itself; the palette must not hand it to the terminal.
       setPaletteOpen(false);
@@ -2507,6 +2570,15 @@ function Shell({ store }: { store: WorkspaceStore }) {
           aria-label={t("window.schemeFile")}
           data-nr-part="scheme-file"
           onChange={onSchemeFile}
+        />
+        <input
+          ref={spaceInput}
+          type="file"
+          hidden
+          tabIndex={-1}
+          aria-label={t("window.spaceFile")}
+          data-nr-part="space-file"
+          onChange={onSpaceFile}
         />
 
         {mru.rows !== undefined && <MruSwitcherView rows={mru.rows} />}

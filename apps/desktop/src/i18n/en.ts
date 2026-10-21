@@ -28,6 +28,7 @@ export const en = {
   "window.resizeSidebar": "Resize sidebar",
   "window.resizeBlocked": "The width cannot be saved while config.jsonc has a problem",
   "window.schemeFile": "Color scheme file",
+  "window.spaceFile": "Space file",
   "window.terminal": "Terminal",
 
   // The space switcher
@@ -330,6 +331,8 @@ export const en = {
   "action.settings.open": "Open settings",
   "action.sidebar.focus": "Focus sidebar",
   "action.themes.import-scheme": "Import color scheme...",
+  "action.space.export": "Export space",
+  "action.space.import": "Import space...",
   "action.space.set-theme": "Set theme for this space",
   "action.terminal.prompt-previous": "Previous prompt",
   "action.terminal.prompt-next": "Next prompt",
@@ -713,6 +716,24 @@ export const en = {
   "profileImport.namesMore": "{first}, {second} and {rest} more",
   "profileImport.done":
     'Imported {profiles}: {names}. Open one with "New ... tab" in the command palette.',
+
+  // Exporting and importing a space (the file .noren-space.json)
+  "spaceFile.exported": 'Exported space "{name}" as {file}.',
+  "spaceFile.exportFailed": 'Could not export space "{name}": {reason}',
+  "spaceFile.secretsLeftOut": "Left out because they look like secrets: {list}.",
+  "spaceFile.secretEnv": "variables {names}",
+  "spaceFile.secretCommands": "tab return commands: {count}",
+  "spaceFile.secretProfiles": "profiles {ids}",
+  "spaceFile.failed": 'Could not import "{file}": {reason}',
+  "spaceFile.tooLarge": "the file is too large to be a space file.",
+  "spaceFile.unreadable": "the file could not be read.",
+  "spaceFile.imported": 'Imported space "{name}".',
+  "spaceFile.profilesAdded": "Added to config.jsonc: {names}.",
+  "spaceFile.profilesLeftOut": "Not added: {list}. The space keeps using the profile with that id.",
+  "spaceFile.conflictDifferent": '"{name}" (you already have a different profile with the id {id})',
+  "spaceFile.conflictTaken": '"{name}" (the id {id} is a shell of this machine)',
+  "spaceFile.notSaved":
+    "The profiles could not be added to config.jsonc, so nothing was imported: {reason}",
 
   // The panel of a plugin
   "pluginPanel.label": "Plugin panel: {title}",

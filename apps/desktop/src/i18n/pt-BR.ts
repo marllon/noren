@@ -29,6 +29,7 @@ export const ptBR: Dictionary = {
   "window.resizeSidebar": "Redimensionar a barra lateral",
   "window.resizeBlocked": "A largura não pode ser salva enquanto o config.jsonc tiver um problema",
   "window.schemeFile": "Arquivo de esquema de cores",
+  "window.spaceFile": "Arquivo de espaço",
   "window.terminal": "Terminal",
 
   // The space switcher
@@ -335,6 +336,8 @@ export const ptBR: Dictionary = {
   "action.settings.open": "Abrir as configurações",
   "action.sidebar.focus": "Focar a barra lateral",
   "action.themes.import-scheme": "Importar esquema de cores...",
+  "action.space.export": "Exportar espaço",
+  "action.space.import": "Importar espaço...",
   "action.space.set-theme": "Definir o tema deste espaço",
   "action.terminal.prompt-previous": "Prompt anterior",
   "action.terminal.prompt-next": "Próximo prompt",
@@ -721,6 +724,25 @@ export const ptBR: Dictionary = {
   "profileImport.namesMore": "{first}, {second} e mais {rest}",
   "profileImport.done":
     'Importados {profiles}: {names}. Abra um com "Nova aba ..." na paleta de comandos.',
+
+  // Exportar e importar um espaço (o arquivo .noren-space.json)
+  "spaceFile.exported": 'Espaço "{name}" exportado como {file}.',
+  "spaceFile.exportFailed": 'Não foi possível exportar o espaço "{name}": {reason}',
+  "spaceFile.secretsLeftOut": "Deixados de fora por parecerem segredos: {list}.",
+  "spaceFile.secretEnv": "variáveis {names}",
+  "spaceFile.secretCommands": "comandos de retorno das abas: {count}",
+  "spaceFile.secretProfiles": "perfis {ids}",
+  "spaceFile.failed": 'Não foi possível importar "{file}": {reason}',
+  "spaceFile.tooLarge": "o arquivo é grande demais para ser um arquivo de espaço.",
+  "spaceFile.unreadable": "não foi possível ler o arquivo.",
+  "spaceFile.imported": 'Espaço "{name}" importado.',
+  "spaceFile.profilesAdded": "Adicionados ao config.jsonc: {names}.",
+  "spaceFile.profilesLeftOut":
+    "Não adicionados: {list}. O espaço continua usando o perfil com esse id.",
+  "spaceFile.conflictDifferent": '"{name}" (você já tem um perfil diferente com o id {id})',
+  "spaceFile.conflictTaken": '"{name}" (o id {id} é um shell desta máquina)',
+  "spaceFile.notSaved":
+    "Não foi possível adicionar os perfis ao config.jsonc, então nada foi importado: {reason}",
 
   // O painel de um plugin
   "pluginPanel.label": "Painel do plugin: {title}",

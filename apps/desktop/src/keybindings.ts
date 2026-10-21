@@ -58,6 +58,8 @@ export type ActionCommand =
   | { kind: "settings" }
   | { kind: "space-theme" }
   | { kind: "import-scheme" }
+  | { kind: "export-space" }
+  | { kind: "import-space" }
   | { kind: "focus-sidebar" }
   | LayoutCommand
   | { kind: "last-unread" }
@@ -342,6 +344,22 @@ export const ACTIONS: readonly ActionDef[] = [
     title: "Import color scheme...",
     category: "General",
     command: { kind: "import-scheme" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
+  },
+  {
+    id: "space.export",
+    title: "Export space",
+    category: "Spaces",
+    command: { kind: "export-space" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
+  },
+  {
+    id: "space.import",
+    title: "Import space...",
+    category: "Spaces",
+    command: { kind: "import-space" },
     repeat: false,
     chords: { safe: undefined, browser: undefined },
   },

@@ -35,6 +35,7 @@ const COMMANDS: &[&str] = &[
     "worktree_create",
     "worktree_remove",
     "ssh_hosts_list",
+    "docker_containers_list",
     "config_load",
     "config_save",
     "config_watch",

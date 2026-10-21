@@ -41,6 +41,7 @@ export type ActionCommand =
   | { kind: "worktree-remove" }
   | { kind: "live-worktrees" }
   | { kind: "live-ssh" }
+  | { kind: "live-docker" }
   | { kind: "diff-open" }
   | { kind: "window-move-tab" }
   | { kind: "quick-toggle" }
@@ -290,6 +291,15 @@ export const ACTIONS: readonly ActionDef[] = [
     title: "New group of SSH hosts",
     category: "General",
     command: { kind: "live-ssh" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
+  },
+  {
+    // A live group of the running containers (NOR-F17-04d); no chord, the palette is the way in.
+    id: "live.docker",
+    title: "New group of running containers",
+    category: "General",
+    command: { kind: "live-docker" },
     repeat: false,
     chords: { safe: undefined, browser: undefined },
   },

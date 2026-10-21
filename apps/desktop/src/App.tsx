@@ -271,6 +271,8 @@ export interface NorenTestHook {
   setPaneAgent(paneId: string, agentId: string | undefined): Promise<boolean>;
   /** Makes the fake git refuse to remove this worktree, as it refuses one with changes. */
   setWorktreeDirty(path: string, dirty: boolean): void;
+  /** Sets the containers the fake Docker lists as running; `error` makes it fail with that sentence instead. */
+  setDockerContainers(containers: string[], error?: string): void;
   /** Every system notification the backend was asked to show, in order. None is ever shown. */
   notifications(): { title: string; body: string }[];
   /** Makes the fake window have the keyboard focus (it starts with it) or lose it. */
@@ -1107,6 +1109,19 @@ function Shell({ store }: { store: WorkspaceStore }) {
     void refreshLiveGroups();
     focusTerminal();
   }, [store, focusTerminal]);
+  /** Makes a live group of the running containers in the active space and asks its source at once. */
+  const addDockerGroup = useCallback(() => {
+    setPaletteOpen(false);
+    setSearchText(null);
+    store.getState().dispatch({
+      type: "group/create",
+      spaceId: activeSpaceOf(store.getState().workspace).id,
+      name: t("live.docker.name"),
+      live: { source: "docker" },
+    });
+    void refreshLiveGroups();
+    focusTerminal();
+  }, [store, focusTerminal]);
   /** Closes the dialog of a worktree and gives the keyboard back to the terminal on screen. */
   const closeWorktree = useCallback(() => {
     setWorktreeDialog(null);
@@ -1565,6 +1580,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) addSshGroup();
         return;
       }
+      if (action.command.kind === "live-docker") {
+        if (!modalOpen.current) addDockerGroup();
+        return;
+      }
       if (action.command.kind === "diff-open") {
         if (!modalOpen.current) openDiffBeside();
         return;
@@ -1721,6 +1740,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
           return false;
         },
         setWorktreeDirty: (path, dirty) => fake.setWorktreeDirty(path, dirty),
+        setDockerContainers: (containers, error) => fake.setDockerContainers(containers, error),
         notifications: () => fake.notifications.map(({ title, body }) => ({ title, body })),
         setWindowFocused: (focused) => fake.setWindowFocused(focused),
         openedLinks: () => [...fake.openedLinks],
@@ -2010,6 +2030,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
       return;
     } else if (entry.action.command.kind === "live-ssh") {
       addSshGroup();
+      return;
+    } else if (entry.action.command.kind === "live-docker") {
+      addDockerGroup();
       return;
     } else if (entry.action.command.kind === "quick-toggle") {
       // The quick window takes the keyboard itself; the palette closes first so it does not hand

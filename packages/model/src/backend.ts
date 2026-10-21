@@ -410,6 +410,12 @@ export interface Backend {
    */
   listSshHosts(): Promise<string[]>;
   /**
+   * The names of the running containers (`docker ps`), in order, each once. A name that is not safe
+   * to type into a shell as `docker exec -it <name> sh` is left out. Rejects with a sentence when
+   * Docker is not installed (`docker not found`), fails or does not answer in time.
+   */
+  listDockerContainers(): Promise<string[]>;
+  /**
    * Which CLI agent runs under the shell of each of the sessions, from the process tree of the
    * machine: an entry of `catalog` whose executable (or, behind a runner such as `node` or
    * `npx`, whose package) is a descendant process of the shell. One answer per session that has

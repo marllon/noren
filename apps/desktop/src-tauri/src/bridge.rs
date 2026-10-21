@@ -17,8 +17,8 @@ use noren_core::{
     ModWatcher, ProcessSource, Profile, ProfileSet, SCROLLBACK_DIR_NAME, ScrollbackStore,
     SessionEvent, SessionId, SpawnSpec, SshProfile, StateStore, SystemProcesses, THEMES_DIR_NAME,
     ThemeStore, UserProfile, WindowEffect, Worktree, check_catalog, create_worktree,
-    detect_system_profiles, list_worktrees, native_path, read_head, read_project_file,
-    read_ssh_hosts, remove_worktree, run_short, scan_sessions,
+    detect_system_profiles, list_running_containers, list_worktrees, native_path, read_head,
+    read_project_file, read_ssh_hosts, remove_worktree, run_short, scan_sessions,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -1522,6 +1522,15 @@ pub async fn worktree_remove(cwd: String, path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn ssh_hosts_list() -> Result<Vec<String>, String> {
     tauri::async_runtime::spawn_blocking(read_ssh_hosts)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// The names of the running containers (`docker ps`), none of them unsafe to type into a shell.
+/// Rejects with a sentence when Docker is not there, fails or does not answer in time.
+#[tauri::command]
+pub async fn docker_containers_list() -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(|| list_running_containers().map_err(|e| e.to_string()))
         .await
         .map_err(|e| e.to_string())?
 }

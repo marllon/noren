@@ -163,6 +163,20 @@ describe("the live group of SSH hosts command", () => {
   });
 });
 
+describe("the live group of running containers command", () => {
+  it("lists New group of running containers as an action with no chord", async () => {
+    const { entries } = await sources();
+    expect(action(entries, "New group of running containers")).toMatchObject({
+      detail: "General",
+      action: { id: "live.docker", command: { kind: "live-docker" } },
+    });
+    expect(action(entries, "New group of running containers")?.chord).toBeUndefined();
+    expect(searchEntries(entries, ">running containers").map((entry) => entry.title)).toContain(
+      "New group of running containers",
+    );
+  });
+});
+
 const order = (kind: PaletteEntry["kind"]) => ["tab", "space", "action"].indexOf(kind);
 
 describe("parseQuery", () => {

@@ -620,6 +620,13 @@ export class TauriBackend implements Backend {
       : [];
   }
 
+  async listDockerContainers(): Promise<string[]> {
+    const names = await this.#bridge.invoke<unknown>("docker_containers_list");
+    return Array.isArray(names)
+      ? names.filter((name): name is string => typeof name === "string")
+      : [];
+  }
+
   async scanAgents(
     sessionIds: readonly SessionId[],
     catalog: readonly AgentEntry[],

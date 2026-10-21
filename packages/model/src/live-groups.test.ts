@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ManualClock } from "./clock";
 import { createDefaultWorkspace } from "./default-workspace";
-import { FAKE_SSH_HOSTS, FakeBackend } from "./fake-backend";
+import { FAKE_DOCKER_CONTAINERS, FAKE_SSH_HOSTS, FakeBackend } from "./fake-backend";
 import { checkInvariants } from "./invariants";
 import {
   LIVE_REFRESH_INTERVAL_MS,
@@ -12,6 +12,8 @@ import {
   liveSourceProblem,
   planOpenLiveEntry,
   worktreeEntry,
+  dockerEntry,
+  dockerSource,
   liveSourcesOf,
   sshEntry,
   sshSource,
@@ -633,6 +635,101 @@ describe("the ssh source", () => {
   it("is one of the sources the app has", async () => {
     const fake = new FakeBackend();
     const sources = liveSourcesOf(fake);
-    expect(Object.keys(sources).sort()).toEqual(["ssh", "worktrees"]);
+    expect(Object.keys(sources).sort()).toEqual(["docker", "ssh", "worktrees"]);
+  });
+});
+
+describe("the docker source", () => {
+  const DOCKER: LiveSource = { source: "docker" };
+
+  it("makes one entry per container that types docker exec -it <name> sh in the folder of the space", async () => {
+    const fake = new FakeBackend();
+    fake.setDockerContainers(["web-app", "db_1"]);
+    const list = await dockerSource(fake)(DOCKER);
+    expect(list).toEqual([
+      { key: "web-app", label: "web-app", cwd: "", command: "docker exec -it web-app sh" },
+      { key: "db_1", label: "db_1", cwd: "", command: "docker exec -it db_1 sh" },
+    ]);
+    expect(fake.callsTo("listDockerContainers")).toHaveLength(1);
+  });
+
+  it("lists the fixture containers of the fake backend until a test says others", async () => {
+    const fake = new FakeBackend();
+    expect((await dockerSource(fake)(DOCKER)).map((e) => e.label)).toEqual(FAKE_DOCKER_CONTAINERS);
+    fake.setDockerContainers([]);
+    expect(await dockerSource(fake)(DOCKER)).toEqual([]);
+  });
+
+  it("leaves out a name that is not safe to type, even if the backend hands it over", async () => {
+    const fake = new FakeBackend();
+    fake.setDockerContainers(["ok", "a;rm -rf x", "web *", "$(id)", "-v", "_x", ".x", "", "q'q"]);
+    expect((await dockerSource(fake)(DOCKER)).map((e) => e.command)).toEqual([
+      "docker exec -it ok sh",
+    ]);
+    expect(dockerEntry("a b")).toBeUndefined();
+    expect(dockerEntry("host*")).toBeUndefined();
+    expect(dockerEntry("-J")).toBeUndefined();
+    expect(dockerEntry("_x")).toBeUndefined();
+    expect(dockerEntry("a".repeat(256))).toBeUndefined();
+    expect(dockerEntry("a".repeat(255))).toBeDefined();
+    expect(dockerEntry("api.v2-1_x")).toMatchObject({ command: "docker exec -it api.v2-1_x sh" });
+  });
+
+  it("follows the running containers by round, and none is an empty list", async () => {
+    const fake = new FakeBackend();
+    fake.setDockerContainers(["a"]);
+    const { ws, groupId } = withLiveGroup(DOCKER);
+    const { clock, groups } = updaterOn(() => ws, { docker: dockerSource(fake) });
+    groups.start();
+    await groups.idle();
+    expect(groups.entries(groupId).map((e) => e.label)).toEqual(["a"]);
+    fake.setDockerContainers(["a", "b"]);
+    clock.advance(LIVE_REFRESH_INTERVAL_MS);
+    await groups.idle();
+    expect(groups.entries(groupId).map((e) => e.command)).toEqual([
+      "docker exec -it a sh",
+      "docker exec -it b sh",
+    ]);
+    fake.setDockerContainers([]);
+    clock.advance(LIVE_REFRESH_INTERVAL_MS);
+    await groups.idle();
+    expect(groups.entries(groupId)).toEqual([]);
+    expect(groups.error(groupId)).toBeUndefined();
+    groups.stop();
+  });
+
+  it("keeps the last list and reports the error when docker fails", async () => {
+    const fake = new FakeBackend();
+    fake.setDockerContainers(["a", "b"]);
+    const { ws, groupId } = withLiveGroup(DOCKER);
+    const { clock, groups } = updaterOn(() => ws, { docker: dockerSource(fake) });
+    groups.start();
+    await groups.idle();
+    expect(groups.entries(groupId)).toHaveLength(2);
+
+    fake.setDockerContainers([], "docker not found");
+    clock.advance(LIVE_REFRESH_INTERVAL_MS);
+    await groups.idle();
+    expect(groups.entries(groupId).map((e) => e.label)).toEqual(["a", "b"]);
+    expect(groups.error(groupId)).toBe("docker not found");
+
+    fake.setDockerContainers(["c"]);
+    clock.advance(LIVE_REFRESH_INTERVAL_MS);
+    await groups.idle();
+    expect(groups.entries(groupId).map((e) => e.label)).toEqual(["c"]);
+    expect(groups.error(groupId)).toBeUndefined();
+    groups.stop();
+  });
+
+  it("is an empty group with the error recorded when docker is not installed from the start", async () => {
+    const fake = new FakeBackend();
+    fake.setDockerContainers([], "docker not found");
+    const { ws, groupId } = withLiveGroup(DOCKER);
+    const { groups } = updaterOn(() => ws, { docker: dockerSource(fake) });
+    groups.start();
+    await groups.idle();
+    expect(groups.entries(groupId)).toEqual([]);
+    expect(groups.error(groupId)).toBe("docker not found");
+    groups.stop();
   });
 });

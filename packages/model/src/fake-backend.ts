@@ -94,6 +94,9 @@ const escapeCommandLine = (line: string): string =>
 /** The hosts a `FakeBackend` lists as the ones of an `ssh_config`, until `setSshHosts` says others. */
 export const FAKE_SSH_HOSTS: readonly string[] = ["web-1", "db.internal", "build_box"];
 
+/** The containers a `FakeBackend` lists as running, until `setDockerContainers` says others. */
+export const FAKE_DOCKER_CONTAINERS: readonly string[] = ["web-app", "postgres-db", "redis_cache"];
+
 export const DEFAULT_MONOSPACE_FONTS: readonly string[] = [
   "Cascadia Mono",
   "Consolas",
@@ -887,6 +890,9 @@ class FakeAi implements AiBackend {
  *   and one marked with `setWorktreeDirty`
  * - `listSshHosts` answers a fixture of hosts (`FAKE_SSH_HOSTS`), or what `setSshHosts` said (also a
  *   rejection); it never reads the `~/.ssh/config` of the machine
+ * - `listDockerContainers` answers a fixture of containers (`FAKE_DOCKER_CONTAINERS`), or what
+ *   `setDockerContainers` said (also a rejection, as when Docker is not installed); it never runs
+ *   `docker`
  * - `scanAgents` answers from the process trees a test describes with `setSessionAgent` (an agent
  *   under the shell of a session); a session that ended, or an agent not in the catalog, is left out
  * - `notify` only records the notification (`notifications`) and `isWindowFocused` answers what
@@ -983,6 +989,9 @@ export class FakeBackend implements Backend {
   /** The hosts `listSshHosts` answers: a small fixture, changed with `setSshHosts`. */
   #sshHosts: string[] = [...FAKE_SSH_HOSTS];
   #sshHostsError: string | undefined;
+  /** The containers `listDockerContainers` answers: a small fixture, changed with `setDockerContainers`. */
+  #dockerContainers: string[] = [...FAKE_DOCKER_CONTAINERS];
+  #dockerContainersError: string | undefined;
   readonly #notifications: FakeNotification[] = [];
   readonly #openedLinks: string[] = [];
   readonly #browserPanes = new Map<string, FakeBrowserPane>();
@@ -1980,6 +1989,18 @@ export class FakeBackend implements Backend {
   setSshHosts(hosts: readonly string[], error?: string): void {
     this.#sshHosts = [...hosts];
     this.#sshHostsError = error;
+  }
+
+  async listDockerContainers(): Promise<string[]> {
+    this.#record("listDockerContainers");
+    if (this.#dockerContainersError !== undefined) throw new Error(this.#dockerContainersError);
+    return [...this.#dockerContainers];
+  }
+
+  /** Sets the containers `listDockerContainers` answers; `error` makes it reject with that sentence instead. */
+  setDockerContainers(containers: readonly string[], error?: string): void {
+    this.#dockerContainers = [...containers];
+    this.#dockerContainersError = error;
   }
 
   /** Makes `removeWorktree` refuse this worktree, as git refuses one with changes; `false` cleans it. */

@@ -66,7 +66,7 @@ export async function refreshLiveGroups(): Promise<void> {
 
 export interface LiveGroupsServiceOptions {
   store: WorkspaceStore;
-  backend: Pick<Backend, "listWorktrees" | "listSshHosts">;
+  backend: Pick<Backend, "listWorktrees" | "listSshHosts" | "listDockerContainers">;
   clock: Pick<Clock, "setTimer">;
   intervalMs?: number;
   onError?(groupId: Id, error: unknown): void;

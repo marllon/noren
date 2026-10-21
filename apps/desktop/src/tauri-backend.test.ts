@@ -659,6 +659,22 @@ describe("TauriBackend", () => {
     );
   });
 
+  it("lists the running containers through docker_containers_list and keeps only the names", async () => {
+    const fake = fakeBridge({ docker_containers_list: ["web-app", 7, "db", null] });
+    const backend = new TauriBackend(fake.bridge);
+    await expect(backend.listDockerContainers()).resolves.toEqual(["web-app", "db"]);
+    expect(fake.invocations).toEqual([{ command: "docker_containers_list", args: undefined }]);
+
+    const none = new TauriBackend(fakeBridge({ docker_containers_list: null }).bridge);
+    await expect(none.listDockerContainers()).resolves.toEqual([]);
+
+    const broken = fakeBridge();
+    broken.failing.add("docker_containers_list");
+    await expect(new TauriBackend(broken.bridge).listDockerContainers()).rejects.toThrow(
+      "docker_containers_list failed",
+    );
+  });
+
   it("lists, creates and removes worktrees through the worktree commands", async () => {
     const main = {
       path: "D:\\work\\repo",

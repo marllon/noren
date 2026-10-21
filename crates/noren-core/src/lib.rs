@@ -7,6 +7,7 @@ pub mod background;
 pub mod bench;
 pub mod config;
 pub mod daemon;
+pub mod docker;
 pub mod fonts;
 pub mod git;
 pub mod git_diff;
@@ -43,6 +44,10 @@ pub use bench::{
     is_valid_bench_stamp,
 };
 pub use config::{CONFIG_FILE_NAME, ConfigError, ConfigStore, ConfigWatcher};
+pub use docker::{
+    DOCKER_TIMEOUT, DockerCli, DockerError, MAX_CONTAINER_NAME_CHARS, MAX_DOCKER_OUTPUT_BYTES,
+    is_safe_container_name, list_running_containers, parse_container_names,
+};
 pub use fonts::{MAX_FONT_NAME_CHARS, is_font_name, list_monospace_families, monospace_families};
 pub use git::{GitHead, read_head};
 pub use git_diff::{GitDiff, GitDiffRefusal, MAX_GIT_DIFF_BYTES, read_git_diff};

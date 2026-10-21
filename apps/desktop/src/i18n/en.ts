@@ -318,6 +318,7 @@ export const en = {
   "action.worktree.remove": "Remove worktree",
   "action.live.worktrees": "New group of worktrees",
   "action.live.ssh": "New group of SSH hosts",
+  "action.live.docker": "New group of running containers",
   "action.diff.open": "Show git diff beside this pane",
   "action.window.move-tab": "Move tab to new window",
   "action.tab.mru-next": "Next recent tab",
@@ -611,6 +612,7 @@ export const en = {
   // Live groups: groups whose entries come from the machine
   "live.worktrees.name": "Worktrees of {folder}",
   "live.ssh.name": "SSH hosts",
+  "live.docker.name": "Running containers",
   "live.error": "Could not update: {reason}",
 
   // The dialog of a space

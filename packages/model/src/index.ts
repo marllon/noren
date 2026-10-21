@@ -337,6 +337,8 @@ export {
   isLiveSource,
   liveGroupsOf,
   liveSourceProblem,
+  dockerEntry,
+  dockerSource,
   liveSourcesOf,
   planOpenLiveEntry,
   sameLiveSource,
@@ -506,6 +508,7 @@ export type { OutputPathMatch, OutputPathProblem, ResolvedOutputPath } from "./o
 export {
   DEFAULT_AI_REPLY,
   FAKE_LINK_MAX_ATTEMPTS,
+  FAKE_DOCKER_CONTAINERS,
   FAKE_SSH_HOSTS,
   FakeBackend,
 } from "./fake-backend";

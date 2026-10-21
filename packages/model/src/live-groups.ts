@@ -198,11 +198,50 @@ export function sshSource(
   };
 }
 
-/** The sources the app has: the worktrees and the SSH hosts. */
+// ---------------------------------------------------------------------------------------------
+// The source of running containers (NOR-F17-04d).
+
+/**
+ * What a container name may be to be typed into a shell as `docker exec -it <name> sh`: it starts
+ * with a letter or a digit and goes on with letters, digits, `_`, `.` and `-` (what Docker allows),
+ * at most 255 characters. The same rule the core applies to what `docker ps` prints; checked again
+ * here because the command goes to a shell.
+ */
+const DOCKER_CONTAINER_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+
+/**
+ * The entry of a running container: named and labelled by the container, opening a shell in the
+ * folder of the space (blank `cwd`) that types `docker exec -it <name> sh`. `undefined` for a name
+ * that is not safe to type.
+ */
+export function dockerEntry(name: string): LiveEntry | undefined {
+  if (name.length > 255 || !DOCKER_CONTAINER_NAME.test(name)) return undefined;
+  return { key: name, label: name, cwd: "", command: `docker exec -it ${name} sh` };
+}
+
+/** The running containers, as `Backend.listDockerContainers` lists them. */
+export function dockerSource(
+  backend: Pick<Backend, "listDockerContainers">,
+): LiveSourceQuery<Extract<LiveSource, { source: "docker" }>> {
+  return async () => {
+    const entries: LiveEntry[] = [];
+    for (const name of await backend.listDockerContainers()) {
+      const entry = dockerEntry(name);
+      if (entry !== undefined) entries.push(entry);
+    }
+    return entries;
+  };
+}
+
+/** The sources the app has: the worktrees, the SSH hosts and the running containers. */
 export function liveSourcesOf(
-  backend: Pick<Backend, "listWorktrees" | "listSshHosts">,
+  backend: Pick<Backend, "listWorktrees" | "listSshHosts" | "listDockerContainers">,
 ): LiveSources {
-  return { worktrees: worktreesSource(backend), ssh: sshSource(backend) };
+  return {
+    worktrees: worktreesSource(backend),
+    ssh: sshSource(backend),
+    docker: dockerSource(backend),
+  };
 }
 
 // ---------------------------------------------------------------------------------------------

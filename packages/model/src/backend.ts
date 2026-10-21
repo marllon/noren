@@ -12,6 +12,7 @@ import type { BenchHardware } from "./bench-models";
 import type { BrowserBounds } from "./browser";
 import type { PluginFolder } from "./plugins-load";
 import type { FilePreview } from "./file-preview";
+import type { GalleryIndex, InstalledGalleryItem } from "./gallery";
 import type { GitDiff } from "./git-diff";
 import type { Id } from "./types";
 import type { UserProfile } from "./user-profile-schema";
@@ -336,6 +337,27 @@ export interface Backend {
    * when the folder cannot be read.
    */
   listPlugins(): Promise<PluginFolder[]>;
+  /**
+   * The index of the gallery (`GALLERY_INDEX_URL` in `noren-core`), downloaded over https with a
+   * deadline and a ceiling on its size and already checked against `galleryIndexSchema`. Rejects
+   * with a sentence for the person when the gallery cannot be reached, answers with an error, is
+   * too large or is not an index.
+   */
+  galleryIndex(): Promise<GalleryIndex>;
+  /**
+   * What the app installed from the gallery (`gallery.json` next to `config.jsonc`): the id, kind,
+   * version and sha256 of each item, in the order they were first installed. Nothing installed, or
+   * no record, is an empty list. Pairs with `galleryIndex` in `compareWithInstalled`.
+   */
+  galleryInstalled(): Promise<InstalledGalleryItem[]>;
+  /**
+   * Installs (or updates) the item `id` of the gallery: reads the index again, downloads the file
+   * at the address the index gives, refuses it unless its sha256 is the one the index declares
+   * (and it fits the size the index declares), and then puts it in place: a theme as
+   * `themes/<id>.json`, a mod as `mods/<id>.css`. Records the item as installed and answers the
+   * record. When anything fails, including a hash that does not match, nothing is written.
+   */
+  galleryInstall(id: string): Promise<InstalledGalleryItem>;
   /**
    * Asks the system to paint `effect` behind the window (`none` takes any effect away), and tells
    * what the window has afterwards. It never rejects because the system cannot paint the effect:

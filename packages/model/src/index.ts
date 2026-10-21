@@ -351,6 +351,35 @@ export {
   EXAMPLE_PLUGIN_MANIFEST,
   FAKE_PLUGINS,
 } from "./plugins-example";
+export {
+  GALLERY_INDEX_VERSION,
+  GALLERY_KINDS,
+  GALLERY_LIMITS,
+  compareGalleryVersions,
+  compareWithInstalled,
+  galleryIndexSchema,
+  galleryItemSchema,
+  parseGalleryIndex,
+} from "./gallery";
+export type {
+  GalleryEntry,
+  GalleryIndex,
+  GalleryIndexResult,
+  GalleryItem,
+  GalleryKind,
+  GalleryStatus,
+  InstalledGalleryItem,
+} from "./gallery";
+export {
+  FAKE_GALLERY_DOWNLOADS,
+  FAKE_GALLERY_EMBER,
+  FAKE_GALLERY_HASHES,
+  FAKE_GALLERY_INDEX,
+  FAKE_GALLERY_LAGOON,
+  FAKE_GALLERY_MOD,
+  FAKE_GALLERY_TAMPERED,
+} from "./gallery-fixture";
+export type { GalleryDownload } from "./gallery-fixture";
 export { AGENT_LINE_MAX, buildAgentList, firstWaitingAgent, truncateLine } from "./agent-list";
 export type { AgentInfo, AgentRow } from "./agent-list";
 export {

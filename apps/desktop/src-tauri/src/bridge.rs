@@ -13,13 +13,13 @@ use std::time::Duration;
 use noren_core::daemon::LinkState;
 use noren_core::{
     ACTIONS_FILE_PATH, AgentEntry, BENCH_DIR_NAME, BackgroundStore, BenchFile, BenchStore,
-    CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, GitHead, MODS_DIR_NAME, ModFile, ModStore,
-    ModWatcher, PLUGINS_DIR_NAME, PluginFolder, PluginStore, ProcessSource, Profile, ProfileSet,
-    SCROLLBACK_DIR_NAME, ScrollbackStore, SessionEvent, SessionId, SpawnSpec, SshProfile,
-    StateStore, SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect, Worktree,
-    check_catalog, create_worktree, detect_system_profiles, list_running_containers,
-    list_worktrees, native_path, read_head, read_project_file, read_ssh_hosts, remove_worktree,
-    run_short, scan_sessions,
+    CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, Gallery, GitHead, InstalledItem, MODS_DIR_NAME,
+    ModFile, ModStore, ModWatcher, PLUGINS_DIR_NAME, PluginFolder, PluginStore, ProcessSource,
+    Profile, ProfileSet, SCROLLBACK_DIR_NAME, ScrollbackStore, SessionEvent, SessionId, SpawnSpec,
+    SshProfile, StateStore, SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile,
+    WindowEffect, Worktree, check_catalog, create_worktree, detect_system_profiles,
+    list_running_containers, list_worktrees, native_path, read_head, read_project_file,
+    read_ssh_hosts, remove_worktree, run_short, scan_sessions,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -1469,6 +1469,112 @@ pub async fn plugins_list(store: State<'_, PluginStore>) -> Result<Vec<PluginFol
         .map_err(|e| e.to_string())?
 }
 
+/// One item the app installed from the gallery, as the interface sees it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InstalledItemDto {
+    pub id: String,
+    pub kind: String,
+    pub version: String,
+    pub sha256: String,
+}
+
+impl From<InstalledItem> for InstalledItemDto {
+    fn from(item: InstalledItem) -> Self {
+        Self {
+            id: item.id,
+            kind: item.kind.as_str().to_owned(),
+            version: item.version,
+            sha256: item.sha256,
+        }
+    }
+}
+
+/// The gallery of themes and mods: downloads from the address of the index and installs into the
+/// config folder of the app (`themes/`, `mods/` and the record `gallery.json`).
+pub struct GalleryState {
+    gallery: Gallery,
+    installing_allowed: bool,
+}
+
+impl GalleryState {
+    pub fn new(gallery: Gallery) -> Self {
+        Self {
+            gallery,
+            installing_allowed: true,
+        }
+    }
+
+    /// The same, but `install` refuses: the smoke run must leave the files of the user as they are.
+    pub fn without_installing(mut self) -> Self {
+        self.installing_allowed = false;
+        self
+    }
+
+    /// The text of the index, downloaded and checked (see [`Gallery::index_text`]).
+    pub async fn index(&self) -> Result<String, String> {
+        self.gallery.index_text().await.map_err(|e| e.to_string())
+    }
+
+    /// What was installed from the gallery (see [`Gallery::installed`]).
+    pub fn installed(&self) -> Vec<InstalledItemDto> {
+        self.gallery
+            .installed()
+            .into_iter()
+            .map(InstalledItemDto::from)
+            .collect()
+    }
+
+    /// Installs or updates the item `id` (see [`Gallery::install`]); nothing is written when the
+    /// hash of the download is not the one the index declares.
+    pub async fn install(&self, id: &str) -> Result<InstalledItemDto, String> {
+        if !self.installing_allowed {
+            return Err("this run does not install from the gallery".to_owned());
+        }
+        self.gallery
+            .install(id)
+            .await
+            .map(InstalledItemDto::from)
+            .map_err(|e| e.to_string())
+    }
+}
+
+/// Builds the gallery of the user: it installs into the app config folder. Only resolves the
+/// path: the folders and the record are made when something is installed.
+pub fn gallery_state(app: &AppHandle) -> Result<GalleryState, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("could not find the app config folder: {e}"))?;
+    Gallery::new(dir)
+        .map(GalleryState::new)
+        .map_err(|e| e.to_string())
+}
+
+/// The index of the gallery, downloaded over https and checked: its text as the gallery served it
+/// (the interface checks it again with `parseGalleryIndex`).
+#[tauri::command]
+pub async fn gallery_index(state: State<'_, GalleryState>) -> Result<String, String> {
+    state.index().await
+}
+
+/// What was installed from the gallery, in the order of the first installation.
+#[tauri::command]
+pub async fn gallery_installed(
+    state: State<'_, GalleryState>,
+) -> Result<Vec<InstalledItemDto>, String> {
+    Ok(state.installed())
+}
+
+/// Installs or updates the item `id` of the gallery: downloads it, refuses it unless its sha256 is
+/// the one the index declares, and puts it in `themes/` or `mods/`.
+#[tauri::command]
+pub async fn gallery_install(
+    state: State<'_, GalleryState>,
+    id: String,
+) -> Result<InstalledItemDto, String> {
+    state.install(&id).await
+}
+
 /// Longest a project command (the `stop` of an action) may run before it is killed.
 pub const PROJECT_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -2543,6 +2649,41 @@ mod tests {
         std::fs::write(&blocked, b"in the way").expect("write");
         let message = list_plugins(&PluginStore::new(&blocked)).expect_err("fails");
         assert!(message.starts_with("could not read the plugins folder"));
+    }
+
+    #[test]
+    fn installed_gallery_items_reach_the_interface_with_the_kind_as_text() {
+        let json = serde_json::to_string(&InstalledItemDto::from(InstalledItem {
+            id: "lagoon".to_owned(),
+            kind: noren_core::ItemKind::Theme,
+            version: "1.0.0".to_owned(),
+            sha256: "a".repeat(64),
+        }))
+        .expect("serialize");
+        assert_eq!(
+            json,
+            format!(
+                r#"{{"id":"lagoon","kind":"theme","version":"1.0.0","sha256":"{}"}}"#,
+                "a".repeat(64)
+            )
+        );
+    }
+
+    #[test]
+    fn a_fresh_gallery_has_nothing_installed_and_a_smoke_run_installs_nothing() {
+        let dir = TempDir::new("gallery");
+        let state = GalleryState::new(Gallery::new(&dir.0).expect("gallery"));
+        assert_eq!(state.installed(), Vec::new());
+        // The refusal comes before any request, so this test never reaches a network.
+        let message = tauri::async_runtime::block_on(
+            GalleryState::new(Gallery::new(&dir.0).expect("gallery"))
+                .without_installing()
+                .install("lagoon"),
+        )
+        .expect_err("refused");
+        assert_eq!(message, "this run does not install from the gallery");
+        assert!(!dir.0.join(THEMES_DIR_NAME).exists());
+        assert!(!dir.0.join(MODS_DIR_NAME).exists());
     }
 
     #[test]

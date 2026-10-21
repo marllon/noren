@@ -9,6 +9,7 @@ pub mod config;
 pub mod daemon;
 pub mod docker;
 pub mod fonts;
+pub mod gallery;
 pub mod git;
 pub mod git_diff;
 pub mod hardware;
@@ -50,6 +51,11 @@ pub use docker::{
     is_safe_container_name, list_running_containers, parse_container_names,
 };
 pub use fonts::{MAX_FONT_NAME_CHARS, is_font_name, list_monospace_families, monospace_families};
+pub use gallery::{
+    DEFAULT_INDEX_URL, GALLERY_FILE_NAME, GALLERY_TIMEOUT, Gallery, GalleryError, GalleryIndex,
+    GalleryItem, INDEX_VERSION, InstalledItem, ItemKind, MAX_INDEX_BYTES, MAX_ITEM_BYTES,
+    MAX_ITEMS, is_valid_version, parse_index, sha256_hex,
+};
 pub use git::{GitHead, read_head};
 pub use git_diff::{GitDiff, GitDiffRefusal, MAX_GIT_DIFF_BYTES, read_git_diff};
 pub use hardware::{

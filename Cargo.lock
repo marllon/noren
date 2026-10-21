@@ -2547,6 +2547,7 @@ dependencies = [
  "portable-pty",
  "reqwest",
  "serde_json",
+ "sha2",
  "sysinfo",
  "tokio",
  "tokio-util",

@@ -1,7 +1,15 @@
 import { FakeBackend } from "@noren/model";
-import { WINDOW_EFFECT_LABELS, benchHardwareOf, decodeGitDiff, isWindowEffect } from "@noren/model";
+import {
+  WINDOW_EFFECT_LABELS,
+  benchHardwareOf,
+  decodeGitDiff,
+  isWindowEffect,
+  parseGalleryIndex,
+} from "@noren/model";
 import type {
   BenchHardware,
+  GalleryDownload,
+  GalleryIndex,
   GitDiffRefusal,
   GitInfo,
   PluginFolder,
@@ -58,6 +66,14 @@ export const WEB_MODS_KEY = "noren.web.mods";
  * `{ folder, error }` that `listPlugins` answers instead of the example plugin.
  */
 export const WEB_PLUGINS_KEY = "noren.web.plugins";
+
+/**
+ * The gallery for a test (NOR-F18-02a): a JSON object `{ index, downloads }`, where `index` is a
+ * gallery index (`parseGalleryIndex` must accept it) and `downloads` goes from an item id to
+ * `{ text, sha256 }`, the file its address serves and the sha256 of its bytes. It replaces the
+ * fixture `galleryIndex` answers, so a test can serve a gallery of its own.
+ */
+export const WEB_GALLERY_KEY = "noren.web.gallery";
 
 /**
  * Key of the scrollback snapshots in web mode (`scrollback/<paneId>.txt` of the real app): a JSON
@@ -159,6 +175,33 @@ export function seededPlugins(storage: Pick<Storage, "getItem">): PluginFolder[]
       } else if (typeof error === "string") folders.push({ folder, error });
     }
     return folders;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The gallery seeded under `WEB_GALLERY_KEY`, or `undefined` when there is no usable seed. */
+export function seededGallery(
+  storage: Pick<Storage, "getItem">,
+): { index: GalleryIndex; downloads: Record<string, GalleryDownload> } | undefined {
+  try {
+    const raw = storage.getItem(WEB_GALLERY_KEY);
+    if (raw === null) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    const parsed = parseGalleryIndex((value as Record<string, unknown>)["index"]);
+    if (!parsed.ok) return undefined;
+    const downloads: Record<string, GalleryDownload> = {};
+    const served = (value as Record<string, unknown>)["downloads"];
+    if (typeof served === "object" && served !== null && !Array.isArray(served)) {
+      for (const [id, entry] of Object.entries(served)) {
+        if (typeof entry !== "object" || entry === null) continue;
+        const { text, sha256 } = entry as Record<string, unknown>;
+        if (typeof text === "string" && typeof sha256 === "string")
+          downloads[id] = { text, sha256 };
+      }
+    }
+    return { index: parsed.index, downloads };
   } catch {
     return undefined;
   }
@@ -458,6 +501,8 @@ export class WebBackend extends FakeBackend {
     this.#storage = storage;
     const plugins = seededPlugins(storage);
     if (plugins !== undefined) this.setPlugins(plugins);
+    const gallery = seededGallery(storage);
+    if (gallery !== undefined) this.setGalleryIndex(gallery.index, gallery.downloads);
   }
 
   /** A browser window has no effect of its own to paint; the desktop app does. */

@@ -8,6 +8,7 @@ import {
   decodeFilePreview,
   decodeGitDiff,
   fontNameList,
+  parseGalleryIndex,
   sniffImageMime,
 } from "@noren/model";
 import type {
@@ -29,9 +30,11 @@ import type {
   BrowserOpenOptions,
   CreateSessionOptions,
   FilePreview,
+  GalleryIndex,
   GitDiff,
   GitInfo,
   Id,
+  InstalledGalleryItem,
   ModFile,
   OllamaMemoryReading,
   OllamaModels,
@@ -49,6 +52,17 @@ import type {
   WindowScheme,
   Worktree,
 } from "@noren/model";
+
+/** The record of an installed gallery item from the app, or `undefined` when it is not one. */
+function installedGalleryItem(value: unknown): InstalledGalleryItem | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const { id, kind, version, sha256 } = value as Record<string, unknown>;
+  if (typeof id !== "string" || typeof version !== "string" || typeof sha256 !== "string") {
+    return undefined;
+  }
+  if (kind !== "theme" && kind !== "mod") return undefined;
+  return { id, kind, version, sha256 };
+}
 
 /** The part of a Tauri `Channel` this backend uses. */
 export interface ChannelLike<T> {
@@ -554,6 +568,38 @@ export class TauriBackend implements Backend {
       }
     }
     return plugins;
+  }
+
+  async galleryIndex(): Promise<GalleryIndex> {
+    const text = await this.#bridge.invoke<unknown>("gallery_index");
+    let value: unknown;
+    try {
+      value = JSON.parse(String(text).replace(/^\uFEFF/, ""));
+    } catch {
+      throw new Error("the gallery index is not valid JSON");
+    }
+    const parsed = parseGalleryIndex(value);
+    if (!parsed.ok) throw new Error(`the gallery index is not valid: ${parsed.errors.join("; ")}`);
+    return parsed.index;
+  }
+
+  async galleryInstalled(): Promise<InstalledGalleryItem[]> {
+    const records = await this.#bridge.invoke<unknown>("gallery_installed");
+    if (!Array.isArray(records)) return [];
+    const installed: InstalledGalleryItem[] = [];
+    for (const record of records as unknown[]) {
+      const item = installedGalleryItem(record);
+      if (item !== undefined) installed.push(item);
+    }
+    return installed;
+  }
+
+  async galleryInstall(id: string): Promise<InstalledGalleryItem> {
+    const record = await this.#bridge.invoke<unknown>("gallery_install", { id });
+    const item = installedGalleryItem(record);
+    if (item === undefined)
+      throw new Error("the app answered with an installed item that is not valid");
+    return item;
   }
 
   watchMods(callback: (files: ModFile[]) => void): Unsubscribe {

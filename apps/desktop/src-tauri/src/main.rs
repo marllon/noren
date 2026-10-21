@@ -232,6 +232,9 @@ fn main() {
             bridge::mod_list,
             bridge::mod_watch,
             bridge::plugins_list,
+            bridge::gallery_index,
+            bridge::gallery_installed,
+            bridge::gallery_install,
             bridge::window_effect_set,
             bridge::background_image_read,
             bridge::file_preview_read,
@@ -341,6 +344,14 @@ fn main() {
                     app.manage(if smoke { mods.without_watching() } else { mods });
                     // The plugins of the user are only read, never watched or made.
                     app.manage(bridge::plugin_store(app.handle())?);
+                    // The gallery downloads and installs only when the interface asks; the smoke
+                    // run never installs.
+                    let gallery = bridge::gallery_state(app.handle())?;
+                    app.manage(if smoke {
+                        gallery.without_installing()
+                    } else {
+                        gallery
+                    });
                     // The pictures of a background are only read.
                     app.manage(BackgroundState::new(bridge::background_store(
                         app.handle(),

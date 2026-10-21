@@ -60,6 +60,9 @@ import {
 import { externalLinkProblem } from "./external-link";
 import { classifyPreviewPath, previewOf } from "./file-preview";
 import type { FilePreview, PreviewEntry } from "./file-preview";
+import { FAKE_GALLERY_DOWNLOADS, FAKE_GALLERY_INDEX } from "./gallery-fixture";
+import type { GalleryDownload } from "./gallery-fixture";
+import type { GalleryIndex, InstalledGalleryItem } from "./gallery";
 import type { GitDiff, GitDiffRefusal } from "./git-diff";
 import { MAX_MOD_BYTES, MAX_MODS, isValidModFileName } from "./mods";
 import { OutputStream } from "./output-stream";
@@ -892,6 +895,13 @@ class FakeAi implements AiBackend {
  *   and one marked with `setWorktreeDirty`
  * - `listPlugins` answers the example plugin (`FAKE_PLUGINS`), or the folders `setPlugins` said (also
  *   a rejection, with `setPluginsListFailure`); it never reads the `plugins` folder of the machine
+ * - the gallery is a fixture in memory (`FAKE_GALLERY_INDEX` and the files behind its addresses):
+ *   `galleryIndex` answers the index, `galleryInstall` refuses an unknown id, an address that
+ *   serves nothing, a file larger than the item declares and a file whose hash is not the one the
+ *   index declares (nothing is written then), and otherwise writes the theme or the mod as the app
+ *   does and records it; `galleryInstalled` answers the records. `setGalleryIndex` changes the
+ *   index and the files, `setGalleryFailure` makes `galleryIndex` reject (the gallery cannot be
+ *   reached); it never touches the network
  * - `listSshHosts` answers a fixture of hosts (`FAKE_SSH_HOSTS`), or what `setSshHosts` said (also a
  *   rejection); it never reads the `~/.ssh/config` of the machine
  * - `listDockerContainers` answers a fixture of containers (`FAKE_DOCKER_CONTAINERS`), or what
@@ -1018,6 +1028,10 @@ export class FakeBackend implements Backend {
   #modListFailure: Error | undefined;
   /** The plugin folders `listPlugins` answers: the example, changed with `setPlugins`. */
   #plugins: PluginFolder[] = FAKE_PLUGINS.map((plugin) => ({ ...plugin }));
+  #galleryIndex: GalleryIndex = structuredClone(FAKE_GALLERY_INDEX);
+  #galleryDownloads: Record<string, GalleryDownload> = { ...FAKE_GALLERY_DOWNLOADS };
+  #galleryInstalled: InstalledGalleryItem[] = [];
+  #galleryFailure: Error | undefined;
   #pluginsListFailure: Error | undefined;
   #scrollbackFailure: Error | undefined;
   #userThemeSaveFailure: Error | undefined;
@@ -1786,6 +1800,72 @@ export class FakeBackend implements Backend {
   /** Makes `listPlugins` reject with `error` (the folder cannot be read); `undefined` undoes it. */
   setPluginsListFailure(error: Error | undefined): void {
     this.#pluginsListFailure = error;
+  }
+
+  async galleryIndex(): Promise<GalleryIndex> {
+    this.#record("galleryIndex");
+    if (this.#galleryFailure) throw this.#galleryFailure;
+    return structuredClone(this.#galleryIndex);
+  }
+
+  async galleryInstalled(): Promise<InstalledGalleryItem[]> {
+    this.#record("galleryInstalled");
+    return this.#galleryInstalled.map((entry) => ({ ...entry }));
+  }
+
+  async galleryInstall(id: string): Promise<InstalledGalleryItem> {
+    this.#record("galleryInstall", id);
+    if (this.#galleryFailure) throw this.#galleryFailure;
+    const item = this.#galleryIndex.items.find((entry) => entry.id === id);
+    if (item === undefined) throw new Error(`the gallery has no item '${id}'`);
+    const served = this.#galleryDownloads[id];
+    if (served === undefined) throw new Error("the download failed: the address served nothing");
+    if (new TextEncoder().encode(served.text).length > item.size) {
+      throw new Error(`the download is larger than the ${item.size} bytes the index declares`);
+    }
+    if (served.sha256 !== item.sha256) {
+      throw new Error("the download does not match the sha256 of the index; nothing was installed");
+    }
+    if (item.kind === "theme") {
+      if (this.#userThemeSaveFailure) throw this.#userThemeSaveFailure;
+      this.putUserTheme(item.id, served.text);
+    } else {
+      this.setMod(`${item.id}.css`, served.text);
+    }
+    const record: InstalledGalleryItem = {
+      id: item.id,
+      kind: item.kind,
+      version: item.version,
+      sha256: item.sha256,
+    };
+    const at = this.#galleryInstalled.findIndex(
+      (entry) => entry.id === id && entry.kind === item.kind,
+    );
+    if (at >= 0) this.#galleryInstalled[at] = record;
+    else this.#galleryInstalled.push(record);
+    return { ...record };
+  }
+
+  /**
+   * Sets the index `galleryIndex` answers and the files behind its addresses (`downloads`, by item
+   * id: the text served and the sha256 of its bytes). Until it is called the fixture is served
+   * (`FAKE_GALLERY_INDEX`). Not a `Backend` call, so it is not recorded. What was installed stays.
+   */
+  setGalleryIndex(index: GalleryIndex, downloads: Record<string, GalleryDownload> = {}): void {
+    this.#galleryIndex = structuredClone(index);
+    this.#galleryDownloads = Object.fromEntries(
+      Object.entries(downloads).map(([id, served]) => [id, { ...served }]),
+    );
+  }
+
+  /** Makes `galleryIndex` and `galleryInstall` reject with `error` (the gallery cannot be reached); `undefined` undoes it. */
+  setGalleryFailure(error: Error | undefined): void {
+    this.#galleryFailure = error;
+  }
+
+  /** Records `galleryInstalled` answers, as if the app had installed them before. */
+  setGalleryInstalled(installed: readonly InstalledGalleryItem[]): void {
+    this.#galleryInstalled = installed.map((entry) => ({ ...entry }));
   }
 
   /** What the real folder lists: valid names, not too large, the first `MAX_MODS` by name. */

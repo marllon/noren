@@ -1,14 +1,19 @@
 //! The mods of the user, without any Tauri dependency: the folder `mods/` next to `config.jsonc`,
 //! one CSS file per mod (`mods/<name>.css`).
 //!
-//! The app only reads this folder: a mod is a file the person puts there (or copies from
-//! `examples/mods/`) and edits with their own editor. Like the other stores this one keeps text and
+//! The app mostly reads this folder: a mod is a file the person puts there (or copies from
+//! `examples/mods/`) and edits with their own editor. The one thing the app writes is a mod it
+//! installed from the gallery ([`ModStore::save`]). Like the other stores this one keeps text and
 //! does not look inside it; the interface wraps each file in `@layer mods` and applies it.
 //!
 //! - **Listing** reads the text of every file that can be a mod and leaves out the rest: a name that
 //!   is not [`is_valid_mod_file_name`] (so there is never a path in it), a folder, a file that is not
 //!   UTF-8 text or is larger than [`MAX_MOD_BYTES`], and everything past the first [`MAX_MODS`] by
 //!   name. The folder is never created by a list.
+//! - **Saving** ([`ModStore::save`]) takes the file name of the mod, which must be an
+//!   [`is_valid_mod_file_name`] (so a path is refused before anything is written), and a text of at
+//!   most [`MAX_MOD_BYTES`]; the write is atomic, through the same temporary-file-and-rename path as
+//!   the themes.
 //! - **Watching** ([`ModStore::watch`]) tells when the folder changes, from inside or outside the
 //!   app: a file added, edited or removed. It watches the folder that holds `mods/`, not `mods/`
 //!   itself, because the folder can be deleted and made again; events are gathered until the folder is
@@ -25,6 +30,8 @@ use std::thread;
 use std::time::Duration;
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+
+use crate::store::{StoreError, write_atomic};
 
 /// Name of the folder inside the config folder of the app.
 pub const MODS_DIR_NAME: &str = "mods";
@@ -63,6 +70,12 @@ pub enum ModError {
     Read(io::Error),
     /// The folder could not be created or watched.
     Watch(String),
+    /// The name is not the file name of a mod, so it cannot be written.
+    InvalidName(String),
+    /// The text is larger than [`MAX_MOD_BYTES`].
+    TooLarge(usize),
+    /// The file could not be written (see [`StoreError`] for the step).
+    Write(StoreError),
 }
 
 impl fmt::Display for ModError {
@@ -70,6 +83,12 @@ impl fmt::Display for ModError {
         match self {
             Self::Read(source) => write!(f, "could not read the mods folder: {source}"),
             Self::Watch(message) => write!(f, "could not watch the mods folder: {message}"),
+            Self::InvalidName(name) => write!(f, "'{name}' is not a valid mod file name"),
+            Self::TooLarge(size) => write!(
+                f,
+                "the mod is {size} bytes; a mod file is at most {MAX_MOD_BYTES}"
+            ),
+            Self::Write(source) => write!(f, "could not write the mod file: {source}"),
         }
     }
 }
@@ -78,7 +97,8 @@ impl std::error::Error for ModError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Read(source) => Some(source),
-            Self::Watch(_) => None,
+            Self::Write(source) => Some(source),
+            Self::Watch(_) | Self::InvalidName(_) | Self::TooLarge(_) => None,
         }
     }
 }
@@ -166,6 +186,20 @@ impl ModStore {
     pub fn list(&self) -> Result<Vec<ModFile>, ModError> {
         let _guard = lock(&self.busy);
         list_dir(&self.dir, false)
+    }
+
+    /// Replaces the mod file `name` with `text` atomically, exactly as given. Creates the folder
+    /// when it is missing. Refuses a name that is not [`is_valid_mod_file_name`] and a text over
+    /// [`MAX_MOD_BYTES`], writing nothing. A running watch reports the new file like any other.
+    pub fn save(&self, name: &str, text: &str) -> Result<(), ModError> {
+        if !is_valid_mod_file_name(name) {
+            return Err(ModError::InvalidName(name.to_owned()));
+        }
+        if text.len() as u64 > MAX_MOD_BYTES {
+            return Err(ModError::TooLarge(text.len()));
+        }
+        let _guard = lock(&self.busy);
+        write_atomic(&self.dir.join(name), text.as_bytes()).map_err(ModError::Write)
     }
 
     /// Calls `on_change` with the files of the folder every time they change, whoever changed
@@ -467,6 +501,103 @@ mod tests {
         assert_eq!(
             files[MAX_MODS - 1].name,
             format!("m{:03}.css", MAX_MODS - 1)
+        );
+    }
+
+    #[test]
+    fn save_creates_the_folder_and_the_file_and_list_reads_it_back_as_given() {
+        let dir = TempDir::new("save");
+        let store = ModStore::new(dir.mods());
+        let text = "\u{feff}/* caf\u{e9} */\r\n.a { color: red }\n";
+        store.save("compact-tabs.css", text).expect("save");
+        assert_eq!(
+            fs::read_to_string(dir.mods().join("compact-tabs.css")).expect("read"),
+            text
+        );
+        assert_eq!(
+            store.list().expect("list"),
+            [file("compact-tabs.css", text)]
+        );
+    }
+
+    #[test]
+    fn saving_again_replaces_the_file_and_leaves_no_temporary_file() {
+        let dir = TempDir::new("save-replace");
+        let store = ModStore::new(dir.mods());
+        store
+            .save("a.css", "a{ order: 1; long: true }")
+            .expect("first");
+        store.save("a.css", "a{ order: 2 }").expect("second");
+        assert_eq!(
+            store.list().expect("list"),
+            [file("a.css", "a{ order: 2 }")]
+        );
+        let names: Vec<String> = fs::read_dir(dir.mods())
+            .expect("list the folder")
+            .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["a.css"]);
+    }
+
+    #[test]
+    fn save_refuses_a_name_that_is_not_a_mod_file_name_and_writes_nothing() {
+        let dir = TempDir::new("save-names");
+        let store = ModStore::new(dir.mods());
+        for name in [
+            "",
+            "a",
+            "a.txt",
+            "../a.css",
+            "..\\a.css",
+            "a/b.css",
+            "/abs.css",
+            "C:\\a.css",
+            "a:b.css",
+            "con.css",
+            "-a.css",
+            "A.CSS",
+            &format!("{}.css", "a".repeat(65)),
+        ] {
+            let error = store.save(name, "a{}").expect_err(name);
+            assert!(matches!(error, ModError::InvalidName(_)), "{name:?}");
+        }
+        assert!(!dir.mods().exists(), "nothing was made");
+        assert!(!dir.0.join("a.css").exists());
+    }
+
+    #[test]
+    fn save_refuses_a_text_over_the_limit_and_accepts_one_at_it() {
+        let dir = TempDir::new("save-size");
+        let store = ModStore::new(dir.mods());
+        let size = usize::try_from(MAX_MOD_BYTES).expect("size");
+        let error = store
+            .save("big.css", &"x".repeat(size + 1))
+            .expect_err("over the limit");
+        assert!(matches!(error, ModError::TooLarge(n) if n == size + 1));
+        assert!(!dir.mods().exists());
+        store
+            .save("edge.css", &"x".repeat(size))
+            .expect("at the limit");
+        assert_eq!(
+            fs::metadata(dir.mods().join("edge.css"))
+                .expect("meta")
+                .len(),
+            MAX_MOD_BYTES
+        );
+    }
+
+    #[test]
+    fn save_in_the_way_of_a_file_is_a_write_error() {
+        let dir = TempDir::new("save-blocked");
+        fs::write(dir.mods(), b"a file where the folder should be").expect("write");
+        let error = ModStore::new(dir.mods())
+            .save("a.css", "a{}")
+            .expect_err("must fail");
+        assert!(matches!(error, ModError::Write(_)));
+        assert!(
+            error
+                .to_string()
+                .starts_with("could not write the mod file")
         );
     }
 

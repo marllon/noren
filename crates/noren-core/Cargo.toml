@@ -37,6 +37,12 @@ sysinfo = { version = "0.39.6", default-features = false, features = ["system"] 
 # OpenSSL on Linux) and its certificate roots, so a corporate or local CA works too; the crates
 # are MIT or Apache-2.0. `stream` gives `Response::bytes_stream`.
 reqwest = { version = "0.13.5", default-features = false, features = ["native-tls", "stream"] }
+# The gallery (`gallery` module) installs a theme or a mod only when the sha256 of the bytes it
+# downloaded is the one the index declares, so the file is hashed before anything is written. It is
+# the RustCrypto implementation (pure Rust, with a CPU-feature switch for the fast paths), and only
+# `Digest::digest` of it is used. 0.10.9, MIT OR Apache-2.0 (already in the tree through Tauri; no
+# crate is added, only the edge from noren-core).
+sha2 = "0.10.9"
 # Reads and builds the JSON of the provider APIs (the stream events, the request body, the list of
 # models of Ollama) as untyped values, so no derive macro is added. 1.0, MIT OR Apache-2.0
 # (already in the tree through Tauri).

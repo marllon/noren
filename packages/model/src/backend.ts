@@ -13,6 +13,7 @@ import type { BrowserBounds } from "./browser";
 import type { PluginFolder } from "./plugins-load";
 import type { FilePreview } from "./file-preview";
 import type { GalleryIndex, InstalledGalleryItem } from "./gallery";
+import type { SyncPullResult, SyncPushResult, SyncStatus } from "./sync";
 import type { GitDiff } from "./git-diff";
 import type { Id } from "./types";
 import type { UserProfile } from "./user-profile-schema";
@@ -358,6 +359,35 @@ export interface Backend {
    * record. When anything fails, including a hash that does not match, nothing is written.
    */
   galleryInstall(id: string): Promise<InstalledGalleryItem>;
+  /**
+   * Where the sync of the settings through git stands (`noren-core::sync`), with no network: the
+   * remote and branch of the clone kept next to `config.jsonc`, the files of the config folder a
+   * push would carry (`config.jsonc`, `themes/`, `mods/` and `spaces/*.noren-space.json`, nothing
+   * else), and how many commits the clone is ahead of and behind the remote as of the last fetch.
+   * Not connected yet is `connected: false`. Rejects only when git cannot be run.
+   */
+  syncStatus(): Promise<SyncStatus>;
+  /**
+   * Connects to the git remote `remote`: checks the address (`syncRemoteProblem`) and clones it into
+   * the clone folder, or points an existing clone at it. Copies nothing into the config folder.
+   * Rejects with a sentence for the person when the address is refused, git is not installed or the
+   * remote cannot be cloned.
+   */
+  syncConnect(remote: string): Promise<SyncStatus>;
+  /**
+   * Brings the remote into the config folder. The local files are committed into the clone first
+   * and the remote is merged; on a conflict the merge is aborted, nothing in the config folder
+   * changes and the paths in conflict come back (`kind: "conflict"`). Only a clean merge writes the
+   * files it added or changed (`kind: "updated"`). Nothing is deleted. Rejects when no remote is
+   * connected or git fails.
+   */
+  syncPull(): Promise<SyncPullResult>;
+  /**
+   * Commits the changed files of the config folder that may travel and pushes them. Rejects with
+   * "pull first" when the remote has commits this computer lacks, when no remote is connected, or
+   * when git fails.
+   */
+  syncPush(): Promise<SyncPushResult>;
   /**
    * Asks the system to paint `effect` behind the window (`none` takes any effect away), and tells
    * what the window has afterwards. It never rejects because the system cannot paint the effect:

@@ -235,6 +235,10 @@ fn main() {
             bridge::gallery_index,
             bridge::gallery_installed,
             bridge::gallery_install,
+            bridge::sync_status,
+            bridge::sync_connect,
+            bridge::sync_pull,
+            bridge::sync_push,
             bridge::window_effect_set,
             bridge::background_image_read,
             bridge::file_preview_read,
@@ -352,6 +356,14 @@ fn main() {
                     } else {
                         gallery
                     });
+                    // The sync through git touches the clone and the config folder only when the
+                    // interface asks; the smoke run never connects, pulls or pushes.
+                    let sync = bridge::sync_state(app.handle())?;
+                    app.manage(std::sync::Arc::new(if smoke {
+                        sync.without_syncing()
+                    } else {
+                        sync
+                    }));
                     // The pictures of a background are only read.
                     app.manage(BackgroundState::new(bridge::background_store(
                         app.handle(),

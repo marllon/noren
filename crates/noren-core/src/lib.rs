@@ -24,6 +24,7 @@ pub mod pty;
 pub mod scrollback;
 pub mod ssh_config;
 pub mod store;
+pub mod sync;
 pub mod themes;
 pub mod vault;
 pub mod window;
@@ -94,6 +95,11 @@ pub use ssh_config::{
     read_ssh_hosts_from, ssh_config_path,
 };
 pub use store::{StateStore, StoreError};
+pub use sync::{
+    ChangeKind, MAX_REMOTE_CHARS, MAX_SYNC_FILE_BYTES, MAX_SYNC_FILES, PendingChange, PullOutcome,
+    PushOutcome, SPACE_FILE_SUFFIX, SPACES_DIR_NAME, SYNC_DIR_NAME, SYNC_TIMEOUT, SyncError,
+    SyncRepo, SyncStatus, is_syncable, validate_remote_url,
+};
 pub use themes::{THEMES_DIR_NAME, ThemeError, ThemeStore, is_valid_theme_id};
 pub use tokio_util::sync::CancellationToken;
 pub use vault::{

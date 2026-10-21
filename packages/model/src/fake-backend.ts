@@ -63,6 +63,8 @@ import type { FilePreview, PreviewEntry } from "./file-preview";
 import { FAKE_GALLERY_DOWNLOADS, FAKE_GALLERY_INDEX } from "./gallery-fixture";
 import type { GalleryDownload } from "./gallery-fixture";
 import type { GalleryIndex, InstalledGalleryItem } from "./gallery";
+import { isSyncablePath, syncRemoteProblem } from "./sync";
+import type { SyncPullResult, SyncPushResult, SyncStatus } from "./sync";
 import type { GitDiff, GitDiffRefusal } from "./git-diff";
 import { MAX_MOD_BYTES, MAX_MODS, isValidModFileName } from "./mods";
 import { OutputStream } from "./output-stream";
@@ -902,6 +904,15 @@ class FakeAi implements AiBackend {
  *   does and records it; `galleryInstalled` answers the records. `setGalleryIndex` changes the
  *   index and the files, `setGalleryFailure` makes `galleryIndex` reject (the gallery cannot be
  *   reached); it never touches the network
+ * - the sync through git keeps a remote in memory (what another computer pushed) and the files of
+ *   this computer: `syncConnect` checks the address as the app does and takes the remote's files
+ *   into the clone (not into the config folder), `syncPush` copies the files that may travel
+ *   (`isSyncablePath`; a `state.json` or any other name never goes) and sends them unless the remote
+ *   moved on (rejects "pull first"), `syncPull` is a three-way merge by file against the last state
+ *   both sides agreed on: a file changed on both sides to different content is a conflict (nothing
+ *   is written, the paths come back), otherwise the remote's changes land. `setSyncLocalFile` is
+ *   a file of the config folder, `setSyncRemoteFile` is another computer pushing, `setSyncFailure`
+ *   makes every sync call reject (git is not installed); it never runs git or touches a network
  * - `listSshHosts` answers a fixture of hosts (`FAKE_SSH_HOSTS`), or what `setSshHosts` said (also a
  *   rejection); it never reads the `~/.ssh/config` of the machine
  * - `listDockerContainers` answers a fixture of containers (`FAKE_DOCKER_CONTAINERS`), or what
@@ -1032,6 +1043,20 @@ export class FakeBackend implements Backend {
   #galleryDownloads: Record<string, GalleryDownload> = { ...FAKE_GALLERY_DOWNLOADS };
   #galleryInstalled: InstalledGalleryItem[] = [];
   #galleryFailure: Error | undefined;
+  #syncRemote: string | undefined;
+  /** What the remote holds, and how many times it changed. */
+  #syncRemoteFiles = new Map<string, string>();
+  #syncRemoteRevision = 0;
+  /** What the clone holds, the files and revision of the remote it last saw, and its unpushed commits. */
+  #syncCloneFiles = new Map<string, string>();
+  #syncBaseFiles = new Map<string, string>();
+  #syncBaseRevision = 0;
+  #syncAhead = 0;
+  #syncBehind = 0;
+  /** The files of the config folder of this computer, whatever their name. */
+  #syncLocalFiles = new Map<string, string>();
+  #syncApplied = false;
+  #syncFailure: Error | undefined;
   #pluginsListFailure: Error | undefined;
   #scrollbackFailure: Error | undefined;
   #userThemeSaveFailure: Error | undefined;
@@ -1866,6 +1891,187 @@ export class FakeBackend implements Backend {
   /** Records `galleryInstalled` answers, as if the app had installed them before. */
   setGalleryInstalled(installed: readonly InstalledGalleryItem[]): void {
     this.#galleryInstalled = installed.map((entry) => ({ ...entry }));
+  }
+
+  async syncStatus(): Promise<SyncStatus> {
+    this.#record("syncStatus");
+    if (this.#syncFailure) throw this.#syncFailure;
+    return this.#syncStatusNow();
+  }
+
+  async syncConnect(remote: string): Promise<SyncStatus> {
+    this.#record("syncConnect", remote);
+    if (this.#syncFailure) throw this.#syncFailure;
+    const problem = syncRemoteProblem(remote);
+    if (problem !== undefined) throw new Error(`this is not a usable remote: ${problem}`);
+    if (this.#syncRemote === undefined) {
+      this.#syncCloneFiles = new Map(this.#syncRemoteFiles);
+      this.#syncBaseFiles = new Map(this.#syncRemoteFiles);
+      this.#syncBaseRevision = this.#syncRemoteRevision;
+      this.#syncAhead = 0;
+      this.#syncBehind = 0;
+      this.#syncApplied = false;
+    }
+    this.#syncRemote = remote;
+    return this.#syncStatusNow();
+  }
+
+  async syncPull(): Promise<SyncPullResult> {
+    this.#record("syncPull");
+    if (this.#syncFailure) throw this.#syncFailure;
+    if (this.#syncRemote === undefined) {
+      throw new Error("no remote is connected yet: connect to one first");
+    }
+    const clashes = this.#syncFirstClashes();
+    if (clashes.length > 0) return { kind: "conflict", paths: clashes };
+    this.#syncSnapshot();
+    const wanted = new Map<string, string>();
+    if (this.#syncRemoteRevision !== this.#syncBaseRevision) {
+      const conflicts: string[] = [];
+      for (const [path, theirs] of this.#syncRemoteFiles) {
+        const base = this.#syncBaseFiles.get(path);
+        if (theirs === base) continue;
+        const mine = this.#syncCloneFiles.get(path);
+        if (mine !== undefined && mine !== theirs && mine !== base) conflicts.push(path);
+        else wanted.set(path, theirs);
+      }
+      if (conflicts.length > 0) {
+        this.#syncBehind = 1;
+        return { kind: "conflict", paths: conflicts.sort() };
+      }
+      for (const [path, text] of wanted) this.#syncCloneFiles.set(path, text);
+      // A merge of a clone that has commits of its own is a commit of its own.
+      if (this.#syncAhead > 0 && wanted.size > 0) this.#syncAhead += 1;
+      this.#syncBaseFiles = new Map(this.#syncRemoteFiles);
+      this.#syncBaseRevision = this.#syncRemoteRevision;
+    }
+    this.#syncBehind = 0;
+    // The files a pull delivers: the allowed ones of the clone that the config folder lacks or
+    // holds with other content, among the ones this pull brought (all of them the first time).
+    const written: string[] = [];
+    for (const [path, text] of this.#syncCloneFiles) {
+      if (!isSyncablePath(path)) continue;
+      if (this.#syncApplied && !wanted.has(path)) continue;
+      if (this.#syncLocalFiles.get(path) === text) continue;
+      this.#syncLocalFiles.set(path, text);
+      written.push(path);
+    }
+    this.#syncApplied = true;
+    return written.length === 0
+      ? { kind: "up_to_date" }
+      : { kind: "updated", files: written.sort() };
+  }
+
+  async syncPush(): Promise<SyncPushResult> {
+    this.#record("syncPush");
+    if (this.#syncFailure) throw this.#syncFailure;
+    if (this.#syncRemote === undefined) {
+      throw new Error("no remote is connected yet: connect to one first");
+    }
+    const clashes = this.#syncFirstClashes();
+    if (clashes.length > 0) {
+      throw new Error(
+        `the remote has changes this computer does not have: pull first (these files differ from the remote's: ${clashes.join(", ")})`,
+      );
+    }
+    const files = this.#syncSnapshot();
+    const committed = files.length > 0;
+    if (this.#syncRemoteRevision !== this.#syncBaseRevision) {
+      this.#syncBehind = 1;
+      throw new Error(
+        "the remote has changes this computer does not have: pull first, then push again",
+      );
+    }
+    if (this.#syncAhead === 0) return { committed, pushed: false, files };
+    this.#syncRemoteFiles = new Map(this.#syncCloneFiles);
+    this.#syncRemoteRevision += 1;
+    this.#syncBaseFiles = new Map(this.#syncCloneFiles);
+    this.#syncBaseRevision = this.#syncRemoteRevision;
+    this.#syncAhead = 0;
+    return { committed, pushed: true, files };
+  }
+
+  /** Puts `text` in the config folder of this computer as `path`; `undefined` removes it. Not a `Backend` call. */
+  setSyncLocalFile(path: string, text: string | undefined): void {
+    if (text === undefined) this.#syncLocalFiles.delete(path);
+    else this.#syncLocalFiles.set(path, text);
+  }
+
+  /** The text of `path` in the config folder of this computer, or `undefined`. */
+  syncLocalFile(path: string): string | undefined {
+    return this.#syncLocalFiles.get(path);
+  }
+
+  /** What the remote holds (a copy). */
+  syncRemoteFiles(): Record<string, string> {
+    return Object.fromEntries(this.#syncRemoteFiles);
+  }
+
+  /** Another computer pushed `text` as `path` (`undefined` removes it): the remote moves on. */
+  setSyncRemoteFile(path: string, text: string | undefined): void {
+    if (text === undefined) this.#syncRemoteFiles.delete(path);
+    else this.#syncRemoteFiles.set(path, text);
+    this.#syncRemoteRevision += 1;
+  }
+
+  /** Makes every sync call reject with `error` (git is not installed, say); `undefined` undoes it. */
+  setSyncFailure(error: Error | undefined): void {
+    this.#syncFailure = error;
+  }
+
+  /**
+   * Before a pull ever delivered files, the allowed files that this computer holds with other
+   * content than the clone (which holds the remote's): committing them would replace the remote's
+   * with no merge to see it.
+   */
+  #syncFirstClashes(): string[] {
+    if (this.#syncApplied) return [];
+    return [...this.#syncCloneFiles]
+      .filter(
+        ([path, text]) =>
+          isSyncablePath(path) &&
+          this.#syncLocalFiles.has(path) &&
+          this.#syncLocalFiles.get(path) !== text,
+      )
+      .map(([path]) => path)
+      .sort();
+  }
+
+  /** Copies the files that may travel into the clone; the files of the new commit. */
+  #syncSnapshot(): string[] {
+    // The first commit of an empty clone holds only what came from this computer.
+    const firstCommit = this.#syncCloneFiles.size === 0;
+    const files: string[] = [];
+    for (const [path, text] of [...this.#syncLocalFiles].sort(([a], [b]) => a.localeCompare(b))) {
+      if (!isSyncablePath(path)) continue;
+      if (this.#syncCloneFiles.get(path) === text) continue;
+      this.#syncCloneFiles.set(path, text);
+      files.push(path);
+    }
+    if (files.length > 0) this.#syncAhead += 1;
+    if (firstCommit && files.length > 0) this.#syncApplied = true;
+    return files;
+  }
+
+  #syncStatusNow(): SyncStatus {
+    if (this.#syncRemote === undefined) {
+      return { connected: false, remote: null, branch: null, pending: [], ahead: 0, behind: 0 };
+    }
+    const pending: SyncStatus["pending"] = [];
+    for (const [path, text] of [...this.#syncLocalFiles].sort(([a], [b]) => a.localeCompare(b))) {
+      if (!isSyncablePath(path)) continue;
+      const held = this.#syncCloneFiles.get(path);
+      if (held === text) continue;
+      pending.push({ path, change: held === undefined ? "added" : "modified" });
+    }
+    return {
+      connected: true,
+      remote: this.#syncRemote,
+      branch: "main",
+      pending,
+      ahead: this.#syncAhead,
+      behind: this.#syncBehind,
+    };
   }
 
   /** What the real folder lists: valid names, not too large, the first `MAX_MODS` by name. */

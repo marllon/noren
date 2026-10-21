@@ -407,6 +407,19 @@ export {
   FAKE_GALLERY_TAMPERED,
 } from "./gallery-fixture";
 export type { GalleryDownload } from "./gallery-fixture";
+export {
+  SYNC_CHANGES,
+  SYNC_LIMITS,
+  isSyncablePath,
+  parseSyncPull,
+  parseSyncPush,
+  parseSyncStatus,
+  syncPullSchema,
+  syncPushSchema,
+  syncRemoteProblem,
+  syncStatusSchema,
+} from "./sync";
+export type { SyncChange, SyncParse, SyncPullResult, SyncPushResult, SyncStatus } from "./sync";
 export { AGENT_LINE_MAX, buildAgentList, firstWaitingAgent, truncateLine } from "./agent-list";
 export type { AgentInfo, AgentRow } from "./agent-list";
 export {

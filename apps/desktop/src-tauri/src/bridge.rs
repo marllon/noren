@@ -15,11 +15,12 @@ use noren_core::{
     ACTIONS_FILE_PATH, AgentEntry, BENCH_DIR_NAME, BackgroundStore, BenchFile, BenchStore,
     CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, Gallery, GitHead, InstalledItem, MODS_DIR_NAME,
     ModFile, ModStore, ModWatcher, PLUGINS_DIR_NAME, PluginFolder, PluginStore, ProcessSource,
-    Profile, ProfileSet, SCROLLBACK_DIR_NAME, ScrollbackStore, SessionEvent, SessionId, SpawnSpec,
-    SshProfile, StateStore, SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile,
-    WindowEffect, Worktree, check_catalog, create_worktree, detect_system_profiles,
-    list_running_containers, list_worktrees, native_path, read_head, read_project_file,
-    read_ssh_hosts, remove_worktree, run_short, scan_sessions,
+    Profile, ProfileSet, PullOutcome, PushOutcome, SCROLLBACK_DIR_NAME, ScrollbackStore,
+    SessionEvent, SessionId, SpawnSpec, SshProfile, StateStore, SyncRepo, SyncStatus,
+    SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect, Worktree,
+    check_catalog, create_worktree, detect_system_profiles, list_running_containers,
+    list_worktrees, native_path, read_head, read_project_file, read_ssh_hosts, remove_worktree,
+    run_short, scan_sessions,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -1575,6 +1576,193 @@ pub async fn gallery_install(
     state.install(&id).await
 }
 
+/// One file the next push would carry, as the interface sees it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SyncChangeDto {
+    pub path: String,
+    /// `added` or `modified`.
+    pub change: String,
+}
+
+/// Where the sync through git stands, as the interface sees it (see [`SyncStatus`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SyncStatusDto {
+    pub connected: bool,
+    pub remote: Option<String>,
+    pub branch: Option<String>,
+    pub pending: Vec<SyncChangeDto>,
+    pub ahead: usize,
+    pub behind: usize,
+}
+
+impl From<SyncStatus> for SyncStatusDto {
+    fn from(status: SyncStatus) -> Self {
+        Self {
+            connected: status.connected,
+            remote: status.remote,
+            branch: status.branch,
+            pending: status
+                .pending
+                .into_iter()
+                .map(|change| SyncChangeDto {
+                    path: change.path,
+                    change: change.kind.as_str().to_owned(),
+                })
+                .collect(),
+            ahead: status.ahead,
+            behind: status.behind,
+        }
+    }
+}
+
+/// What a pull did, as the interface sees it: `{"kind":"up_to_date"}`,
+/// `{"kind":"updated","files":[...]}` or `{"kind":"conflict","paths":[...]}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SyncPullDto {
+    UpToDate,
+    Updated { files: Vec<String> },
+    Conflict { paths: Vec<String> },
+}
+
+impl From<PullOutcome> for SyncPullDto {
+    fn from(outcome: PullOutcome) -> Self {
+        match outcome {
+            PullOutcome::UpToDate => Self::UpToDate,
+            PullOutcome::Updated(files) => Self::Updated { files },
+            PullOutcome::Conflicts(paths) => Self::Conflict { paths },
+        }
+    }
+}
+
+/// What a push did, as the interface sees it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SyncPushDto {
+    pub committed: bool,
+    pub pushed: bool,
+    pub files: Vec<String>,
+}
+
+impl From<PushOutcome> for SyncPushDto {
+    fn from(outcome: PushOutcome) -> Self {
+        Self {
+            committed: outcome.committed,
+            pushed: outcome.pushed,
+            files: outcome.files,
+        }
+    }
+}
+
+/// The sync of the settings through git: one clone next to `config.jsonc`, one step at a time.
+pub struct SyncState {
+    repo: SyncRepo,
+    /// Held for a whole step: two pulls or a push during a pull would fight over the clone.
+    busy: Mutex<()>,
+    syncing_allowed: bool,
+}
+
+impl SyncState {
+    pub fn new(repo: SyncRepo) -> Self {
+        Self {
+            repo,
+            busy: Mutex::new(()),
+            syncing_allowed: true,
+        }
+    }
+
+    /// The same, but connecting, pulling and pushing refuse: the smoke run must leave the files of
+    /// the user as they are. The status is only a read.
+    pub fn without_syncing(mut self) -> Self {
+        self.syncing_allowed = false;
+        self
+    }
+
+    fn step<T>(
+        &self,
+        run: impl FnOnce(&SyncRepo) -> Result<T, noren_core::SyncError>,
+    ) -> Result<T, String> {
+        if !self.syncing_allowed {
+            return Err("this run does not sync".to_owned());
+        }
+        let _turn = self.busy.lock().map_err(|e| e.to_string())?;
+        run(&self.repo).map_err(|e| e.to_string())
+    }
+
+    /// Where the sync stands (see [`SyncRepo::status`]).
+    pub fn status(&self) -> Result<SyncStatusDto, String> {
+        let _turn = self.busy.lock().map_err(|e| e.to_string())?;
+        self.repo
+            .status()
+            .map(SyncStatusDto::from)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Connects to `remote` (see [`SyncRepo::connect`]).
+    pub fn connect(&self, remote: &str) -> Result<SyncStatusDto, String> {
+        self.step(|repo| repo.connect(remote))
+            .map(SyncStatusDto::from)
+    }
+
+    /// Pulls (see [`SyncRepo::pull`]).
+    pub fn pull(&self) -> Result<SyncPullDto, String> {
+        self.step(SyncRepo::pull).map(SyncPullDto::from)
+    }
+
+    /// Pushes (see [`SyncRepo::push`]).
+    pub fn push(&self) -> Result<SyncPushDto, String> {
+        self.step(SyncRepo::push).map(SyncPushDto::from)
+    }
+}
+
+/// Builds the sync of the user over the app config folder. Only resolves the path: the clone is
+/// made when a remote is connected.
+pub fn sync_state(app: &AppHandle) -> Result<SyncState, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("could not find the app config folder: {e}"))?;
+    Ok(SyncState::new(SyncRepo::new(dir)))
+}
+
+/// Where the sync through git stands, with no network.
+#[tauri::command]
+pub async fn sync_status(state: State<'_, Arc<SyncState>>) -> Result<SyncStatusDto, String> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || state.status())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Connects to the git remote `remote` (clones it next to the config); the address is checked first.
+#[tauri::command]
+pub async fn sync_connect(
+    state: State<'_, Arc<SyncState>>,
+    remote: String,
+) -> Result<SyncStatusDto, String> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || state.connect(&remote))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Brings the remote into the config folder; a conflict writes nothing and lists the paths.
+#[tauri::command]
+pub async fn sync_pull(state: State<'_, Arc<SyncState>>) -> Result<SyncPullDto, String> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || state.pull())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Commits the changed allowed files and pushes them to the remote.
+#[tauri::command]
+pub async fn sync_push(state: State<'_, Arc<SyncState>>) -> Result<SyncPushDto, String> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || state.push())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// Longest a project command (the `stop` of an action) may run before it is killed.
 pub const PROJECT_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -2684,6 +2872,63 @@ mod tests {
         assert_eq!(message, "this run does not install from the gallery");
         assert!(!dir.0.join(THEMES_DIR_NAME).exists());
         assert!(!dir.0.join(MODS_DIR_NAME).exists());
+    }
+
+    #[test]
+    fn sync_answers_reach_the_interface_in_the_wire_shape() {
+        let status = serde_json::to_string(&SyncStatusDto::from(SyncStatus {
+            connected: true,
+            remote: Some("/srv/notes.git".to_owned()),
+            branch: Some("main".to_owned()),
+            pending: vec![noren_core::PendingChange {
+                path: "config.jsonc".to_owned(),
+                kind: noren_core::ChangeKind::Modified,
+            }],
+            ahead: 1,
+            behind: 2,
+        }))
+        .expect("serialize");
+        assert_eq!(
+            status,
+            r#"{"connected":true,"remote":"/srv/notes.git","branch":"main","pending":[{"path":"config.jsonc","change":"modified"}],"ahead":1,"behind":2}"#
+        );
+        let pulls = [
+            SyncPullDto::from(PullOutcome::UpToDate),
+            SyncPullDto::from(PullOutcome::Updated(vec!["a".to_owned()])),
+            SyncPullDto::from(PullOutcome::Conflicts(vec!["b".to_owned()])),
+        ];
+        assert_eq!(
+            serde_json::to_string(&pulls).expect("serialize"),
+            r#"[{"kind":"up_to_date"},{"kind":"updated","files":["a"]},{"kind":"conflict","paths":["b"]}]"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SyncPushDto::from(PushOutcome {
+                committed: true,
+                pushed: false,
+                files: vec!["c".to_owned()],
+            }))
+            .expect("serialize"),
+            r#"{"committed":true,"pushed":false,"files":["c"]}"#
+        );
+    }
+
+    #[test]
+    fn a_fresh_sync_is_not_connected_and_a_smoke_run_does_not_sync() {
+        let dir = TempDir::new("sync");
+        let state = SyncState::new(SyncRepo::new(&dir.0));
+        assert_eq!(
+            state.status().expect("status"),
+            SyncStatusDto::from(SyncStatus::default())
+        );
+        let smoke = SyncState::new(SyncRepo::new(&dir.0)).without_syncing();
+        // Every refusal comes before any git command and any network.
+        assert_eq!(
+            smoke.connect("https://example.com/me/x.git"),
+            Err("this run does not sync".to_owned())
+        );
+        assert_eq!(smoke.pull(), Err("this run does not sync".to_owned()));
+        assert_eq!(smoke.push(), Err("this run does not sync".to_owned()));
+        assert!(!dir.0.join("sync").exists());
     }
 
     #[test]

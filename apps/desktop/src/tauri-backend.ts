@@ -9,6 +9,9 @@ import {
   decodeGitDiff,
   fontNameList,
   parseGalleryIndex,
+  parseSyncPull,
+  parseSyncPush,
+  parseSyncStatus,
   sniffImageMime,
 } from "@noren/model";
 import type {
@@ -44,6 +47,10 @@ import type {
   SessionLink,
   SessionLinkState,
   ShellProfile,
+  SyncParse,
+  SyncPullResult,
+  SyncPushResult,
+  SyncStatus,
   TerminalTail,
   Unsubscribe,
   UserProfile,
@@ -62,6 +69,13 @@ function installedGalleryItem(value: unknown): InstalledGalleryItem | undefined 
   }
   if (kind !== "theme" && kind !== "mod") return undefined;
   return { id, kind, version, sha256 };
+}
+
+/** The value the app answered for the sync, or a rejection when its shape is not the expected one. */
+function checkedSync<T>(parsed: SyncParse<T>): T {
+  if (!parsed.ok)
+    throw new Error(`the app answered about the sync in an unexpected shape: ${parsed.error}`);
+  return parsed.value;
 }
 
 /** The part of a Tauri `Channel` this backend uses. */
@@ -600,6 +614,24 @@ export class TauriBackend implements Backend {
     if (item === undefined)
       throw new Error("the app answered with an installed item that is not valid");
     return item;
+  }
+
+  async syncStatus(): Promise<SyncStatus> {
+    return checkedSync(parseSyncStatus(await this.#bridge.invoke<unknown>("sync_status")));
+  }
+
+  async syncConnect(remote: string): Promise<SyncStatus> {
+    return checkedSync(
+      parseSyncStatus(await this.#bridge.invoke<unknown>("sync_connect", { remote })),
+    );
+  }
+
+  async syncPull(): Promise<SyncPullResult> {
+    return checkedSync(parseSyncPull(await this.#bridge.invoke<unknown>("sync_pull")));
+  }
+
+  async syncPush(): Promise<SyncPushResult> {
+    return checkedSync(parseSyncPush(await this.#bridge.invoke<unknown>("sync_push")));
   }
 
   watchMods(callback: (files: ModFile[]) => void): Unsubscribe {

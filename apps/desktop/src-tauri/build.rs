@@ -54,6 +54,7 @@ const COMMANDS: &[&str] = &[
     "file_preview_read",
     "git_diff_read",
     "fonts_list_monospace",
+    "hardware_read",
     "link_open",
     "browser_open",
     "browser_navigate",

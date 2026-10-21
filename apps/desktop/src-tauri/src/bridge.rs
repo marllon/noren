@@ -1216,6 +1216,60 @@ pub async fn fonts_list_monospace() -> Result<Vec<String>, String> {
         .map_err(|e| format!("could not list the fonts: {e}"))
 }
 
+/// What `hardware_read` finds: the memory of this machine in bytes. `vramBytes` is `null` when
+/// the video memory is not known.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HardwareInfo {
+    pub ram_bytes: u64,
+    pub vram_bytes: Option<u64>,
+}
+
+impl From<noren_core::Hardware> for HardwareInfo {
+    fn from(hardware: noren_core::Hardware) -> Self {
+        HardwareInfo {
+            ram_bytes: hardware.ram_bytes,
+            vram_bytes: hardware.vram_bytes,
+        }
+    }
+}
+
+/// Where the memory of the machine is read from: the real source in the app, a made-up one in a
+/// test of the command (so that test starts no `nvidia-smi`).
+pub struct HardwareState {
+    source: Arc<dyn noren_core::HardwareSource + Send + Sync>,
+}
+
+impl HardwareState {
+    /// The memory of this machine, read with `sysinfo` and `nvidia-smi`.
+    pub fn system() -> Self {
+        Self::with_source(noren_core::SystemHardware::new())
+    }
+
+    pub fn with_source(source: impl noren_core::HardwareSource + Send + Sync + 'static) -> Self {
+        Self {
+            source: Arc::new(source),
+        }
+    }
+}
+
+/// The RAM and the video memory of this machine, to choose a local model that fits it, or `null`
+/// when the system would not say how much RAM there is. The VRAM is `null` whenever it is not
+/// known (no `nvidia-smi`, no NVIDIA card, an answer that makes no sense): it is never an error.
+/// Reading it may start `nvidia-smi` (hidden, with a short timeout), so it runs off the async
+/// workers. It only reads: nothing is written and nothing is sent anywhere.
+#[tauri::command]
+pub async fn hardware_read(
+    state: State<'_, HardwareState>,
+) -> Result<Option<HardwareInfo>, String> {
+    let source = Arc::clone(&state.source);
+    tauri::async_runtime::spawn_blocking(move || {
+        noren_core::read_hardware(source.as_ref()).map(HardwareInfo::from)
+    })
+    .await
+    .map_err(|e| format!("could not read the hardware: {e}"))
+}
+
 /// Gives the window the effect named `effect` (`none`, `mica`, `acrylic` or `vibrancy`), painted in
 /// the look `scheme` names (`dark` or `light`: the kind of a theme that was chosen; `system`: the
 /// mode of the system), and answers what it has: a system that cannot paint it keeps the window
@@ -2453,6 +2507,7 @@ mod tests {
                 file_preview_read,
                 git_diff_read,
                 fonts_list_monospace,
+                hardware_read,
                 window_effect_set,
                 scrollback_save,
                 scrollback_load,
@@ -2507,6 +2562,90 @@ mod tests {
         }
         // Reading the fonts leaves nothing behind in the folder the run was given.
         assert_eq!(std::fs::read_dir(&dir.0).expect("dir").count(), 0);
+    }
+
+    /// A made-up source for the command.
+    struct MadeUp(Option<u64>, Option<u64>);
+
+    impl noren_core::HardwareSource for MadeUp {
+        fn total_ram_bytes(&self) -> Option<u64> {
+            self.0
+        }
+        fn total_vram_bytes(&self) -> Option<u64> {
+            self.1
+        }
+    }
+
+    /// What the page gets from `hardware_read` over a source that says `ram` and `vram`.
+    fn hardware_answer(ram: Option<u64>, vram: Option<u64>) -> serde_json::Value {
+        let dir = TempDir::new("hardware-command");
+        let answer = call_command_after("hardware_read", serde_json::json!({}), &dir.0, |app| {
+            app.manage(HardwareState::with_source(MadeUp(ram, vram)));
+        })
+        .expect("the hardware");
+        let InvokeResponseBody::Json(json) = answer else {
+            panic!("a raw answer for the memory");
+        };
+        // Reading the memory leaves nothing behind in the folder the run was given.
+        assert_eq!(std::fs::read_dir(&dir.0).expect("dir").count(), 0);
+        serde_json::from_str(&json).expect("JSON")
+    }
+
+    const GIB: u64 = 1024 * 1024 * 1024;
+
+    #[test]
+    fn the_page_reads_the_memory_of_the_machine_through_the_command() {
+        assert_eq!(
+            hardware_answer(Some(16 * GIB), Some(8 * GIB)),
+            serde_json::json!({ "ramBytes": 16 * GIB, "vramBytes": 8 * GIB })
+        );
+    }
+
+    #[test]
+    fn the_command_answers_a_null_vram_when_it_is_unknown_and_never_leaves_the_field_out() {
+        assert_eq!(
+            hardware_answer(Some(8 * GIB), None),
+            serde_json::json!({ "ramBytes": 8 * GIB, "vramBytes": null })
+        );
+        // A VRAM that makes no sense is an unknown one, the RAM stays.
+        for vram in [0, noren_core::MAX_EXACT_BYTES + 1, u64::MAX] {
+            assert_eq!(
+                hardware_answer(Some(8 * GIB), Some(vram)),
+                serde_json::json!({ "ramBytes": 8 * GIB, "vramBytes": null }),
+                "vram {vram}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_command_answers_null_when_the_ram_is_not_known_or_makes_no_sense() {
+        for ram in [None, Some(0), Some(noren_core::MAX_EXACT_BYTES + 1)] {
+            assert_eq!(
+                hardware_answer(ram, Some(8 * GIB)),
+                serde_json::Value::Null,
+                "ram {ram:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_memory_answer_names_its_fields_in_camel_case_and_keeps_null() {
+        let known = HardwareInfo {
+            ram_bytes: 17_179_869_184,
+            vram_bytes: Some(8_589_934_592),
+        };
+        assert_eq!(
+            serde_json::to_value(known).expect("JSON"),
+            serde_json::json!({ "ramBytes": 17_179_869_184u64, "vramBytes": 8_589_934_592u64 })
+        );
+        let unknown = HardwareInfo::from(noren_core::Hardware {
+            ram_bytes: 4_294_967_296,
+            vram_bytes: None,
+        });
+        assert_eq!(
+            serde_json::to_value(unknown).expect("JSON"),
+            serde_json::json!({ "ramBytes": 4_294_967_296u64, "vramBytes": null })
+        );
     }
 
     const PNG_BYTES: [u8; 12] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4];

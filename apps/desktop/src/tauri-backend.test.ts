@@ -1060,6 +1060,54 @@ describe("TauriBackend ai", () => {
     );
   });
 
+  it("reads the memory of the computer through hardware_read, with a null VRAM when it is unknown", async () => {
+    const known = fakeBridge({ hardware_read: { ramBytes: 68471009280, vramBytes: 25757220864 } });
+    await expect(new TauriBackend(known.bridge).readHardware()).resolves.toEqual({
+      ramBytes: 68471009280,
+      vramBytes: 25757220864,
+    });
+    expect(known.invocations).toEqual([{ command: "hardware_read", args: undefined }]);
+
+    const unknownVram = fakeBridge({ hardware_read: { ramBytes: 8589934592, vramBytes: null } });
+    await expect(new TauriBackend(unknownVram.bridge).readHardware()).resolves.toEqual({
+      ramBytes: 8589934592,
+      vramBytes: null,
+    });
+    // A VRAM that is missing or makes no sense is an unknown VRAM, the RAM stays.
+    for (const vramBytes of [undefined, -1, 0, 1.5, "8", 2 ** 60, Number.NaN]) {
+      const fake = fakeBridge({ hardware_read: { ramBytes: 8589934592, vramBytes } });
+      await expect(
+        new TauriBackend(fake.bridge).readHardware(),
+        String(vramBytes),
+      ).resolves.toEqual({ ramBytes: 8589934592, vramBytes: null });
+    }
+    // No RAM, or one that makes no sense: no hardware at all.
+    for (const answer of [
+      null,
+      undefined,
+      "16",
+      {},
+      { vramBytes: 5 },
+      { ramBytes: 0, vramBytes: 5 },
+      { ramBytes: -1, vramBytes: null },
+      { ramBytes: 1.5, vramBytes: null },
+      { ramBytes: "8", vramBytes: null },
+      { ramBytes: 2 ** 60, vramBytes: null },
+    ]) {
+      const fake = fakeBridge({ hardware_read: answer });
+      await expect(
+        new TauriBackend(fake.bridge).readHardware(),
+        JSON.stringify(answer),
+      ).resolves.toBeNull();
+    }
+    // A bridge that fails rejects, as the other reads do.
+    const broken = fakeBridge();
+    broken.failing.add("hardware_read");
+    await expect(new TauriBackend(broken.bridge).readHardware()).rejects.toThrow(
+      /hardware_read failed/,
+    );
+  });
+
   it("tests a connection through ai_test_connection: ok, or a failure with its kind and message", async () => {
     const ok = fakeBridge({ ai_test_connection: { ok: true } });
     await expect(new TauriBackend(ok.bridge).ai.testConnection("my-openai")).resolves.toEqual({

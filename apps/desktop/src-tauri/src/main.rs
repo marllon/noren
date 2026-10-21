@@ -160,6 +160,7 @@ fn main() {
         // The windows besides the main one; the ones a smoke run opens stay hidden.
         .manage(windows::WindowBook::new(!any_smoke))
         .manage(ai_state)
+        .manage(bridge::HardwareState::system())
         .on_window_event(lifecycle::on_window_event)
         .on_page_load(|webview, payload| {
             let event = match payload.event() {
@@ -219,6 +220,7 @@ fn main() {
             bridge::file_preview_read,
             bridge::git_diff_read,
             bridge::fonts_list_monospace,
+            bridge::hardware_read,
             link::link_open,
             browser_pane::browser_open,
             browser_pane::browser_navigate,

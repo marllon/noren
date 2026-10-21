@@ -579,6 +579,7 @@ export {
   MAX_BENCH_MODEL_ID,
   benchCatalogModelSchema,
   benchCatalogSchema,
+  benchHardwareOf,
   isBenchModelId,
   ollamaPullCommand,
   recommendedBenchModels,

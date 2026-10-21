@@ -4,6 +4,7 @@ import { WINDOW_CLOSED_EVENT, windowIdOfPayload } from "./window-events";
 import {
   AI_ERROR_KINDS,
   OutputStream,
+  benchHardwareOf,
   decodeFilePreview,
   decodeGitDiff,
   fontNameList,
@@ -22,6 +23,7 @@ import type {
   AttachSessionOptions,
   Backend,
   BackgroundImageFile,
+  BenchHardware,
   BenchResultFile,
   BrowserBounds,
   BrowserOpenOptions,
@@ -531,6 +533,13 @@ export class TauriBackend implements Backend {
     const mime = sniffImageMime(bytes);
     if (mime === undefined) throw new Error(`${path} is not a picture Noren can show.`);
     return { mime, bytes };
+  }
+
+  async readHardware(): Promise<BenchHardware | null> {
+    // The Rust side already keeps only whole numbers above 0 that a JavaScript number holds
+    // exactly; a page that is handed something else is not handed a measurement. A RAM that is
+    // not one is no reading, a VRAM that is not one is an unknown VRAM.
+    return benchHardwareOf(await this.#bridge.invoke<unknown>("hardware_read"));
   }
 
   async listMonospaceFonts(): Promise<string[]> {

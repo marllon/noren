@@ -8,6 +8,7 @@
 import type { AgentEntry } from "./agents";
 import type { AiBackend } from "./ai";
 import type { BackgroundImageFile } from "./background";
+import type { BenchHardware } from "./bench-models";
 import type { BrowserBounds } from "./browser";
 import type { FilePreview } from "./file-preview";
 import type { GitDiff } from "./git-diff";
@@ -353,6 +354,16 @@ export interface Backend {
    * terminal falls back to. Rejects only when the lookup itself fails.
    */
   listMonospaceFonts(): Promise<string[]>;
+  /**
+   * The memory of this computer, in the form `recommendedBenchModels` takes: the total RAM and the
+   * video memory in bytes, `vramBytes` being `null` when it is not known (no NVIDIA card or no
+   * `nvidia-smi`, a card of another make, an answer that makes no sense). Both are whole numbers
+   * above 0 that a JavaScript number holds exactly; a VRAM that is not is `null`. `null` when
+   * the RAM is not known (a browser, which cannot ask its visitor's computer for it, answers
+   * `null`). It only reads: nothing is written, installed or sent anywhere. Rejects only when
+   * the lookup itself fails.
+   */
+  readHardware(): Promise<BenchHardware | null>;
   /**
    * Text of `.noren/actions.json` inside the folder `cwd`, or `null` when the folder has no such
    * file. Rejects for any other failure (a folder where the file should be, no permission).

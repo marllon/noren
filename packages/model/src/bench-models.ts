@@ -246,6 +246,23 @@ export type BenchRecommendation =
     }
   | { ok: false; reason: "invalid-hardware" };
 
+/**
+ * The memory of a computer from a reading that is not trusted (the answer of the Rust side, or of
+ * a test double): the `BenchHardware` it holds, or `null` when there is none to hold. The RAM must
+ * be a whole number of bytes above 0 that a JavaScript number holds exactly (a negative, fractional,
+ * zero, `NaN`, infinite, past-2^53 or not-a-number RAM leaves nothing to recommend with, so the
+ * whole reading is `null`); a VRAM that is not such a number, or that is missing, is `null`: an
+ * unknown VRAM, which the recommendation answers by using the RAM. Never throws, and leaves out any
+ * other field.
+ */
+export function benchHardwareOf(input: unknown): BenchHardware | null {
+  if (typeof input !== "object" || input === null) return null;
+  const { ramBytes, vramBytes } = input as Record<string, unknown>;
+  const known = (value: unknown): value is number => isMemoryAmount(value) && value > 0;
+  if (!known(ramBytes)) return null;
+  return { ramBytes, vramBytes: known(vramBytes) ? vramBytes : null };
+}
+
 function isMemoryAmount(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }

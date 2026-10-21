@@ -46,6 +46,8 @@ import {
   isBenchResultText,
   parseBenchFileName,
 } from "./bench-results";
+import { benchHardwareOf } from "./bench-models";
+import type { BenchHardware } from "./bench-models";
 import { ManualClock } from "./clock";
 import type { Clock } from "./clock";
 import { sameFolder } from "./deep-link";
@@ -185,6 +187,14 @@ export interface FakeBackendOptions {
   gitDiffs?: Record<string, string | GitDiffRefusal>;
   /** The monospaced font families this fake computer has. Defaults to the ones the terminal falls back to. */
   monospaceFonts?: readonly string[];
+  /**
+   * The memory of the fake computer (`readHardware`): its RAM and its video memory in bytes,
+   * `vramBytes: null` for a computer whose VRAM is not known. A reading that `benchHardwareOf` does
+   * not accept (a RAM or a VRAM that is not a whole number above 0 that fits in 2^53 - 1) is read as
+   * the Rust side does: a bad VRAM is `null`, a bad RAM leaves no reading. Defaults to `null`: a
+   * computer whose memory is not known, which is what the browser build answers.
+   */
+  hardware?: BenchHardware | null;
   /**
    * The models of the Ollama this fake computer has installed. Without it there is no Ollama here
    * (`ai.listOllamaModels` answers `found: false`), which is what most computers are.
@@ -983,6 +993,7 @@ export class FakeBackend implements Backend {
   readonly #files = new Map<string, Uint8Array | "directory">();
   readonly #gitDiffs = new Map<string, string | GitDiffRefusal>();
   #monospaceFonts: readonly string[];
+  #hardware: BenchHardware | null;
   #modListFailure: Error | undefined;
   #scrollbackFailure: Error | undefined;
   #userThemeSaveFailure: Error | undefined;
@@ -1030,6 +1041,7 @@ export class FakeBackend implements Backend {
       this.#gitDiffs.set(folder, entry);
     }
     this.#monospaceFonts = options.monospaceFonts ?? DEFAULT_MONOSPACE_FONTS;
+    this.#hardware = benchHardwareOf(options.hardware);
     this.#ai = new FakeAi(
       (method, ...args) => this.#record(method, ...args),
       options.ollamaModels,
@@ -1793,6 +1805,20 @@ export class FakeBackend implements Backend {
   async listMonospaceFonts(): Promise<string[]> {
     this.#record("listMonospaceFonts");
     return fontNameList(this.#monospaceFonts);
+  }
+
+  async readHardware(): Promise<BenchHardware | null> {
+    this.#record("readHardware");
+    return this.#hardware === null ? null : { ...this.#hardware };
+  }
+
+  /**
+   * Changes the memory this fake computer reports from now on (as adding a card would); `null`
+   * makes it a computer whose memory is not known. Read as the constructor option is. Not a
+   * `Backend` call.
+   */
+  setHardware(hardware: BenchHardware | null): void {
+    this.#hardware = benchHardwareOf(hardware);
   }
 
   /** Changes the monospaced families this fake computer has (as installing a font would). Not a `Backend` call. */

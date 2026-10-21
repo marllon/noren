@@ -54,6 +54,7 @@
     "allow-file-preview-read",
     "allow-git-diff-read",
     "allow-fonts-list-monospace",
+    "allow-hardware-read",
     "allow-link-open",
     "allow-browser-open",
     "allow-browser-navigate",

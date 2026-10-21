@@ -28,6 +28,7 @@ pub mod sync;
 pub mod sync_gist;
 pub mod sync_spaces;
 pub mod themes;
+pub mod update;
 pub mod vault;
 pub mod window;
 pub mod worktree;
@@ -113,6 +114,13 @@ pub use sync_spaces::{
 };
 pub use themes::{THEMES_DIR_NAME, ThemeError, ThemeStore, is_valid_theme_id};
 pub use tokio_util::sync::CancellationToken;
+pub use update::{
+    FEED_TIMEOUT as UPDATE_FEED_TIMEOUT, Fetcher as UpdateFetcher, Limits as UpdateLimits,
+    MAX_FEED_BYTES as MAX_UPDATE_FEED_BYTES, MAX_NOTES_CHARS as MAX_UPDATE_NOTES_CHARS,
+    MAX_PACKAGE_BYTES as MAX_UPDATE_PACKAGE_BYTES, MAX_REDIRECTS as MAX_UPDATE_REDIRECTS,
+    PACKAGE_TIMEOUT as UPDATE_PACKAGE_TIMEOUT, PUBKEY_NOT_SET, Progress as UpdateProgress,
+    UpdateError, UpdateInfo, endpoint_of as update_endpoint_of, key_is_set as update_key_is_set,
+};
 pub use vault::{
     KeyVault, KeyringVault, MAX_KEY_CHARS, MAX_PROVIDER_ID_LEN, MemoryVault,
     SERVICE as KEYCHAIN_SERVICE, SYNC_GIST_TOKEN_ENTRY, VaultError, is_app_entry,

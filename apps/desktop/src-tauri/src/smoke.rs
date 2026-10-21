@@ -13,7 +13,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use noren_core::{
     BENCH_DIR_NAME, BackgroundStore, BenchStore, CONFIG_FILE_NAME, ConfigStore, MODS_DIR_NAME,
     ModStore, PLUGINS_DIR_NAME, PluginStore, ProcessSource, SCROLLBACK_DIR_NAME, ScrollbackStore,
-    SessionId, StateStore, SystemProcesses, THEMES_DIR_NAME, ThemeStore, WindowEffect,
+    SessionId, StateStore, SystemProcesses, THEMES_DIR_NAME, ThemeStore, UpdateError, WindowEffect,
     is_powershell,
 };
 use serde_json::{Value, json};
@@ -29,7 +29,9 @@ use crate::deeplink::{self, Links};
 use crate::quick;
 use crate::shortcut;
 use crate::smoke_browser;
+use crate::update::UpdateState;
 use crate::window_effect;
+use tauri_plugin_updater::UpdaterExt;
 
 pub const SMOKE_FLAG: &str = "--smoke";
 /// Text the smoke session must print on a line of its own.
@@ -148,6 +150,35 @@ fn check_fonts() {
         "SMOKE fonts {} monospaced families",
         families.len()
     ));
+}
+
+/// Fails unless the update of the app is installed and off in this run: the state is there and says
+/// the version that runs, with nothing found; the updater plugin took the configuration of
+/// `tauri.conf.json` (an updater can be built from it); and a check is refused before it reaches
+/// any network, which is all a smoke run may do with updates (NOR-F20-02a).
+fn check_updates_off(app: &AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<Arc<UpdateState>>()
+        .ok_or_else(|| "the update of the app was never installed".to_string())?;
+    let status = state.status();
+    let running = app.package_info().version.to_string();
+    if status.current_version != running || status.pending.is_some() {
+        return Err(format!(
+            "the update status is {status:?}, expected version {running} and nothing found"
+        ));
+    }
+    app.updater_builder()
+        .build()
+        .map_err(|e| format!("the updater plugin cannot be built from tauri.conf.json: {e}"))?;
+    match tauri::async_runtime::block_on(state.check(app)) {
+        Err(UpdateError::Off) => {
+            print_line("SMOKE update off (a check is refused, no request is made)");
+            Ok(())
+        }
+        other => Err(format!(
+            "a check in a smoke run answered {other:?}, expected it to be refused"
+        )),
+    }
 }
 
 /// Saves, reads and removes a scrollback snapshot in a folder of its own in the temp folder, with the
@@ -558,6 +589,7 @@ pub fn arm(app: &tauri::App) {
                 .and_then(|()| check_window_effect(&handle))
                 .inspect(|()| check_fonts())
                 .and_then(|()| check_scrollback())
+                .and_then(|()| check_updates_off(&handle))
                 .and_then(|()| smoke_browser::check_browser_pane(&handle))
                 .and_then(|()| check_no_global_shortcut(&handle))
                 .and_then(|()| check_api_listening(&handle))

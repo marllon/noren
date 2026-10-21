@@ -53,6 +53,23 @@ window-vibrancy = "0.8"
 # commands get no capability, so the page cannot register anything itself. 2.4.1 (global-hotkey
 # 0.8.0 underneath), Apache-2.0 OR MIT.
 tauri-plugin-global-shortcut = "2"
+# The update of the app itself (`update.rs`): it reads the feed in the format of the Tauri updater
+# (one version, and a signature and an address per platform), picks the entry of this platform,
+# decides whether the version is newer, checks the minisign signature of the downloaded package
+# against the public key in tauri.conf.json (plugins > updater), and runs the installer of the
+# system. Only the Rust side is used; the JavaScript package is not added and the plugin's own
+# commands get no capability, so the page cannot call them. The feed and the package are fetched by
+# `noren_core::update` (so they have a ceiling and a deadline), which hands the plugin the feed to
+# decide on (`Updater::restore_update`) and the bytes to verify and install. The default features
+# are off: `rustls-tls` would bring a second TLS stack (rustls with ring) next to the system one
+# the rest of the app uses, `system-proxy` is for requests the plugin makes itself, and `zip` is
+# only for packages in the format of Tauri 1. `native-tls` is the system stack of the other
+# requests of the app (the AI providers, the gallery, the sync): the plugin makes no request here,
+# but one that could not speak TLS would be a trap for whoever calls it. New in the tree with it:
+# minisign-verify 0.3.0 (MIT), tar 0.4.46 (MIT OR Apache-2.0), filetime 0.2.29 (MIT OR Apache-2.0),
+# xattr 1.6.1 (MIT OR Apache-2.0), osakit 0.3.1 (MIT OR Apache-2.0) and objc2-osa-kit 0.3.2
+# (Zlib OR Apache-2.0 OR MIT), the last two for macOS only. 2.14.0, Apache-2.0 OR MIT.
+tauri-plugin-updater = { version = "2.14", default-features = false, features = ["native-tls"] }
 
 # Hands an http or https address the person confirmed to the browser of the system (`link.rs`, the
 # only caller, which checks the address first). Chosen over the Tauri opener plugin because it has

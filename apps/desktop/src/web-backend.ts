@@ -8,6 +8,7 @@ import {
 } from "@noren/model";
 import type {
   BenchHardware,
+  FakeRelease,
   GalleryDownload,
   GalleryIndex,
   GitDiffRefusal,
@@ -90,6 +91,16 @@ export const WEB_GALLERY_KEY = "noren.web.gallery";
  * `localFiles` the two methods share.
  */
 export const WEB_SYNC_KEY = "noren.web.sync";
+
+/**
+ * The update of the app for a test (NOR-F20-02a): a JSON object `{ currentVersion, configured,
+ * release, failure }`, every field optional. `currentVersion` is the version this page says it is
+ * (`0.1.0` without it), `configured: false` is a build with no update key, `release` is what the feed
+ * announces (`{ version, notes?, publishedAt?, bytes?, refusal? }`, as `FakeRelease` has it; without
+ * it the feed has nothing to offer) and `failure` is a message the check and the install then fail
+ * with (the server cannot be reached, say). Nothing reaches a network or runs an installer.
+ */
+export const WEB_UPDATE_KEY = "noren.web.update";
 
 /**
  * Key of the scrollback snapshots in web mode (`scrollback/<paneId>.txt` of the real app): a JSON
@@ -237,6 +248,56 @@ export function seededSync(storage: Pick<Storage, "getItem">): SyncSeed | undefi
       gists: seededGists,
       ...(typeof gistFailure === "string" ? { gistFailure } : {}),
     };
+  } catch {
+    return undefined;
+  }
+}
+
+interface UpdateSeed {
+  currentVersion?: string;
+  configured?: boolean;
+  release?: FakeRelease;
+  failure?: string;
+}
+
+/** The update seeded under `WEB_UPDATE_KEY`, or `undefined` when there is no usable seed. */
+export function seededUpdate(storage: Pick<Storage, "getItem">): UpdateSeed | undefined {
+  try {
+    const raw = storage.getItem(WEB_UPDATE_KEY);
+    if (raw === null) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    const { currentVersion, configured, release, failure } = value as Record<string, unknown>;
+    const seed: UpdateSeed = {
+      ...(typeof currentVersion === "string" ? { currentVersion } : {}),
+      ...(typeof configured === "boolean" ? { configured } : {}),
+      ...(typeof failure === "string" ? { failure } : {}),
+    };
+    if (typeof release === "object" && release !== null && !Array.isArray(release)) {
+      const held = release as Record<string, unknown>;
+      if (typeof held["version"] === "string") {
+        const text = (key: string): string | null | undefined =>
+          typeof held[key] === "string" || held[key] === null
+            ? (held[key] as string | null)
+            : undefined;
+        const number = (key: string): number | null | undefined =>
+          typeof held[key] === "number" || held[key] === null
+            ? (held[key] as number | null)
+            : undefined;
+        const notes = text("notes");
+        const publishedAt = number("publishedAt");
+        const bytes = held["bytes"];
+        const refusal = held["refusal"];
+        seed.release = {
+          version: held["version"],
+          ...(notes !== undefined ? { notes } : {}),
+          ...(publishedAt !== undefined ? { publishedAt } : {}),
+          ...(typeof bytes === "number" ? { bytes } : {}),
+          ...(typeof refusal === "string" ? { refusal } : {}),
+        };
+      }
+    }
+    return seed;
   } catch {
     return undefined;
   }
@@ -597,6 +658,13 @@ export class WebBackend extends FakeBackend {
       if (sync.failure !== undefined) this.setSyncFailure(new Error(sync.failure));
       for (const [id, gist] of Object.entries(sync.gists)) this.putSyncGist(id, gist);
       if (sync.gistFailure !== undefined) this.setSyncGistFailure(new Error(sync.gistFailure));
+    }
+    const update = seededUpdate(storage);
+    if (update !== undefined) {
+      if (update.currentVersion !== undefined) this.setUpdateCurrentVersion(update.currentVersion);
+      if (update.configured !== undefined) this.setUpdateConfigured(update.configured);
+      if (update.release !== undefined) this.setUpdateRelease(update.release);
+      if (update.failure !== undefined) this.setUpdateFailure(new Error(update.failure));
     }
   }
 

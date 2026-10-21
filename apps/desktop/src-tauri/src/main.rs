@@ -32,6 +32,7 @@ mod smoke_browser;
 mod smoke_persist;
 mod smoke_window;
 mod tray;
+mod update;
 mod window_effect;
 mod windows;
 
@@ -134,6 +135,10 @@ fn main() {
             .with_handler(shortcut::on_event)
             .build(),
     );
+    // The updater plugin reads the feed, picks the platform, checks the signature and runs the
+    // installer, but only for `update.rs`: it makes no request of its own and its commands get no
+    // capability. The key and the endpoint are `plugins > updater` of tauri.conf.json.
+    builder = builder.plugin(update::plugin());
 
     // The keys of the AI providers live in the keychain of the system. The smoke runs get a vault
     // in memory: they never touch the keychain of the person, and call no AI command.
@@ -249,6 +254,9 @@ fn main() {
             bridge::sync_gist_connect,
             bridge::sync_gist_pull,
             bridge::sync_gist_push,
+            update::update_status,
+            update::update_check,
+            update::update_install,
             bridge::window_effect_set,
             bridge::background_image_read,
             bridge::file_preview_read,
@@ -397,6 +405,14 @@ fn main() {
                     )?));
                 }
             }
+            // The update of the app: it reaches the network and an installer only when the interface
+            // asks, and a smoke run never does either (it only reads the status).
+            let updating = update::UpdateState::from_app(app.handle());
+            app.manage(std::sync::Arc::new(if any_smoke {
+                updating.without_updating()
+            } else {
+                updating
+            }));
             // The local API (NOR-F17-01c): its token lives in the data folder of the user, and a smoke
             // run uses an endpoint and a folder of its own, like its daemon, so it never meets the API
             // of a Noren the user has open. A server that does not start leaves the app without it.

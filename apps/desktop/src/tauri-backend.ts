@@ -14,6 +14,9 @@ import {
   parseSyncPush,
   parseSyncSpaceFolder,
   parseSyncStatus,
+  parseUpdateCheck,
+  parseUpdateProgress,
+  parseUpdateStatus,
   sniffImageMime,
   syncGistTokenProblem,
   syncSpaceWriteProblem,
@@ -61,6 +64,10 @@ import type {
   SyncStatus,
   TerminalTail,
   Unsubscribe,
+  UpdateInfo,
+  UpdateParse,
+  UpdateProgress,
+  UpdateStatus,
   UserProfile,
   WindowEffect,
   WindowEffectReport,
@@ -83,6 +90,12 @@ function installedGalleryItem(value: unknown): InstalledGalleryItem | undefined 
 function checkedSync<T>(parsed: SyncParse<T>): T {
   if (!parsed.ok)
     throw new Error(`the app answered about the sync in an unexpected shape: ${parsed.error}`);
+  return parsed.value;
+}
+
+function checkedUpdate<T>(parsed: UpdateParse<T>): T {
+  if (!parsed.ok)
+    throw new Error(`the app answered about the update in an unexpected shape: ${parsed.error}`);
   return parsed.value;
 }
 
@@ -130,6 +143,9 @@ interface SessionLinkPayload {
 }
 
 const SESSION_LINK_EVENT = "session-link";
+
+/** Event of the Rust side with how much of the package of an update has come (`update.rs`). */
+const UPDATE_PROGRESS_EVENT = "update-progress";
 
 /** Event emitted by the Rust side when `config.jsonc` changes; the payload is the new text or `null`. */
 const CONFIG_CHANGED_EVENT = "config-changed";
@@ -336,6 +352,8 @@ export class TauriBackend implements Backend {
   readonly #modListeners = new Set<(files: ModFile[]) => void>();
   readonly #linkListeners = new Set<(link: SessionLink) => void>();
   readonly #windowClosedListeners = new Set<(windowId: Id) => void>();
+  readonly #updateProgressListeners = new Set<(progress: UpdateProgress) => void>();
+  #updateProgressSubscription: Promise<() => void> | undefined;
   #windowClosedSubscription: Promise<() => void> | undefined;
   #exitSubscription: Promise<() => void> | undefined;
   #linkSubscription: Promise<() => void> | undefined;
@@ -677,6 +695,26 @@ export class TauriBackend implements Backend {
     return checkedSync(parseSyncPush(await this.#bridge.invoke<unknown>("sync_gist_push")));
   }
 
+  async updateStatus(): Promise<UpdateStatus> {
+    return checkedUpdate(parseUpdateStatus(await this.#bridge.invoke<unknown>("update_status")));
+  }
+
+  async updateCheck(): Promise<UpdateInfo | null> {
+    return checkedUpdate(parseUpdateCheck(await this.#bridge.invoke<unknown>("update_check")));
+  }
+
+  async updateInstall(): Promise<void> {
+    await this.#bridge.invoke("update_install");
+  }
+
+  onUpdateProgress(callback: (progress: UpdateProgress) => void): Unsubscribe {
+    this.#updateProgressListeners.add(callback);
+    this.#listenForUpdateProgress();
+    return () => {
+      this.#updateProgressListeners.delete(callback);
+    };
+  }
+
   async syncSpaceFiles(): Promise<SyncSpaceFolder> {
     return checkedSync(
       parseSyncSpaceFolder(await this.#bridge.invoke<unknown>("sync_spaces_list")),
@@ -905,6 +943,10 @@ export class TauriBackend implements Backend {
     this.#windowClosedSubscription = undefined;
     this.#windowClosedListeners.clear();
     if (windows) (await windows.catch(() => undefined))?.();
+    const updates = this.#updateProgressSubscription;
+    this.#updateProgressSubscription = undefined;
+    this.#updateProgressListeners.clear();
+    if (updates) (await updates.catch(() => undefined))?.();
   }
 
   /**
@@ -972,6 +1014,25 @@ export class TauriBackend implements Backend {
       },
     );
     return this.#exitSubscription;
+  }
+
+  /**
+   * Hears `update-progress` once; if that fails the next `onUpdateProgress` tries again. A payload
+   * that is not a progress is dropped: the install goes on without a bar.
+   */
+  #listenForUpdateProgress(): void {
+    if (this.#updateProgressSubscription) return;
+    const subscription = this.#bridge.listen<unknown>(UPDATE_PROGRESS_EVENT, (event) => {
+      const parsed = parseUpdateProgress(event.payload);
+      if (!parsed.ok) return;
+      for (const listener of [...this.#updateProgressListeners]) listener(parsed.value);
+    });
+    this.#updateProgressSubscription = subscription;
+    subscription.catch(() => {
+      if (this.#updateProgressSubscription === subscription) {
+        this.#updateProgressSubscription = undefined;
+      }
+    });
   }
 
   /** Hears `window-closed` once; if that fails the next `onWindowClosed` tries again. */

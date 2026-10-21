@@ -43,6 +43,14 @@
       "desktop": {
         "schemes": ["noren"]
       }
+    },
+    "updater": {
+      "pubkey": "NOT-SET-replace-with-the-updater-public-key-NOR-F21-07",
+      "endpoints": ["https://github.com/marllon/noren/releases/latest/download/latest.json"],
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "passive"
+      }
     }
   },
   "bundle": {

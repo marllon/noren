@@ -24,6 +24,7 @@ import type {
 } from "./sync";
 import type { GitDiff } from "./git-diff";
 import type { Id } from "./types";
+import type { UpdateInfo, UpdateProgress, UpdateStatus } from "./update";
 import type { UserProfile } from "./user-profile-schema";
 import type { WindowEffect, WindowEffectReport, WindowScheme } from "./window-effect";
 
@@ -461,6 +462,35 @@ export interface Backend {
    * stored or GitHub cannot be reached.
    */
   syncGistPush(): Promise<SyncPushResult>;
+  /**
+   * Where the update of the app itself stands (`noren-core::update` and `src-tauri/src/update.rs`,
+   * NOR-F20-02a), with no network: whether this build can update at all (`configured`, false until
+   * the public key of the updater is put in `tauri.conf.json`), the version that is running and the
+   * update the last check found and nobody installed yet. Never rejects.
+   */
+  updateStatus(): Promise<UpdateStatus>;
+  /**
+   * Gets the feed of the updater (the `latest.json` of the latest release on GitHub) and tells
+   * whether a newer version with a package for this platform is waiting: its version, the release
+   * notes and the date, or `null` when there is none. It installs nothing and nothing calls it by
+   * itself: the screen decides when to ask. The update found is kept for `updateInstall`. Rejects,
+   * with a sentence for the person, when the build has no update key yet, the server cannot be
+   * reached or answers an error, the feed is not in the format of the updater, or the release has no
+   * package for this platform.
+   */
+  updateCheck(): Promise<UpdateInfo | null>;
+  /**
+   * Downloads the package of the update the last check found, checks its signature against the
+   * public key of the app and only then installs it; `onUpdateProgress` hears the download. It is
+   * the person's action: nothing calls it but the click or the command that asked. On Windows the
+   * installer starts and the app exits; elsewhere the person restarts the app. Rejects, with a
+   * sentence for the person, when no update was found (check first), the build has no update key,
+   * the package is too large or takes too long, or the signature does not match the package and the
+   * key (nothing is installed then).
+   */
+  updateInstall(): Promise<void>;
+  /** Called with how much of the package of an install has come. */
+  onUpdateProgress(callback: (progress: UpdateProgress) => void): Unsubscribe;
   /**
    * Asks the system to paint `effect` behind the window (`none` takes any effect away), and tells
    * what the window has afterwards. It never rejects because the system cannot paint the effect:

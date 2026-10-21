@@ -377,6 +377,19 @@ export interface NorenTestHook {
   syncGistIds(): string[];
   /** Makes every call of the gist sync fail with this message; `null` undoes it. */
   failSyncGist(message: string | null): void;
+  /**
+   * The methods of the update of the app (`updateStatus`, `updateCheck`, `updateInstall`,
+   * `onUpdateProgress`) the page called, in order (NOR-F20-02a). A page that updates by itself
+   * shows up here.
+   */
+  updateCalls(): string[];
+  /** The versions the page asked to install and the update accepted, in order. */
+  installedUpdates(): string[];
+  /**
+   * Runs one step of the update through the backend the page uses, as the screen will: the status,
+   * a check (the update found or `null`) or an install. A refusal rejects with its sentence.
+   */
+  updateStep(step: "status" | "check" | "install"): Promise<unknown>;
   /** The providers lists handed to the AI side (`ai.configure`), in order, as the ids of each list. */
   aiConfigures(): string[][];
   /** The provider ids a key was stored or taken out for (`ai.setKey`), in order. The key is never recorded. */
@@ -1976,6 +1989,15 @@ function Shell({ store }: { store: WorkspaceStore }) {
         syncGistIds: () => fake.syncGistIds(),
         failSyncGist: (message) =>
           fake.setSyncGistFailure(message === null ? undefined : new Error(message)),
+        updateCalls: () =>
+          fake.calls.filter((call) => call.method.startsWith("update")).map((call) => call.method),
+        installedUpdates: () => fake.installedUpdates(),
+        updateStep: async (step) => {
+          if (step === "status") return fake.updateStatus();
+          if (step === "check") return fake.updateCheck();
+          await fake.updateInstall();
+          return null;
+        },
         aiConfigures: () =>
           fake
             .callsTo("ai.configure")

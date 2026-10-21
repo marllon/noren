@@ -59,6 +59,9 @@ import {
 } from "./browser";
 import { externalLinkProblem } from "./external-link";
 import { FakeGistSync } from "./fake-sync-gist";
+import { FakeUpdates } from "./fake-update";
+import type { FakeRelease } from "./fake-update";
+import type { UpdateInfo, UpdateProgress, UpdateStatus } from "./update";
 import { classifyPreviewPath, previewOf } from "./file-preview";
 import type { FilePreview, PreviewEntry } from "./file-preview";
 import { FAKE_GALLERY_DOWNLOADS, FAKE_GALLERY_INDEX } from "./gallery-fixture";
@@ -941,6 +944,14 @@ class FakeAi implements AiBackend {
  *   the files the gist changed and returns a conflict (writing nothing) when both sides changed one.
  *   Names in a gist off the closed list are never read. `putSyncGist` and `setSyncGistFile` are
  *   another computer or the web page of the gist, `setSyncGistFailure` makes every call reject
+ * - the update of the app (`fake-update.ts`) is a release feed in memory that `setUpdateRelease`
+ *   fills (a version, notes, a date, the size of the package, and a `refusal` for a package whose
+ *   signature does not match) and the version that is running (`0.1.0`, `setUpdateCurrentVersion`):
+ *   `updateCheck` finds the release only when it is a newer version (semver order) and
+ *   `updateInstall` needs one found, tells `onUpdateProgress` how the download goes and installs
+ *   nothing for real (`installedUpdates` says which versions it was asked to install);
+ *   `setUpdateConfigured(false)` is a build with no update key, `setUpdateFailure` makes the server
+ *   unreachable. It never touches a network or runs an installer
  * - `listSshHosts` answers a fixture of hosts (`FAKE_SSH_HOSTS`), or what `setSshHosts` said (also a
  *   rejection); it never reads the `~/.ssh/config` of the machine
  * - `listDockerContainers` answers a fixture of containers (`FAKE_DOCKER_CONTAINERS`), or what
@@ -1086,6 +1097,9 @@ export class FakeBackend implements Backend {
   /** GitHub in memory and the record of the sync through a gist, over the same local files. */
   #gist = new FakeGistSync(this.#syncLocalFiles);
   #gistFailure: Error | undefined;
+  /** The update of the app: the feed in memory and the update the last check found. */
+  #updates = new FakeUpdates();
+  #updateFailure: Error | undefined;
   /** The local record of the space files: file name to the space it stands for and the hash then. */
   #syncSpaceLinks = new Map<string, { spaceId: string; hash: string }>();
   #syncApplied = false;
@@ -2170,6 +2184,57 @@ export class FakeBackend implements Backend {
   /** Makes every call of the gist sync reject with `error` (the keychain or GitHub cannot be reached); `undefined` undoes it. */
   setSyncGistFailure(error: Error | undefined): void {
     this.#gistFailure = error;
+  }
+
+  async updateStatus(): Promise<UpdateStatus> {
+    this.#record("updateStatus");
+    return this.#updates.status();
+  }
+
+  async updateCheck(): Promise<UpdateInfo | null> {
+    this.#record("updateCheck");
+    if (this.#updateFailure) throw this.#updateFailure;
+    return this.#updates.check();
+  }
+
+  async updateInstall(): Promise<void> {
+    this.#record("updateInstall");
+    if (this.#updateFailure) throw this.#updateFailure;
+    this.#updates.install();
+  }
+
+  onUpdateProgress(callback: (progress: UpdateProgress) => void): Unsubscribe {
+    this.#record("onUpdateProgress");
+    return this.#updates.onProgress(callback);
+  }
+
+  /**
+   * The release the feed of the updater announces, as the maintainer published it; `undefined`
+   * takes it away (the server answers 204: nothing to offer). Not a `Backend` call, so it is not
+   * recorded; the next `updateCheck` reads it.
+   */
+  setUpdateRelease(release: FakeRelease | undefined): void {
+    this.#updates.setRelease(release);
+  }
+
+  /** The version that is running (`0.1.0` at first); a release is an update only when it is newer. */
+  setUpdateCurrentVersion(version: string): void {
+    this.#updates.setCurrentVersion(version);
+  }
+
+  /** Whether this build has an update key (it has at first); without one a check and an install reject. */
+  setUpdateConfigured(configured: boolean): void {
+    this.#updates.setConfigured(configured);
+  }
+
+  /** The versions `updateInstall` was asked to install and accepted, in order. */
+  installedUpdates(): string[] {
+    return this.#updates.installed();
+  }
+
+  /** Makes `updateCheck` and `updateInstall` reject with `error` (the server cannot be reached); `undefined` undoes it. */
+  setUpdateFailure(error: Error | undefined): void {
+    this.#updateFailure = error;
   }
 
   /** Puts `text` in the config folder of this computer as `path`; `undefined` removes it. Not a `Backend` call. */

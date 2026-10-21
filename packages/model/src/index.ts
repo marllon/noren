@@ -432,6 +432,21 @@ export {
   syncSpaceWriteProblem,
   syncStatusSchema,
 } from "./sync";
+export {
+  UPDATE_LIMITS,
+  compareVersions,
+  isNewerVersion,
+  isVersion,
+  parseUpdateCheck,
+  parseUpdateProgress,
+  parseUpdateStatus,
+  updateInfoSchema,
+  updateProgressSchema,
+  updateStatusSchema,
+} from "./update";
+export type { UpdateInfo, UpdateParse, UpdateProgress, UpdateStatus } from "./update";
+export { FAKE_CURRENT_VERSION, FakeUpdates, UPDATE_MESSAGES } from "./fake-update";
+export type { FakeRelease } from "./fake-update";
 export type {
   SyncChange,
   SyncGistStatus,

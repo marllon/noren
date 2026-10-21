@@ -24,6 +24,7 @@ import { DEFAULT_KEEP_SESSIONS } from "./keep-sessions";
 import { MAX_MODS, MOD_FILE_NAME_PATTERN, isReservedModName } from "./mods";
 import { RoutingSchema } from "./routing";
 import { DEFAULT_SAVE_SCROLLBACK, SCROLLBACK_SAVE_LINES } from "./scrollback";
+import { DEFAULT_PUSH_ON_CLOSE } from "./sync-close";
 import {
   BELL_STYLES,
   CURSOR_STYLES,
@@ -237,6 +238,16 @@ const sessionsSchema = z
     ),
   })
   .meta({ description: "Whether the shells of your panes outlive the window." });
+
+const syncSchema = z
+  .strictObject({
+    pushOnClose: setting(
+      z.boolean(),
+      "On: closing Noren pushes to the connected git remote first, when something is waiting to be sent (the settings file, themes, mods and spaces, the same files as Push in the settings). It waits a few seconds at most and never stops Noren from closing: a push that fails or is too slow is skipped. Off: Noren only syncs when you press Pull or Push.",
+      DEFAULT_PUSH_ON_CLOSE,
+    ),
+  })
+  .meta({ description: "Sync through git: what Noren does on its own." });
 
 const archiveSchema = z
   .strictObject({
@@ -470,6 +481,7 @@ export const ConfigSchema = z
     agents: agentsSchema.optional(),
     ai: aiSchema.optional(),
     sessions: sessionsSchema.optional(),
+    sync: syncSchema.optional(),
     routing: RoutingSchema.optional(),
   })
   .meta({

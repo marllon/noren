@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { pushOnCloseAllowed } from "@noren/model";
 import type { Backend, SyncStatus } from "@noren/model";
+import { configManager, useConfigState } from "./config-store";
 import { useT } from "./i18n";
 import { NumberBox } from "./SettingsFields";
 import {
@@ -44,6 +46,7 @@ export function SyncPanel({
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<SyncMessage>();
   const alive = useRef(true);
+  const pushOnClose = pushOnCloseAllowed(useConfigState().config.sync);
 
   useEffect(() => {
     alive.current = true;
@@ -91,6 +94,12 @@ export function SyncPanel({
       if (alive.current) setNote(failureMessage("connect", error));
     }
     if (alive.current) setBusy(false);
+  };
+
+  /** Writes `sync.pushOnClose` to `config.jsonc` (comments kept); a file that cannot be edited says why. */
+  const setPushOnClose = async (on: boolean) => {
+    const result = await configManager.update([{ path: ["sync", "pushOnClose"], value: on }]);
+    if (!result.ok && alive.current) setNote({ text: result.message, alert: true });
   };
 
   const step = async (run: () => Promise<SyncMessage>) => {
@@ -152,6 +161,15 @@ export function SyncPanel({
           {t("settings.syncPush")}
         </button>
       </div>
+      <label className="settings-option" title={t("field.sync.pushOnClose")}>
+        <input
+          type="checkbox"
+          checked={pushOnClose}
+          onChange={(event) => void setPushOnClose(event.target.checked)}
+        />
+        <span>{t("settings.syncPushOnClose")}</span>
+      </label>
+      <p className="settings-hint">{t("settings.syncPushOnCloseHint")}</p>
       <p role="status" className="settings-hint" data-nr-part="settings-sync-status">
         {status === undefined ? t("settings.syncStatus.notConnected") : statusText(status)}
       </p>

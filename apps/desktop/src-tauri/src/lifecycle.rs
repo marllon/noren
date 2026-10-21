@@ -24,8 +24,9 @@ use crate::tray::{self, CloseFacts, CloseOutcome};
 pub const CLOSE_REQUESTED_EVENT: &str = "close-requested";
 
 /// The longest the window stays open for the page to save. The page itself gives up on a slow save
-/// before this (see `close-handler.ts`), so this only covers a page that is gone.
-pub const CLOSE_WAIT: Duration = Duration::from_secs(4);
+/// before this (see `close-handler.ts`: 2 seconds, and 6 when `sync.pushOnClose` is on, which also
+/// pushes), so this only covers a page that is gone.
+pub const CLOSE_WAIT: Duration = Duration::from_secs(8);
 
 /// What to do with a request to close the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -352,7 +353,8 @@ mod tests {
     #[test]
     fn the_event_and_the_wait_are_what_the_page_expects() {
         assert_eq!(CLOSE_REQUESTED_EVENT, "close-requested");
-        // The page gives up on a slow save before the window does.
-        assert!(CLOSE_WAIT > Duration::from_secs(2));
+        // The page gives up on a slow save before the window does: 2 seconds for the saves and 4
+        // more for the push of `sync.pushOnClose` (`closeLimitMs` in `close-handler.ts`).
+        assert!(CLOSE_WAIT > Duration::from_secs(2 + 4));
     }
 }

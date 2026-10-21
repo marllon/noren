@@ -3,6 +3,7 @@ import {
   SystemNotifier,
   TerminalTail,
   agentSettingsOf,
+  pushOnCloseAllowed,
   scrollbackAllowed,
 } from "@noren/model";
 import type { Backend } from "@noren/model";
@@ -17,7 +18,7 @@ import { setAgentStateClock, setAgentStateReporter } from "./agent-state-store";
 import { archiveClock, startAutoArchive } from "./auto-archive-service";
 import { createBackend, insideTauri } from "./backend";
 import { startBackgroundImages } from "./background-image-store";
-import { followWindowClose } from "./close-handler";
+import { CLOSE_PUSH_LIMIT_MS, closeLimitMs, followWindowClose, saveWithin } from "./close-handler";
 import { aiProvidersSync, configManager } from "./config-store";
 import { appApiHost } from "./api-bridge";
 import { loadHome } from "./home";
@@ -40,6 +41,9 @@ import {
   sweepOrphanScrollback,
 } from "./scrollback-service";
 import { tauriBridge } from "./tauri-backend";
+import { appSpaceSyncPort } from "./space-sync";
+import { runPushOnClose } from "./sync-run";
+import type { PushOnCloseOutcome } from "./sync-run";
 import { windowEventsOfApp } from "./window-host";
 import { releaseWindows, startWindows } from "./window-service";
 import { followActiveSpaceMods } from "./use-mods";
@@ -212,15 +216,43 @@ export async function bootWorkspace(
     // In the app, closing the window waits for the page to save (the unload events below are not
     // enough: a call made while the window is torn down may never leave). The snapshots are started
     // first, which notes the files on the panes, so the state flushed with them has the notes.
-    if (insideTauri) {
-      followWindowClose(
-        tauriBridge(),
-        async () => {
-          const snapshotsSaved = saver.flush();
-          await Promise.all([snapshotsSaved, store.getState().flush()]);
+    // What closing the app saves: the snapshots and the state, then, only when `sync.pushOnClose`
+    // is on, the push of the settings and the spaces (NOR-F19-01d). The push comes last so the
+    // state is already written if it is slow, and it gives up by itself, so it never holds the close.
+    const spaceSync = appSpaceSyncPort(store, target);
+    const closeLog: string[] = [];
+    let pushedOnClose: PushOnCloseOutcome | undefined;
+    const closeSave = async () => {
+      const snapshotsSaved = saver.flush();
+      // A save that fails does not keep the push from being tried, nor the other way round.
+      await Promise.allSettled([snapshotsSaved, store.getState().flush()]);
+      pushedOnClose = await runPushOnClose({
+        backend: target,
+        spaces: spaceSync,
+        enabled: () => pushOnCloseAllowed(configManager.state.config.sync),
+        clock: realClock,
+        limitMs: CLOSE_PUSH_LIMIT_MS,
+        log: (message) => {
+          closeLog.push(message);
+          console.warn(`noren: ${message}`);
         },
-        realClock,
-      ).catch(() => undefined);
+      });
+    };
+    const closeLimit = () => closeLimitMs(pushOnCloseAllowed(configManager.state.config.sync));
+    if (target instanceof FakeBackend) {
+      // The web build has no window to close: a test runs the same save, with the same limit, and
+      // reads what the push on close did and what it recorded.
+      window.__norenClose = {
+        run: async () => {
+          pushedOnClose = undefined;
+          closeLog.length = 0;
+          await saveWithin(closeSave, realClock, closeLimit());
+          return { outcome: pushedOnClose, log: [...closeLog] };
+        },
+      };
+    }
+    if (insideTauri) {
+      followWindowClose(tauriBridge(), closeSave, realClock, closeLimit).catch(() => undefined);
       // The local API (NOR-F17-01c): the calls the server of the app validated run here, in the
       // window that owns the workspace, and are answered through `api_respond`.
       // A tab it makes with no space goes where `routing.rules` of the settings say (NOR-F17-03b).
@@ -262,6 +294,18 @@ export async function bootWorkspace(
     return { ok: true, store, source: restored.source };
   } catch (reason: unknown) {
     return { ok: false, error: reason instanceof Error ? reason.message : String(reason) };
+  }
+}
+
+/** What the e2e tests of the web build run to close the app without closing the window (`window.__norenClose`). */
+export interface CloseTestHook {
+  /** Runs what a close of the app does, and answers what the push on close did (`undefined`: not finished in time) and what it recorded. */
+  run(): Promise<{ outcome: PushOnCloseOutcome | undefined; log: string[] }>;
+}
+
+declare global {
+  interface Window {
+    __norenClose?: CloseTestHook;
   }
 }
 

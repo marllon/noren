@@ -522,6 +522,9 @@ export const en = {
     "All of config.jsonc travels, so keep nothing secret in it. Noren cannot ask for a password or an ssh passphrase: if pull or push fails on a credential, make git work with this remote in a terminal first.",
   "settings.syncRemote": "Remote address",
   "settings.syncRemotePlaceholder": "https://example.com/you/noren-settings.git",
+  "settings.syncPushOnClose": "Push when Noren closes",
+  "settings.syncPushOnCloseHint":
+    "Off by default. When on, closing Noren pushes first if a remote is connected and something is waiting to be sent, like the Push button. It waits a few seconds at most: a push that fails or is too slow is skipped and Noren closes anyway. Hiding the window in the tray does not close Noren.",
   "settings.syncConnect": "Connect",
   "settings.syncPull": "Pull",
   "settings.syncPush": "Push",
@@ -1104,6 +1107,9 @@ export const en = {
   "field.sessions": "Whether the shells of your panes outlive the window.",
   "field.sessions.keepOnClose":
     "On: closing the window leaves the shells of your panes running in the background (in the session daemon, norend) and opening Noren again gives each pane its shell back, with what it printed meanwhile. Off: closing the window ends every shell, as it always did. Shells that no pane comes back for are ended when Noren opens.",
+  "field.sync": "Sync through git: what Noren does on its own.",
+  "field.sync.pushOnClose":
+    "On: closing Noren pushes to the connected git remote first, when something is waiting to be sent (the settings file, themes, mods and spaces, the same files as Push in the settings). It waits a few seconds at most and never stops Noren from closing: a push that fails or is too slow is skipped. Off: Noren only syncs when you press Pull or Push.",
   "field.routing":
     "Where a new tab goes: rules that match the folder or the command of the tab and name a space and a group. A tab that no rule matches goes where it would have gone.",
   "field.routing.rules":

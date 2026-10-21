@@ -1,5 +1,5 @@
-import { parseUserThemes } from "@noren/model";
-import type { Backend } from "@noren/model";
+import { closePushDecision, parseUserThemes } from "@noren/model";
+import type { Backend, ClosePushSkip, Clock } from "@noren/model";
 import { t } from "./i18n";
 import { setModFiles } from "./mods-store";
 import { failureMessage, pullMessage, pulledKinds, pushMessage, reasonOf } from "./settings-sync";
@@ -115,6 +115,71 @@ export async function runPush(
   } catch (error) {
     return failureMessage("push", error);
   }
+}
+
+/** What the push when the app closes did (NOR-F19-01d). */
+export type PushOnCloseOutcome =
+  | { kind: "skipped"; reason: ClosePushSkip }
+  | { kind: "pushed"; files: number }
+  | { kind: "failed"; reason: string }
+  | { kind: "timeout" };
+
+export interface PushOnCloseDeps {
+  backend: Pick<Backend, "syncStatus" | "syncPush"> & SpaceSyncBackend;
+  /** The window's spaces, written as files before the push like the Push of the screen; none: no spaces. */
+  spaces: SpaceSyncPort | undefined;
+  /** `pushOnCloseAllowed` of the settings now, read when the close happens. */
+  enabled: () => boolean;
+  clock: Pick<Clock, "setTimer">;
+  /** The longest the whole of it runs; past it the push is given up and the close goes on. */
+  limitMs: number;
+  /** Where a failure or a given-up push is recorded. */
+  log: (message: string) => void;
+}
+
+/**
+ * The push of `sync.pushOnClose`, run while the app closes (NOR-F19-01d): nothing when the option is
+ * off, when no remote is connected or when nothing waits (`closePushDecision`); otherwise the spaces
+ * are written as files (the same step as the Push of the screen) and the push is made. Never
+ * rejects, and never runs past `limitMs`: an error or a push that is too slow is recorded with `log`
+ * and the close goes on, so a remote that is down never keeps the window open. A push that was given
+ * up on may still finish in the background until the app is gone; git leaves the remote as it was
+ * when it is cut short.
+ */
+export async function runPushOnClose(deps: PushOnCloseDeps): Promise<PushOnCloseOutcome> {
+  const attempt = async (): Promise<PushOnCloseOutcome> => {
+    if (!deps.enabled()) return { kind: "skipped", reason: "off" };
+    const status = await deps.backend.syncStatus();
+    if (!status.connected) return { kind: "skipped", reason: "no-remote" };
+    let spaceFilesWritten = 0;
+    if (deps.spaces !== undefined) {
+      const written = await writeSpaceFiles(deps.backend, deps.spaces, { linkedOnly: false });
+      spaceFilesWritten = written.written.length;
+      for (const note of writeNotes(written)) deps.log(`push on close: ${note}`);
+    }
+    const decision = closePushDecision({ enabled: true, status, spaceFilesWritten });
+    if (decision.action === "skip") return { kind: "skipped", reason: decision.reason };
+    const result = await deps.backend.syncPush();
+    if (result.committed && !result.pushed) {
+      return { kind: "failed", reason: "the files were committed but not sent" };
+    }
+    return { kind: "pushed", files: result.files.length };
+  };
+  let cancel: (() => void) | undefined;
+  const gaveUp = new Promise<PushOnCloseOutcome>((resolve) => {
+    cancel = deps.clock.setTimer(() => resolve({ kind: "timeout" }), deps.limitMs);
+  });
+  const attempted = attempt().catch((error: unknown): PushOnCloseOutcome => ({
+    kind: "failed",
+    reason: reasonOf(error),
+  }));
+  const outcome = await Promise.race([attempted, gaveUp]);
+  cancel?.();
+  if (outcome.kind === "failed") deps.log(`push on close failed: ${outcome.reason}`);
+  if (outcome.kind === "timeout") {
+    deps.log(`push on close given up after ${deps.limitMs} ms`);
+  }
+  return outcome;
 }
 
 /**

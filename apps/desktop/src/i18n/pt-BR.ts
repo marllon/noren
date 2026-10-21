@@ -527,6 +527,9 @@ export const ptBR: Dictionary = {
     "O config.jsonc inteiro viaja, então não deixe nada secreto nele. O Noren não consegue pedir senha nem a senha da chave ssh: se o pull ou o push falhar por credencial, faça o git funcionar com este remoto num terminal primeiro.",
   "settings.syncRemote": "Endereço do remoto",
   "settings.syncRemotePlaceholder": "https://example.com/voce/noren-settings.git",
+  "settings.syncPushOnClose": "Enviar ao fechar o Noren",
+  "settings.syncPushOnCloseHint":
+    "Desligado por padrão. Ligado, fechar o Noren faz antes um push se houver um remoto conectado e algo esperando para ser enviado, como o botão Push. Ele espera alguns segundos no máximo: um push que falha ou demora demais é pulado e o Noren fecha do mesmo jeito. Esconder a janela na bandeja não fecha o Noren.",
   "settings.syncConnect": "Conectar",
   "settings.syncPull": "Pull",
   "settings.syncPush": "Push",
@@ -1115,6 +1118,9 @@ export const ptBR: Dictionary = {
   "field.sessions": "Se os shells dos seus painéis sobrevivem à janela.",
   "field.sessions.keepOnClose":
     "Ligado: fechar a janela deixa os shells dos seus painéis rodando em segundo plano (no daemon de sessões, o norend) e abrir o Noren de novo devolve a cada painel o seu shell, com o que ele imprimiu nesse meio-tempo. Desligado: fechar a janela encerra todos os shells, como sempre foi. Os shells que nenhum painel reclama são encerrados quando o Noren abre.",
+  "field.sync": "Sincronização por git: o que o Noren faz por conta própria.",
+  "field.sync.pushOnClose":
+    "Ligado: fechar o Noren faz antes um push para o remoto git conectado, quando há algo esperando para ser enviado (o arquivo de configurações, temas, mods e spaces, os mesmos arquivos do Push nas configurações). Espera alguns segundos no máximo e nunca impede o Noren de fechar: um push que falha ou demora demais é pulado. Desligado: o Noren só sincroniza quando você aperta Pull ou Push.",
   "field.routing":
     "Para onde vai uma aba nova: regras que casam a pasta ou o comando da aba e nomeiam um space e um grupo. Uma aba que nenhuma regra casa vai para onde iria.",
   "field.routing.rules":

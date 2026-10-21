@@ -5,8 +5,11 @@ import {
   CLOSE_LISTENING_COMMAND,
   CLOSE_READY_COMMAND,
   CLOSE_REQUESTED_EVENT,
+  CLOSE_PUSH_LIMIT_MS,
   CLOSE_SAVE_LIMIT_MS,
+  closeLimitMs,
   followWindowClose,
+  saveWithin,
 } from "./close-handler";
 import type { CloseBridge } from "./close-handler";
 
@@ -105,6 +108,27 @@ describe("followWindowClose", () => {
     expect(fake.log.at(-1)).toBe(`invoke ${CLOSE_READY_COMMAND}`);
   });
 
+  it("reads the limit when the window is asked to close, so a setting changed since counts", async () => {
+    const fake = fakeBridge();
+    const clock = new ManualClock();
+    let pushOnClose = false;
+    await followWindowClose(
+      fake.bridge,
+      () => new Promise<void>(() => undefined),
+      clock,
+      () => closeLimitMs(pushOnClose),
+    );
+    pushOnClose = true;
+    fake.ask();
+    await settle();
+    clock.advance(CLOSE_SAVE_LIMIT_MS);
+    await settle();
+    expect(fake.log).not.toContain(`invoke ${CLOSE_READY_COMMAND}`);
+    clock.advance(CLOSE_PUSH_LIMIT_MS);
+    await settle();
+    expect(fake.log.at(-1)).toBe(`invoke ${CLOSE_READY_COMMAND}`);
+  });
+
   it("lets the window close when the save fails", async () => {
     const fake = fakeBridge();
     await followWindowClose(
@@ -158,8 +182,33 @@ describe("followWindowClose", () => {
     expect(rust).toContain(`fn ${CLOSE_READY_COMMAND}(`);
     expect(main).toContain(`lifecycle::${CLOSE_LISTENING_COMMAND},`);
     expect(main).toContain(`lifecycle::${CLOSE_READY_COMMAND},`);
-    // The page gives up before the window does.
+    // The page gives up before the window does, even with the push on close on.
     const wait = /CLOSE_WAIT: Duration = Duration::from_secs\((\d+)\)/.exec(rust);
-    expect(Number(wait?.[1]) * 1000).toBeGreaterThan(CLOSE_SAVE_LIMIT_MS);
+    expect(Number(wait?.[1]) * 1000).toBeGreaterThan(closeLimitMs(true));
+    expect(closeLimitMs(false)).toBe(CLOSE_SAVE_LIMIT_MS);
+  });
+});
+
+describe("saveWithin", () => {
+  it("resolves when the save is done, and cancels the timer", async () => {
+    const clock = new ManualClock();
+    await saveWithin(() => Promise.resolve(), clock, 1000);
+    expect(clock.pending).toBe(0);
+  });
+
+  it("resolves after the limit for a save that never ends, and when the save fails", async () => {
+    const clock = new ManualClock();
+    let done = false;
+    void saveWithin(() => new Promise<void>(() => undefined), clock, 1000).then(() => {
+      done = true;
+    });
+    await settle();
+    expect(done).toBe(false);
+    clock.advance(1000);
+    await settle();
+    expect(done).toBe(true);
+    await expect(
+      saveWithin(() => Promise.reject(new Error("no")), new ManualClock(), 1000),
+    ).resolves.toBeUndefined();
   });
 });

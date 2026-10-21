@@ -19,8 +19,40 @@ export const CLOSE_READY_COMMAND = "app_close_ready";
 /** The longest the page spends saving before it lets the window close anyway. The Rust side waits longer. */
 export const CLOSE_SAVE_LIMIT_MS = 2000;
 
+/**
+ * The longest the push of `sync.pushOnClose` runs once the saves are done (NOR-F19-01d). A push
+ * that is not over by then is given up and the window closes.
+ */
+export const CLOSE_PUSH_LIMIT_MS = 4000;
+
+/**
+ * How long the page spends on a close: the saves, and the push when `sync.pushOnClose` is on. The
+ * Rust side waits longer than the most this gives (`CLOSE_WAIT` in `lifecycle.rs`).
+ */
+export function closeLimitMs(pushOnClose: boolean): number {
+  return pushOnClose ? CLOSE_SAVE_LIMIT_MS + CLOSE_PUSH_LIMIT_MS : CLOSE_SAVE_LIMIT_MS;
+}
+
 /** What this needs of the bridge to the Rust side. */
 export type CloseBridge = Pick<TauriBridge, "invoke" | "listen">;
+
+/**
+ * Runs `save` and resolves when it is done, when it fails, or after `limitMs`, whichever comes
+ * first. Never rejects. The one place a close waits for the page, shared by the window and the test
+ * hook of the web build.
+ */
+export function saveWithin(
+  save: () => Promise<void>,
+  clock: Pick<Clock, "setTimer">,
+  limitMs: number,
+): Promise<void> {
+  const saved = save().catch(() => undefined);
+  let cancel: (() => void) | undefined;
+  const gaveUp = new Promise<void>((resolve) => {
+    cancel = clock.setTimer(resolve, limitMs);
+  });
+  return Promise.race([saved, gaveUp]).then(() => cancel?.());
+}
 
 /**
  * Starts answering the close of the window: when it is asked to close, `save` runs, and the window
@@ -33,17 +65,14 @@ export async function followWindowClose(
   bridge: CloseBridge,
   save: () => Promise<void>,
   clock: Pick<Clock, "setTimer">,
-  limitMs: number = CLOSE_SAVE_LIMIT_MS,
+  limitMs: number | (() => number) = CLOSE_SAVE_LIMIT_MS,
 ): Promise<() => void> {
   let closing = false;
   const stop = await bridge.listen<unknown>(CLOSE_REQUESTED_EVENT, () => {
     if (closing) return;
     closing = true;
-    const saved = save().catch(() => undefined);
-    const gaveUp = new Promise<void>((resolve) => {
-      clock.setTimer(resolve, limitMs);
-    });
-    void Promise.race([saved, gaveUp])
+    // The limit is read now, so a setting changed since the page started counts.
+    void saveWithin(save, clock, typeof limitMs === "function" ? limitMs() : limitMs)
       .then(() => bridge.invoke(CLOSE_READY_COMMAND))
       .catch(() => undefined);
   });

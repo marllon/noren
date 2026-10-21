@@ -540,6 +540,9 @@ fn route_session<R: Runtime>(
     let callback_slot = Arc::clone(&id_slot);
     let route = Arc::new(OutputRoute::new(output));
     let sink = Arc::clone(&route);
+    // The clients of the local API hear what the session prints (none when the server is off).
+    let events = crate::api_events::output_events(app);
+    let tap = events.clone();
     let routes = Arc::clone(&state.routes);
     let app = app.clone();
     let id = begin(Box::new(move |event| match event {
@@ -547,7 +550,11 @@ fn route_session<R: Runtime>(
         SessionEvent::Output(bytes) => {
             crate::perf::mark_once("shell-first-byte");
             crate::perf::mark_prompt_bytes(bytes);
-            sink.send(bytes)
+            // The page first; the events are queued after and never make it wait.
+            sink.send(bytes);
+            if let Some(tap) = &tap {
+                tap.push(bytes);
+            }
         }
         SessionEvent::Exit(info) => {
             let id = *callback_slot.lock().unwrap_or_else(|e| e.into_inner());
@@ -575,6 +582,9 @@ fn route_session<R: Runtime>(
     }))
     .map_err(|e| e.to_string())?;
     crate::perf::mark_once("shell-spawned");
+    if let Some(events) = &events {
+        events.bind(id.0);
+    }
     // Before the lock is released: the exit callback waits for it, so it cannot remove a route
     // that was not added yet.
     state
@@ -4594,5 +4604,91 @@ mod tests {
         // The shell the machine defaults to still is a local one.
         assert!(session_spec(app.handle(), &state, None, None, None, 80, 24).is_ok());
         assert!(daemon.creates().is_empty(), "nothing was sent anywhere");
+    }
+
+    // ---- the output of a session reaches the events of the local API (NOR-F17-01f) ----
+
+    fn page_channel() -> (
+        Channel<InvokeResponseBody>,
+        std::sync::mpsc::Receiver<Vec<u8>>,
+    ) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let channel = Channel::new(move |body| {
+            if let InvokeResponseBody::Raw(bytes) = body {
+                let _ = tx.send(bytes);
+            }
+            Ok(())
+        });
+        (channel, rx)
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_session_publishes_its_output_with_its_own_id_and_the_page_gets_the_same_bytes() {
+        use crate::api_events::test_support::TestApi;
+        let api = TestApi::start();
+        let mut client = api.subscriber(&["terminal.output"]).await;
+        let state = detected_state();
+        let (page, page_rx) = page_channel();
+        // The callback of the session, kept to play the thread that reads the shell.
+        type Callback = Box<dyn FnMut(SessionEvent<'_>) + Send>;
+        let reader: Arc<Mutex<Option<Callback>>> = Arc::new(Mutex::new(None));
+        let kept = Arc::clone(&reader);
+        // The shell prints before `begin` returns, as a fast one can: its id is not known yet.
+        let id = route_session(api.app.handle(), &state, page, None, move |mut on_event| {
+            on_event(SessionEvent::Output(b"early "));
+            *kept.lock().unwrap() = Some(on_event);
+            Ok(SessionId(7))
+        })
+        .expect("the session starts");
+        assert_eq!(id, SessionId(7));
+
+        // A character cut in two chunks by the reader.
+        let euro = "€".as_bytes();
+        {
+            let mut guard = reader.lock().unwrap();
+            let on_event = guard.as_mut().expect("the callback");
+            on_event(SessionEvent::Output(&[b'a', euro[0]]));
+            on_event(SessionEvent::Output(&euro[1..]));
+        }
+
+        let heard = client.output_of("7", "early a€".len()).await;
+        assert_eq!(heard, "early a€");
+        assert_eq!(
+            page_rx.try_iter().collect::<Vec<_>>(),
+            vec![
+                b"early ".to_vec(),
+                [&b"a"[..], &euro[..1]].concat(),
+                euro[1..].to_vec()
+            ],
+            "the page gets the bytes as they came, not the text"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_session_whose_api_is_off_runs_as_before_and_publishes_nothing() {
+        use tauri::test::{mock_builder, mock_context};
+        let app = mock_builder()
+            .build(mock_context(tauri::test::noop_assets()))
+            .expect("build the mock app");
+        crate::api_bridge::install(app.handle(), Err("off".into()));
+        assert!(crate::api_events::output_events(app.handle()).is_none());
+        // An app that never installed the API is the same.
+        let bare = mock_builder()
+            .build(mock_context(tauri::test::noop_assets()))
+            .expect("build the mock app");
+        assert!(crate::api_events::output_events(bare.handle()).is_none());
+
+        let state = detected_state();
+        let (page, page_rx) = page_channel();
+        let id = route_session(app.handle(), &state, page, None, |mut on_event| {
+            on_event(SessionEvent::Output(b"hello"));
+            Ok(SessionId(3))
+        })
+        .expect("the session starts");
+        assert_eq!(id, SessionId(3));
+        assert_eq!(
+            page_rx.try_iter().collect::<Vec<_>>(),
+            vec![b"hello".to_vec()]
+        );
     }
 }

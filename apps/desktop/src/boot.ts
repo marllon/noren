@@ -7,12 +7,13 @@ import {
 } from "@noren/model";
 import type { Backend } from "@noren/model";
 import { startAgentScanner } from "./agent-service";
+import { createAgentStateReporter } from "./agent-state-report";
 import { startLocalApi } from "./api-bridge";
 import { startSessionLinks } from "./session-link-store";
 import { armAgentResumes } from "./resume-restore";
 import { resumeService } from "./resume-service";
 import { restoreKeepingSessions, withoutReattachedSnapshots } from "./boot-sessions";
-import { setAgentStateClock } from "./agent-state-store";
+import { setAgentStateClock, setAgentStateReporter } from "./agent-state-store";
 import { archiveClock, startAutoArchive } from "./auto-archive-service";
 import { createBackend, insideTauri } from "./backend";
 import { startBackgroundImages } from "./background-image-store";
@@ -199,6 +200,8 @@ export async function bootWorkspace(
       // The local API (NOR-F17-01c): the calls the server of the app validated run here, in the
       // window that owns the workspace, and are answered through `api_respond`.
       startLocalApi({ store, backend: target, tail: apiTail, bridge: tauriBridge() });
+      // And what the agents are doing goes out as events to the clients that subscribed (NOR-F17-01f).
+      setAgentStateReporter(createAgentStateReporter(tauriBridge()));
     }
     // The window shows the theme of the active space, if it has one, from the first frame.
     followActiveSpaceTheme(store);

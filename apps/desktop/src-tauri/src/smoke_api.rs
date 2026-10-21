@@ -14,7 +14,10 @@
 //!    window is still starting is told so with `failed` and tried again, which is how a client is to
 //!    behave and what the run counts);
 //! 4. `spaces.create` makes a space, and a second `spaces.list` shows it, with its name;
-//! 5. nothing was shown (the main window is hidden, no global shortcut, no tray icon) and the daemon
+//! 5. a second connection subscribes to `terminal.output`, a tab with a new shell is made with
+//!    `items.create`, and the event of that shell's own session (the id the app publishes, the number
+//!    of the session as text) arrives with what the shell printed by itself, its prompt (NOR-F17-01f);
+//! 6. nothing was shown (the main window is hidden, no global shortcut, no tray icon) and the daemon
 //!    of the run stops.
 //!
 //! No call types into a terminal, so no Enter is sent (D8), and no window is shown or clicked (D19).
@@ -88,6 +91,8 @@ impl Default for ApiSandbox {
 struct Client {
     stream: ClientStream,
     next_id: u64,
+    /// Events that arrived while an answer was awaited, in the order they came.
+    events: Vec<Value>,
 }
 
 impl Client {
@@ -96,7 +101,11 @@ impl Client {
             .await
             .map_err(|_| "connecting to the API took too long".to_owned())?
             .map_err(|e| format!("could not connect to the API: {e}"))?;
-        Ok(Self { stream, next_id: 1 })
+        Ok(Self {
+            stream,
+            next_id: 1,
+            events: Vec::new(),
+        })
     }
 
     async fn send(&mut self, message: &Value) -> Result<(), String> {
@@ -135,7 +144,15 @@ impl Client {
         self.next_id += 1;
         self.send(&json!({ "id": id, "method": method, "params": params }))
             .await?;
-        let answer = self.recv(deadline).await?;
+        // Events come in the same stream as the answers: they are kept for later, in order.
+        let answer = loop {
+            let message = self.recv(deadline).await?;
+            if is_event(&message) {
+                self.events.push(message);
+                continue;
+            }
+            break message;
+        };
         if answer["id"] != json!(id) {
             return Err(format!(
                 "{method} was answered with the id {}, not {id}",
@@ -168,6 +185,21 @@ impl Client {
             tokio::time::sleep(RETRY_PAUSE).await;
         }
     }
+}
+
+/// Whether a message is an event: `{ event, data }` and no `id`.
+fn is_event(message: &Value) -> bool {
+    message.get("event").is_some() && message.get("id").is_none()
+}
+
+/// The text of a `terminal.output` event of `session`, when the message is one with something in it.
+fn output_of<'a>(message: &'a Value, session: &str) -> Option<&'a str> {
+    if message["event"] != "terminal.output" || message["data"]["sessionId"] != session {
+        return None;
+    }
+    message["data"]["text"]
+        .as_str()
+        .filter(|text| !text.is_empty())
 }
 
 /// Whether an answer is the one the bridge gives while the page has not said it listens.
@@ -288,6 +320,86 @@ async fn check_calls(endpoint: &Endpoint, token: &str, deadline: Instant) -> Res
     Ok(())
 }
 
+/// The ids of the sessions the daemon of the run holds.
+fn session_ids(app_state: &AppState) -> Result<Vec<u64>, String> {
+    app_state
+        .sessions
+        .list()
+        .map(|list| list.into_iter().map(|entry| entry.session.0).collect())
+        .map_err(|e| format!("the daemon of the run could not list its sessions: {e}"))
+}
+
+/// A connection subscribes to `terminal.output`, a tab with a new shell is made, and the event of
+/// that shell's session arrives with what it printed on its own (its prompt). Nothing is typed.
+async fn check_output_events(
+    endpoint: &Endpoint,
+    token: &str,
+    app_state: &AppState,
+    deadline: Instant,
+) -> Result<(), String> {
+    let mut client = Client::connect(endpoint).await?;
+    let welcome = client.authenticate(token, deadline).await?;
+    if welcome != json!({ "type": "welcome", "version": API_PROTOCOL_VERSION }) {
+        return Err(format!("the right token was not welcomed: {welcome}"));
+    }
+    let answer = client
+        .call(
+            "events.subscribe",
+            json!({ "types": ["terminal.output"] }),
+            deadline,
+        )
+        .await?;
+    result_of("events.subscribe", &answer)?;
+
+    let (answer, _) = client
+        .call_when_ready("spaces.list", &json!({}), deadline)
+        .await?;
+    let space = spaces_of(&answer)?
+        .into_iter()
+        .next()
+        .map(|(id, _)| id)
+        .ok_or_else(|| "spaces.list shows no space to make a tab in".to_owned())?;
+    let before = session_ids(app_state)?;
+    let answer = client
+        .call("items.create", json!({ "space": space }), deadline)
+        .await?;
+    result_of("items.create", &answer)?;
+
+    // The shell the call started is the session the daemon did not hold before.
+    let session = loop {
+        let now = session_ids(app_state)?;
+        if let Some(new) = now.into_iter().find(|id| !before.contains(id)) {
+            break new.to_string();
+        }
+        if Instant::now() >= deadline {
+            return Err("items.create started no new shell in the daemon of the run".to_owned());
+        }
+        tokio::time::sleep(RETRY_PAUSE).await;
+    };
+
+    // Its own output, not typed for: the prompt. Events of other sessions are not it.
+    let mut seen = 0usize;
+    let mut heard = client
+        .events
+        .iter()
+        .filter_map(|message| output_of(message, &session))
+        .map(str::len)
+        .sum::<usize>();
+    while heard == 0 {
+        let message = client.recv(deadline).await.map_err(|e| {
+            format!("no terminal.output event arrived for the new shell (session {session}): {e}")
+        })?;
+        seen += 1;
+        if let Some(text) = output_of(&message, &session) {
+            heard += text.len();
+        }
+    }
+    print_line(&format!(
+        "SMOKE API terminal.output received for session {session}: {heard} byte(s) of text, nothing typed ({seen} other event(s) read after the call)"
+    ));
+    Ok(())
+}
+
 // ---- the run ------------------------------------------------------------------------------------
 
 /// The checks, in order. The page is up once it says `app-ready`.
@@ -320,6 +432,12 @@ fn run(app: &AppHandle, inbox: &mut Inbox, deadline: Instant) -> Result<(), Stri
     })?;
 
     let app_state = app.state::<AppState>();
+    tauri::async_runtime::block_on(check_output_events(
+        &target.endpoint,
+        &token,
+        &app_state,
+        deadline,
+    ))?;
     check_no_global_shortcut(app)?;
     check_window_hidden(app)?;
     // The page started the shell of its first pane in the daemon of the run; it ends with it.
@@ -454,5 +572,29 @@ mod tests {
         ] {
             assert!(spaces_of(&bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn an_event_has_no_id_and_an_answer_does() {
+        let event =
+            json!({ "event": "terminal.output", "data": { "sessionId": "1", "text": "x" } });
+        assert!(is_event(&event));
+        assert!(!is_event(&json!({ "id": 1, "result": {} })));
+        assert!(!is_event(
+            &json!({ "id": 1, "error": { "code": "failed", "message": "x" } })
+        ));
+    }
+
+    #[test]
+    fn only_text_of_the_wanted_session_counts_as_its_output() {
+        let output = |session: &str, text: &str| json!({ "event": "terminal.output", "data": { "sessionId": session, "text": text } });
+        assert_eq!(output_of(&output("7", "prompt> "), "7"), Some("prompt> "));
+        // Another session, no text, another event and a session that only starts the same.
+        assert_eq!(output_of(&output("8", "prompt> "), "7"), None);
+        assert_eq!(output_of(&output("7", ""), "7"), None);
+        assert_eq!(output_of(&output("70", "x"), "7"), None);
+        let state =
+            json!({ "event": "agent.state", "data": { "sessionId": "7", "state": "idle" } });
+        assert_eq!(output_of(&state, "7"), None);
     }
 }

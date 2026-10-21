@@ -29,7 +29,9 @@
 // of the run and the endpoint of the run, was refused with a wrong token, was welcomed with the right
 // one and made real calls that went through the server, the bridge, the hidden main page and back:
 // spaces.list, spaces.create and spaces.list again, which shows the new space; no call types into a
-// terminal, so none sends an Enter, NOR-F17-01d).
+// terminal, so none sends an Enter, NOR-F17-01d; a second connection subscribed to terminal.output,
+// made a tab with items.create and heard the prompt of its own shell as an event of that session,
+// NOR-F17-01f).
 // Every run must also print "SMOKE global shortcut none registered": no smoke mode registers the
 // global shortcut of the quick terminal (the run fails if the app holds one), and "SMOKE tray icon
 // none": no smoke mode shows the tray icon of a normal start (NOR-F14-02c).
@@ -262,6 +264,7 @@ runSmoke(
     "SMOKE API spaces.list answered by the page:",
     "SMOKE API spaces.create made",
     "SMOKE API spaces.list shows the new space",
+    "SMOKE API terminal.output received for session",
     "SMOKE window hidden",
     "SMOKE API OK",
   ],

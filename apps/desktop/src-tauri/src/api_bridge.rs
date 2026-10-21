@@ -22,8 +22,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use noren_core::api::{
-    ApiCall, ApiConfig, ApiError, ApiErrorCode, ApiFuture, ApiHandler, ApiServer, SplitDirection,
-    api_endpoint, load_or_create_token,
+    ApiCall, ApiConfig, ApiError, ApiErrorCode, ApiFuture, ApiHandler, ApiServer, EventPublisher,
+    SplitDirection, api_endpoint, load_or_create_token,
 };
 use noren_core::daemon::Endpoint;
 use serde_json::{Value, json};
@@ -411,6 +411,9 @@ pub struct ApiState {
     /// Where a client finds the server: the endpoint and the file with the token. `None` when the
     /// server did not start.
     target: Option<ClientTarget>,
+    /// Where the app publishes the events of sessions and agents (NOR-F17-01f). `None` when the
+    /// server did not start: then nothing is published and nothing waits for it.
+    publisher: Option<EventPublisher>,
 }
 
 /// What a client needs to reach the server: its endpoint and the file that holds the token.
@@ -428,6 +431,11 @@ impl ApiState {
     /// The endpoint and token file of the running server, for a client of the same user.
     pub fn target(&self) -> Option<&ClientTarget> {
         self.target.as_ref()
+    }
+
+    /// The way to publish events to the clients of the server; `None` when it did not start.
+    pub fn publisher(&self) -> Option<&EventPublisher> {
+        self.publisher.as_ref()
     }
 
     /// Stops the server (once; later calls do nothing) and removes the folder of a run that made one.
@@ -490,11 +498,13 @@ pub fn install<R: Runtime>(app: &AppHandle<R>, settings: Result<ApiSettings, Str
     if let ApiStatus::Off { reason } = &status {
         eprintln!("warning: the local API is off ({reason})");
     }
+    let publisher = server.as_ref().map(ApiServer::publisher);
     app.manage(ApiState {
         server: Mutex::new(server),
         status,
         sandbox,
         target,
+        publisher,
     });
 }
 

@@ -33,6 +33,8 @@ import { realClock } from "./real-clock";
 
 interface Entry {
   readonly agentId: string;
+  /** The session the pane holds now (it can change while the entry lives), for the local API. */
+  sessionId: string | undefined;
   /** The agent was found only by the process tree: when the tree stops showing it, the entry goes. */
   readonly viaTree: boolean;
   readonly tracker: AgentStateTracker;
@@ -45,6 +47,23 @@ const entries = new Map<Id, Entry>();
 
 /** The clock the silence is measured on: real time in the app, the fake shell's clock in web mode. */
 let clock: Clock = realClock;
+
+/**
+ * Told every time the state of an agent changes, with the session of its pane (NOR-F17-01f): the
+ * local API says it to the clients that subscribed. It has to repeat nothing and wait for nothing;
+ * it is set once by the app (`agent-state-report.ts`) and is none in web mode.
+ */
+export type AgentStateReporter = (sessionId: string, state: AgentState) => void;
+let reporter: AgentStateReporter | undefined;
+
+/** Sets who is told of changes of state; `undefined` stops telling. */
+export function setAgentStateReporter(next: AgentStateReporter | undefined): void {
+  reporter = next;
+}
+
+function report(entry: Entry, state: AgentState): void {
+  if (entry.sessionId !== undefined) reporter?.(entry.sessionId, state);
+}
 
 /** Moves when any state changed, so a view knows to ask again. */
 let version = 0;
@@ -96,6 +115,7 @@ function forgetLostTreeAgents(): void {
     if (entry.viaTree && treeAgentOfPane(paneId) === undefined) {
       entry.tracker.dispose();
       entries.delete(paneId);
+      report(entry, "idle");
       changed = true;
     }
   }
@@ -116,9 +136,13 @@ function entryOf(pane: Pane, agentId: string): Entry {
     }
     return known;
   }
-  known?.tracker.dispose();
+  if (known !== undefined) {
+    known.tracker.dispose();
+    report(known, "idle");
+  }
   const created: Entry = {
     agentId,
+    sessionId: pane.sessionId,
     viaTree: commandAgentOfPane(pane) === undefined,
     state: "idle",
     source,
@@ -127,6 +151,7 @@ function entryOf(pane: Pane, agentId: string): Entry {
       rules: rulesOf(agentId),
       onChange: (state) => {
         created.state = state;
+        report(created, state);
         notify();
       },
       onLine: () => {
@@ -146,7 +171,9 @@ function liveEntry(pane: Pane): Entry | undefined {
     forgetAgentState(pane.id);
     return undefined;
   }
-  return entryOf(pane, agentId);
+  const entry = entryOf(pane, agentId);
+  entry.sessionId = pane.sessionId;
+  return entry;
 }
 
 /** A chunk of the output of the session of `pane`, as the bytes it arrived in. */
@@ -170,6 +197,7 @@ export function forgetAgentState(paneId: Id): void {
   if (entry === undefined) return;
   entry.tracker.dispose();
   entries.delete(paneId);
+  report(entry, "idle");
   notify();
 }
 

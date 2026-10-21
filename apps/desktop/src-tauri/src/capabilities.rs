@@ -181,6 +181,9 @@ fn only_the_main_window_may_call_what_owns_or_changes_the_workspace() {
         "api_respond",
         // The page of the main window tells the bridge it listens for those calls (NOR-F17-01d).
         "api_ready",
+        // What an agent is doing, for the events of the local API: the main window owns the
+        // workspace and its trackers, so only its page may say it (NOR-F17-01f).
+        "api_agent_state",
     ];
     let main = permissions_of(&capability(MAIN_CAPABILITY));
     let quick = permissions_of(&capability(QUICK_CAPABILITY));

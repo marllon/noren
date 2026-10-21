@@ -3,6 +3,7 @@
 
 mod ai;
 mod api_bridge;
+mod api_events;
 mod bridge;
 mod browser_pane;
 #[cfg(test)]
@@ -248,6 +249,7 @@ fn main() {
             deeplink::deep_link_applied,
             api_bridge::api_respond,
             api_bridge::api_ready,
+            api_events::api_agent_state,
         ])
         .setup(move |app| {
             perf::mark("setup-start");

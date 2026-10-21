@@ -70,7 +70,13 @@ server  {"event":"events.dropped","data":{"count":12}}
 - Events are in the same stream as the answers. An event may come between a request and its answer; the answers keep the order of the requests; the events keep the order they happened in. Read frames in a loop and tell them apart by the field: `event` for an event, `id` for an answer.
 - A long output comes as several `terminal.output` events in a row (a piece is at most 256 KiB of text, cut at a character boundary), which joined make the text.
 - **If you do not read.** Noren keeps up to 64 events waiting for you. Past that it drops the new ones for you alone (nobody else is slowed down), and when it has sent what was waiting it tells you with `events.dropped` how many it left out. Your connection stays open. Read the connection quickly, or ask for less (`sessionId`, `types`).
-- Noren sends no event for output or states that happened before you subscribed. What Noren publishes, and from where, is described in the changelog as it is added.
+- Noren sends no event for output or states that happened before you subscribed.
+
+### What the app publishes
+
+- **`terminal.output`** for every session, as it is shown in the terminal: the app copies each chunk of output after it has handed the chunk to the terminal, so a client never slows the terminal down, and with nobody subscribed nothing is copied. The `text` is UTF-8: a character that arrives cut between two chunks is held back until its last byte comes and then goes out whole, and a byte that cannot be part of any character becomes U+FFFD. A shell that prints before Noren knows its number has that text published first, once the number is known. Shells on another machine are published the same way. A session taken over after the app restarted publishes what it had printed meanwhile.
+- **`sessionId`** is the number of the shell session, as text (`"7"`), the same one the page keeps for the terminal. The API does not yet tell you which session a terminal id belongs to (`spaces.list` only says whether a terminal has a session), so subscribe to every session and tell them apart as they start.
+- **`agent.state`** when the agent in a session changes state: `waiting`, `working` or `idle`, the words the list of agents shows. The page tells the app only when the state changes, so a state is never repeated; an agent that stops being shown (its command ended, the pane went away) is `idle`. A session that never had an agent publishes nothing.
 
 ## Methods
 
@@ -109,8 +115,8 @@ socket.write(frame({ id: 1, method: "spaces.list", params: {} }));
 
 ## The smoke run
 
-`pnpm smoke` ends with `noren --smoke-api`, which starts the real app with its window hidden, on an endpoint and a token folder of its own (never the ones of a Noren you have open), and plays such a client: it reads the token file, shows that a wrong token is refused, authenticates, calls `spaces.list`, `spaces.create` and `spaces.list` again, and requires the new space in the second list. A call that is told the window is starting is tried again, and the run says how many were. It sends no key and no text to any terminal, shows no window and exits with 0 only if every step held.
+`pnpm smoke` ends with `noren --smoke-api`, which starts the real app with its window hidden, on an endpoint and a token folder of its own (never the ones of a Noren you have open), and plays such a client: it reads the token file, shows that a wrong token is refused, authenticates, calls `spaces.list`, `spaces.create` and `spaces.list` again, and requires the new space in the second list. A call that is told the window is starting is tried again, and the run says how many were. It then opens a second connection, subscribes to `terminal.output`, makes a tab with `items.create` and waits, with a time limit, for a `terminal.output` event of the session of that new shell: the prompt the shell prints by itself. It sends no key and no text to any terminal (so no Enter), shows no window and exits with 0 only if every step held, the event included.
 
 ## Not here yet
 
-The server side of the events is done (NOR-F17-01e), but the app does not publish anything yet: the terminal output and the state of the agents reach the server in NOR-F17-01f, so today `events.subscribe` is answered and no event comes. The `noren` command line that wraps this API is NOR-F17-02.
+The `noren` command line that wraps this API is NOR-F17-02.

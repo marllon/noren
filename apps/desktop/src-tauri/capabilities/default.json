@@ -69,6 +69,7 @@
     "allow-deep-link-applied",
     "allow-api-respond",
     "allow-api-ready",
+    "allow-api-agent-state",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:event:allow-emit",

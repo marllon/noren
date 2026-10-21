@@ -2162,6 +2162,62 @@ body {
   font-size: 12px;
 }
 
+/* The bench scoreboard in the AI section: a table that scrolls sideways instead of widening the screen. */
+.settings-bench {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-self: stretch;
+  min-width: 0;
+}
+
+.settings-bench h4 {
+  margin-top: 0;
+}
+
+.settings-bench-scroll {
+  overflow-x: auto;
+}
+
+.settings-bench-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.settings-bench-table th,
+.settings-bench-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--nr-border);
+  text-align: left;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.settings-bench-table thead th {
+  color: var(--nr-muted);
+  font-weight: 600;
+}
+
+.settings-bench-table tbody th {
+  font-weight: 600;
+}
+
+.settings-bench-badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--nr-accent, currentColor);
+  border-radius: calc(var(--nr-radius) / 2);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.settings-bench-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* The preview of the profiles an import would add: one row each, the name over the command line. */
 .space-dialog.profile-import-dialog {
   width: min(560px, 92%);

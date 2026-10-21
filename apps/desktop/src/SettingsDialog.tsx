@@ -32,6 +32,7 @@ import { useModFiles } from "./mods-store";
 import { commitProfileImport, readProfileFile, takenProfileIds } from "./profile-import";
 import type { ProfileImportPlan } from "./profile-import";
 import { ProfileImportDialog } from "./ProfileImportDialog";
+import { BenchPanel } from "./BenchPanel";
 import { ProvidersPanel } from "./ProvidersPanel";
 import { useProfiles } from "./profiles-store";
 import { QUICK_TOGGLE_ACTION, quickShortcutLine } from "./quick-shortcut";
@@ -205,7 +206,7 @@ const keyPresetOptions = (): readonly { value: Preset; label: string }[] => [
 
 interface SettingsDialogProps {
   /** Where an imported color scheme is written (the themes folder). */
-  backend: Pick<Backend, "saveUserTheme" | "listMonospaceFonts" | "ai">;
+  backend: Pick<Backend, "saveUserTheme" | "listMonospaceFonts" | "ai" | "listBenchResults">;
   onClose(): void;
 }
 
@@ -792,6 +793,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                   onChange={(enabled) => changeAi({ enabled })}
                 />
                 <ProvidersPanel backend={backend} />
+                <BenchPanel backend={backend} />
                 <h4>{t("settings.aiDefaults")}</h4>
                 {AI_FUNCTIONS.map((fn) => {
                   const problem = plan.aiProblems[fn];

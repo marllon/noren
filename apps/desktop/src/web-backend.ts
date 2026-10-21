@@ -92,6 +92,14 @@ export const WEB_GIT_DIFFS_KEY = "noren.web.git-diffs";
  */
 export const WEB_AI_OLLAMA_KEY = "noren.web.ai-ollama";
 
+/**
+ * Key of the bench result files in web mode: a JSON object from the file name (`2026-10-20-120000.json`)
+ * to the run, written as the text of the file or as the JSON object itself. The e2e tests seed it
+ * before the page loads; the bench screen reads them as it reads the ones in the data folder of the
+ * app (a file that is not a valid run is skipped). Without it there are no results.
+ */
+export const WEB_BENCH_RESULTS_KEY = "noren.web.bench-results";
+
 /** What web mode needs of the browser storage. */
 export type StateStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -276,6 +284,28 @@ export function seededOllamaModels(storage: Pick<Storage, "getItem">): string[] 
   }
 }
 
+/** The bench result files seeded under `WEB_BENCH_RESULTS_KEY` (name to text), or `undefined` when there is no usable seed. */
+export function seededBenchResults(
+  storage: Pick<Storage, "getItem">,
+): Record<string, string> | undefined {
+  try {
+    const raw = storage.getItem(WEB_BENCH_RESULTS_KEY);
+    if (raw === null) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    const files: Record<string, string> = {};
+    for (const [name, content] of Object.entries(value)) {
+      if (typeof content === "string") files[name] = content;
+      else if (typeof content === "object" && content !== null && !Array.isArray(content)) {
+        files[name] = JSON.stringify(content, null, 2);
+      }
+    }
+    return files;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The text seeded under `WEB_CONFIG_KEY`, or `null` when there is none or the storage is blocked. */
 export function seededConfig(storage: Pick<Storage, "getItem">): string | null {
   try {
@@ -350,6 +380,7 @@ export class WebBackend extends FakeBackend {
     const gitDiffs = seededGitDiffs(storage);
     const scrollback = seededScrollback(storage);
     const ollamaModels = seededOllamaModels(storage);
+    const benchResults = seededBenchResults(storage);
     super({
       ...(profiles !== undefined ? { profiles } : {}),
       ...(userThemes !== undefined ? { userThemes } : {}),
@@ -359,6 +390,7 @@ export class WebBackend extends FakeBackend {
       ...(gitDiffs !== undefined ? { gitDiffs } : {}),
       ...(scrollback !== undefined ? { scrollback } : {}),
       ...(ollamaModels !== undefined ? { ollamaModels } : {}),
+      ...(benchResults !== undefined ? { benchResults } : {}),
       windowEffects: seededWindowEffects(storage),
       config: seededConfig(storage),
     });

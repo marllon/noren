@@ -570,6 +570,31 @@ export {
 } from "./bench-results";
 export type { SavedBenchRun } from "./bench-results";
 export {
+  BENCH_MODEL_CATALOG,
+  BENCH_MODEL_ID_PATTERN,
+  BENCH_MODEL_LICENSES,
+  BENCH_MODEL_USES,
+  BENCH_RAM_SHARE,
+  BENCH_VRAM_SHARE,
+  MAX_BENCH_MODEL_ID,
+  benchCatalogModelSchema,
+  benchCatalogSchema,
+  isBenchModelId,
+  ollamaPullCommand,
+  recommendedBenchModels,
+} from "./bench-models";
+export type {
+  BenchCatalogModel,
+  BenchHardware,
+  BenchMemoryKind,
+  BenchModelLicense,
+  BenchModelReason,
+  BenchModelUse,
+  BenchRecommendation,
+  BenchRecommendedModel,
+  OllamaPullResult,
+} from "./bench-models";
+export {
   BENCH_CSV_HEADER,
   benchCsvText,
   benchDefaultEdits,

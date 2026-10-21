@@ -173,6 +173,47 @@ No row that can be picked (no runs, only cancelled runs, or no answer right anyw
 
 Run the tests with `pnpm exec vitest run packages/model/src/bench-scoreboard.test.ts`.
 
+## Recommended models
+
+`packages/model/src/bench-models.ts` holds the curated list of local models and picks the ones that fit a computer. It is pure TypeScript: it reads no file and no hardware (the memory is an argument; reading it from the machine is the next task), opens no connection and **never runs a command**. The screen that uses it comes later and puts an install command in a terminal only after the person confirms it (D8).
+
+**The catalog.** `BENCH_MODEL_CATALOG` is a list of models, each checked by `benchCatalogModelSchema` (strict: no other field):
+
+| Field            | Meaning                                                                                                             |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `id`             | The model as the Ollama library names it, `name:tag` (`qwen3:8b`). It is data, not a label.                         |
+| `downloadBytes`  | Size of the download, whole bytes.                                                                                  |
+| `minMemoryBytes` | The memory the model needs to run, whole bytes, at least the download.                                              |
+| `uses`           | What it is good for: `ask`, `explain`, `command` (the three AI functions), at least one, none twice.                |
+| `license`        | `Apache-2.0` or `MIT`: open weights under a permissive license. A model under custom or research-only terms is out. |
+
+`benchCatalogSchema` also refuses an empty list and an id listed twice. An id is a strict `name:tag`: lower-case letters and digits with one `.`, `-` or `_` between two runs of them, a single `:`, at most 64 characters (`isBenchModelId`). A space, `;`, `&`, `|`, `$`, a backtick, a quote, a line break, `..`, a slash or a leading `-` cannot match, so an id is one safe word in PowerShell and in bash. The catalog names no maker's product in a text of the interface: it has no label field, and the screen words each model in its own text.
+
+**Where the sizes come from.** The download is the size the Ollama library prints for the tag (`https://ollama.com/library/<name>/tags`) and the license is the one on the page of the tag, both read on 2026-10-21. `minMemoryBytes` is the download plus 1 GiB for the context (4 K tokens) and the runtime buffers, rounded up to half a GiB. `qwen2.5-coder:3b` is not in the catalog because its tag is under a research-only license. Refresh the numbers from those pages when a model is added or a tag changes.
+
+**The choice.** `recommendedBenchModels({ ramBytes, vramBytes }, catalog?)` returns the models that fit, the most capable first:
+
+- `vramBytes` is the video memory, or `null` when it is not known. When it is a number (0 included) the models are chosen for it, because a model that fits there runs on the GPU. When it is `null`, or when no model fits it (a small or shared GPU next to plenty of RAM), they are chosen for the RAM, and `memory` says `"ram"` (or `"vram"`).
+- **The margin.** A model may take part of a memory, not all of it: **60% of the RAM** (`BENCH_RAM_SHARE`; the system, the terminal, the browser and the rest need the other 40%, and a model that leaves the machine swapping is worse than a smaller one) and **90% of the video memory** (`BENCH_VRAM_SHARE`; the screen and the driver keep some). The budget is `floor(bytes × share)` in whole bytes (`budgetBytes` in the answer) and a model fits when `minMemoryBytes <= budgetBytes`: a model that needs exactly the budget fits, one byte less memory does not.
+- **The order.** The memory the model needs, largest first (more weights is more capable), then the id as plain text, so the order never depends on the order of the catalog. Each entry has its `rank` from 1, its `headroomBytes` (the budget minus what it needs) and a `reason`: `largest-fit` for the first and `fits` for the rest.
+- **Nothing fits.** An empty `models` with `emptyReason: "no-model-fits"`, not an error.
+- **A memory that is not valid** (negative, fractional, `NaN`, infinite, beyond 2^53, not a number, a missing `ramBytes` or `vramBytes`) is `{ ok: false, reason: "invalid-hardware" }`. It never throws.
+
+| RAM, no video memory | Budget (60%) | Best of the catalog  | Models |
+| -------------------- | ------------ | -------------------- | ------ |
+| 4 GiB                | 2.4 GiB      | `qwen2.5-coder:1.5b` | 1      |
+| 8 GiB                | 4.8 GiB      | `phi4-mini:latest`   | 5      |
+| 16 GiB               | 9.6 GiB      | `qwen2.5-coder:14b`  | 10     |
+| 32 GiB               | 19.2 GiB     | `qwen3:14b`          | 11     |
+| **Video memory**     | **Budget**   |                      |        |
+| 6 GiB                | 5.4 GiB      | `phi4-mini:latest`   | 5      |
+| 12 GiB               | 10.8 GiB     | `qwen3:14b`          | 11     |
+| 24 GiB               | 21.6 GiB     | `qwen2.5-coder:32b`  | 13     |
+
+**The install command.** `ollamaPullCommand(id, catalog?)` returns `{ ok: true, command: "ollama pull <id>" }` for an id that is a strict `name:tag` **and** is in the catalog. Any other text is `{ ok: false, reason }`: `bad-id` for a shape that is not a model id (a space, a line break, `;`, `&`, `|`, `$`, a backtick, a quote, `..`, a leading `-`, a text over 64 characters, something that is not a string) and `not-in-catalog` for a well-formed id the catalog does not list. The command is the same text in PowerShell and in bash and is only text: nothing here runs it.
+
+Run the tests with `pnpm exec vitest run packages/model/src/bench-models.test.ts`.
+
 ## The screen
 
 The scoreboard is in the AI section of the settings screen, under the providers (`apps/desktop/src/BenchPanel.tsx`). It reads the saved results through the backend (`loadBenchRuns`, so a file that is not a valid run is left out) when the settings open, and has a "Reload results" button. It only reads results; **running the bench from the screen is not done yet**, and the empty state says so and says where a result is saved.

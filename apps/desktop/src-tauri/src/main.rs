@@ -214,6 +214,7 @@ fn main() {
             bridge::worktree_list,
             bridge::worktree_create,
             bridge::worktree_remove,
+            bridge::ssh_hosts_list,
             bridge::config_load,
             bridge::config_save,
             bridge::config_watch,

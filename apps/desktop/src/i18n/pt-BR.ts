@@ -322,6 +322,7 @@ export const ptBR: Dictionary = {
   "action.worktree.new": "Nova worktree",
   "action.worktree.remove": "Remover worktree",
   "action.live.worktrees": "Novo grupo de worktrees",
+  "action.live.ssh": "Novo grupo de hosts SSH",
   "action.diff.open": "Mostrar o diff do git ao lado deste painel",
   "action.window.move-tab": "Levar a aba para uma janela nova",
   "action.tab.mru-next": "Próxima aba recente",
@@ -617,6 +618,7 @@ export const ptBR: Dictionary = {
 
   // Grupos vivos: grupos cujas entradas vêm da máquina
   "live.worktrees.name": "Worktrees de {folder}",
+  "live.ssh.name": "Hosts SSH",
   "live.error": "Não foi possível atualizar: {reason}",
 
   // A caixa de um espaço

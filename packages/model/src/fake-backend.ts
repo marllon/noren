@@ -91,6 +91,9 @@ const escapeCommandLine = (line: string): string =>
   );
 
 /** The monospaced families a fake computer has unless it is told otherwise: the fallbacks of the terminal. */
+/** The hosts a `FakeBackend` lists as the ones of an `ssh_config`, until `setSshHosts` says others. */
+export const FAKE_SSH_HOSTS: readonly string[] = ["web-1", "db.internal", "build_box"];
+
 export const DEFAULT_MONOSPACE_FONTS: readonly string[] = [
   "Cascadia Mono",
   "Consolas",
@@ -882,6 +885,8 @@ class FakeAi implements AiBackend {
  *   dashed branch, a folder that exists, a branch checked out elsewhere) and makes the new folder a
  *   fake repository on its branch; `removeWorktree` refuses the main worktree, a path that is none
  *   and one marked with `setWorktreeDirty`
+ * - `listSshHosts` answers a fixture of hosts (`FAKE_SSH_HOSTS`), or what `setSshHosts` said (also a
+ *   rejection); it never reads the `~/.ssh/config` of the machine
  * - `scanAgents` answers from the process trees a test describes with `setSessionAgent` (an agent
  *   under the shell of a session); a session that ended, or an agent not in the catalog, is left out
  * - `notify` only records the notification (`notifications`) and `isWindowFocused` answers what
@@ -975,6 +980,9 @@ export class FakeBackend implements Backend {
   /** The linked worktrees made by `createWorktree`, by the root of the main worktree they belong to. */
   readonly #linkedWorktrees = new Map<string, { path: string; branch: string }[]>();
   readonly #dirtyWorktrees = new Set<string>();
+  /** The hosts `listSshHosts` answers: a small fixture, changed with `setSshHosts`. */
+  #sshHosts: string[] = [...FAKE_SSH_HOSTS];
+  #sshHostsError: string | undefined;
   readonly #notifications: FakeNotification[] = [];
   readonly #openedLinks: string[] = [];
   readonly #browserPanes = new Map<string, FakeBrowserPane>();
@@ -1960,6 +1968,18 @@ export class FakeBackend implements Backend {
         locked: false,
       })),
     ];
+  }
+
+  async listSshHosts(): Promise<string[]> {
+    this.#record("listSshHosts");
+    if (this.#sshHostsError !== undefined) throw new Error(this.#sshHostsError);
+    return [...this.#sshHosts];
+  }
+
+  /** Sets the hosts `listSshHosts` answers; `error` makes it reject with that sentence instead. */
+  setSshHosts(hosts: readonly string[], error?: string): void {
+    this.#sshHosts = [...hosts];
+    this.#sshHostsError = error;
   }
 
   /** Makes `removeWorktree` refuse this worktree, as git refuses one with changes; `false` cleans it. */

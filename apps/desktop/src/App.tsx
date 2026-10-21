@@ -1094,6 +1094,19 @@ function Shell({ store }: { store: WorkspaceStore }) {
     void refreshLiveGroups();
     focusTerminal();
   }, [store, showNotice, focusTerminal]);
+  /** Makes a live group of the hosts of the `~/.ssh/config` in the active space and asks its source at once. */
+  const addSshGroup = useCallback(() => {
+    setPaletteOpen(false);
+    setSearchText(null);
+    store.getState().dispatch({
+      type: "group/create",
+      spaceId: activeSpaceOf(store.getState().workspace).id,
+      name: t("live.ssh.name"),
+      live: { source: "ssh" },
+    });
+    void refreshLiveGroups();
+    focusTerminal();
+  }, [store, focusTerminal]);
   /** Closes the dialog of a worktree and gives the keyboard back to the terminal on screen. */
   const closeWorktree = useCallback(() => {
     setWorktreeDialog(null);
@@ -1548,6 +1561,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) addWorktreesGroup();
         return;
       }
+      if (action.command.kind === "live-ssh") {
+        if (!modalOpen.current) addSshGroup();
+        return;
+      }
       if (action.command.kind === "diff-open") {
         if (!modalOpen.current) openDiffBeside();
         return;
@@ -1990,6 +2007,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
       return;
     } else if (entry.action.command.kind === "live-worktrees") {
       addWorktreesGroup();
+      return;
+    } else if (entry.action.command.kind === "live-ssh") {
+      addSshGroup();
       return;
     } else if (entry.action.command.kind === "quick-toggle") {
       // The quick window takes the keyboard itself; the palette closes first so it does not hand

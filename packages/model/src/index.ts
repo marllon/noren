@@ -340,6 +340,8 @@ export {
   liveSourcesOf,
   planOpenLiveEntry,
   sameLiveSource,
+  sshEntry,
+  sshSource,
   worktreeEntry,
   worktreesSource,
 } from "./live-groups";
@@ -501,7 +503,12 @@ export type {
 } from "./git-diff";
 export { findOutputPaths, resolveOutputPath } from "./output-paths";
 export type { OutputPathMatch, OutputPathProblem, ResolvedOutputPath } from "./output-paths";
-export { DEFAULT_AI_REPLY, FAKE_LINK_MAX_ATTEMPTS, FakeBackend } from "./fake-backend";
+export {
+  DEFAULT_AI_REPLY,
+  FAKE_LINK_MAX_ATTEMPTS,
+  FAKE_SSH_HOSTS,
+  FakeBackend,
+} from "./fake-backend";
 export type {
   FakeAiMethod,
   FakeBackendOptions,

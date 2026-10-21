@@ -165,9 +165,44 @@ export function worktreesSource(
   return async (live) => (await backend.listWorktrees(live.folder)).map(worktreeEntry);
 }
 
-/** The sources the app has: today, the worktrees. */
-export function liveSourcesOf(backend: Pick<Backend, "listWorktrees">): LiveSources {
-  return { worktrees: worktreesSource(backend) };
+// ---------------------------------------------------------------------------------------------
+// The source of SSH hosts (NOR-F17-04c).
+
+/**
+ * What a host name may be to be typed into a shell as `ssh <host>`: letters, digits, `.`, `-` and `_`,
+ * not starting with `-` (it would be read as an option). The same rule the core applies when it reads
+ * the `~/.ssh/config`; checked again here because the command goes to a shell.
+ */
+const SSH_HOST_NAME = /^[A-Za-z0-9._][A-Za-z0-9._-]*$/;
+
+/**
+ * The entry of an SSH host: named and labelled by the host, opening a shell in the folder of the
+ * space (blank `cwd`) that types `ssh <host>`. `undefined` for a name that is not safe to type.
+ */
+export function sshEntry(host: string): LiveEntry | undefined {
+  if (host.length > 255 || !SSH_HOST_NAME.test(host)) return undefined;
+  return { key: host, label: host, cwd: "", command: `ssh ${host}` };
+}
+
+/** The hosts of the `~/.ssh/config`, as `Backend.listSshHosts` lists them. */
+export function sshSource(
+  backend: Pick<Backend, "listSshHosts">,
+): LiveSourceQuery<Extract<LiveSource, { source: "ssh" }>> {
+  return async () => {
+    const entries: LiveEntry[] = [];
+    for (const host of await backend.listSshHosts()) {
+      const entry = sshEntry(host);
+      if (entry !== undefined) entries.push(entry);
+    }
+    return entries;
+  };
+}
+
+/** The sources the app has: the worktrees and the SSH hosts. */
+export function liveSourcesOf(
+  backend: Pick<Backend, "listWorktrees" | "listSshHosts">,
+): LiveSources {
+  return { worktrees: worktreesSource(backend), ssh: sshSource(backend) };
 }
 
 // ---------------------------------------------------------------------------------------------

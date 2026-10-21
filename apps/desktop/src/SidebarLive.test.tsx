@@ -193,8 +193,9 @@ function renderTree(rig: Rig, onLiveEntryClick?: (groupId: Id, key: string) => v
 }
 
 function startWith(rig: Rig, worktrees: { current: Worktree[] }, manual = new ManualClock()) {
-  const backend: Pick<Backend, "listWorktrees"> = {
+  const backend: Pick<Backend, "listWorktrees" | "listSshHosts"> = {
     listWorktrees: () => Promise.resolve(worktrees.current),
+    listSshHosts: () => Promise.resolve([]),
   };
   return { manual, updater: startLiveGroups({ store: rig.store, backend, clock: manual }) };
 }
@@ -238,7 +239,8 @@ describe("the sidebar with live groups", () => {
   it("shows the error of the source discreetly and keeps the entries it had", async () => {
     const rig = await openRig();
     let failing = false;
-    const backend: Pick<Backend, "listWorktrees"> = {
+    const backend: Pick<Backend, "listWorktrees" | "listSshHosts"> = {
+      listSshHosts: () => Promise.resolve([]),
       listWorktrees: () =>
         failing
           ? Promise.reject(new Error("git is gone"))

@@ -34,6 +34,7 @@
     "allow-worktree-list",
     "allow-worktree-create",
     "allow-worktree-remove",
+    "allow-ssh-hosts-list",
     "allow-config-load",
     "allow-config-save",
     "allow-config-watch",

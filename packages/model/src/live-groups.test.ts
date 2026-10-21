@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ManualClock } from "./clock";
 import { createDefaultWorkspace } from "./default-workspace";
-import { FakeBackend } from "./fake-backend";
+import { FAKE_SSH_HOSTS, FakeBackend } from "./fake-backend";
 import { checkInvariants } from "./invariants";
 import {
   LIVE_REFRESH_INTERVAL_MS,
@@ -12,6 +12,9 @@ import {
   liveSourceProblem,
   planOpenLiveEntry,
   worktreeEntry,
+  liveSourcesOf,
+  sshEntry,
+  sshSource,
   worktreesSource,
 } from "./live-groups";
 import type { LiveEntry, LiveSources } from "./live-groups";
@@ -554,5 +557,82 @@ describe("the worktrees source", () => {
       worktreeEntry({ ...base, branch: null, head: "abcdef123456", detached: true }).label,
     ).toBe("detached abcdef1");
     expect(worktreeEntry({ ...base, branch: null, head: null, detached: true }).label).toBe("x");
+  });
+});
+
+describe("the ssh source", () => {
+  const SSH: LiveSource = { source: "ssh" };
+
+  it("makes one entry per host that types ssh <host> in the folder of the space", async () => {
+    const fake = new FakeBackend();
+    fake.setSshHosts(["web-1", "db.internal"]);
+    const list = await sshSource(fake)(SSH);
+    expect(list).toEqual([
+      { key: "web-1", label: "web-1", cwd: "", command: "ssh web-1" },
+      { key: "db.internal", label: "db.internal", cwd: "", command: "ssh db.internal" },
+    ]);
+    expect(fake.callsTo("listSshHosts")).toHaveLength(1);
+  });
+
+  it("lists the fixture hosts of the fake backend until a test says others", async () => {
+    const fake = new FakeBackend();
+    expect((await sshSource(fake)(SSH)).map((e) => e.label)).toEqual(FAKE_SSH_HOSTS);
+    fake.setSshHosts([]);
+    expect(await sshSource(fake)(SSH)).toEqual([]);
+  });
+
+  it("leaves out a name that is not safe to type, even if the backend hands it over", async () => {
+    const fake = new FakeBackend();
+    fake.setSshHosts(["ok", "a;rm -rf x", "web *", "$(id)", "-oProxyCommand=x", "-v", "", "q'q"]);
+    expect((await sshSource(fake)(SSH)).map((e) => e.command)).toEqual(["ssh ok"]);
+    expect(sshEntry("a b")).toBeUndefined();
+    expect(sshEntry("host*")).toBeUndefined();
+    expect(sshEntry("-J")).toBeUndefined();
+    expect(sshEntry("a".repeat(256))).toBeUndefined();
+    expect(sshEntry("build_box.local-2")).toMatchObject({ command: "ssh build_box.local-2" });
+  });
+
+  it("asks at the start and at every interval, and follows the hosts", async () => {
+    const fake = new FakeBackend();
+    fake.setSshHosts(["a"]);
+    const { ws, groupId } = withLiveGroup(SSH);
+    const { clock, groups } = updaterOn(() => ws, { ssh: sshSource(fake) });
+    groups.start();
+    await groups.idle();
+    expect(groups.entries(groupId).map((e) => e.label)).toEqual(["a"]);
+    fake.setSshHosts(["a", "b"]);
+    clock.advance(LIVE_REFRESH_INTERVAL_MS);
+    await groups.idle();
+    expect(groups.entries(groupId).map((e) => e.command)).toEqual(["ssh a", "ssh b"]);
+    groups.stop();
+  });
+
+  it("keeps the last list and reports the error when the config cannot be read", async () => {
+    const fake = new FakeBackend();
+    fake.setSshHosts(["a", "b"]);
+    const { ws, groupId } = withLiveGroup(SSH);
+    const { clock, groups } = updaterOn(() => ws, { ssh: sshSource(fake) });
+    groups.start();
+    await groups.idle();
+    expect(groups.entries(groupId)).toHaveLength(2);
+
+    fake.setSshHosts([], "could not read config: access denied");
+    clock.advance(LIVE_REFRESH_INTERVAL_MS);
+    await groups.idle();
+    expect(groups.entries(groupId).map((e) => e.label)).toEqual(["a", "b"]);
+    expect(groups.error(groupId)).toBe("could not read config: access denied");
+
+    fake.setSshHosts(["c"]);
+    clock.advance(LIVE_REFRESH_INTERVAL_MS);
+    await groups.idle();
+    expect(groups.entries(groupId).map((e) => e.label)).toEqual(["c"]);
+    expect(groups.error(groupId)).toBeUndefined();
+    groups.stop();
+  });
+
+  it("is one of the sources the app has", async () => {
+    const fake = new FakeBackend();
+    const sources = liveSourcesOf(fake);
+    expect(Object.keys(sources).sort()).toEqual(["ssh", "worktrees"]);
   });
 });

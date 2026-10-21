@@ -34,6 +34,7 @@ const COMMANDS: &[&str] = &[
     "worktree_list",
     "worktree_create",
     "worktree_remove",
+    "ssh_hosts_list",
     "config_load",
     "config_save",
     "config_watch",

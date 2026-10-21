@@ -403,6 +403,13 @@ export interface Backend {
    */
   removeWorktree(cwd: string, path: string): Promise<void>;
   /**
+   * The hosts the `Host` lines of the `~/.ssh/config` of the user name, in order, each once. A name
+   * with a wildcard or with anything that is not safe to type as `ssh <host>` is left out;
+   * `Include` and `Match` are not followed. No file is an empty list. Rejects with a sentence when
+   * the file cannot be read.
+   */
+  listSshHosts(): Promise<string[]>;
+  /**
    * Which CLI agent runs under the shell of each of the sessions, from the process tree of the
    * machine: an entry of `catalog` whose executable (or, behind a runner such as `node` or
    * `npx`, whose package) is a descendant process of the shell. One answer per session that has

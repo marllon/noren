@@ -40,6 +40,7 @@ export type ActionCommand =
   | { kind: "worktree-new" }
   | { kind: "worktree-remove" }
   | { kind: "live-worktrees" }
+  | { kind: "live-ssh" }
   | { kind: "diff-open" }
   | { kind: "window-move-tab" }
   | { kind: "quick-toggle" }
@@ -280,6 +281,15 @@ export const ACTIONS: readonly ActionDef[] = [
     title: "New group of worktrees",
     category: "General",
     command: { kind: "live-worktrees" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
+  },
+  {
+    // A live group of the hosts of the ~/.ssh/config (NOR-F17-04c); no chord, the palette is the way in.
+    id: "live.ssh",
+    title: "New group of SSH hosts",
+    category: "General",
+    command: { kind: "live-ssh" },
     repeat: false,
     chords: { safe: undefined, browser: undefined },
   },

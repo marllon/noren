@@ -613,6 +613,13 @@ export class TauriBackend implements Backend {
     await this.#bridge.invoke("worktree_remove", { cwd, path });
   }
 
+  async listSshHosts(): Promise<string[]> {
+    const hosts = await this.#bridge.invoke<unknown>("ssh_hosts_list");
+    return Array.isArray(hosts)
+      ? hosts.filter((host): host is string => typeof host === "string")
+      : [];
+  }
+
   async scanAgents(
     sessionIds: readonly SessionId[],
     catalog: readonly AgentEntry[],

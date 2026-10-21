@@ -149,6 +149,20 @@ describe("the live group command", () => {
   });
 });
 
+describe("the live group of SSH hosts command", () => {
+  it("lists New group of SSH hosts as an action with no chord, in both languages", async () => {
+    const { entries } = await sources();
+    expect(action(entries, "New group of SSH hosts")).toMatchObject({
+      detail: "General",
+      action: { id: "live.ssh", command: { kind: "live-ssh" } },
+    });
+    expect(action(entries, "New group of SSH hosts")?.chord).toBeUndefined();
+    expect(searchEntries(entries, ">ssh hosts").map((entry) => entry.title)).toContain(
+      "New group of SSH hosts",
+    );
+  });
+});
+
 const order = (kind: PaletteEntry["kind"]) => ["tab", "space", "action"].indexOf(kind);
 
 describe("parseQuery", () => {

@@ -19,6 +19,7 @@ pub mod profiles;
 pub mod project;
 pub mod pty;
 pub mod scrollback;
+pub mod ssh_config;
 pub mod store;
 pub mod themes;
 pub mod vault;
@@ -71,6 +72,10 @@ pub use project::{ACTIONS_FILE_PATH, ShortRunError, read_project_file, run_short
 pub use pty::{ExitInfo, PtyError, SessionEvent, SessionId, SessionManager, SpawnSpec};
 pub use scrollback::{
     MAX_SCROLLBACK_BYTES, SCROLLBACK_DIR_NAME, ScrollbackError, ScrollbackStore, is_valid_pane_id,
+};
+pub use ssh_config::{
+    MAX_SSH_CONFIG_BYTES, MAX_SSH_HOST_CHARS, is_safe_host_name, parse_ssh_hosts, read_ssh_hosts,
+    read_ssh_hosts_from, ssh_config_path,
 };
 pub use store::{StateStore, StoreError};
 pub use themes::{THEMES_DIR_NAME, ThemeError, ThemeStore, is_valid_theme_id};

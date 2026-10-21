@@ -643,6 +643,22 @@ describe("TauriBackend", () => {
     ]);
   });
 
+  it("lists the SSH hosts through ssh_hosts_list and keeps only the names", async () => {
+    const fake = fakeBridge({ ssh_hosts_list: ["web-1", 7, "db", null] });
+    const backend = new TauriBackend(fake.bridge);
+    await expect(backend.listSshHosts()).resolves.toEqual(["web-1", "db"]);
+    expect(fake.invocations).toEqual([{ command: "ssh_hosts_list", args: undefined }]);
+
+    const none = new TauriBackend(fakeBridge({ ssh_hosts_list: null }).bridge);
+    await expect(none.listSshHosts()).resolves.toEqual([]);
+
+    const broken = fakeBridge();
+    broken.failing.add("ssh_hosts_list");
+    await expect(new TauriBackend(broken.bridge).listSshHosts()).rejects.toThrow(
+      "ssh_hosts_list failed",
+    );
+  });
+
   it("lists, creates and removes worktrees through the worktree commands", async () => {
     const main = {
       path: "D:\\work\\repo",

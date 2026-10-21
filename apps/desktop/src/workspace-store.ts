@@ -7,6 +7,7 @@ import {
   layoutPanes,
   liveSessionIds,
   mainWindowSpaces,
+  planOpenLiveEntry,
   reduce,
   spaceSessionEnv,
   treeGroups,
@@ -20,6 +21,7 @@ import type {
   Id,
   Item,
   LayoutNode,
+  LiveEntry,
   NewTabRouting,
   SystemNotificationEvent,
   Pane,
@@ -128,6 +130,13 @@ export interface WorkspaceState {
    * becomes the active one before the others go.
    */
   closeOthers(keepIds: readonly Id[]): void;
+  /**
+   * Opens an entry of a live group (NOR-F17-04a): shows the tab of the group that already stands for
+   * the entry (`Item.liveKey`), or makes one in the group with the folder of the entry and hands its
+   * command to `onStartCommand` when the shell starts. It never goes through the routing rules.
+   * A group that is gone or not live, and a key with no tab and no entry, change nothing.
+   */
+  openLiveEntry(groupId: Id, key: string): void;
   /** Records the session the view started for a pane. Not saved: sessions die with the process. */
   attachSession(paneId: Id, sessionId: Id): void;
   /**
@@ -185,6 +194,13 @@ export interface WorkspaceStoreOptions {
    * the active space.
    */
   routing?: () => NewTabRouting | undefined;
+  /** The entries a live group lists now (`LiveGroups.entries`); without it, none. */
+  liveEntries?: (groupId: Id) => readonly LiveEntry[];
+  /**
+   * The command of a live entry, for the shell of the tab `openLiveEntry` made: called once, when
+   * the view has started the session of the pane. The app types it when the shell is ready.
+   */
+  onStartCommand?: (paneId: Id, sessionId: Id, command: string) => void;
   onError?(error: unknown): void;
 }
 
@@ -314,6 +330,9 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
   const kill = (sessionId: Id) => {
     backend.kill(Number(sessionId)).catch(() => undefined);
   };
+
+  /** The command of each pane `openLiveEntry` made, until its shell starts. Not saved. */
+  const startCommands = new Map<Id, string>();
 
   return createStore<WorkspaceState>()((set, get) => {
     /** Gives the tab the title its pane asks for (the running program, else the folder). */
@@ -506,15 +525,52 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
         }
       },
 
+      openLiveEntry(groupId, key) {
+        const before = get().workspace;
+        const plan = planOpenLiveEntry(before, groupId, key, options.liveEntries?.(groupId) ?? []);
+        if (plan === undefined) return;
+        const { dispatch } = get();
+        if (plan.kind === "focus") {
+          dispatch({ type: "space/set-active-item", spaceId: plan.spaceId, itemId: plan.itemId });
+        } else {
+          const known = new Set(
+            Object.keys(before.spaces.find((s) => s.id === plan.spaceId)?.items ?? {}),
+          );
+          const { entry } = plan;
+          dispatch({
+            type: "item/create",
+            spaceId: plan.spaceId,
+            placement: { to: "tree", groupId },
+            liveKey: key,
+            ...(entry.cwd !== "" ? { cwd: entry.cwd } : {}),
+          });
+          const space = get().workspace.spaces.find((s) => s.id === plan.spaceId);
+          const made = Object.values(space?.items ?? {}).find((item) => !known.has(item.id));
+          if (made !== undefined && entry.command !== undefined) {
+            startCommands.set(made.focusedPaneId, entry.command);
+          }
+        }
+        // The tab is in a space the person is not looking at: show that space.
+        if (plan.spaceId !== get().workspace.activeSpaceId) {
+          dispatch({ type: "space/activate", spaceId: plan.spaceId });
+        }
+      },
+
       attachSession(paneId, sessionId) {
         const { workspace } = get();
         const next = attachToWorkspace(workspace, paneId, sessionId);
         if (next === workspace) {
           // The pane closed while its shell was starting: nobody owns the session.
           kill(sessionId);
+          startCommands.delete(paneId);
           return;
         }
         set({ workspace: next });
+        const command = startCommands.get(paneId);
+        if (command !== undefined) {
+          startCommands.delete(paneId);
+          options.onStartCommand?.(paneId, sessionId, command);
+        }
       },
 
       setPaneLocation(paneId, location) {

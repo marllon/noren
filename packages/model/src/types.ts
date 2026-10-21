@@ -99,7 +99,17 @@ export interface GroupNode {
   color: string;
   collapsed: boolean;
   children: Node[];
+  /**
+   * Present on a live group: where its entries come from (`LiveGroups`, `live-groups.ts`). The
+   * entries are not stored; they are asked again from the source at the start and on an interval.
+   * Absent on an ordinary group, and in a state saved before live groups.
+   */
+  live?: LiveSource;
 }
+
+/** Where a live group gets its entries: the worktrees of a repository, the SSH hosts, the containers. */
+export type LiveSource =
+  { source: "worktrees"; folder: string } | { source: "ssh" } | { source: "docker" };
 
 export type Node = ItemNode | GroupNode;
 
@@ -119,6 +129,12 @@ export interface Item {
   zoomedPaneId?: Id;
   /** Where a pinned item returns to on "reset". */
   origin?: ItemOrigin;
+  /**
+   * The key of the entry of a live group this tab was opened from (`LiveEntry.key`), so opening the
+   * entry again shows this tab instead of making another. Absent on any other tab, and in a state
+   * saved before live groups.
+   */
+  liveKey?: string;
   lastActivityAt: number;
 }
 

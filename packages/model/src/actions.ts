@@ -1,6 +1,6 @@
 import type { Clock } from "./clock";
 import type { IdGenerator } from "./ids";
-import type { Id, Pane, SpaceBackground } from "./types";
+import type { Id, LiveSource, Pane, SpaceBackground } from "./types";
 
 /**
  * Where an item lands in a space. `index` is the final position in the target list (after the item
@@ -146,6 +146,8 @@ export type Action =
        * session was started with, so pass it; the folder, when left out, is the one of the space.
        */
       sessionId?: Id;
+      /** The key of the live entry the tab is opened from (`Item.liveKey`); blank is ignored. */
+      liveKey?: string;
     }
   | { type: "item/close"; itemId: Id }
   /**
@@ -210,6 +212,8 @@ export type Action =
       /** A top-level group to nest in (the second and last level). */
       parentGroupId?: Id;
       index?: number;
+      /** Makes the group live (`GroupNode.live`); an invalid source makes no group. */
+      live?: LiveSource;
     }
   | {
       type: "group/create-from-selection";
@@ -229,6 +233,11 @@ export type Action =
   | { type: "group/set-collapsed"; groupId: Id; collapsed: boolean }
   | { type: "group/rename"; groupId: Id; name: string }
   | { type: "group/set-color"; groupId: Id; color: string }
+  /**
+   * Makes the group live on `live`, or an ordinary group again when `live` is absent. The tabs it
+   * holds stay; an invalid source changes nothing.
+   */
+  | { type: "group/set-live"; groupId: Id; live?: LiveSource }
   // Splits. A pane is named by its item and its own id.
   /**
    * Splits `paneId` in two: `dir` is the axis the panes line up on (`row`: side by side, `column`:

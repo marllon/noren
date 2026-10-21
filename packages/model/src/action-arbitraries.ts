@@ -26,6 +26,25 @@ const arbName = fc.oneof(
   { weight: 1, arbitrary: fc.constantFrom("", "   ") },
 );
 const arbColor = fc.constantFrom("#6b8afd", "#e06c75", "teal", "red");
+/** A live source, now and then one the reducer must refuse (a blank folder). */
+const arbLive = fc.oneof(
+  {
+    weight: 3,
+    arbitrary: fc.record({
+      source: tag("worktrees"),
+      folder: fc.constantFrom("C:/repo", "/srv/app"),
+    }),
+  },
+  {
+    weight: 1,
+    arbitrary: fc.constantFrom({ source: "ssh" as const }, { source: "docker" as const }),
+  },
+  {
+    weight: 1,
+    arbitrary: fc.record({ source: tag("worktrees"), folder: fc.constantFrom("", "  ") }),
+  },
+);
+const arbLiveKey = fc.constantFrom("C:/repo", "/srv/app-feature", "web-1", "");
 const arbIcon = fc.constantFrom("terminal", "rocket", "folder");
 /** A theme id, `null` (back to the global theme) or a blank one now and then. */
 const arbThemeId = fc.oneof(
@@ -359,6 +378,7 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
           placement,
           // Half the time a session a pane holds already, which the reducer must refuse.
           sessionId,
+          liveKey: arbLiveKey,
         },
         { requiredKeys: ["type"] },
       ),
@@ -422,6 +442,7 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
           color: arbColor,
           parentGroupId: groupId,
           index: arbIndex,
+          live: arbLive,
         },
         { requiredKeys: ["type", "name"] },
       ),
@@ -449,6 +470,13 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
     weighted(1, fc.record({ type: tag("group/set-collapsed"), groupId, collapsed: fc.boolean() })),
     weighted(1, fc.record({ type: tag("group/rename"), groupId, name: arbName })),
     weighted(1, fc.record({ type: tag("group/set-color"), groupId, color: arbColor })),
+    weighted(
+      2,
+      fc.record(
+        { type: tag("group/set-live"), groupId, live: arbLive },
+        { requiredKeys: ["type", "groupId"] },
+      ),
+    ),
     // Splits
     weighted(
       7,

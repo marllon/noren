@@ -107,7 +107,11 @@ type Node =
       color: string;
       collapsed: boolean;
       children: Node[];
+      live?: LiveSource; // a live group, see "Live groups"
     }; // groups: up to 2 levels
+
+type LiveSource =
+  { source: "worktrees"; folder: string } | { source: "ssh" } | { source: "docker" };
 
 interface Item {
   id: Id;
@@ -117,6 +121,7 @@ interface Item {
   focusedPaneId: Id;
   zoomedPaneId?: Id;
   origin?: { cwd: string; profileId: string; command?: string }; // to "reset" a pinned item
+  liveKey?: string; // the entry of a live group the tab was opened from
   lastActivityAt: number;
 }
 
@@ -250,6 +255,16 @@ What is not there: a runner is matched only through the packages of the catalog,
 **The interface.** `WorktreeDialogs.tsx`. "New worktree" is a dialog with the branch field; it reads the repository when it opens (outside one it says so and cannot create), shows the folder the worktree would get as the branch is typed, and on Create asks the backend; a refusal stays in the dialog as an alert with the reason. On success the dialog closes and a new tab of the active space opens with the worktree as its folder. "Remove worktree" lists the linked worktrees (the main one is not offered), asks "Remove this worktree?" with the folder under the question (focus on Cancel; Esc cancels) and only then removes; a refusal of git goes back to the list as an alert with its message, and nothing is offered to force it. A tab that was in the folder of a removed worktree stays open where it was.
 
 What is not there: no way to force a removal, to delete the branch, or to list or prune worktrees whose folder is gone; the tests with the real `git` (`crates/noren-core/tests/worktree_real.rs`) run when `git` is installed and skip with a warning when it is not.
+
+## Live groups
+
+A group can be live (`GroupNode.live`, NOR-F17-04a): its entries are not stored, they come from a source on the machine and are asked again as it changes. `live` is saved in `state.json` with the group, and so is `Item.liveKey`, the key of the entry a tab was opened from; both are optional, so a file saved before them is read as it is (`STATE_VERSION` stays 2, no migration). Today the only source with a query is `worktrees` (the worktrees of the repository of `folder`, through `Backend.listWorktrees`); `ssh` and `docker` are in the union for the tasks that bring them. `group/create` takes an optional `live`, `group/set-live` makes a group live or ordinary again, and `item/create` takes an optional `liveKey`; a source that is not valid (a blank folder, an unknown name) makes no group and changes nothing, and `checkInvariants` refuses one in a saved file (`live-source-invalid`, `live-key-invalid`).
+
+**The updater.** `LiveGroups` (`live-groups.ts` in `@noren/model`) gets a clock, the workspace (a function, read at every round) and the sources, and asks each live group of the workspace when it starts and then every `LIVE_REFRESH_INTERVAL_MS` (10 s). It keeps, per group, the last list of entries (`{ key, label, cwd, command? }`; blank and repeated keys are dropped) and tells its subscribers when a list or an error changes; the same answer twice keeps the very same list and tells nobody. A source that fails keeps the last list, records the message (`error(groupId)`) and calls `onError`; a group that is gone, or is no longer live, or is live on something else, is forgotten and no longer asked, and an answer that arrives after that is thrown away. A group is never asked twice at once. The app starts it at boot (`live-groups-service.ts`) on the clock the auto-archive uses.
+
+**Entries are not tabs.** An entry that goes away closes no tab and no session. `openLiveEntry(groupId, key)` of the workspace store shows the tab of the group whose `liveKey` is `key` (also when the entry is no longer listed), or else makes one in the group (`item/create` with `placement { to: "tree", groupId }`, the folder of the entry, `liveKey`), never through the routing rules; `planOpenLiveEntry` is the pure choice. The command of the entry is handed to `onStartCommand` when the view has started the shell of the new tab, and the app types it when the shell is ready, as it does for the resume of an agent.
+
+Not verified here (D19): there is no sidebar for the entries yet (NOR-F17-04b), so nothing was seen in a window; the tests run the updater on a manual clock with fake sources and with the `FakeBackend`.
 
 ## Windows
 

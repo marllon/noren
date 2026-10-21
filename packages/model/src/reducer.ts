@@ -24,6 +24,7 @@ import {
 } from "./layout";
 import { MAX_BACKGROUND_BLUR, backgroundImageProblem } from "./background";
 import { MAX_MODS, isValidModFileName, sameModList } from "./mods";
+import { isLiveSource } from "./live-groups";
 import { layoutPanes, liveSessionIds, withoutSessions } from "./sessions";
 import { isMarked, isPaneVisible, mapPanes, shownItem, visiblePanes, withoutMarks } from "./unread";
 import {
@@ -277,6 +278,21 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       return updateGroupIn(ws, action.groupId, (group) =>
         group.color === color ? undefined : { ...group, color },
       );
+    }
+    case "group/set-live": {
+      if (action.live !== undefined && !isLiveSource(action.live)) return ws;
+      const live = action.live;
+      return updateGroupIn(ws, action.groupId, (group) => {
+        if (live === undefined) {
+          if (group.live === undefined) return undefined;
+          const ordinary: GroupNode = { ...group };
+          delete ordinary.live;
+          return ordinary;
+        }
+        return JSON.stringify(group.live) === JSON.stringify(live)
+          ? undefined
+          : { ...group, live: { ...live } };
+      });
     }
     case "pane/split":
       return splitPane(ws, action, ctx);
@@ -1041,11 +1057,13 @@ function createItem(
   const nextId = idPool(ws, ctx);
   const itemId = nextId();
   const pane = createPane(nextId(), profileId, cwd);
-  const item = createTab(
+  const made = createTab(
     itemId,
     sessionId === undefined ? pane : { ...pane, sessionId },
     ctx.clock.now(),
   );
+  const liveKey = present(action.liveKey);
+  const item = liveKey === undefined ? made : { ...made, liveKey };
   const arriving: Space = { ...space, items: { ...space.items, [itemId]: item } };
   const placed = place(arriving, itemId, action.placement ?? { to: "tree" });
   return placed ? replaceSpace(ws, placed) : ws;
@@ -1177,6 +1195,7 @@ function createGroup(
   const name = clean(action.name);
   const color = action.color === undefined ? space?.color : clean(action.color);
   if (!space || name === undefined || color === undefined) return ws;
+  if (action.live !== undefined && !isLiveSource(action.live)) return ws;
   if (action.parentGroupId !== undefined) {
     // Only a top-level group can hold another one: groups go two levels deep.
     const parent = findGroup(space.tree, action.parentGroupId);
@@ -1189,6 +1208,7 @@ function createGroup(
     color,
     collapsed: false,
     children: [],
+    ...(action.live !== undefined ? { live: { ...action.live } } : {}),
   };
   const tree = editChildren(space.tree, action.parentGroupId, (children) => {
     const index = resolveIndex(action.index, children.length, children.length);

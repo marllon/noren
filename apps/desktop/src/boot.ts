@@ -20,6 +20,7 @@ import { startBackgroundImages } from "./background-image-store";
 import { followWindowClose } from "./close-handler";
 import { aiProvidersSync, configManager } from "./config-store";
 import { loadHome } from "./home";
+import { liveEntriesOf, startLiveGroups } from "./live-groups-service";
 import { realClock } from "./real-clock";
 import { migrateLegacySettings } from "./legacy-settings";
 import type { LegacyStorageArea } from "./legacy-settings";
@@ -149,6 +150,14 @@ export async function bootWorkspace(
     const store = createWorkspaceStore({
       backend: target,
       routing,
+      // The entries of the live groups (NOR-F17-04a), for `openLiveEntry`; the command of an entry is
+      // typed into its new shell when the shell is ready, like the resume of an agent.
+      liveEntries: liveEntriesOf,
+      onStartCommand: (paneId, sessionId, command) => {
+        resumeService.arm(paneId, () => {
+          target.write(Number(sessionId), `${command}\r`).catch(() => undefined);
+        });
+      },
       ...(home !== undefined ? { home } : {}),
       workspace: restored.workspace,
       failedPaneIds: restored.failedPaneIds,
@@ -173,6 +182,9 @@ export async function bootWorkspace(
     // The auto-archive: every minute, a tab nobody uses goes to the archive. Started after the
     // scrollback service, so the output of a tab it puts away is written as it leaves.
     startAutoArchive({ store, clock: archiveClock(target) });
+    // The live groups: the entries of each one are asked from its source now and every ten seconds.
+    // A source that fails keeps the last list; the error is only noted for now.
+    startLiveGroups({ store, backend: target, clock: archiveClock(target) });
     // The agents under the shells of the tabs, from the process tree, on an interval.
     startAgentScanner({ store, backend: target });
     // The windows besides the main one: their pages get the space they show, a window the person

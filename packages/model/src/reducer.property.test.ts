@@ -52,6 +52,7 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "group/set-collapsed": true,
   "group/rename": true,
   "group/set-color": true,
+  "group/set-live": true,
   "pane/split": true,
   "pane/set-url": true,
   "pane/close": true,
@@ -210,6 +211,7 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "group/set-collapsed":
     case "group/rename":
     case "group/set-color":
+    case "group/set-live":
       return !groupIdsOf(ws).has(action.groupId);
     case "pane/split":
     case "pane/set-url":

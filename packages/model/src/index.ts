@@ -330,6 +330,26 @@ export {
   itemInUse,
 } from "./archive";
 export type { ArchiveSettings, IdleCheck, IdleItem } from "./archive";
+export {
+  LIVE_REFRESH_INTERVAL_MS,
+  LiveGroups,
+  findLiveItem,
+  isLiveSource,
+  liveGroupsOf,
+  liveSourceProblem,
+  liveSourcesOf,
+  planOpenLiveEntry,
+  sameLiveSource,
+  worktreeEntry,
+  worktreesSource,
+} from "./live-groups";
+export type {
+  LiveEntry,
+  LiveGroupsOptions,
+  LiveOpen,
+  LiveSourceQuery,
+  LiveSources,
+} from "./live-groups";
 export { ManualClock } from "./clock";
 export type { Clock } from "./clock";
 export { createDefaultWorkspace } from "./default-workspace";

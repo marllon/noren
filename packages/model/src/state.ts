@@ -291,6 +291,13 @@ function checkNode(value: unknown, path: string, depth: number): void {
   str(node["color"], `${path}.color`);
   bool(node["collapsed"], `${path}.collapsed`);
   list(node["children"], `${path}.children`, (v, p) => checkNode(v, p, depth + 1));
+  // A state saved before live groups has none; whether the source is one the app knows is for the
+  // invariants to say.
+  optional(node, "live", path, (v, p) => {
+    const live = obj(v, p);
+    if (typeof live["source"] !== "string") throw new ShapeError(`${p}.source`, "a string");
+    optional(live, "folder", p, str);
+  });
 }
 
 function checkEntry(value: unknown, path: string, timeKey: string): void {
@@ -326,6 +333,7 @@ function checkItem(value: unknown, path: string): void {
   checkLayout(item["layout"], `${path}.layout`, 0);
   str(item["focusedPaneId"], `${path}.focusedPaneId`);
   optional(item, "zoomedPaneId", path, str);
+  optional(item, "liveKey", path, str);
   optional(item, "origin", path, (v, p) => {
     const origin = obj(v, p);
     str(origin["cwd"], `${p}.cwd`);

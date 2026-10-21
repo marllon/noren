@@ -1,5 +1,6 @@
 import { browserUrlProblem } from "./browser";
 import { previewPathProblem } from "./file-preview";
+import { liveSourceProblem } from "./live-groups";
 import { isWindowId } from "./windows";
 import {
   DEFAULT_MAX_PANES,
@@ -43,6 +44,8 @@ export type ViolationCode =
   | "item-duplicated"
   | "dangling-reference"
   | "group-too-deep"
+  | "live-source-invalid"
+  | "live-key-invalid"
   | "split-too-few-children"
   | "split-too-many-panes"
   | "split-sizes-length"
@@ -221,6 +224,9 @@ function run(ws: Workspace, maxPanes: number, out: Violation[]): void {
     if (item.zoomedPaneId !== undefined && !panes.includes(item.zoomedPaneId)) {
       add("zoomed-pane-missing", path, `zoomed pane ${item.zoomedPaneId} is not in the item`);
     }
+    if (item.liveKey !== undefined && (typeof item.liveKey !== "string" || item.liveKey === "")) {
+      add("live-key-invalid", path, `item ${item.id} has a blank key of a live entry`);
+    }
   };
 
   ws.spaces.forEach((space, spaceIndex) => {
@@ -272,6 +278,16 @@ function run(ws: Workspace, maxPanes: number, out: Violation[]): void {
             nodePath,
             `group ${node.id} is at depth ${depth}, max ${MAX_GROUP_DEPTH}`,
           );
+        }
+        if (node.live !== undefined) {
+          const problem = liveSourceProblem(node.live);
+          if (problem !== undefined) {
+            add(
+              "live-source-invalid",
+              nodePath,
+              `group ${node.id} is live on nothing usable: ${problem}`,
+            );
+          }
         }
         walkTree(node.children, `${nodePath}.children`, depth + 1);
       });

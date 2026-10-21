@@ -6,6 +6,7 @@ import { useT } from "./i18n";
 import { windowPreviewEvents } from "./quick";
 import type { TerminalHandle } from "./TerminalView";
 import { WindowApp } from "./WindowApp";
+import { WINDOW_BROWSER_EVENT, WINDOW_BROWSER_RESULT_EVENT } from "./window-browser";
 import { windowPreviewHost } from "./window-preview-host";
 import { WINDOW_ACTION_EVENT, WINDOW_READ_EVENT, WINDOW_READ_RESULT_EVENT } from "./window-sync";
 
@@ -30,6 +31,14 @@ export interface WindowPreviewHook {
   read(windowId: string, body: unknown): void;
   /** What the main window answered to reads so far (`window-read-result`), oldest first. */
   replies(): unknown[];
+  /**
+   * Sends the main window a `window-browser` as the page of `windowId` would, with the fields of
+   * `body` (`request`, `op`, `itemId`, `paneId`, `url`, `bounds`) as given: the tests send what a
+   * page that is wrong, or not ours, could send, to see it ignored.
+   */
+  browse(windowId: string, body: unknown): void;
+  /** What the main window answered to calls about web views so far (`window-browser-result`), oldest first. */
+  browserReplies(): unknown[];
 }
 
 declare global {
@@ -38,16 +47,28 @@ declare global {
   }
 }
 
+/** The calls about the web view of a browser pane, which no window page can make (the main window makes them for it). */
+const WEB_VIEW_CALLS: ReadonlySet<string | symbol> = new Set([
+  "openBrowserPane",
+  "navigateBrowserPane",
+  "setBrowserPaneBounds",
+  "closeBrowserPane",
+]);
+
 /**
  * The backend a window page gets in the preview. It is the app's own, but a real window page can
- * read no file and run no git (its capability has no such command), so these two refuse here too:
- * a preview or diff pane in a panel can only show what the main window read and sent.
+ * read no file, run no git and open no web view (its capability has no such command), so these
+ * refuse here too: a preview or diff pane in a panel can only show what the main window read and
+ * sent, and a browser pane only gets a web view if the main window opens one for it.
  */
 function windowPageBackend(real: Backend): Backend {
   return new Proxy(real, {
     get(target, property) {
       if (property === "readFilePreview" || property === "readGitDiff") {
         return () => Promise.reject(new Error("a window page cannot read files or run git"));
+      }
+      if (WEB_VIEW_CALLS.has(property)) {
+        return () => Promise.reject(new Error("a window page cannot open a web view"));
       }
       const value: unknown = Reflect.get(target, property, target);
       return typeof value === "function"
@@ -73,6 +94,7 @@ export function WindowPreview() {
   const open = useRef<string[]>([]);
   open.current = windows.map((w) => w.id);
   const replies = useRef<unknown[]>([]);
+  const browserReplies = useRef<unknown[]>([]);
   // The handle of a terminal in a window that closed is not kept.
   useEffect(() => {
     for (const key of [...terminals.current.keys()]) {
@@ -102,13 +124,24 @@ export function WindowPreview() {
         windowPreviewEvents.emit(WINDOW_READ_EVENT, { windowId, ...fields }).catch(() => undefined);
       },
       replies: () => [...replies.current],
+      browse: (windowId, body) => {
+        const fields = typeof body === "object" && body !== null ? body : {};
+        windowPreviewEvents
+          .emit(WINDOW_BROWSER_EVENT, { windowId, ...fields })
+          .catch(() => undefined);
+      },
+      browserReplies: () => [...browserReplies.current],
     };
     const stop = windowPreviewEvents.listen(WINDOW_READ_RESULT_EVENT, (payload) => {
       replies.current.push(payload);
     });
+    const stopBrowser = windowPreviewEvents.listen(WINDOW_BROWSER_RESULT_EVENT, (payload) => {
+      browserReplies.current.push(payload);
+    });
     return () => {
       delete window.__norenWindows;
       void stop.then((unlisten) => unlisten());
+      void stopBrowser.then((unlisten) => unlisten());
     };
   }, []);
 

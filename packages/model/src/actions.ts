@@ -110,8 +110,8 @@ export type Action =
    * out; it keeps the colors and start folder of the space the tab comes from), a window that
    * shows it and moves the tab in, as the tab that window shows, all in one step. The window
    * remembers where the tab came from (`AppWindow.returnSpaceId`). Nothing changes for a tab that
-   * does not exist or has a browser pane (`windowCanShowTab`), or when the workspace
-   * has `MAX_EXTRA_WINDOWS` windows besides the main one.
+   * does not exist or has a pane no window can draw (`windowCanShowTab`; every kind there is
+   * today can be drawn), or when the workspace has `MAX_EXTRA_WINDOWS` windows besides the main one.
    */
   | { type: "window/open-with-item"; itemId: Id; name?: string }
   /**

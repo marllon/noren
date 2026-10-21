@@ -23,6 +23,7 @@ import type {
   Backend,
   BackgroundImageFile,
   BrowserBounds,
+  BrowserOpenOptions,
   CreateSessionOptions,
   FilePreview,
   GitDiff,
@@ -551,8 +552,19 @@ export class TauriBackend implements Backend {
     await this.#bridge.invoke("link_open", { url });
   }
 
-  async openBrowserPane(paneId: Id, url: string, bounds: BrowserBounds): Promise<void> {
-    await this.#bridge.invoke("browser_open", { paneId, url, bounds });
+  async openBrowserPane(
+    paneId: Id,
+    url: string,
+    bounds: BrowserBounds,
+    options?: BrowserOpenOptions,
+  ): Promise<void> {
+    const windowId = options?.windowId;
+    await this.#bridge.invoke("browser_open", {
+      paneId,
+      url,
+      bounds,
+      ...(windowId !== undefined ? { windowId } : {}),
+    });
   }
 
   async navigateBrowserPane(paneId: Id, url: string): Promise<void> {

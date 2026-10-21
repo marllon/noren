@@ -3,6 +3,7 @@ import type { Action, Backend, Id, Item, Pane, Space } from "@noren/model";
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { createBackend } from "./backend";
+import { BrowserPane } from "./BrowserPane";
 import { ContextMenu } from "./ContextMenu";
 import { DiffPane } from "./DiffPane";
 import { useT } from "./i18n";
@@ -18,6 +19,8 @@ import { TerminalView } from "./TerminalView";
 import type { TerminalHandle } from "./TerminalView";
 import { applyTheme, terminalTheme, themeForScheme } from "./theme";
 import { TreeDnd } from "./TreeDnd";
+import { createWindowBrowsers } from "./window-browser";
+import type { WindowBrowsers } from "./window-browser";
 import { WINDOW_READY_EVENT, followTakes } from "./window-events";
 import {
   WINDOW_ACTION_EVENT,
@@ -81,6 +84,8 @@ interface WindowItemProps {
   colors: ReturnType<typeof terminalTheme>;
   /** Where the preview and diff panes of the tab get their files and diffs from: the main window. */
   reads: WindowReads;
+  /** Who opens, moves and closes the web views of the browser panes of the tab: the main window. */
+  browsers: WindowBrowsers;
   ask(action: WindowAction): void;
   onTerminal?(paneId: Id, handle: TerminalHandle): void;
 }
@@ -96,6 +101,7 @@ function WindowItem({
   taken,
   colors,
   reads,
+  browsers,
   ask,
   onTerminal,
 }: WindowItemProps) {
@@ -123,8 +129,23 @@ function WindowItem({
           />
         );
       }
-      // The web view of a browser pane stays a child of the main window until a window can be its
-      // parent (NOR-F15-04e): a tab that has one does not come here (`windowCanShowTab`).
+      // A browser pane draws its address bar and the area its web view is laid over. The web view
+      // is a native child of this window, opened by the main window with the bounds this page
+      // measures (the page of a window can call no command about a web view), and an address
+      // typed in the bar is an action the main window checks and carries out.
+      if (pane.type === "browser") {
+        return (
+          <BrowserPane
+            key={pane.id}
+            backend={browsers.forPane(item.id, pane.id)}
+            pane={pane}
+            visible={shown && (item.zoomedPaneId === undefined || item.zoomedPaneId === pane.id)}
+            onNavigate={(url) =>
+              ask({ type: "pane/set-url", itemId: item.id, paneId: pane.id, url })
+            }
+          />
+        );
+      }
       if (pane.type !== "terminal") {
         return (
           <p className="window-waiting" data-nr-part="window-pane-elsewhere">
@@ -194,7 +215,10 @@ function moveRequestOf(action: Action): WindowAction | undefined {
  * once its session is taken. A preview or diff pane in a tab here shows what the main window read
  * for it: the page asks (`window-read`, see `window-sync.ts`) and the main window checks the pane
  * is one of this window's and answers, since the capability of this page has no command to read a
- * file or run git. The browser pane is the next task (NOR-F15-04e).
+ * file or run git. A browser pane draws its address bar here and the area the web view is laid over;
+ * the web view is a child of this window that the main window opens, moves and closes for it
+ * (`window-browser`), with the bounds this page measures, and an address typed in the bar is a
+ * `pane/set-url` the main window checks and carries out.
  */
 export function WindowApp({
   windowId,
@@ -276,6 +300,9 @@ export function WindowApp({
   // The files and diffs of the preview and diff panes come from the main window.
   const reads = useMemo(() => createWindowReads(bus, windowId), [bus, windowId]);
   useEffect(() => () => reads.stop(), [reads]);
+  // The web views of the browser panes are opened and kept by the main window, for this one.
+  const browsers = useMemo(() => createWindowBrowsers(bus, windowId), [bus, windowId]);
+  useEffect(() => () => browsers.stop(), [browsers]);
 
   const tabs = space === undefined ? [] : tabsOf(space);
   const shownId = space === undefined ? undefined : shownTabOf(space);
@@ -363,6 +390,7 @@ export function WindowApp({
                 taken={taken}
                 colors={colors}
                 reads={reads}
+                browsers={browsers}
                 ask={ask}
                 {...(onTerminal !== undefined ? { onTerminal } : {})}
               />

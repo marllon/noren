@@ -328,7 +328,9 @@ test("a page that cannot show a window gives the tabs of the saved windows back 
   await expect.poll(async () => (await saved(page)).windows).toBeUndefined();
 });
 
-test("a tab with a browser pane stays in the main window and says why", async ({ page }) => {
+test("a tab with a browser pane goes to a window like any other, by dragging and by the palette", async ({
+  page,
+}) => {
   await page.addInitScript(
     ({ key }) => {
       if (window.localStorage.getItem(key) !== null) return;
@@ -402,21 +404,23 @@ test("a tab with a browser pane stays in the main window and says why", async ({
   await page.goto("/?window-preview");
   await expect(row(page, "with web")).toBeVisible();
   await dragOut(page, "with web");
-  await expect(notice(page)).toHaveText("A tab with a browser pane stays in the main window.");
-  await expect(panels(page)).toHaveCount(0);
-  await expect(row(page, "with web")).toBeVisible();
-  expect((await saved(page)).windows).toBeUndefined();
+  await expect(panels(page)).toHaveCount(1);
+  await expect(row(page, "with web")).toHaveCount(0);
+  await expect(notice(page)).toHaveText("");
+  await expect(windowRow(panels(page).first(), "with web")).toBeVisible();
+  await expect(panels(page).first().locator('[data-nr-part="browser-pane"]')).toBeVisible();
+  await expect.poll(async () => (await saved(page)).windows?.length).toBe(1);
 
-  // The palette command says the same, for the tab on screen: the click that shows it must not be
+  // The palette command does the same, for the tab on screen: the click that shows it must not be
   // one the drag library swallows right after a drop.
   await clicksReachThePage(page);
-  await row(page, "with web").click();
-  await expect(row(page, "with web")).toHaveAttribute("aria-current", "true");
+  await row(page, "plain").click();
+  await expect(row(page, "plain")).toHaveAttribute("aria-current", "true");
   await page.keyboard.press("Control+Shift+P");
   await page.keyboard.type("Move tab to new");
   await page.keyboard.press("Enter");
-  await expect(notice(page)).toHaveText("A tab with a browser pane stays in the main window.");
-  await expect(panels(page)).toHaveCount(0);
+  await expect(panels(page)).toHaveCount(2);
+  await expect(notice(page)).toHaveText("");
 });
 
 test("in a browser without a second window, dragging out does nothing and the palette says why", async ({

@@ -281,6 +281,20 @@ describe("TauriBackend", () => {
     );
   });
 
+  it("opens the web view of a pane as a child of a window with the windowId argument, and of main without it (NOR-F15-04e)", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    const bounds = { x: 4, y: 5, width: 300, height: 200 };
+    await backend.openBrowserPane("p1", "https://example.com/", bounds, { windowId: "w1" });
+    await backend.openBrowserPane("p2", "https://example.org/", bounds, {});
+    await backend.openBrowserPane("p3", "https://example.net/", bounds);
+    expect(fake.callsTo("browser_open").map((c) => c.args)).toEqual([
+      { paneId: "p1", url: "https://example.com/", bounds, windowId: "w1" },
+      { paneId: "p2", url: "https://example.org/", bounds },
+      { paneId: "p3", url: "https://example.net/", bounds },
+    ]);
+  });
+
   it("opens, closes and moves a tab to a window through window_open, window_close and window_move_tab", async () => {
     const fake = fakeBridge();
     const backend = new TauriBackend(fake.bridge);

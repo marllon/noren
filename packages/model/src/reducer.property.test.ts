@@ -9,7 +9,7 @@ import { layoutPanes, liveSessionIds } from "./sessions";
 import { shownItem, visiblePanes } from "./unread";
 import { deepFreeze, testContext } from "./test-helpers";
 import { treeGroups } from "./tree";
-import { DEFAULT_MAX_PANES, type Id, type Item, type Workspace } from "./types";
+import { DEFAULT_MAX_PANES, MAX_EXTRA_WINDOWS, type Id, type Item, type Workspace } from "./types";
 
 /** One key per action type: the compiler fails here when a new action is not listed. */
 const ACTION_TYPES: Record<ActionType, true> = {
@@ -103,9 +103,15 @@ const itemIdsOf = (ws: Workspace): Set<Id> =>
   new Set(ws.spaces.flatMap((space) => Object.keys(space.items)));
 const itemOf = (ws: Workspace, itemId: Id): Item | undefined =>
   ws.spaces.flatMap((space) => Object.values(space.items)).find((item) => item.id === itemId);
-/** Whether a pane of the tab is a browser pane: the one thing a window cannot show yet. */
-const hasBrowserPane = (item: Item): boolean =>
-  layoutPanes(item.layout).some((pane) => pane.type === "browser");
+/**
+ * The panes of the tab as the page of a window would draw them: their ids, kinds and the one thing
+ * each kind shows (the address, the file, the folder). A tab that goes to a window, and one that
+ * comes back, must keep exactly these.
+ */
+const drawnPanesOf = (item: Item): string =>
+  JSON.stringify(
+    layoutPanes(item.layout).map((pane) => [pane.id, pane.type, pane.url, pane.path, pane.cwd]),
+  );
 /** Ids of every pane of every live item (closed and archived ones do not count). */
 const paneIdsOf = (ws: Workspace): Id[] =>
   ws.spaces
@@ -383,6 +389,35 @@ function checkNothingUnreadOnScreen(ws: Workspace, where: () => string): void {
 }
 
 /**
+ * A tab is not refused a window for the kind of pane it holds (a window draws every kind). When the
+ * tab exists, the window exists (or can be made: fewer than the most windows) and the tab is not in
+ * the space of the window already, taking it there with no wish about the place must change the
+ * workspace, whatever its panes are. This looks at the facts of the workspace, not at
+ * `windowCanShowTab`, so it cannot agree with a wrong answer of that function.
+ */
+function checkNoTabRefusedForItsPanes(ws: Workspace, action: Action, where: () => string): void {
+  if (action.type === "window/open-with-item") {
+    if (itemOf(ws, action.itemId) !== undefined && (ws.windows ?? []).length < MAX_EXTRA_WINDOWS) {
+      throw new Error(
+        `${where()}: a tab that exists was not dragged out although there is room for a window`,
+      );
+    }
+    return;
+  }
+  if (action.type !== "window/move-item" || itemOf(ws, action.itemId) === undefined) return;
+  const window = (ws.windows ?? []).find((w) => w.id === action.windowId);
+  const holder = ws.spaces.find((s) => Object.hasOwn(s.items, action.itemId));
+  if (
+    window !== undefined &&
+    holder !== undefined &&
+    holder.id !== window.spaceId &&
+    action.placement === undefined
+  ) {
+    throw new Error(`${where()}: a tab was not taken into the space of a window`);
+  }
+}
+
+/**
  * What the actions on windows must do: `window/open` adds exactly one window on the space asked,
  * `window/move-item` puts the tab in the space of the window and makes it the one that space
  * shows, `window/close` takes away exactly that window, and the main window never takes the space
@@ -410,14 +445,15 @@ function checkWindows(ws: Workspace, next: Workspace, action: Action, where: () 
     }
   } else if (action.type === "window/move-item") {
     const window = before.find((w) => w.id === action.windowId);
+    const moving = itemOf(ws, action.itemId);
     const space = next.spaces.find((s) => s.id === window?.spaceId);
     const moved = space?.items[action.itemId];
     if (space === undefined || moved === undefined) {
       fail("the tab is not in the space of the window");
     } else if (space.activeItemId !== action.itemId) {
       fail("the tab that arrived is not the one the window shows");
-    } else if (hasBrowserPane(moved)) {
-      fail("a tab with a browser pane went to a window");
+    } else if (moving !== undefined && drawnPanesOf(moved) !== drawnPanesOf(moving)) {
+      fail("the panes of the tab that went to a window are not the panes it had");
     }
   } else if (action.type === "window/open-with-item") {
     const dragged = itemOf(ws, action.itemId);
@@ -434,8 +470,8 @@ function checkWindows(ws: Workspace, next: Workspace, action: Action, where: () 
       fail("the tab dragged out is not alone in the space of the window as the one it shows");
     } else if (dragged === undefined || added[0]?.returnSpaceId === undefined) {
       fail("the window does not remember where the tab came from");
-    } else if (hasBrowserPane(dragged)) {
-      fail("a tab with a browser pane was dragged out to a window");
+    } else if (drawnPanesOf(dragged) !== drawnPanesOf(space.items[action.itemId] ?? dragged)) {
+      fail("the panes of the tab dragged out are not the panes it had");
     } else if (next.spaces.length !== ws.spaces.length + 1) {
       fail("dragging a tab out made other than one space");
     }
@@ -496,6 +532,7 @@ function playSequences(
   let overLimit = 0;
   let previewsSeen = 0;
   let diffsSeen = 0;
+  let browserTabsInWindows = 0;
   const limit = maxPanes ?? DEFAULT_MAX_PANES;
 
   fc.assert(
@@ -582,6 +619,19 @@ function playSequences(
           if (next !== ws) checkActiveItems(ws, next, action, where);
           if (next !== ws) checkNothingUnreadOnScreen(next, where);
           if (next !== ws) checkWindows(ws, next, action, where);
+          if (next === ws) checkNoTabRefusedForItsPanes(ws, action, where);
+          if (
+            next !== ws &&
+            (action.type === "window/move-item" || action.type === "window/open-with-item")
+          ) {
+            const moved = itemOf(ws, action.itemId);
+            if (
+              moved !== undefined &&
+              layoutPanes(moved.layout).some((p) => p.type === "browser")
+            ) {
+              browserTabsInWindows++;
+            }
+          }
 
           generated.set(action.type, (generated.get(action.type) ?? 0) + 1);
           if (next === ws) {
@@ -605,6 +655,10 @@ function playSequences(
   // A run asked to have preview panes must have had them to play with.
   if (kinds.previewPanes === true) expect(previewsSeen).toBeGreaterThan(0);
   if (kinds.diffPanes === true) expect(diffsSeen).toBeGreaterThan(0);
+  // A run with windows and browser panes must have taken a tab with a browser pane to a window.
+  if (kinds.windows === true && kinds.browserPanes === true) {
+    expect(browserTabsInWindows).toBeGreaterThan(0);
+  }
 }
 
 describe("reducer properties", () => {

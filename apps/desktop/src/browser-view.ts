@@ -52,6 +52,42 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+// A pane can have more than one thing talking to the shell about its web view over its life: the
+// view of the main window, the one that the main window keeps for a window while a tab is there,
+// and the cleanup that follows a tab changing windows. Each is in order with itself, but the shell
+// does not run commands in the order they were sent, so a close that was sent first could land
+// after an open that was sent later (the web view of a pane that just moved would be closed under
+// its new parent). One queue per pane and per backend, shared by all of them that talk to that
+// backend, keeps the commands in the order they were asked for. (Per backend: the page of a window
+// talks to the main window, not to the shell, and what it waits for is made in the main window's
+// own queue, so the two must not be one.)
+const queues = new WeakMap<object, Map<Id, Promise<void>>>();
+
+/**
+ * Runs `work` once everything asked before it for the pane `paneId` of `backend` (by any view of
+ * it) has finished, whatever became of that, and resolves with its result. The queue of a pane that
+ * has nothing left to do is dropped.
+ */
+export function exclusive<T>(backend: object, paneId: Id, work: () => Promise<T>): Promise<T> {
+  let panes = queues.get(backend);
+  if (panes === undefined) {
+    panes = new Map();
+    queues.set(backend, panes);
+  }
+  const mine = panes;
+  const before = mine.get(paneId) ?? Promise.resolve();
+  const run = before.then(work);
+  const tail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  mine.set(paneId, tail);
+  void tail.then(() => {
+    if (mine.get(paneId) === tail) mine.delete(paneId);
+  });
+  return run;
+}
+
 export class BrowserPaneView {
   readonly #backend: BrowserViewBackend;
   readonly #paneId: Id;
@@ -103,7 +139,7 @@ export class BrowserPaneView {
         const step = this.#next();
         if (step === undefined) return;
         try {
-          await step();
+          await exclusive(this.#backend, this.#paneId, step);
         } catch (error) {
           this.#refuse(error);
         }

@@ -21,7 +21,10 @@
 // the page of the window also draws the space the main window sends it, its sidebar with its tab and
 // a terminal for the session, and a click on the tab reaches the main window as a request, NOR-F15-04b;
 // so does a click on New tab, and the terminal of the window starts with what the shell printed before
-// the move, which the daemon kept, NOR-F15-04c).
+// the move, which the daemon kept, NOR-F15-04c; a browser pane shown by the window has its web view
+// opened as a child of that hidden window, on a page of the run that reaches nothing of the app and
+// stays put when it tries to go to an address of the app, and the web view goes with the window
+// when the app closes it, NOR-F15-04e).
 // Every run must also print "SMOKE global shortcut none registered": no smoke mode registers the
 // global shortcut of the quick terminal (the run fails if the app holds one), and "SMOKE tray icon
 // none": no smoke mode shows the tray icon of a normal start (NOR-F14-02c).
@@ -219,7 +222,7 @@ runSmoke(
     "SMOKE global shortcut none registered",
     "SMOKE tray icon none",
     "SMOKE second window window-smoke-window-1 created for space smoke-space, hidden, its page is up",
-    "SMOKE second window refused 13 commands",
+    "SMOKE second window refused 16 commands",
     "SMOKE second window stayed on its page",
     "opened as the tab to move",
     "moved to the second window",
@@ -229,6 +232,11 @@ runSmoke(
     "SMOKE second window asked the main window to show its tab (window-action)",
     "SMOKE second window asked the main window for a new tab (window-action)",
     "SMOKE second window hidden",
+    "SMOKE browser pane in window-smoke-window-1 loaded http://127.0.0.1:",
+    "SMOKE browser pane in window-smoke-window-1 is a child of window-smoke-window-1, hidden",
+    "SMOKE browser pane in window-smoke-window-1 stayed on its page",
+    "SMOKE browser pane in window-smoke-window-1 moved to the bounds it was given",
+    "SMOKE browser pane in window-smoke-window-1 went with its window, no web view left",
     "SMOKE second window closed by the app, session",
     "SMOKE a window closed by the person was reported as closed",
     "SMOKE window hidden",

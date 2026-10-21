@@ -169,6 +169,12 @@ fn only_the_main_window_may_call_what_owns_or_changes_the_workspace() {
         "window_open",
         "window_close",
         "window_move_tab",
+        // The web view of a browser pane shown by a window is opened, moved and closed by the main
+        // window, with the bounds the page of that window sends it (NOR-F15-04e).
+        "browser_open",
+        "browser_navigate",
+        "browser_set_bounds",
+        "browser_close",
     ];
     let main = permissions_of(&capability(MAIN_CAPABILITY));
     let quick = permissions_of(&capability(QUICK_CAPABILITY));

@@ -5,6 +5,7 @@ export const MODEL_PACKAGE_NAME = "@noren/model";
 export type {
   AttachSessionOptions,
   Backend,
+  BrowserOpenOptions,
   CreateSessionOptions,
   AgentHit,
   GitInfo,

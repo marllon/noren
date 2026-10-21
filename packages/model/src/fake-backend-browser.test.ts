@@ -117,3 +117,77 @@ describe("FakeBackend web views of browser panes", () => {
     await expect(backend.setBrowserPaneBounds("p9", BOUNDS)).rejects.toThrow("has no web view");
   });
 });
+
+describe("FakeBackend web views that are children of a window (NOR-F15-04e)", () => {
+  it("opens one as a child of a window that is open, and says whose child it is", async () => {
+    const backend = new FakeBackend();
+    await backend.openWindow("w1", "s2");
+    await backend.openBrowserPane("p1", "https://example.com/", BOUNDS, { windowId: "w1" });
+    await backend.openBrowserPane("p2", "https://example.org/", BOUNDS);
+    expect(backend.browserPane("p1")).toEqual({
+      url: "https://example.com/",
+      bounds: BOUNDS,
+      windowId: "w1",
+    });
+    // A child of the main window says nothing of a window.
+    expect(backend.browserPane("p2")).toEqual({ url: "https://example.org/", bounds: BOUNDS });
+    expect(backend.callsTo("openBrowserPane").map((call) => call.args)).toEqual([
+      ["p1", "https://example.com/", BOUNDS, { windowId: "w1" }],
+      ["p2", "https://example.org/", BOUNDS],
+    ]);
+  });
+
+  it("refuses a window that is not open, opening nothing", async () => {
+    const backend = new FakeBackend();
+    await expect(
+      backend.openBrowserPane("p1", "https://example.com/", BOUNDS, { windowId: "w9" }),
+    ).rejects.toThrow("window w9 is not open");
+    await backend.openWindow("w1", "s2");
+    await backend.closeWindow("w1");
+    await expect(
+      backend.openBrowserPane("p1", "https://example.com/", BOUNDS, { windowId: "w1" }),
+    ).rejects.toThrow("window w1 is not open");
+    expect(backend.browserPaneIds()).toEqual([]);
+  });
+
+  it("navigates, moves and closes it by the pane, as any other", async () => {
+    const backend = new FakeBackend();
+    await backend.openWindow("w1", "s2");
+    await backend.openBrowserPane("p1", "https://example.com/", BOUNDS, { windowId: "w1" });
+    await backend.navigateBrowserPane("p1", "https://example.org/docs");
+    await backend.setBrowserPaneBounds("p1", { x: 1, y: 2, width: 3, height: 4 });
+    expect(backend.browserPane("p1")).toEqual({
+      url: "https://example.org/docs",
+      bounds: { x: 1, y: 2, width: 3, height: 4 },
+      windowId: "w1",
+    });
+    await backend.closeBrowserPane("p1");
+    expect(backend.browserPane("p1")).toBeUndefined();
+  });
+
+  it("goes with its window when the app closes it, and when the person does, and the others stay", async () => {
+    const backend = new FakeBackend();
+    await backend.openWindow("w1", "s2");
+    await backend.openWindow("w2", "s3");
+    await backend.openBrowserPane("p1", "https://example.com/", BOUNDS, { windowId: "w1" });
+    await backend.openBrowserPane("p2", "https://example.com/", BOUNDS, { windowId: "w2" });
+    await backend.openBrowserPane("p3", "https://example.com/", BOUNDS);
+    await backend.closeWindow("w1");
+    expect(backend.browserPaneIds()).toEqual(["p2", "p3"]);
+    backend.closeWindowByPerson("w2");
+    expect(backend.browserPaneIds()).toEqual(["p3"]);
+    // The pane of a window that went away can have a web view again, in the main window.
+    await backend.openBrowserPane("p1", "https://example.com/", BOUNDS);
+    expect(backend.browserPane("p1")?.windowId).toBeUndefined();
+  });
+
+  it("still has one web view per pane, whichever window it is a child of", async () => {
+    const backend = new FakeBackend();
+    await backend.openWindow("w1", "s2");
+    await backend.openBrowserPane("p1", "https://example.com/", BOUNDS);
+    await expect(
+      backend.openBrowserPane("p1", "https://example.org/", BOUNDS, { windowId: "w1" }),
+    ).rejects.toThrow("has a web view already");
+    expect(backend.browserPane("p1")?.windowId).toBeUndefined();
+  });
+});

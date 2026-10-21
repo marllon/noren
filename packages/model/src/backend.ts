@@ -57,6 +57,12 @@ export interface AttachSessionOptions {
   replay?: boolean;
 }
 
+/** What `Backend.openBrowserPane` can be asked besides the pane, the address and the place. */
+export interface BrowserOpenOptions {
+  /** The window besides the main one the web view is a child of (see `openBrowserPane`). */
+  windowId?: Id;
+}
+
 /** How a session ended. */
 export interface SessionExit {
   id: SessionId;
@@ -429,8 +435,21 @@ export interface Backend {
    * view), when the address or the bounds are refused (`browserUrlProblem`, `browserBoundsProblem`)
    * or when the pane already has a web view. Resolves when the web view exists, not when the page
    * has loaded.
+   *
+   * The web view is a child of the main window, or of the window `options.windowId` (one opened
+   * with `openWindow`, and still open) when that is given: the page of a window besides the main
+   * one cannot call this, so the main window opens the web view for it with the bounds the page
+   * of the window measured. The bounds are then from the top left corner of the page of that
+   * window. Rejects, opening nothing, when that window is not open. The other three calls find the
+   * web view by the pane and are the same whichever window it is a child of. A web view goes away
+   * with its window: closing the window (`closeWindow`, or the person) closes it too.
    */
-  openBrowserPane(paneId: Id, url: string, bounds: BrowserBounds): Promise<void>;
+  openBrowserPane(
+    paneId: Id,
+    url: string,
+    bounds: BrowserBounds,
+    options?: BrowserOpenOptions,
+  ): Promise<void>;
   /**
    * Takes the web view of the pane `paneId` to `url`. Rejects when the pane has no web view or the
    * address is refused (`browserUrlProblem`); the web view stays where it was.

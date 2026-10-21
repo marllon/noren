@@ -8,7 +8,8 @@
 //!
 //! - its title, which proves the page was loaded and its script ran;
 //! - that the test hook of the interface (`window.__norenTest`) is not there;
-//! - that asking the app for a command (`fonts_list_monospace`) is refused;
+//! - that asking the app for a command (`fonts_list_monospace`) is refused, and so is the event
+//!   emit that the capabilities of the windows grant to the pages of the app;
 //! - that a navigation it starts to `http://tauri.localhost/`, the address the pages of the app are
 //!   served from on Windows, does not happen (a page there would be the app's own and be granted
 //!   its commands): the old page is still the one running a moment later, and no second load came.
@@ -17,6 +18,11 @@
 //! `file`, `javascript`, `data` and `noren` are refused, moves the pane and closes it. Every step
 //! prints a `SMOKE browser pane ...` line; the line `SMOKE browser pane loaded <url>` is the one the
 //! smoke script requires.
+//!
+//! The same page is opened a second time for a window besides the main one (`noren --smoke-window`,
+//! NOR-F15-04e): [`check_browser_pane_in_window`] makes the web view a child of `window-<id>`, as the
+//! main window does for the page of that window, and checks that the page is as shut in there, that
+//! the parent is that window and it is hidden, and that closing the window takes the web view with it.
 
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
@@ -29,11 +35,15 @@ use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Manager, Url};
 
-use crate::browser_pane::{self, Bounds, LoadHook};
-use crate::smoke::print_line;
+use crate::browser_pane::{self, Bounds, LoadHook, Parent};
+use crate::smoke::{check_window_hidden, print_line};
+use crate::windows;
 
 /// The pane the run opens (the id of a pane made by the app is a UUID; this one is not).
 const PANE_ID: &str = "smoke-browser-pane";
+
+/// The pane the run opens as a child of a window besides the main one.
+const WINDOW_PANE_ID: &str = "smoke-window-browser-pane";
 
 /// The title of the test page.
 pub const PAGE_TITLE: &str = "Noren browser pane smoke";
@@ -84,6 +94,7 @@ fn page() -> String {
     title: document.title,
     hook: typeof window.__norenTest,
     ipc: "none",
+    emit: "none",
   }};
   const internals = window.__TAURI_INTERNALS__;
   if (internals && typeof internals.invoke === "function") {{
@@ -92,6 +103,14 @@ fn page() -> String {
       report.ipc = "allowed";
     }} catch (error) {{
       report.ipc = "denied: " + String(error).slice(0, 120);
+    }}
+    // What the capabilities of the windows grant their own pages (the main window and the windows
+    // besides it can all emit events): a web view that is a child of one is none of them.
+    try {{
+      await internals.invoke("plugin:event|emit", {{ event: "browser-pane-smoke", payload: null }});
+      report.emit = "allowed";
+    }} catch (error) {{
+      report.emit = "denied: " + String(error).slice(0, 120);
     }}
   }}
   await fetch("/report?" + new URLSearchParams(report));
@@ -265,6 +284,12 @@ fn check_report(report: &HashMap<String, String>, path: &str) -> Result<(), Stri
     if ipc != "none" && !ipc.starts_with("denied") {
         return Err(format!(
             "browser pane: the page could call a command: {ipc:?}"
+        ));
+    }
+    let emit = field("emit");
+    if emit != "none" && !emit.starts_with("denied") {
+        return Err(format!(
+            "browser pane: the page could emit an event: {emit:?}"
         ));
     }
     Ok(())
@@ -457,6 +482,139 @@ pub(crate) fn check_browser_pane(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// What the pane that is a child of the window `window_label` has to be: the page loaded and shut in
+/// like the one of the main window, the window its parent, that window and the main one hidden.
+fn run_in_window(
+    app: &AppHandle,
+    server: &TestServer,
+    loads: &Receiver<String>,
+    first: &str,
+    window_label: &str,
+) -> Result<(), String> {
+    expect_load(loads, first, first)?;
+    print_line(&format!(
+        "SMOKE browser pane in {window_label} loaded {first}"
+    ));
+    let report = expect_report(server, "/")?;
+    let ipc = report.get("ipc").map_or("?", String::as_str);
+    let emit = report.get("emit").map_or("?", String::as_str);
+    print_line(&format!(
+        "SMOKE browser pane in {window_label} page title {:?}, test hook {}, commands {}, events {}",
+        PAGE_TITLE,
+        report.get("hook").map_or("?", String::as_str),
+        ipc.lines().next().unwrap_or(ipc),
+        emit.lines().next().unwrap_or(emit),
+    ));
+
+    // Whose child it is, and that its parent is as hidden as every window of a smoke run.
+    let label = browser_pane::pane_label(WINDOW_PANE_ID)?;
+    let webview = app
+        .get_webview(&label)
+        .ok_or_else(|| "browser pane: the web view of the window is not there".to_owned())?;
+    let parent = webview.window();
+    if parent.label() != window_label {
+        return Err(format!(
+            "browser pane: its parent is {}, expected {window_label}",
+            parent.label()
+        ));
+    }
+    if parent
+        .is_visible()
+        .map_err(|e| format!("browser pane: could not read if its window is visible: {e}"))?
+    {
+        return Err(format!(
+            "browser pane: {window_label} is visible; the smoke run must keep it hidden"
+        ));
+    }
+    check_window_hidden(app)?;
+    print_line(&format!(
+        "SMOKE browser pane in {window_label} is a child of {window_label}, hidden"
+    ));
+
+    // The page tried to go to an address of the app, as in the main window: the guard is by the
+    // label of the web view, so the parent makes no difference.
+    match server.hear(STAY_WAIT, "it stayed where it was")? {
+        Heard::After(href) if href == first => {}
+        Heard::After(href) => {
+            return Err(format!(
+                "browser pane: the page moved to {href}, expected it to stay at {first}"
+            ));
+        }
+        other => {
+            return Err(format!(
+                "browser pane: expected the page to stay, heard {other:?}"
+            ));
+        }
+    }
+    while let Ok(other) = loads.try_recv() {
+        if other != first {
+            return Err(format!(
+                "browser pane: a page other than the first loaded in {window_label} ({other}): the navigation to an address of the app was not refused"
+            ));
+        }
+    }
+    print_line(&format!(
+        "SMOKE browser pane in {window_label} stayed on its page (a navigation to the app's own address was refused)"
+    ));
+
+    // The main window moves it by the bounds the page of the window measured.
+    browser_pane::set_bounds(app, WINDOW_PANE_ID, MOVED_TO)?;
+    let size = webview
+        .size()
+        .map_err(|e| format!("browser pane: could not read the size of the view: {e}"))?;
+    if size.width == 0 || size.height == 0 {
+        return Err("browser pane: it was moved to a place and has no area".to_owned());
+    }
+    print_line(&format!(
+        "SMOKE browser pane in {window_label} moved to the bounds it was given ({}x{})",
+        size.width, size.height
+    ));
+    Ok(())
+}
+
+/// Opens a browser pane on a local page as a child of the hidden window `window_id` (which must be
+/// open, with its page up), proves what [`run_in_window`] says, then closes the window with
+/// `close_window` and proves the web view went with it and left nothing behind (see the top of the
+/// file). Always closes the pane.
+pub(crate) fn check_browser_pane_in_window(
+    app: &AppHandle,
+    window_id: &str,
+    close_window: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let server = TestServer::start()
+        .map_err(|e| format!("browser pane: could not start the test server: {e}"))?;
+    let (load_tx, loads) = mpsc::channel::<String>();
+    let hook: LoadHook = Arc::new(move |url| {
+        // The run may be over by the time a late load is reported.
+        let _ = load_tx.send(url.to_string());
+    });
+    let first = server.url("/");
+    let window_label = windows::window_label(window_id)?;
+    browser_pane::open_in(
+        app,
+        Parent::Window(window_id),
+        WINDOW_PANE_ID,
+        &first,
+        OPENED_AT,
+        Some(hook),
+    )?;
+    if let Err(error) = run_in_window(app, &server, &loads, &first, &window_label) {
+        let _ = browser_pane::close(app, WINDOW_PANE_ID);
+        return Err(error);
+    }
+    close_window()?;
+    let label = browser_pane::pane_label(WINDOW_PANE_ID)?;
+    if app.get_webview(&label).is_some() {
+        return Err(format!(
+            "browser pane: the web view was still there after {window_label} was closed"
+        ));
+    }
+    print_line(&format!(
+        "SMOKE browser pane in {window_label} went with its window, no web view left"
+    ));
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -502,7 +660,7 @@ mod tests {
         let server = TestServer::start().expect("start");
         let (head, _) = get(
             server.port,
-            "/report?path=%2F&title=Noren+browser+pane+smoke&hook=undefined&ipc=denied%3A+nope",
+            "/report?path=%2F&title=Noren+browser+pane+smoke&hook=undefined&ipc=denied%3A+nope&emit=none",
         );
         assert!(head.starts_with("HTTP/1.1 204"), "{head}");
         let Heard::Report(report) = server
@@ -530,6 +688,7 @@ mod tests {
             ("title", PAGE_TITLE),
             ("hook", "undefined"),
             ("ipc", "none"),
+            ("emit", "none"),
         ]
         .map(|(k, v)| (k.to_owned(), v.to_owned()))
         .into();
@@ -540,6 +699,8 @@ mod tests {
             report
         };
         assert!(check_report(&with("ipc", "allowed"), "/").is_err());
+        assert!(check_report(&with("emit", "allowed"), "/").is_err());
+        assert_eq!(check_report(&with("emit", "denied: nope"), "/"), Ok(()));
         assert!(check_report(&with("hook", "object"), "/").is_err());
         assert!(check_report(&with("title", "other"), "/").is_err());
         assert!(check_report(&good, "/second").is_err());

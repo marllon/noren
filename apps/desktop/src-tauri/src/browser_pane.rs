@@ -1,10 +1,20 @@
 //! The web view of a browser pane (NOR-F15-01a).
 //!
 //! A browser pane shows a web page of someone else. The page lives in a web view that is a child of
-//! the `main` window (`Window::add_child`, the `unstable` feature of Tauri), laid over the window at
-//! the place the interface gives it and named `browser-<pane id>`. The interface never draws the
-//! page: it tells this side where the pane is (`browser_set_bounds`), where to go
-//! (`browser_navigate`) and when the pane is gone (`browser_close`).
+//! the `main` window or of one of the windows besides it (`Window::add_child`, the `unstable` feature
+//! of Tauri), laid over the window at the place the interface gives it and named
+//! `browser-<pane id>`. The interface never draws the page: it tells this side where the pane is
+//! (`browser_set_bounds`), where to go (`browser_navigate`) and when the pane is gone
+//! (`browser_close`).
+//!
+//! **Whose child.** The pane of a tab shown by the `main` window gets a web view that is a child of
+//! `main`. The page of a window besides the main one (`window-<id>`) can call none of these
+//! commands (its capability has no `browser_*`), so the main window opens the web view for it with
+//! the bounds that page measured and sent: `browser_open` takes the window the web view is a child
+//! of ([`Parent`]), which must be one the app opened ([`crate::windows::WindowBook`]) and cannot be
+//! named any other way, and only the main window may call it. A web view goes away with its window,
+//! so closing a window leaves no web view behind; the pane of a tab that comes back is opened again
+//! by the main window as a child of `main`.
 //!
 //! What the page can reach is nothing of the app, and three walls keep it so:
 //!
@@ -32,13 +42,15 @@ use serde::Deserialize;
 use tauri::webview::{
     DownloadEvent, NewWindowResponse, PageLoadEvent, PermissionResponse, WebviewBuilder,
 };
-use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, Runtime, Url, WebviewUrl};
+use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, Runtime, Url, WebviewUrl, Window};
+
+use crate::windows::{self, WindowBook};
 
 /// The start of the label of every web view of a browser pane. The interface chooses only what
 /// follows, so a pane can never name `main`, `quick` or any other web view of the app.
 pub const LABEL_PREFIX: &str = "browser-";
 
-/// The window the web views are children of.
+/// The window the web view of a pane is a child of when no other is asked for.
 const PARENT_WINDOW: &str = "main";
 
 /// The longest pane id a web view is named after.
@@ -60,6 +72,16 @@ pub struct Bounds {
 
 /// What is called when a page of the web view has finished loading, with the address it loaded.
 pub type LoadHook = Arc<dyn Fn(&Url) + Send + Sync>;
+
+/// The window the web view of a pane is made a child of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Parent<'a> {
+    /// The `main` window, the one that owns the workspace.
+    Main,
+    /// A window of the workspace besides the main one, by its id (`window-<id>` is the label of
+    /// its native window). It must be open: in the book of [`crate::windows::WindowBook`].
+    Window(&'a str),
+}
 
 /// The label of the web view of the pane `pane_id`, or why the id cannot name one: ASCII letters,
 /// digits, `-` and `_`, at most 64 (the id of a pane made by the app, a UUID, is one).
@@ -153,13 +175,47 @@ pub fn check_bounds(bounds: &Bounds) -> Result<(), String> {
     Ok(())
 }
 
-/// Opens the web view of the pane `pane_id` at `bounds`, showing `address`. Nothing is opened when
-/// the id, the address or the place is refused, when the pane has a web view already or when the
-/// `main` window does not exist. `on_load` is called each time a page of the web view finishes
-/// loading. Must not be called from the main thread: the web view is made there and this waits for
-/// it.
+/// The native window `parent` names, or why it cannot be one: a window id that cannot name one, a
+/// window the app did not open (or has closed), or one that is not there.
+fn parent_window<R: Runtime>(app: &AppHandle<R>, parent: Parent) -> Result<Window<R>, String> {
+    match parent {
+        Parent::Main => app
+            .get_window(PARENT_WINDOW)
+            .ok_or_else(|| "The main window does not exist.".to_owned()),
+        Parent::Window(window_id) => {
+            let label = windows::window_label(window_id)?;
+            let open = app
+                .try_state::<WindowBook>()
+                .is_some_and(|book| book.get(window_id).is_some());
+            if !open {
+                return Err(format!("Window {window_id} is not open."));
+            }
+            app.get_window(&label)
+                .ok_or_else(|| format!("Window {window_id} does not exist."))
+        }
+    }
+}
+
+/// Opens the web view of the pane `pane_id` as a child of the `main` window (see [`open_in`]).
 pub fn open<R: Runtime>(
     app: &AppHandle<R>,
+    pane_id: &str,
+    address: &str,
+    bounds: Bounds,
+    on_load: Option<LoadHook>,
+) -> Result<(), String> {
+    open_in(app, Parent::Main, pane_id, address, bounds, on_load)
+}
+
+/// Opens the web view of the pane `pane_id` as a child of `parent`, at `bounds` (from the top left
+/// corner of the page of that window), showing `address`. Nothing is opened when the id, the address
+/// or the place is refused, when the pane has a web view already (of any window) or when the parent
+/// is not a window that exists and is open. `on_load` is called each time a page of the web view
+/// finishes loading. Must not be called from the main thread: the web view is made there and this
+/// waits for it.
+pub fn open_in<R: Runtime>(
+    app: &AppHandle<R>,
+    parent: Parent,
     pane_id: &str,
     address: &str,
     bounds: Bounds,
@@ -171,9 +227,7 @@ pub fn open<R: Runtime>(
     if app.get_webview(&label).is_some() {
         return Err(format!("Pane {pane_id} has a web view already."));
     }
-    let window = app
-        .get_window(PARENT_WINDOW)
-        .ok_or_else(|| "The main window does not exist.".to_owned())?;
+    let window = parent_window(app, parent)?;
     // Nothing is added to the builder that the page could use: no initialization script, no
     // custom protocol, no IPC handler of its own.
     let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(url))
@@ -243,6 +297,18 @@ pub fn close<R: Runtime>(app: &AppHandle<R>, pane_id: &str) -> Result<(), String
     }
 }
 
+/// Closes the web view of every pane that is a child of the window `window_label`, so a window that
+/// goes away leaves none behind (the pane of a tab that came back is opened again, as a child of
+/// `main`, by the page that shows it). The window itself and its own page are not touched.
+pub fn close_children<R: Runtime>(app: &AppHandle<R>, window_label: &str) {
+    for (label, webview) in app.webviews() {
+        if is_pane_label(&label) && webview.window().label() == window_label {
+            // A web view that is going away already is of no interest.
+            let _ = webview.close();
+        }
+    }
+}
+
 /// Runs `work` on a thread that may block, as the commands that touch a web view must: building one
 /// waits for the main thread, which a command running on it would deadlock.
 async fn off_the_main_thread(
@@ -253,15 +319,27 @@ async fn off_the_main_thread(
         .map_err(|e| format!("The web view task failed: {e}"))?
 }
 
-/// Opens the web view of the pane `pane_id` (see [`open`]).
+/// Opens the web view of the pane `pane_id`, a child of the window `window_id` or, when none is
+/// given, of the `main` window (see [`open_in`]). Only the main window may call it: the page of a
+/// window besides it asks the main window, which checks the request and calls this for it.
 #[tauri::command(rename_all = "camelCase")]
 pub async fn browser_open<R: Runtime>(
     app: AppHandle<R>,
+    window: Window<R>,
     pane_id: String,
     url: String,
     bounds: Bounds,
+    window_id: Option<String>,
 ) -> Result<(), String> {
-    off_the_main_thread(move || open(&app, &pane_id, &url, bounds, None)).await
+    windows::require_owner(&window)?;
+    off_the_main_thread(move || {
+        let parent = match window_id.as_deref() {
+            Some(id) => Parent::Window(id),
+            None => Parent::Main,
+        };
+        open_in(&app, parent, &pane_id, &url, bounds, None)
+    })
+    .await
 }
 
 /// Takes the web view of the pane `pane_id` to `url` (see [`navigate`]).

@@ -57,6 +57,10 @@ function workspace(windows?: Workspace["windows"]): Workspace {
 
 const spaceOf = (ws: Workspace, id: string): Space | undefined =>
   ws.spaces.find((s) => s.id === id);
+const panesOf = (ws: Workspace, spaceId: string, itemId: string): Pane[] => {
+  const item = spaceOf(ws, spaceId)?.items[itemId];
+  return item === undefined ? [] : layoutPanes(item.layout);
+};
 const treeOf = (ws: Workspace, id: string): string[] =>
   spaceOf(ws, id)?.tree.map((node) => node.id) ?? [];
 
@@ -134,7 +138,7 @@ describe("window/open-with-item", () => {
     expect(spaceOf(next, "sB")?.items).toEqual({});
   });
 
-  it("changes nothing for a tab that does not exist, a full house, or a tab with a browser pane", () => {
+  it("changes nothing for a tab that does not exist or a full house", () => {
     const ws = workspace();
     expect(applyChecked(ws, { type: "window/open-with-item", itemId: "nope" })).toBe(ws);
     const full: Workspace = {
@@ -148,40 +152,6 @@ describe("window/open-with-item", () => {
     expect(reduce(full, { type: "window/open-with-item", itemId: "i2" }, testContext().ctx)).toBe(
       full,
     );
-    const browser = createTab("ib", createBrowserPane("pb", "https://example.com"), 9);
-    const withBrowser: Workspace = {
-      ...ws,
-      spaces: [
-        {
-          ...space("sA", 1),
-          items: { ...space("sA", 1).items, ib: browser },
-          tree: [...space("sA", 1).tree, { kind: "item", id: "ib" }],
-        },
-        space("sB", 3),
-        space("sC", 4),
-      ],
-    };
-    expect(windowCanShowTab(browser)).toBe(false);
-    expect(applyChecked(withBrowser, { type: "window/open-with-item", itemId: "ib" })).toBe(
-      withBrowser,
-    );
-  });
-
-  it("window/move-item refuses a tab that has a browser pane too", () => {
-    const browser = createTab("ib", createBrowserPane("pb", "https://example.com"), 9);
-    const ws: Workspace = {
-      ...workspace([{ id: "w1", spaceId: "sB" }]),
-      spaces: [
-        {
-          ...space("sA", 1),
-          items: { ...space("sA", 1).items, ib: browser },
-          tree: [...space("sA", 1).tree, { kind: "item", id: "ib" }],
-        },
-        space("sB", 3),
-        space("sC", 4),
-      ],
-    };
-    expect(applyChecked(ws, { type: "window/move-item", itemId: "ib", windowId: "w1" })).toBe(ws);
   });
 });
 
@@ -219,28 +189,13 @@ function withPanes(windows?: Workspace["windows"]): Workspace {
 }
 
 describe("a tab with a preview or a diff pane (NOR-F15-04d)", () => {
-  it("can be shown by a window, and one with a browser pane still cannot", () => {
+  it("can be shown by a window", () => {
     const ws = withPanes();
     const items = ws.spaces[0]?.items ?? {};
     for (const id of ["ip", "id", "im"]) {
       const item = items[id];
       expect(item && windowCanShowTab(item)).toBe(true);
     }
-    const browser = createTab("ib", createBrowserPane("pb", "https://example.com"), 9);
-    expect(windowCanShowTab(browser)).toBe(false);
-    const withWeb: Item = {
-      ...browser,
-      layout: {
-        kind: "split",
-        dir: "row",
-        sizes: [50, 50],
-        children: [
-          { kind: "pane", pane: createPreviewPane("pw", "/work/a.md") },
-          { kind: "pane", pane: createBrowserPane("pz", "https://example.com") },
-        ],
-      },
-    };
-    expect(windowCanShowTab(withWeb)).toBe(false);
   });
 
   it("window/open-with-item takes it to a window of its own with its panes as they are", () => {
@@ -274,6 +229,124 @@ describe("a tab with a preview or a diff pane (NOR-F15-04d)", () => {
     expect(back.windows).toBeUndefined();
     expect(spaceOf(back, "sA")?.items["im"]).toEqual(ws.spaces[0]?.items["im"]);
     expect(liveSessionIds(back)).toEqual(liveSessionIds(ws));
+  });
+});
+
+/** The tabs with a browser pane, in space A: alone, beside a terminal, and beside a terminal and a preview. */
+function withBrowsers(windows?: Workspace["windows"]): Workspace {
+  const alone = createTab("ib", createBrowserPane("pb", "https://example.com/"), 9);
+  const shell = (n: number): Pane => ({
+    ...createPane(`pt${n}`, DEFAULT_PROFILE_ID),
+    sessionId: `xt${n}`,
+  });
+  const [first, second] = [shell(1), shell(2)] as const;
+  const beside: Item = {
+    ...createTab("iw", first, 10),
+    layout: {
+      kind: "split",
+      dir: "row",
+      sizes: [50, 50],
+      children: [
+        { kind: "pane", pane: first },
+        { kind: "pane", pane: createBrowserPane("pz", "https://example.org/docs") },
+      ],
+    },
+  };
+  const mixed: Item = {
+    ...createTab("ix", second, 11),
+    layout: {
+      kind: "split",
+      dir: "row",
+      sizes: [34, 33, 33],
+      children: [
+        { kind: "pane", pane: second },
+        { kind: "pane", pane: createPreviewPane("pm", "/work/sA/README.md") },
+        { kind: "pane", pane: createBrowserPane("py", "http://localhost:3000/") },
+      ],
+    },
+  };
+  const base = workspace(windows);
+  const sA = space("sA", 1, 2, 5);
+  return {
+    ...base,
+    spaces: [
+      {
+        ...sA,
+        items: { ...sA.items, ib: alone, iw: beside, ix: mixed },
+        tree: [...sA.tree, ...["ib", "iw", "ix"].map((id) => ({ kind: "item" as const, id }))],
+      },
+      ...base.spaces.slice(1),
+    ],
+  };
+}
+
+describe("a tab with a browser pane (NOR-F15-04e)", () => {
+  it("can be shown by a window, alone or beside other panes", () => {
+    const items = withBrowsers().spaces[0]?.items ?? {};
+    for (const id of ["ib", "iw", "ix"]) {
+      const item = items[id];
+      expect(item && windowCanShowTab(item)).toBe(true);
+    }
+  });
+
+  it("window/open-with-item takes it to a window of its own with its panes as they are", () => {
+    const ws = withBrowsers();
+    for (const itemId of ["ib", "iw", "ix"]) {
+      const next = applyChecked(ws, { type: "window/open-with-item", itemId });
+      const made = next.spaces.at(-1);
+      expect(Object.keys(made?.items ?? {})).toEqual([itemId]);
+      expect(made?.items[itemId]).toEqual(ws.spaces[0]?.items[itemId]);
+      expect(next.windows).toHaveLength(1);
+      expect(Object.hasOwn(spaceOf(next, "sA")?.items ?? {}, itemId)).toBe(false);
+      // The address of the pane is the one the web view will be opened at.
+      const urls = panesOf(next, made?.id ?? "", itemId)
+        .filter((pane) => pane.type === "browser")
+        .map((pane) => pane.url);
+      expect(urls).toHaveLength(1);
+    }
+  });
+
+  it("window/move-item takes it into the space of a window", () => {
+    const ws = withBrowsers([{ id: "w1", spaceId: "sB" }]);
+    const next = applyChecked(ws, { type: "window/move-item", itemId: "ib", windowId: "w1" });
+    expect(Object.keys(spaceOf(next, "sB")?.items ?? {})).toEqual(["i3", "ib"]);
+    expect(spaceOf(next, "sB")?.activeItemId).toBe("ib");
+    expect(spaceOf(next, "sB")?.items["ib"]).toEqual(ws.spaces[0]?.items["ib"]);
+    expect(Object.hasOwn(spaceOf(next, "sA")?.items ?? {}, "ib")).toBe(false);
+  });
+
+  it("window/return gives it back to the space it came from, panes unchanged", () => {
+    const ws = withBrowsers();
+    for (const itemId of ["ib", "iw", "ix"]) {
+      const out = applyChecked(ws, { type: "window/open-with-item", itemId });
+      // (Without this the test would pass when the tab never left, since there would be nothing to return.)
+      expect(out.windows).toHaveLength(1);
+      expect(spaceOf(out, "sA")?.items[itemId]).toBeUndefined();
+      const windowId = out.windows?.[0]?.id ?? "";
+      const back = applyChecked(out, { type: "window/return", windowId });
+      expect(back.windows).toBeUndefined();
+      expect(spaceOf(back, "sA")?.items[itemId]).toEqual(ws.spaces[0]?.items[itemId]);
+      expect(liveSessionIds(back)).toEqual(liveSessionIds(ws));
+    }
+  });
+
+  it("changes its address in the space of the window, where the main window no longer draws it", () => {
+    const ws = withBrowsers();
+    const out = applyChecked(ws, { type: "window/open-with-item", itemId: "ib" });
+    const next = applyChecked(out, {
+      type: "pane/set-url",
+      itemId: "ib",
+      paneId: "pb",
+      url: "https://example.net/next",
+    });
+    const made = next.spaces.at(-1);
+    expect(panesOf(next, made?.id ?? "", "ib")[0]?.url).toBe("https://example.net/next");
+    // And it comes back to the main window with the address it has now.
+    const back = applyChecked(next, {
+      type: "window/return",
+      windowId: out.windows?.[0]?.id ?? "",
+    });
+    expect(panesOf(back, "sA", "ib")[0]?.url).toBe("https://example.net/next");
   });
 });
 

@@ -1,7 +1,7 @@
 import { FakeBackend } from "@noren/model";
 import type { BrowserBounds } from "@noren/model";
 import { describe, expect, it } from "vitest";
-import { BrowserPaneView, hiddenBounds, isHiddenBounds } from "./browser-view";
+import { BrowserPaneView, exclusive, hiddenBounds, isHiddenBounds } from "./browser-view";
 import type { BrowserViewBackend } from "./browser-view";
 
 const PAGE = "https://example.com/docs";
@@ -236,6 +236,81 @@ describe("the web view of a browser pane", () => {
       await view.settled();
       expect(fake.callsTo("closeBrowserPane").length).toBeGreaterThanOrEqual(2);
     });
+  });
+});
+
+describe("the queue of a pane (NOR-F15-04e)", () => {
+  /** Resolves later, on demand, so a test decides when a call finishes. */
+  function gate() {
+    let open!: () => void;
+    const closed = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    return { open, closed };
+  }
+
+  it("runs what is asked for a pane one after the other, even when it is a different view that asks", async () => {
+    const fake = new FakeBackend();
+    const order: string[] = [];
+    const first = gate();
+    const slow = exclusive(fake, "p1", async () => {
+      order.push("first begins");
+      await first.closed;
+      order.push("first ends");
+    });
+    const quick = exclusive(fake, "p1", async () => {
+      order.push("second");
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(order).toEqual(["first begins"]);
+    first.open();
+    await Promise.all([slow, quick]);
+    expect(order).toEqual(["first begins", "first ends", "second"]);
+  });
+
+  it("goes on after a call that failed, and hands its result or its failure to whoever asked", async () => {
+    const fake = new FakeBackend();
+    const failed = exclusive(fake, "p1", () => Promise.reject(new Error("no")));
+    const next = exclusive(fake, "p1", () => Promise.resolve(7));
+    await expect(failed).rejects.toThrow("no");
+    await expect(next).resolves.toBe(7);
+  });
+
+  it("is one queue per pane: another pane does not wait", async () => {
+    const fake = new FakeBackend();
+    const stuck = gate();
+    const held = exclusive(fake, "p1", () => stuck.closed);
+    await expect(exclusive(fake, "p2", () => Promise.resolve("p2 ran"))).resolves.toBe("p2 ran");
+    stuck.open();
+    await held;
+  });
+
+  it("is one queue per backend: what talks to another backend does not wait", async () => {
+    const shell = new FakeBackend();
+    const page = new FakeBackend();
+    const stuck = gate();
+    const held = exclusive(shell, "p1", () => stuck.closed);
+    await expect(exclusive(page, "p1", () => Promise.resolve("page ran"))).resolves.toBe(
+      "page ran",
+    );
+    stuck.open();
+    await held;
+  });
+
+  it("keeps the close of an old view ahead of the open of a new one for the same pane", async () => {
+    const fake = new FakeBackend();
+    await fake.openBrowserPane("p1", PAGE, AREA);
+    // The old view closes (its pane left the page) and, right after, the view that takes over the
+    // pane starts: its first step closes whatever is there and opens its own.
+    const old = new BrowserPaneView(fake, "p1");
+    old.close();
+    const next = new BrowserPaneView(fake, "p1");
+    next.want({ url: OTHER, bounds: AREA });
+    await Promise.all([old.settled(), next.settled()]);
+    expect(fake.browserPane("p1")).toEqual({ url: OTHER, bounds: AREA });
+    next.close();
+    await next.settled();
+    expect(fake.browserPaneIds()).toEqual([]);
   });
 });
 

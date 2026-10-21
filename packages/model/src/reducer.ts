@@ -838,7 +838,7 @@ function moveItemToWindow(
   const window = findWindow(ws, action.windowId);
   const located = locate(ws, action.itemId);
   if (!window || !located || located.space.id === window.spaceId) return ws;
-  // The page of a window draws terminals, previews and diffs; a browser pane stays in the main one.
+  // A tab goes only if the page of a window can draw every pane of it.
   if (!windowCanShowTab(located.item)) return ws;
   const moved = relocate(ws, located, window.spaceId, action.placement ?? { to: "tree" });
   if (moved === ws) return ws;

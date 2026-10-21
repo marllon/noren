@@ -1,6 +1,6 @@
 import { layoutPanes } from "./sessions";
 import { MAX_EXTRA_WINDOWS } from "./types";
-import type { AppWindow, Id, Item, Space, Workspace } from "./types";
+import type { AppWindow, Id, Item, PaneType, Space, Workspace } from "./types";
 
 /**
  * The start of the label of the native window of every `AppWindow`. The app chooses only what
@@ -85,13 +85,22 @@ export function spaceIsShown(
 }
 
 /**
- * Whether the tab can be shown by a window besides the main one: no pane of it is a browser. The
- * page of such a window draws terminals, previews and diffs (the file and the git diff are read by
- * the main window and sent to it); the web view of a browser pane is a child of the main window
- * until a window can be its parent (NOR-F15-04e), so a tab with one stays where it is.
+ * The kinds of pane the page of a window besides the main one draws. A terminal takes over the
+ * output of its shell, a preview and a diff show what the main window read for them, and a browser
+ * pane has its web view opened by the main window as a child of the window (NOR-F15-04e). The
+ * record is exhaustive on purpose: a new kind of pane does not compile until someone says whether
+ * a window can draw it.
  */
+const WINDOW_PANE_TYPES: Record<PaneType, boolean> = {
+  terminal: true,
+  preview: true,
+  diff: true,
+  browser: true,
+};
+
+/** Whether the tab can be shown by a window besides the main one: every pane of it is of a kind the window page draws. */
 export function windowCanShowTab(item: Pick<Item, "layout">): boolean {
-  return layoutPanes(item.layout).every((pane) => pane.type !== "browser");
+  return layoutPanes(item.layout).every((pane) => WINDOW_PANE_TYPES[pane.type]);
 }
 
 /** Whether the workspace can take one more window. */

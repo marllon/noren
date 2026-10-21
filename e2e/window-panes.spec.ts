@@ -11,7 +11,8 @@ import { clicksReachThePage } from "./sidebar-fixture";
 // that window (`window-read-result`). A browser has no second window, so `/?window-preview` draws
 // each one as a panel beside the app on the same fake backend and the same events, with a backend
 // for the panel that refuses the two reads as the real window does (see window-drag.spec.ts); what
-// the panels cannot say is in `noren --smoke-window`.
+// the panels cannot say is in `noren --smoke-window`. The browser pane in a window is
+// window-browser.spec.ts (NOR-F15-04e); here a tab with one only has to go like the others.
 //
 // The seeded main window ("Main"), the first tab on screen:
 //   plain     a terminal
@@ -457,21 +458,24 @@ test("a read that is not the window's own is ignored: another window, another sp
   expect((await gitDiffReads(page)).slice(diffs)).toEqual([REPO]);
 });
 
-test("a tab with a browser pane still stays in the main window, even beside a preview", async ({
+test("a tab with a browser pane goes to a window too, even beside a preview, and says nothing about staying", async ({
   page,
 }) => {
   await open(page);
-  for (const name of ["web", "mixed"]) {
+  for (const [at, name] of [
+    [1, "web"],
+    [2, "mixed"],
+  ] as const) {
     await dragOut(page, name);
-    await expect(notice(page)).toHaveText("A tab with a browser pane stays in the main window.");
-    await expect(panels(page)).toHaveCount(0);
-    await expect(row(page, name)).toBeVisible();
+    await expect(panels(page)).toHaveCount(at);
+    await expect(row(page, name)).toHaveCount(0);
+    await expect(notice(page)).toHaveText("");
   }
-  // And one with a preview or a diff and no browser goes, with the others still where they are.
-  await dragOut(page, "notes");
-  await expect(panels(page)).toHaveCount(1);
-  await expect(row(page, "web")).toBeVisible();
-  await expect(row(page, "mixed")).toBeVisible();
+  // The preview that was beside the browser pane is drawn in the window too.
+  await expect(markdownIn(panels(page).nth(1))).toContainText("Some bold words");
+  // The tabs that did not go are where they were.
+  await expect(row(page, "plain")).toBeVisible();
+  await expect(row(page, "notes")).toBeVisible();
 });
 
 test("the panes come back with the window after a reload, and with the tab when the window is closed", async ({

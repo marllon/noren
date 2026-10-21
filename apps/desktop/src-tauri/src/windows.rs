@@ -34,6 +34,7 @@ use tauri::{
 };
 
 use crate::bridge::AppState;
+use crate::browser_pane;
 use crate::lifecycle::MAIN_LABEL;
 
 /// The start of the label of the native window of every window of the workspace. The interface
@@ -272,7 +273,11 @@ pub fn open_window<R: Runtime>(
 pub fn close_window<R: Runtime>(app: &AppHandle<R>, window_id: &str) -> Result<(), String> {
     let label = window_label(window_id)?;
     app.state::<WindowBook>().remove(window_id);
-    if let Some(window) = app.get_webview_window(&label) {
+    // The web views of the browser panes it showed go first: none is left over for a pane that now
+    // lives somewhere else. The window is looked up as a window, not as a webview window: Tauri
+    // does not call a window a webview window once a web view of a pane is a child of it.
+    browser_pane::close_children(app, &label);
+    if let Some(window) = app.get_window(&label) {
         window.destroy().map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -295,8 +300,9 @@ pub fn destroy_all<R: Runtime>(app: &AppHandle<R>) {
     if let Some(book) = app.try_state::<WindowBook>() {
         book.clear();
     }
-    for (label, window) in app.webview_windows() {
+    for (label, window) in app.windows() {
         if is_window_label(&label) {
+            browser_pane::close_children(app, &label);
             let _ = window.destroy();
         }
     }

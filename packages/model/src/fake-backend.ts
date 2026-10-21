@@ -20,6 +20,7 @@ import type {
   AgentHit,
   AttachSessionOptions,
   Backend,
+  BrowserOpenOptions,
   CreateSessionOptions,
   GitInfo,
   ModFile,
@@ -89,10 +90,14 @@ export type FakeAiMethod = `ai.${keyof AiBackend & string}`;
 export type FakeCallMethod = keyof Backend | FakeAiMethod;
 
 /** One recorded call to a `Backend` method. Callbacks are not recorded. */
-/** The web view of a browser pane in the fake: its place and its page. */
+/**
+ * The web view of a browser pane in the fake: its place and its page, and the window it is a child
+ * of (absent for a child of the main window).
+ */
 export interface FakeBrowserPane {
   url: string;
   bounds: BrowserBounds;
+  windowId?: Id;
 }
 
 /** An open window of the fake: the space it shows and the sessions whose output it received. */
@@ -801,7 +806,8 @@ class FakeAi implements AiBackend {
  *   `setBrowserPaneBounds` and `closeBrowserPane` check what the real ones check (a pane id that is
  *   not a name, an address `browserUrlProblem` refuses, bounds `browserBoundsProblem` refuses, a
  *   pane that has a web view already or has none) and `browserPane(paneId)` says where each one is
- *   and what it shows; no page is ever loaded
+ *   and what it shows; no page is ever loaded. A web view opened for a window (`windowId` option)
+ *   needs that window to be open, says so in `browserPane`, and goes when the window closes
  * - the windows of the app live in memory: `openWindow` checks what the real one checks (a window
  *   id that is not a name, a blank space, a window that is open already), `moveTabToWindow` takes
  *   the sessions it is given into the window (it refuses a window that is not open and a session
@@ -1832,7 +1838,10 @@ export class FakeBackend implements Backend {
 
   async closeWindow(windowId: Id): Promise<void> {
     this.#record("closeWindow", windowId);
-    if (this.#windows.delete(windowId)) this.#windowHost?.closed(windowId);
+    if (this.#windows.delete(windowId)) {
+      this.#dropBrowserPanesOf(windowId);
+      this.#windowHost?.closed(windowId);
+    }
   }
 
   async moveTabToWindow(windowId: Id, sessionIds: readonly SessionId[]): Promise<void> {
@@ -1878,6 +1887,7 @@ export class FakeBackend implements Backend {
    */
   closeWindowByPerson(windowId: Id): void {
     if (!this.#windows.delete(windowId)) return;
+    this.#dropBrowserPanesOf(windowId);
     this.#windowHost?.closed(windowId);
     for (const listener of [...this.#windowClosedListeners]) listener(windowId);
   }
@@ -1899,13 +1909,32 @@ export class FakeBackend implements Backend {
     return undefined;
   }
 
-  async openBrowserPane(paneId: Id, url: string, bounds: BrowserBounds): Promise<void> {
-    this.#record("openBrowserPane", paneId, url, { ...bounds });
+  async openBrowserPane(
+    paneId: Id,
+    url: string,
+    bounds: BrowserBounds,
+    options?: BrowserOpenOptions,
+  ): Promise<void> {
+    const windowId = options?.windowId;
+    this.#record(
+      "openBrowserPane",
+      paneId,
+      url,
+      { ...bounds },
+      ...(windowId !== undefined ? [{ windowId }] : []),
+    );
     if (!isBrowserPaneId(paneId)) throw new Error(`"${paneId}" is not a pane id`);
     const problem = browserUrlProblem(url) ?? browserBoundsProblem(bounds);
     if (problem !== undefined) throw new Error(problem);
+    if (windowId !== undefined && !this.#windows.has(windowId)) {
+      throw new Error(`window ${windowId} is not open`);
+    }
     if (this.#browserPanes.has(paneId)) throw new Error(`pane ${paneId} has a web view already`);
-    this.#browserPanes.set(paneId, { url, bounds: { ...bounds } });
+    this.#browserPanes.set(paneId, {
+      url,
+      bounds: { ...bounds },
+      ...(windowId !== undefined ? { windowId } : {}),
+    });
   }
 
   async navigateBrowserPane(paneId: Id, url: string): Promise<void> {
@@ -1999,10 +2028,26 @@ export class FakeBackend implements Backend {
     else this.#files.set(path, entry);
   }
 
-  /** Where the web view of the pane is and what it shows; `undefined` when it has none. */
+  /**
+   * Where the web view of the pane is, what it shows and the window it is a child of (none for a
+   * child of the main window); `undefined` when the pane has no web view.
+   */
   browserPane(paneId: Id): FakeBrowserPane | undefined {
     const view = this.#browserPanes.get(paneId);
-    return view && { url: view.url, bounds: { ...view.bounds } };
+    return (
+      view && {
+        url: view.url,
+        bounds: { ...view.bounds },
+        ...(view.windowId !== undefined ? { windowId: view.windowId } : {}),
+      }
+    );
+  }
+
+  /** The web views of a window go with it, as the native ones do (the manager drops the children of a closed window). */
+  #dropBrowserPanesOf(windowId: Id): void {
+    for (const [paneId, view] of [...this.#browserPanes]) {
+      if (view.windowId === windowId) this.#browserPanes.delete(paneId);
+    }
   }
 
   /** The ids of the panes that have a web view, in the order they were opened. */

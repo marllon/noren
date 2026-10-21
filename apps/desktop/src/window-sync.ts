@@ -2,6 +2,7 @@ import {
   MAX_PREVIEW_IMAGE_BYTES,
   MAX_PREVIEW_TEXT_BYTES,
   PREVIEW_REFUSALS,
+  browserUrlProblem,
   decodeGitDiff,
   findWindow,
   layoutPanes,
@@ -23,6 +24,7 @@ import type {
   Workspace,
 } from "@noren/model";
 import type { QuickEvents } from "./quick";
+import { browserPaneOfWindow } from "./window-browser";
 import { WINDOW_READY_EVENT, requestOfPayload, windowIdOfPayload } from "./window-events";
 
 // How the page of a window besides the main one learns what to draw, and how it asks for a change.
@@ -34,7 +36,8 @@ import { WINDOW_READY_EVENT, requestOfPayload, windowIdOfPayload } from "./windo
 // git either (its capability has no such command): a preview or diff pane of the window asks the
 // main window for the read (`window-read`), which checks that the pane is one of the window's and
 // that the path or folder is the pane's own, reads it, and answers that window
-// (`window-read-result`). The names are repeated in `src-tauri/src/windows.rs` and in the smoke.
+// (`window-read-result`). The web view of a browser pane of the window is asked the same way, in
+// `window-browser.ts`. The names are repeated in `src-tauri/src/windows.rs` and in the smoke.
 
 /** Main window → window pages: the space the window shows, `{ windowId, space }`. */
 export const WINDOW_STATE_EVENT = "window-state";
@@ -67,7 +70,9 @@ export type WindowAction =
   /** Closes the tab and ends its shells. */
   | { type: "item/close"; itemId: Id }
   /** Moves the tab inside the space of the window (the order of the sidebar). */
-  | { type: "item/move"; itemId: Id; placement: Placement };
+  | { type: "item/move"; itemId: Id; placement: Placement }
+  /** Takes a browser pane of the window to another web address (its address bar). */
+  | { type: "pane/set-url"; itemId: Id; paneId: Id; url: string };
 
 /** The deepest split and the most children a request about a resize may name. */
 const MAX_SPLIT_DEPTH = 16;
@@ -174,6 +179,17 @@ export function actionOfWindowRequest(payload: unknown, workspace: Workspace): A
     }
     case "pane/focus":
       return typeof paneId === "string" ? { type, itemId, paneId } : undefined;
+    case "pane/set-url": {
+      // Only a browser pane of that tab, and only to an address the browser pane may show; the web
+      // view itself is taken there by the main window, from the address the pane then holds.
+      const { url } = request as Record<string, unknown>;
+      return typeof paneId === "string" &&
+        typeof url === "string" &&
+        browserUrlProblem(url) === undefined &&
+        browserPaneOfWindow(workspace, windowId, paneId, itemId) !== undefined
+        ? { type, itemId, paneId, url }
+        : undefined;
+    }
     case "pane/resize": {
       const where = wholeNumbers(path, MAX_SPLIT_DEPTH);
       const shares = Array.isArray(sizes) ? (sizes as unknown[]) : undefined;

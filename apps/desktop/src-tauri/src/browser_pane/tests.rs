@@ -318,6 +318,239 @@ fn navigating_and_moving_need_a_web_view_and_a_good_argument() {
     assert!(navigate(handle, "../x", "https://example.com/").is_err());
 }
 
+// ---- A web view that is a child of a window besides the main one (NOR-F15-04e) ----
+
+/// The main window, and the book of the windows the app opened (the commands that make a window
+/// put each one in it; here `open_window` does).
+fn app_with_windows() -> tauri::App<MockRuntime> {
+    let app = app_with_main_window();
+    app.manage(WindowBook::new(false));
+    app
+}
+
+/// A web view of the app by its label, with the label of the window it is a child of.
+fn parent_of(app: &tauri::App<MockRuntime>, label: &str) -> Option<String> {
+    app.get_webview(label)
+        .map(|view| view.window().label().to_owned())
+}
+
+#[test]
+fn a_web_view_opens_as_a_child_of_a_window_the_app_opened() {
+    let app = app_with_windows();
+    let handle = app.handle();
+    windows::open_window(handle, "w1", "s2").expect("a window");
+    windows::open_window(handle, "w2", "s3").expect("another window");
+
+    open_in(
+        handle,
+        Parent::Window("w1"),
+        "p1",
+        "https://example.com/",
+        BOUNDS,
+        None,
+    )
+    .expect("open in w1");
+    assert_eq!(parent_of(&app, "browser-p1").as_deref(), Some("window-w1"));
+    // The same call for the main window, and for the other window, name those.
+    open_in(
+        handle,
+        Parent::Window("w2"),
+        "p2",
+        "https://example.org/",
+        BOUNDS,
+        None,
+    )
+    .expect("open in w2");
+    open_in(
+        handle,
+        Parent::Main,
+        "p3",
+        "https://example.net/",
+        BOUNDS,
+        None,
+    )
+    .expect("open in main");
+    assert_eq!(parent_of(&app, "browser-p2").as_deref(), Some("window-w2"));
+    assert_eq!(parent_of(&app, "browser-p3").as_deref(), Some("main"));
+    // `open` is the same as a child of main.
+    open(handle, "p4", "https://example.com/", BOUNDS, None).expect("open");
+    assert_eq!(parent_of(&app, "browser-p4").as_deref(), Some("main"));
+
+    // The other calls find the web view by the pane, whoever its parent is.
+    navigate(handle, "p1", "https://example.com/docs").expect("navigate");
+    set_bounds(handle, "p1", BOUNDS).expect("move");
+    close(handle, "p1").expect("close");
+    assert!(app.get_webview("browser-p1").is_none());
+    // The windows keep their own pages, and nothing else was closed.
+    assert!(app.get_webview("window-w1").is_some());
+    assert!(app.get_webview("browser-p2").is_some());
+}
+
+#[test]
+fn a_web_view_cannot_be_made_a_child_of_a_window_that_is_not_one_the_app_opened() {
+    let app = app_with_windows();
+    let handle = app.handle();
+    windows::open_window(handle, "w1", "s2").expect("a window");
+    let refuse =
+        |parent: Parent| open_in(handle, parent, "p1", "https://example.com/", BOUNDS, None);
+    // A window nobody opened, the labels of the other windows and of a web view, and bad ids.
+    assert_eq!(
+        refuse(Parent::Window("w9")),
+        Err("Window w9 is not open.".to_owned())
+    );
+    for id in [
+        "main",
+        "quick",
+        "browser-p2",
+        "",
+        "a b",
+        "../w1",
+        "w1\n",
+        "window-w1",
+    ] {
+        assert!(refuse(Parent::Window(id)).is_err(), "{id:?}");
+    }
+    assert!(app.get_webview("browser-p1").is_none());
+    // A window the book forgot (it was closed) cannot be a parent even if its native window lingers.
+    app.state::<WindowBook>().remove("w1");
+    assert_eq!(
+        refuse(Parent::Window("w1")),
+        Err("Window w1 is not open.".to_owned())
+    );
+    // And without a book at all (the app did not set one up) nothing is a window.
+    let bare = app_with_main_window();
+    assert_eq!(
+        open_in(
+            bare.handle(),
+            Parent::Window("w1"),
+            "p1",
+            "https://example.com/",
+            BOUNDS,
+            None
+        ),
+        Err("Window w1 is not open.".to_owned())
+    );
+}
+
+#[test]
+fn a_pane_has_one_web_view_whichever_window_it_is_a_child_of() {
+    let app = app_with_windows();
+    let handle = app.handle();
+    windows::open_window(handle, "w1", "s2").expect("a window");
+    open(handle, "p1", "https://example.com/", BOUNDS, None).expect("open in main");
+    assert_eq!(
+        open_in(
+            handle,
+            Parent::Window("w1"),
+            "p1",
+            "https://example.org/",
+            BOUNDS,
+            None
+        ),
+        Err("Pane p1 has a web view already.".to_owned())
+    );
+    assert_eq!(parent_of(&app, "browser-p1").as_deref(), Some("main"));
+    // Closing it first (what the page of a window does before it opens) lets the window have it.
+    close(handle, "p1").expect("close");
+    open_in(
+        handle,
+        Parent::Window("w1"),
+        "p1",
+        "https://example.org/",
+        BOUNDS,
+        None,
+    )
+    .expect("open in the window");
+    assert_eq!(parent_of(&app, "browser-p1").as_deref(), Some("window-w1"));
+    // And back: closed, it opens again as a child of main.
+    close(handle, "p1").expect("close");
+    open(handle, "p1", "https://example.com/", BOUNDS, None).expect("open in main again");
+    assert_eq!(parent_of(&app, "browser-p1").as_deref(), Some("main"));
+}
+
+#[test]
+fn a_web_view_goes_with_its_window_and_the_other_windows_keep_theirs() {
+    let app = app_with_windows();
+    let handle = app.handle();
+    windows::open_window(handle, "w1", "s2").expect("a window");
+    windows::open_window(handle, "w2", "s3").expect("another window");
+    for (pane, parent) in [
+        ("p1", Parent::Window("w1")),
+        ("p2", Parent::Window("w1")),
+        ("p3", Parent::Window("w2")),
+        ("p4", Parent::Main),
+    ] {
+        open_in(handle, parent, pane, "https://example.com/", BOUNDS, None).expect("open");
+    }
+    windows::close_window(handle, "w1").expect("close the window");
+    assert!(app.get_webview("browser-p1").is_none(), "left behind");
+    assert!(app.get_webview("browser-p2").is_none(), "left behind");
+    // (The mock runtime has no event loop, so the window it destroys stays in its list; the book
+    // forgets it, and `noren --smoke-window` shows the real window go.)
+    assert_eq!(app.state::<WindowBook>().ids(), ["w2"]);
+    // The web views of the others are where they were.
+    assert_eq!(parent_of(&app, "browser-p3").as_deref(), Some("window-w2"));
+    assert_eq!(parent_of(&app, "browser-p4").as_deref(), Some("main"));
+    // The pane of the window that closed can have a web view again, in main.
+    open(handle, "p1", "https://example.com/", BOUNDS, None).expect("open in main");
+    assert_eq!(parent_of(&app, "browser-p1").as_deref(), Some("main"));
+    // A window the app closes in a block (the app is closing) takes its web views too.
+    windows::destroy_all(handle);
+    assert!(app.get_webview("browser-p3").is_none(), "left behind");
+    assert!(
+        app.get_webview("browser-p1").is_some(),
+        "main is not a window to destroy"
+    );
+}
+
+#[test]
+fn only_the_main_window_can_ask_for_a_web_view_for_a_window() {
+    let app = app_with_windows();
+    let handle = app.handle();
+    windows::open_window(handle, "w1", "s2").expect("a window");
+    let local = if cfg!(windows) {
+        "http://tauri.localhost/"
+    } else {
+        "tauri://localhost/"
+    };
+    let ask = serde_json::json!({
+        "paneId": "p1",
+        "url": "https://example.com/",
+        "bounds": { "x": 1, "y": 2, "width": 300, "height": 200 },
+        "windowId": "w1",
+    });
+    // The page of the window itself is the app's own page, so the access control would let it
+    // through here (the mock has none); the command refuses it for not being the main window.
+    assert!(!call_is_allowed(
+        &app,
+        "window-w1",
+        local,
+        "browser_open",
+        ask.clone()
+    ));
+    assert!(app.get_webview("browser-p1").is_none());
+    // The main window's page can: the web view is made, a child of the window it names.
+    assert!(call_is_allowed(&app, "main", local, "browser_open", ask));
+    assert_eq!(parent_of(&app, "browser-p1").as_deref(), Some("window-w1"));
+    // Without a window it is a child of main, as it always was.
+    let plain = serde_json::json!({
+        "paneId": "p2",
+        "url": "https://example.com/",
+        "bounds": { "x": 1, "y": 2, "width": 300, "height": 200 },
+    });
+    assert!(call_is_allowed(&app, "main", local, "browser_open", plain));
+    assert_eq!(parent_of(&app, "browser-p2").as_deref(), Some("main"));
+    // And a window that is not one is refused by the command too.
+    let ghost = serde_json::json!({
+        "paneId": "p3",
+        "url": "https://example.com/",
+        "bounds": { "x": 1, "y": 2, "width": 300, "height": 200 },
+        "windowId": "ghost",
+    });
+    assert!(!call_is_allowed(&app, "main", local, "browser_open", ghost));
+    assert!(app.get_webview("browser-p3").is_none());
+}
+
 /// Whether the command `cmd` is carried out when the page at `origin`, in the web view `label`,
 /// asks for it. Goes through the same `on_message` as a call from a real page.
 fn call_is_allowed(
@@ -374,6 +607,58 @@ fn a_page_in_a_web_view_of_a_pane_can_call_no_command_of_the_app() {
     ] {
         for label in ["browser-p1", "browser-p2"] {
             for cmd in ["browser_close", "browser_open", "browser_navigate"] {
+                assert!(
+                    !call_is_allowed(&app, label, origin, cmd, own.clone()),
+                    "{cmd} from {origin} in {label} was allowed"
+                );
+            }
+        }
+    }
+    assert!(
+        app.get_webview("browser-p2").is_some(),
+        "a refused call closed nothing"
+    );
+}
+
+#[test]
+fn a_page_in_a_web_view_that_is_a_child_of_a_window_can_call_no_command_of_the_app() {
+    let app = app_with_windows();
+    let handle = app.handle();
+    windows::open_window(handle, "w1", "s2").expect("a window");
+    open_in(
+        handle,
+        Parent::Window("w1"),
+        "p1",
+        "https://example.com/",
+        BOUNDS,
+        None,
+    )
+    .expect("open");
+    open_in(
+        handle,
+        Parent::Window("w1"),
+        "p2",
+        "http://127.0.0.1:8080/",
+        BOUNDS,
+        None,
+    )
+    .expect("open");
+    // The web views sit inside a window whose own page may call what its capability grants: a page
+    // of someone else in them is a remote origin, whichever window it is in.
+    let own = serde_json::json!({ "paneId": "p2" });
+    for origin in [
+        "https://example.com/",
+        "http://127.0.0.1:8080/",
+        "http://localhost:3000/",
+    ] {
+        for label in ["browser-p1", "browser-p2"] {
+            for cmd in [
+                "browser_close",
+                "browser_open",
+                "browser_navigate",
+                "window_close",
+                "session_attach",
+            ] {
                 assert!(
                     !call_is_allowed(&app, label, origin, cmd, own.clone()),
                     "{cmd} from {origin} in {label} was allowed"

@@ -21,7 +21,11 @@
 //!    shell printed before the move is what the terminal of the page starts with: the page asks for
 //!    it (`session_attach` with `replay`) and the daemon sends it ahead of the output that follows
 //!    (NOR-F15-04c);
-//! 4. a window the app closes is gone and a shell that was in it is not touched, and a window the
+//! 4. a browser pane shown by the window: its web view is opened as a child of `window-<id>` (the
+//!    way the main window does it for the page of the window, which cannot call `browser_*`), hidden
+//!    with its window, on a local page that can reach nothing of the app, and it goes with the window
+//!    when the app closes it (NOR-F15-04e, `smoke_browser.rs`);
+//! 5. a window the app closes is gone and a shell that was in it is not touched, and a window the
 //!    person closes (the run closes it the way the close button does) is told with `window-closed`.
 //!
 //! Every step prints a `SMOKE ...` line; `scripts/smoke.mjs` requires the ones that matter.
@@ -44,6 +48,7 @@ use crate::smoke::{
     Heard, Inbox, check_daemon_stopped, check_no_global_shortcut, check_runs_in_daemon,
     check_window_hidden, fresh_dir, locate_in_daemon, print_line, wait_for_route_line,
 };
+use crate::smoke_browser;
 use crate::windows::{self, ACTION_EVENT, CLOSED_EVENT, READY_WAIT, STATE_EVENT, TAKE_WAIT};
 
 pub const SMOKE_WINDOW_FLAG: &str = "--smoke-window";
@@ -101,7 +106,7 @@ impl Default for WindowSandbox {
 /// The commands the page of a window besides the main one must be refused, each with the arguments
 /// it would need, so a refusal can only be the access control: the state and the settings, the
 /// shells (starting and ending one), the windows, the web views of panes, a file of the machine.
-const FORBIDDEN: [(&str, &str); 13] = [
+const FORBIDDEN: [(&str, &str); 16] = [
     ("state_save", r#"{ content: "{}" }"#),
     ("state_load", "{}"),
     ("state_quarantine", "{}"),
@@ -119,6 +124,15 @@ const FORBIDDEN: [(&str, &str); 13] = [
         "browser_open",
         r#"{ paneId: "p", url: "https://example.com/", bounds: { x: 0, y: 0, width: 1, height: 1 } }"#,
     ),
+    (
+        "browser_navigate",
+        r#"{ paneId: "p", url: "https://example.com/" }"#,
+    ),
+    (
+        "browser_set_bounds",
+        r#"{ paneId: "p", bounds: { x: 0, y: 0, width: 1, height: 1 } }"#,
+    ),
+    ("browser_close", r#"{ paneId: "p" }"#),
     ("fonts_list_monospace", "{}"),
     (
         "background_image_read",
@@ -261,10 +275,11 @@ fn state_payload(window_id: &str, session: u64) -> Value {
     })
 }
 
-/// Fails unless the window `label` exists and is hidden.
+/// Fails unless the window `label` exists and is hidden. (Looked up as a window: Tauri does not call
+/// one a webview window once the web view of a browser pane is a child of it.)
 fn check_label_hidden(app: &AppHandle, label: &str) -> Result<(), String> {
     let window = app
-        .get_webview_window(label)
+        .get_window(label)
         .ok_or_else(|| format!("the window {label} does not exist"))?;
     if window.is_visible().map_err(|e| e.to_string())? {
         return Err(format!(
@@ -277,7 +292,7 @@ fn check_label_hidden(app: &AppHandle, label: &str) -> Result<(), String> {
 /// Waits until `label` is no longer a window of the app (the event loop destroys it a moment after
 /// the request).
 fn wait_until_gone(app: &AppHandle, label: &str, deadline: Instant) -> Result<(), String> {
-    while app.get_webview_window(label).is_some() {
+    while app.get_window(label).is_some() {
         if Instant::now() >= deadline {
             return Err(format!(
                 "the window {label} was still there after it was closed"
@@ -533,8 +548,16 @@ fn run(app: &AppHandle, inbox: &mut Inbox, deadline: Instant) -> Result<u64, Str
     check_window_hidden(app)?;
     print_line("SMOKE second window hidden");
 
+    // A tab with a browser pane in the window: the main window opens its web view as a child of the
+    // window (with the bounds the page of the window would send), the page in it is as shut in as
+    // in the main window, and the web view goes with the window when the app closes it, so there
+    // is no web view of a window that is gone. The window is closed here, by the app, so the next
+    // step has a window that is gone and a shell that is not touched.
+    smoke_browser::check_browser_pane_in_window(app, WINDOW_ID, || {
+        windows::close_window(app, WINDOW_ID)
+    })?;
+
     // A window the app closes is gone; the shell that was in it is not touched.
-    windows::close_window(app, WINDOW_ID)?;
     wait_until_gone(app, &label, deadline)?;
     if inbox.saw(CLOSED_EVENT, |payload| {
         payload.get("windowId").and_then(Value::as_str) == Some(WINDOW_ID)

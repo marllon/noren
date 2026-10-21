@@ -278,10 +278,11 @@ export interface NorenTestHook {
   openedLinks(): string[];
   /**
    * The web views the backend holds for browser panes now, in the order they were opened: the pane,
-   * the page and where the view is (a view out of sight has no width or no height). No page is ever
-   * loaded.
+   * the page, where the view is (a view out of sight has no width or no height) and, for a view
+   * that is a child of a window besides the main one, that window (none for a child of the main
+   * window). No page is ever loaded.
    */
-  browserViews(): { paneId: string; url: string; bounds: BrowserBounds }[];
+  browserViews(): { paneId: string; url: string; bounds: BrowserBounds; windowId?: string }[];
   /** Every call about a web view of a pane the backend got, in order, with the pane it was for. */
   browserCalls(): { method: string; paneId: string }[];
   /** The path of every file the backend was asked to read for a preview pane, in order. */
@@ -1276,7 +1277,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
   /**
    * A tab goes to a window of its own: dragged out of the window, or "Move tab to new window" in the
    * palette (the tab on screen). The window gets a space of its own, named after the tab, and the
-   * shells of the tab go on in it. A tab with a browser pane, too many windows, a
+   * shells of the tab go on in it, and its browser, preview and diff panes are drawn by the page of
+   * the window. A tab with a pane no window can draw (none today), too many windows, a
    * page that cannot show other windows and a window the backend refuses say so in a notice and
    * leave the tab where it is.
    */
@@ -1673,7 +1675,16 @@ function Shell({ store }: { store: WorkspaceStore }) {
         browserViews: () =>
           fake.browserPaneIds().flatMap((paneId) => {
             const view = fake.browserPane(paneId);
-            return view === undefined ? [] : [{ paneId, url: view.url, bounds: view.bounds }];
+            return view === undefined
+              ? []
+              : [
+                  {
+                    paneId,
+                    url: view.url,
+                    bounds: view.bounds,
+                    ...(view.windowId !== undefined ? { windowId: view.windowId } : {}),
+                  },
+                ];
           }),
         browserCalls: () =>
           fake.calls

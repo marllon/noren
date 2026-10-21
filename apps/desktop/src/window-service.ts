@@ -9,6 +9,7 @@ import type { Action, Backend, Id, Space, Unsubscribe, Workspace } from "@noren/
 import type { QuickEvents } from "./quick";
 import { sessionStartOptions } from "./workspace-store";
 import type { WorkspaceStore } from "./workspace-store";
+import { followWindowBrowsers } from "./window-browser";
 import { followWindowPages, followWindowReads } from "./window-sync";
 
 /** The size a shell of a tab opened from a window starts with, until the terminal of the window fits it. */
@@ -114,7 +115,7 @@ export async function moveItemToWindow(
     return { ok: false, reason: "that tab is in the window already" };
   const item = holder.items[itemId];
   if (item !== undefined && !windowCanShowTab(item)) {
-    return { ok: false, reason: "a tab with a browser pane stays in the main window" };
+    return { ok: false, reason: "that tab has a pane a window cannot show" };
   }
   try {
     await backend.moveTabToWindow(windowId, sessionsOfItem(store, itemId));
@@ -128,7 +129,7 @@ export async function moveItemToWindow(
     : { ok: false, reason: "the tab or the window changed while the tab moved" };
 }
 
-/** Why a tab cannot go to a window of its own: it is not there, it has a browser pane (a window cannot hold its web view yet), or the windows are too many. */
+/** Why a tab cannot go to a window of its own: it is not there, it has a pane the page of a window cannot draw (`windowCanShowTab`; none today), or the windows are too many. */
 export type WindowMoveProblem = "no-tab" | "panes" | "limit";
 
 /** What stops the tab `itemId` from going to a new window, or `undefined` when nothing does. */
@@ -163,7 +164,7 @@ export async function moveItemToNewWindow(
         problem === "no-tab"
           ? "no such tab"
           : problem === "panes"
-            ? "a tab with a browser pane stays in the main window"
+            ? "that tab has a pane a window cannot show"
             : "there are too many windows",
     };
   }
@@ -339,9 +340,11 @@ export function followWindowClosed(
  * Starts what the main window does for the other windows (the interface starts it once, at boot):
  * the pages of the windows get the space they show and their requests are carried out
  * (`followWindowPages`), the files and git diffs their preview and diff panes need are read here
- * and sent to them (`followWindowReads`), a window the person closes gives its tabs back
- * (`followWindowClosed`), and the windows the saved state remembers are brought up again
- * (`bringUpWindows`). Returns the function that stops the first three.
+ * and sent to them (`followWindowReads`), the web views of their browser panes are opened here as
+ * children of the window and kept in step with the workspace (`followWindowBrowsers`), a window the
+ * person closes gives its tabs back (`followWindowClosed`), and the windows the saved state
+ * remembers are brought up again (`bringUpWindows`). Returns the function that stops the first
+ * four.
  */
 export function startWindows(
   store: WorkspaceStore,
@@ -355,6 +358,10 @@ export function startWindows(
     | "createSession"
     | "readFilePreview"
     | "readGitDiff"
+    | "openBrowserPane"
+    | "navigateBrowserPane"
+    | "setBrowserPaneBounds"
+    | "closeBrowserPane"
   >,
   events: QuickEvents,
 ): Unsubscribe {
@@ -362,11 +369,13 @@ export function startWindows(
     runWindowAction(store, backend, windowId, action),
   );
   const stopReads = followWindowReads(store, backend, events);
+  const stopBrowsers = followWindowBrowsers(store, backend, events);
   const stopClosed = followWindowClosed(store, backend);
   void bringUpWindows(store, backend);
   return () => {
     stopPages();
     stopReads();
+    stopBrowsers();
     stopClosed();
   };
 }

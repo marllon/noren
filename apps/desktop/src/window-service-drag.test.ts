@@ -117,14 +117,20 @@ describe("moveItemToNewWindow", () => {
     expect(backend.windows()).toEqual([]);
   });
 
-  it("refuses a tab that is not there and one with a pane a window cannot draw, calling nothing", async () => {
-    const { backend, store, main } = await openMain();
-    const tab = itemsOf(store, main.id)[0];
-    if (!tab) throw new Error("the main space has a tab");
+  it("refuses a tab that is not there, calling nothing", async () => {
+    const { backend, store } = await openMain();
     expect(await moveItemToNewWindow(store, backend, "nope")).toEqual({
       ok: false,
       reason: "no such tab",
     });
+    expect(backend.callsTo("openWindow")).toEqual([]);
+    expect(store.getState().workspace.windows).toBeUndefined();
+  });
+
+  it("takes a tab with a browser pane like any other, the pane and its address unchanged (NOR-F15-04e)", async () => {
+    const { backend, store, main } = await openMain();
+    const tab = itemsOf(store, main.id)[0];
+    if (!tab) throw new Error("the main space has a tab");
     store.getState().dispatch({
       type: "pane/split",
       itemId: tab.id,
@@ -133,11 +139,16 @@ describe("moveItemToNewWindow", () => {
       side: "after",
       url: "https://example.com",
     });
-    expect(windowMoveProblem(store.getState().workspace, tab.id)).toBe("panes");
-    const refused = await moveItemToNewWindow(store, backend, tab.id);
-    expect(refused.ok).toBe(false);
-    expect(backend.callsTo("openWindow")).toEqual([]);
-    expect(store.getState().workspace.windows).toBeUndefined();
+    expect(windowMoveProblem(store.getState().workspace, tab.id)).toBeUndefined();
+    const moved = await moveItemToNewWindow(store, backend, tab.id);
+    expect(moved.ok).toBe(true);
+    expect(backend.callsTo("openWindow")).toHaveLength(1);
+    const windowSpace = store
+      .getState()
+      .workspace.spaces.find((s) => s.id === store.getState().workspace.windows?.[0]?.spaceId);
+    const panes = layoutPanes(windowSpace?.items[tab.id]?.layout ?? tab.layout);
+    expect(panes.map((pane) => pane.type).sort()).toEqual(["browser", "terminal"]);
+    expect(panes.find((pane) => pane.type === "browser")?.url).toBe("https://example.com");
   });
 
   it("tells what stops a tab from going to a window of its own", async () => {

@@ -112,6 +112,8 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       return createSpace(ws, action, ctx);
     case "space/import":
       return importSpace(ws, action, ctx);
+    case "space/reimport":
+      return reimportSpace(ws, action, ctx);
     case "space/rename": {
       const name = clean(action.name);
       if (name === undefined) return ws;
@@ -774,6 +776,34 @@ function importSpace(
     ...ws,
     spaces: [...ws.spaces, made.space],
     activeSpaceId: action.activate === false ? ws.activeSpaceId : made.space.id,
+  };
+}
+
+function reimportSpace(
+  ws: Workspace,
+  action: Extract<Action, { type: "space/reimport" }>,
+  ctx: ReducerContext,
+): Workspace {
+  const old = ws.spaces.find((space) => space.id === action.spaceId);
+  if (old === undefined) return ws;
+  const made = spaceFromFile(action.file, idPool(ws, ctx), ctx.clock.now(), ctx.maxPanes, old.id);
+  if (!made.ok) return ws;
+  const now = ctx.clock.now();
+  const ids = spaceItemIds(old);
+  const gone = new Set(ids);
+  const entries: ClosedItem[] = [];
+  for (const id of ids) {
+    const item = old.items[id];
+    if (item) entries.push({ item: withoutSessions(item), spaceId: old.id, closedAt: now });
+  }
+  // The picture behind the terminals is a path of this computer: the file never carries one.
+  const space: Space =
+    old.background === undefined ? made.space : { ...made.space, background: old.background };
+  return {
+    ...ws,
+    spaces: ws.spaces.map((s) => (s.id === old.id ? space : s)),
+    favorites: ws.favorites.filter((id) => !gone.has(id)),
+    closed: pushClosed(ws.closed, entries),
   };
 }
 

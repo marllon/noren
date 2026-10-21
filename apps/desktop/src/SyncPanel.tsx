@@ -10,12 +10,14 @@ import {
   statusText,
 } from "./settings-sync";
 import type { SyncMessage } from "./settings-sync";
+import type { SpaceSyncBackend, SpaceSyncPort } from "./space-sync";
 import { runPull, runPush } from "./sync-run";
 
 type SyncPanelBackend = Pick<
   Backend,
   "syncStatus" | "syncConnect" | "syncPull" | "syncPush" | "listUserThemes" | "listMods"
->;
+> &
+  SpaceSyncBackend;
 
 type View = { state: "loading" } | { state: "ready"; status: SyncStatus | undefined };
 
@@ -25,9 +27,17 @@ type View = { state: "loading" } | { state: "ready"; status: SyncStatus | undefi
  * Every answer is a sentence in a `status` region: the files pulled or pushed, the paths in conflict
  * with the words that nothing changed, or the text of the error git gave. An address that
  * `syncRemoteProblem` refuses says why and is never sent. After a pull the status is read again,
- * and the themes and mods it wrote are read again by `sync-run.ts`.
+ * and the themes and mods it wrote are read again by `sync-run.ts`. With `spaces` (the window's
+ * spaces and profiles), a push writes every space as a file first and a pull makes spaces of the
+ * files that came in.
  */
-export function SyncPanel({ backend }: { backend: SyncPanelBackend }) {
+export function SyncPanel({
+  backend,
+  spaces,
+}: {
+  backend: SyncPanelBackend;
+  spaces?: SpaceSyncPort | undefined;
+}) {
   const t = useT();
   const [view, setView] = useState<View>({ state: "loading" });
   const [remote, setRemote] = useState("");
@@ -129,7 +139,7 @@ export function SyncPanel({ backend }: { backend: SyncPanelBackend }) {
           type="button"
           className="settings-link"
           disabled={busy || !connected}
-          onClick={() => void step(() => runPull(backend))}
+          onClick={() => void step(() => runPull(backend, spaces))}
         >
           {t("settings.syncPull")}
         </button>
@@ -137,7 +147,7 @@ export function SyncPanel({ backend }: { backend: SyncPanelBackend }) {
           type="button"
           className="settings-link"
           disabled={busy || !connected}
-          onClick={() => void step(() => runPush(backend))}
+          onClick={() => void step(() => runPush(backend, spaces))}
         >
           {t("settings.syncPush")}
         </button>

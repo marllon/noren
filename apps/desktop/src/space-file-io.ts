@@ -1,9 +1,4 @@
-import {
-  SPACE_FILE_EXTENSION,
-  SPACE_FILE_LIMITS,
-  parseSpaceFile,
-  planProfiles,
-} from "@noren/model";
+import { SPACE_FILE_LIMITS, parseSpaceFile, planProfiles } from "@noren/model";
 import type {
   ConfigManager,
   ExportRemovals,
@@ -21,34 +16,12 @@ import type { PickedFile } from "./scheme-import";
 // writing the profiles the plan adds to `config.jsonc` before the space is made. Choosing the file
 // and saving it are in `App.tsx`. Nothing here touches the DOM.
 
-/** Characters a file name cannot hold on the systems Noren runs on, and control characters. */
-// eslint-disable-next-line no-control-regex
-const UNSAFE_IN_NAME = /[<>:"/\\|?*\u0000-\u001f]/g;
-
-/** Names Windows will not give to a file (with or without an extension). */
-const RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
-
-/** The most characters of the space's name used in the name of the file. */
-const MAX_NAME_CHARS = 100;
-
-/**
- * The name of the file saved for a space: its name, with what a file name cannot hold replaced, then
- * `.noren-space.json`. A name with nothing usable in it gives `space.noren-space.json`.
- */
-export function exportFileName(spaceName: string): string {
-  const cleaned = spaceName
-    .replace(UNSAFE_IN_NAME, "-")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, MAX_NAME_CHARS)
-    // A name may not end in a dot or a space on Windows.
-    .replace(/[. ]+$/, "");
-  const base = cleaned === "" || RESERVED_NAME.test(cleaned) ? "space" : cleaned;
-  return `${base}${SPACE_FILE_EXTENSION}`;
-}
+// The name of the file saved for a space is `exportFileName` of `@noren/model` (the sync names its
+// files the same way); it is re-exported here for the callers of this module.
+export { exportFileName } from "@noren/model";
 
 /** What the export took out, in one phrase, or `undefined` when it took nothing out. */
-function removedList(removed: ExportRemovals): string | undefined {
+export function removedText(removed: ExportRemovals): string | undefined {
   const parts: string[] = [];
   if (removed.env.length > 0) {
     parts.push(t("spaceFile.secretEnv", { names: removed.env.join(", ") }));
@@ -65,7 +38,7 @@ function removedList(removed: ExportRemovals): string | undefined {
 /** The sentence shown once the file is handed to the system: where it went and what stayed out. */
 export function exportNotice(spaceName: string, fileName: string, removed: ExportRemovals): string {
   const main = t("spaceFile.exported", { name: spaceName, file: fileName });
-  const list = removedList(removed);
+  const list = removedText(removed);
   return list === undefined ? main : `${main} ${t("spaceFile.secretsLeftOut", { list })}`;
 }
 

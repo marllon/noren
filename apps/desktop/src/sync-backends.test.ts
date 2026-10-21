@@ -71,6 +71,70 @@ describe("TauriBackend sync", () => {
   });
 });
 
+describe("TauriBackend space files", () => {
+  const hash = "0123456789abcdef".repeat(4);
+  const folder = {
+    files: [
+      { name: "Work.noren-space.json", hash, linked: { spaceId: "s1", hash } },
+      { name: "Came.noren-space.json", hash, linked: null },
+    ],
+    cloned: ["Theirs.noren-space.json"],
+  };
+
+  it("reads the folder of sync_spaces_list and the text of sync_spaces_read", async () => {
+    const fake = bridgeAnswering({ sync_spaces_list: folder, sync_spaces_read: "{}\n" });
+    const backend = new TauriBackend(fake.bridge);
+    await expect(backend.syncSpaceFiles()).resolves.toEqual(folder);
+    await expect(backend.syncReadSpaceFile("Work.noren-space.json")).resolves.toBe("{}\n");
+    expect(fake.invocations).toEqual([
+      { command: "sync_spaces_list", args: undefined },
+      { command: "sync_spaces_read", args: { name: "Work.noren-space.json" } },
+    ]);
+  });
+
+  it("sends the files to write and the links to make in the shape the app reads", async () => {
+    const fake = bridgeAnswering({ sync_spaces_write: null, sync_spaces_link: null });
+    const backend = new TauriBackend(fake.bridge);
+    const files = [{ name: "Work.noren-space.json", text: "{}", spaceId: "s1" }];
+    await backend.syncWriteSpaceFiles(files);
+    await backend.syncLinkSpaceFiles([{ name: "Came.noren-space.json", spaceId: "s2" }]);
+    expect(fake.invocations).toEqual([
+      { command: "sync_spaces_write", args: { files } },
+      {
+        command: "sync_spaces_link",
+        args: { links: [{ name: "Came.noren-space.json", spaceId: "s2" }] },
+      },
+    ]);
+  });
+
+  it("refuses a batch the app would refuse without asking it", async () => {
+    const fake = bridgeAnswering({});
+    const backend = new TauriBackend(fake.bridge);
+    await expect(
+      backend.syncWriteSpaceFiles([{ name: "../x.noren-space.json", text: "{}", spaceId: "s1" }]),
+    ).rejects.toThrow("not a name the sync carries");
+    expect(fake.invocations).toEqual([]);
+  });
+
+  it("rejects an answer that is not the expected shape, and a failing command", async () => {
+    const wrong = bridgeAnswering({
+      sync_spaces_list: { files: [{ name: "state.json", hash, linked: null }], cloned: [] },
+      sync_spaces_read: 42,
+    });
+    const backend = new TauriBackend(wrong.bridge);
+    await expect(backend.syncSpaceFiles()).rejects.toThrow("unexpected shape");
+    await expect(backend.syncReadSpaceFile("Work.noren-space.json")).rejects.toThrow(
+      "unexpected shape",
+    );
+    const broken = bridgeAnswering({}, ["sync_spaces_write"]);
+    await expect(
+      new TauriBackend(broken.bridge).syncWriteSpaceFiles([
+        { name: "Work.noren-space.json", text: "{}", spaceId: "s1" },
+      ]),
+    ).rejects.toThrow("sync_spaces_write failed");
+  });
+});
+
 describe("WebBackend sync", () => {
   it("keeps the sync in memory like the fake backend", async () => {
     const storage = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
@@ -124,6 +188,21 @@ describe("WebBackend sync seed (noren.web.sync)", () => {
     // The pull wrote the mod where the app reads it.
     await expect(backend.listMods()).resolves.toEqual([{ name: "a.css", text: "/* a */\n" }]);
     await expect(backend.syncPush()).resolves.toMatchObject({ pushed: true });
+  });
+
+  it("keeps the space files like the fake backend, and a pull brings the remote's unlinked", async () => {
+    const backend = withSeed({ remoteFiles: { "spaces/Came.noren-space.json": "{}\n" } });
+    await backend.syncConnect("https://example.com/me/s.git");
+    await backend.syncPull();
+    const [came] = (await backend.syncSpaceFiles()).files;
+    expect(came).toMatchObject({ name: "Came.noren-space.json", linked: null });
+    await backend.syncWriteSpaceFiles([
+      { name: "Mine.noren-space.json", text: "{}", spaceId: "s1" },
+    ]);
+    await expect(backend.syncPush()).resolves.toMatchObject({
+      pushed: true,
+      files: ["spaces/Mine.noren-space.json"],
+    });
   });
 
   it("makes every sync call fail with the seeded message", async () => {

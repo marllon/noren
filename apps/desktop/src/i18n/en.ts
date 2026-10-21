@@ -515,9 +515,9 @@ export const en = {
     "{name} was installed, but it is not a usable theme, so it is left out of the list: {reason}",
   "settings.sync": "Sync",
   "settings.syncHint":
-    "Keeps config.jsonc, your themes and your mods in a git repository you own. Pull brings the remote's files to this computer; Push sends the ones that changed here.",
+    "Keeps config.jsonc, your themes, your mods and your spaces (one file each) in a git repository you own. Pull brings the remote's files to this computer; Push sends the ones that changed here.",
   "settings.syncWarning":
-    "All of config.jsonc is sent, not only the settings you changed, so keep nothing secret in it. Noren asks git for nothing: a stored credential or an ssh key without a passphrase prompt must already work in a terminal before you connect.",
+    "All of config.jsonc is sent, not only the settings you changed, so keep nothing secret in it. Noren asks git for nothing: a stored credential or an ssh key without a passphrase prompt must already work in a terminal before you connect. Removing a space does not remove its file: it stays in the repository and on your other computers.",
   "settings.syncConnectedWarning":
     "All of config.jsonc travels, so keep nothing secret in it. Noren cannot ask for a password or an ssh passphrase: if pull or push fails on a credential, make git work with this remote in a terminal first.",
   "settings.syncRemote": "Remote address",
@@ -553,6 +553,20 @@ export const en = {
   "settings.syncFailed.push": "Could not push: {reason}",
   "settings.syncReloadFailed": "The files were written, but could not be read again: {reason}",
   "settings.syncNoRemote": "No remote is connected. Connect one in Settings, in the Sync section.",
+  "settings.syncSpaces.and": "and",
+  "settings.syncSpaces.skipped": "Not written as a file: {list}.",
+  "settings.syncSpaces.leftOut":
+    "Left out of the space files because they looked like secrets: {list}.",
+  "settings.syncSpaces.added.one": "Added the space {names} from the remote.",
+  "settings.syncSpaces.added.other": "Added {n} spaces from the remote: {names}.",
+  "settings.syncSpaces.replaced.one":
+    "Updated the space {names} from the remote; the tabs it had are in the closed tabs.",
+  "settings.syncSpaces.replaced.other":
+    "Updated {n} spaces from the remote: {names}; the tabs they had are in the closed tabs.",
+  "settings.syncSpaces.ignored": "Skipped spaces/{file}: {reason}.",
+  "settings.syncSpaces.failed": "Could not make a space from spaces/{file}: {reason}",
+  "settings.syncSpaces.stepFailed":
+    "The files were pulled, but the spaces could not be made from them: {reason}",
   "action.sync.pull": "Pull settings",
   "action.sync.push": "Push settings",
   "settings.modMissing": "not in the folder, so it is ignored",

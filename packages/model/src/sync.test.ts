@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   SYNC_LIMITS,
+  isSyncSpaceFileName,
   isSyncablePath,
   parseSyncPull,
   parseSyncPush,
+  parseSyncSpaceFolder,
   parseSyncStatus,
   syncRemoteProblem,
+  syncSpaceWriteProblem,
 } from "./sync";
 
 // The same cases as the tests of `noren-core::sync` (`only_the_listed_names_may_travel`,
@@ -161,5 +164,111 @@ describe("what the app answers", () => {
     const wrong = parseSyncPush({ ...push, pushed: "yes" });
     expect(wrong.ok).toBe(false);
     if (!wrong.ok) expect(wrong.error.length).toBeGreaterThan(0);
+  });
+});
+
+// The space files (NOR-F19-01c): the names are the ones of the closed list, the answer of the app is
+// checked, and a batch to write is checked the way `noren-core::sync_spaces` checks it.
+
+describe("space file names", () => {
+  it("are the names of the closed list without the folder", () => {
+    for (const name of [
+      "Work.noren-space.json",
+      "my space.noren-space.json",
+      "é.noren-space.json",
+    ]) {
+      expect(isSyncSpaceFileName(name), name).toBe(true);
+    }
+    for (const name of [
+      "",
+      "plain.json",
+      "../x.noren-space.json",
+      "a/b.noren-space.json",
+      "a\\b.noren-space.json",
+      ".hidden.noren-space.json",
+      "con.noren-space.json",
+      "a:b.noren-space.json",
+      "trailing .noren-space.json",
+      ".noren-space.json",
+      `${"x".repeat(SYNC_LIMITS.spaceFileChars)}.noren-space.json`,
+    ]) {
+      expect(isSyncSpaceFileName(name), name).toBe(false);
+    }
+  });
+});
+
+describe("parseSyncSpaceFolder", () => {
+  const hash = "0123456789abcdef".repeat(4);
+  const folder = {
+    files: [
+      { name: "Work.noren-space.json", hash, linked: null },
+      { name: "Play.noren-space.json", hash, linked: { spaceId: "s1", hash } },
+    ],
+    cloned: ["Theirs.noren-space.json"],
+  };
+
+  it("accepts what the app answers", () => {
+    expect(parseSyncSpaceFolder(folder)).toEqual({ ok: true, value: folder });
+    expect(parseSyncSpaceFolder({ files: [], cloned: [] }).ok).toBe(true);
+  });
+
+  it("rejects a name off the list, a hash that is not sha256, a field too many and a wrong shape", () => {
+    const spoil = (change: object) => parseSyncSpaceFolder({ ...folder, ...change });
+    expect(spoil({ files: [{ name: "state.json", hash, linked: null }] }).ok).toBe(false);
+    expect(spoil({ files: [{ name: "A.noren-space.json", hash: "abc", linked: null }] }).ok).toBe(
+      false,
+    );
+    expect(
+      spoil({ files: [{ name: "A.noren-space.json", hash: hash.toUpperCase(), linked: null }] }).ok,
+    ).toBe(false);
+    expect(
+      spoil({
+        files: [{ name: "A.noren-space.json", hash, linked: { spaceId: "", hash } }],
+      }).ok,
+    ).toBe(false);
+    expect(
+      spoil({ files: [{ name: "A.noren-space.json", hash, linked: null, extra: 1 }] }).ok,
+    ).toBe(false);
+    expect(spoil({ cloned: ["../x.noren-space.json"] }).ok).toBe(false);
+    expect(parseSyncSpaceFolder({ files: [] }).ok).toBe(false);
+    expect(parseSyncSpaceFolder("files").ok).toBe(false);
+    expect(parseSyncSpaceFolder(null).ok).toBe(false);
+  });
+});
+
+describe("syncSpaceWriteProblem", () => {
+  const file = (name: string, text = "{}", spaceId = "s1") => ({ name, text, spaceId });
+
+  it("accepts a batch of names on the list", () => {
+    expect(
+      syncSpaceWriteProblem([file("Work.noren-space.json"), file("Play.noren-space.json")]),
+    ).toBeUndefined();
+    expect(syncSpaceWriteProblem([])).toBeUndefined();
+  });
+
+  it("names what is wrong", () => {
+    expect(syncSpaceWriteProblem([file("../x.noren-space.json")])).toContain("not a name");
+    expect(syncSpaceWriteProblem([file("Work.noren-space.json", "{}", "")])).toContain("id");
+    expect(
+      syncSpaceWriteProblem([file("Work.noren-space.json", "x".repeat(SYNC_LIMITS.fileBytes + 1))]),
+    ).toContain("larger than 1024 KiB");
+    // The ceiling is in bytes: a text of 3-byte characters passes it sooner than its length says.
+    expect(
+      syncSpaceWriteProblem([
+        file("Work.noren-space.json", "€".repeat(SYNC_LIMITS.fileBytes / 3 + 1)),
+      ]),
+    ).toContain("larger than");
+    expect(
+      syncSpaceWriteProblem([
+        file("Work.noren-space.json", "€".repeat(Math.floor(SYNC_LIMITS.fileBytes / 3))),
+      ]),
+    ).toBeUndefined();
+    expect(
+      syncSpaceWriteProblem([file("Work.noren-space.json"), file("work.noren-space.json")]),
+    ).toContain("twice");
+    const many = Array.from({ length: SYNC_LIMITS.files + 1 }, (_, n) =>
+      file(`s${n}.noren-space.json`),
+    );
+    expect(syncSpaceWriteProblem(many)).toContain("more than 500");
   });
 });

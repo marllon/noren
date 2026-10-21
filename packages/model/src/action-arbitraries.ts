@@ -358,6 +358,7 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
         { requiredKeys: ["type", "file"] },
       ),
     ),
+    weighted(1, fc.record({ type: tag("space/reimport"), spaceId, file: arbSpaceFile(ws) })),
     weighted(1, fc.record({ type: tag("space/rename"), spaceId, name: arbName })),
     weighted(1, fc.record({ type: tag("space/set-color"), spaceId, color: arbColor })),
     weighted(1, fc.record({ type: tag("space/set-icon"), spaceId, icon: arbIcon })),

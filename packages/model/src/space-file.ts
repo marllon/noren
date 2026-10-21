@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { validEnv } from "./env";
 import { checkInvariants } from "./invariants";
-import { MAX_MODS, isValidModFileName } from "./mods";
+import { MAX_MODS, isReservedModName, isValidModFileName } from "./mods";
 import { redactSecrets } from "./redact";
 import { encodeUtf8 } from "./utf8";
 import {
@@ -47,6 +47,33 @@ export const SPACE_FILE_FORMAT = "noren-space";
 export const SPACE_FILE_VERSION = 1;
 /** The ending of the name of the file. */
 export const SPACE_FILE_EXTENSION = ".noren-space.json";
+
+/** Characters a file name cannot hold on the systems Noren runs on, and control characters. */
+// eslint-disable-next-line no-control-regex
+const UNSAFE_IN_NAME = /[<>:"/\\|?*\u0000-\u001f\u007f-\u009f]/g;
+
+/** The most characters of the name of a space used in the name of its file. */
+const MAX_FILE_NAME_CHARS = 100;
+
+/**
+ * The name of the file saved for a space: its name, with what a file name cannot hold replaced,
+ * then `.noren-space.json`. A name with nothing usable in it, or one a system reserves for a device
+ * (with or without an extension), gives `space.noren-space.json`. The name never starts with a dot
+ * (a hidden file) and never ends in a dot or a space, so the result is always a name the sync
+ * carries (`isSyncablePath` of `spaces/<name>`), which also keeps it in the spaces folder.
+ */
+export function exportFileName(spaceName: string): string {
+  const cleaned = spaceName
+    .replace(UNSAFE_IN_NAME, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_FILE_NAME_CHARS)
+    // A name may not start with a dot, and may not end in a dot or a space on Windows.
+    .replace(/^[. ]+/, "")
+    .replace(/[. ]+$/, "");
+  const base = cleaned === "" || isReservedModName(cleaned) ? "space" : cleaned;
+  return `${base}${SPACE_FILE_EXTENSION}`;
+}
 
 export const SPACE_FILE_LIMITS = {
   /** The largest file read, in bytes. */
@@ -418,13 +445,16 @@ export type SpaceFromFile = { ok: true; space: Space } | { ok: false; error: str
  * `maxPanes`), then the space, its items, groups and panes each get an id from `newId` (the same
  * file id always gets the same new id, so the references between them hold), every tab is dated
  * `now` and every pane starts idle with no session. This is what the `space/import` action does;
- * the profiles of the file are not here (`planProfiles`). Never throws.
+ * the profiles of the file are not here (`planProfiles`). With `spaceId` the space keeps that id
+ * instead of getting one from `newId` (making a space again from a file, `space/reimport`). Never
+ * throws.
  */
 export function spaceFromFile(
   file: SpaceFile,
   newId: () => Id,
   now: number,
   maxPanes: number = DEFAULT_MAX_PANES,
+  spaceId?: Id,
 ): SpaceFromFile {
   try {
     const checked = validateSpaceFile(file, maxPanes);
@@ -438,8 +468,7 @@ export function spaceFromFile(
       }
       return made;
     };
-    const spaceId = newId();
-    return { ok: true, space: buildSpace(checked.file, spaceId, idOf, now) };
+    return { ok: true, space: buildSpace(checked.file, spaceId ?? newId(), idOf, now) };
   } catch {
     return refuse("the space could not be made from the file");
   }

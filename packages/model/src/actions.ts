@@ -62,6 +62,16 @@ export type Action =
    * `planProfiles`). Becomes the active space unless `activate` is `false`.
    */
   | { type: "space/import"; file: SpaceFile; activate?: boolean }
+  /**
+   * Makes a space again from a `.noren-space.json` file (`space-file.ts`): the space keeps its id,
+   * its place in the list, whether it is the active one, the window that shows it and the picture
+   * behind its terminals, and takes the rest from the file (name, tabs, groups, defaults) with fresh
+   * ids for the tabs, groups and panes. The tabs it had go to the closed stack, so they can be
+   * reopened, and their sessions are dropped. This is what a pull of the sync does with a space
+   * whose file changed on another computer. A space that does not exist, and a file that is not
+   * valid (or has a tab over `maxPanes`), change nothing.
+   */
+  | { type: "space/reimport"; spaceId: Id; file: SpaceFile }
   | { type: "space/rename"; spaceId: Id; name: string }
   | { type: "space/set-color"; spaceId: Id; color: string }
   | { type: "space/set-icon"; spaceId: Id; icon: string }

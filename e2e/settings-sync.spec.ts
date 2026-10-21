@@ -148,10 +148,20 @@ test("Push sends the pending files and only the ones that may travel", async ({ 
   await connect(sync);
   await expect(status(sync)).toHaveText(`Connected to ${REMOTE} (branch main). 2 files to send.`);
   await button(sync, "Push").click();
-  await expect(note(sync)).toHaveText("Pushed 2 files: config.jsonc, mods/rounded.css.");
+  // The space of the window is written as a file first, so it travels with the other two.
+  await expect(note(sync)).toHaveText(
+    "Pushed 3 files: config.jsonc, mods/rounded.css, spaces/Main.noren-space.json.",
+  );
   await expect(status(sync)).toHaveText(`Connected to ${REMOTE} (branch main). Up to date.`);
   await expect(sync.locator('[data-nr-part="settings-sync-pending"]')).toHaveCount(0);
-  expect(await remoteFiles(page)).toEqual({ "config.jsonc": MINE, "mods/rounded.css": MOD });
+  const sent = await remoteFiles(page);
+  expect(Object.keys(sent).sort()).toEqual([
+    "config.jsonc",
+    "mods/rounded.css",
+    "spaces/Main.noren-space.json",
+  ]);
+  expect(sent["config.jsonc"]).toBe(MINE);
+  expect(sent["mods/rounded.css"]).toBe(MOD);
 
   await button(sync, "Push").click();
   await expect(note(sync)).toHaveText("Nothing to push.");
@@ -287,8 +297,8 @@ test("Pull settings and Push settings in the palette say where to connect, then 
   expect(await stored(page, WEB_MODS_KEY)).toEqual({ "rounded.css": MOD });
 
   await runCommand(page, "push settings", "Push settings");
-  // The pull before it saved the local state in the clone, so the push sends that commit.
-  await expect(notice(page)).toHaveText("Pushed the changes that were waiting.");
+  // The pull before it saved the local state in the clone; the push adds the file of the space.
+  await expect(notice(page)).toHaveText("Pushed 1 file: spaces/Main.noren-space.json.");
   expect((await remoteFiles(page))["config.jsonc"]).toBe(MINE);
 
   await runCommand(page, "push settings", "Push settings");

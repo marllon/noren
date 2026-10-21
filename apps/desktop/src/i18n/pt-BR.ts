@@ -520,9 +520,9 @@ export const ptBR: Dictionary = {
     "{name} foi instalado, mas não é um tema utilizável, então ficou fora da lista: {reason}",
   "settings.sync": "Sincronização",
   "settings.syncHint":
-    "Guarda o config.jsonc, seus temas e seus mods num repositório git que é seu. Pull traz os arquivos do remoto para este computador; Push envia os que mudaram aqui.",
+    "Guarda o config.jsonc, seus temas, seus mods e seus spaces (um arquivo cada) num repositório git que é seu. Pull traz os arquivos do remoto para este computador; Push envia os que mudaram aqui.",
   "settings.syncWarning":
-    "O config.jsonc inteiro é enviado, não só o que você mudou, então não deixe nada secreto nele. O Noren não pede nada ao git: uma credencial guardada ou uma chave ssh sem pergunta de senha precisa já funcionar num terminal antes de conectar.",
+    "O config.jsonc inteiro é enviado, não só o que você mudou, então não deixe nada secreto nele. O Noren não pede nada ao git: uma credencial guardada ou uma chave ssh sem pergunta de senha precisa já funcionar num terminal antes de conectar. Remover um space não remove o arquivo dele: ele continua no repositório e nos seus outros computadores.",
   "settings.syncConnectedWarning":
     "O config.jsonc inteiro viaja, então não deixe nada secreto nele. O Noren não consegue pedir senha nem a senha da chave ssh: se o pull ou o push falhar por credencial, faça o git funcionar com este remoto num terminal primeiro.",
   "settings.syncRemote": "Endereço do remoto",
@@ -560,6 +560,20 @@ export const ptBR: Dictionary = {
     "Os arquivos foram gravados, mas não puderam ser lidos de novo: {reason}",
   "settings.syncNoRemote":
     "Nenhum remoto está conectado. Conecte um em Configurações, na seção Sincronização.",
+  "settings.syncSpaces.and": "e",
+  "settings.syncSpaces.skipped": "Não virou arquivo: {list}.",
+  "settings.syncSpaces.leftOut": "Ficou de fora dos arquivos de space por parecer segredo: {list}.",
+  "settings.syncSpaces.added.one": "Space {names} adicionado a partir do remoto.",
+  "settings.syncSpaces.added.other": "{n} spaces adicionados a partir do remoto: {names}.",
+  "settings.syncSpaces.replaced.one":
+    "Space {names} atualizado a partir do remoto; as abas que ele tinha estão nas abas fechadas.",
+  "settings.syncSpaces.replaced.other":
+    "{n} spaces atualizados a partir do remoto: {names}; as abas que eles tinham estão nas abas fechadas.",
+  "settings.syncSpaces.ignored": "spaces/{file} ignorado: {reason}.",
+  "settings.syncSpaces.failed":
+    "Não foi possível criar um space a partir de spaces/{file}: {reason}",
+  "settings.syncSpaces.stepFailed":
+    "Os arquivos foram trazidos, mas não foi possível criar os spaces a partir deles: {reason}",
   "action.sync.pull": "Trazer configurações (pull)",
   "action.sync.push": "Enviar configurações (push)",
   "settings.modMissing": "não está na pasta, então é ignorado",

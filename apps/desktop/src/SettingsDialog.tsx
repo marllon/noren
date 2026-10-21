@@ -35,6 +35,7 @@ import { ProfileImportDialog } from "./ProfileImportDialog";
 import { BenchPanel } from "./BenchPanel";
 import { GalleryPanel } from "./GalleryPanel";
 import { SyncPanel } from "./SyncPanel";
+import type { SpaceSyncPort } from "./space-sync";
 import { ModelsPanel } from "./ModelsPanel";
 import { ProvidersPanel } from "./ProvidersPanel";
 import { useProfiles } from "./profiles-store";
@@ -223,9 +224,18 @@ interface SettingsDialogProps {
     | "syncConnect"
     | "syncPull"
     | "syncPush"
+    | "syncSpaceFiles"
+    | "syncReadSpaceFile"
+    | "syncWriteSpaceFiles"
+    | "syncLinkSpaceFiles"
     | "listUserThemes"
     | "listMods"
   >;
+  /**
+   * The spaces and profiles of the window, for the Sync section: a push writes every space as a
+   * file and a pull makes spaces of the files that came in. Without it the sync carries no spaces.
+   */
+  spaceSync?: SpaceSyncPort | undefined;
   /**
    * Puts text at the prompt of the focused terminal without Enter, for the install command of a
    * recommended model; false when there is no terminal.
@@ -241,7 +251,7 @@ interface SettingsDialogProps {
  * follows the file, so the change shows without a reload. A file with a problem of its own is not
  * edited: Save waits until it is fixed. Importing is not part of the draft (see the Import section).
  */
-export function SettingsDialog({ backend, onInsert, onClose }: SettingsDialogProps) {
+export function SettingsDialog({ backend, spaceSync, onInsert, onClose }: SettingsDialogProps) {
   const t = useT();
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -916,7 +926,7 @@ export function SettingsDialog({ backend, onInsert, onClose }: SettingsDialogPro
                 data-nr-part="settings-sync"
               >
                 <h3>{t("settings.sync")}</h3>
-                <SyncPanel backend={backend} />
+                <SyncPanel backend={backend} spaces={spaceSync} />
               </section>
               <section className="settings-section" aria-label={t("settings.import")}>
                 <h3>{t("settings.import")}</h3>

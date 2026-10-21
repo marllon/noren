@@ -9,7 +9,10 @@
 //! - `config.jsonc`;
 //! - `themes/<id>.json` (a theme id);
 //! - `mods/<name>.css` (a mod file name);
-//! - `spaces/<name>.noren-space.json` (a space file, see `exportSpace` of `@noren/model`).
+//! - `spaces/<name>.noren-space.json` (a space file, see `exportSpace` of `@noren/model`). Listing,
+//!   reading and writing them, and the local record of which space each file stands for
+//!   (`sync-spaces.json`, which is not on this list and never travels), are in
+//!   [`crate::sync_spaces`].
 //!
 //! Anything else in the config folder (`state.json`, the scrollback, `gallery.json`, `plugins/`, a
 //! stray file) is never copied into the clone, and a file with another name that a repository
@@ -45,6 +48,7 @@ use std::time::{Duration, Instant};
 
 use crate::config::CONFIG_FILE_NAME;
 use crate::mods::{MODS_DIR_NAME, is_valid_mod_file_name};
+use crate::sync_spaces::SpaceFiles;
 use crate::themes::{THEMES_DIR_NAME, is_valid_theme_id};
 use crate::worktree::GitCli;
 
@@ -137,6 +141,8 @@ pub enum SyncError {
     TooManyFiles,
     /// A file or folder could not be read or written.
     Io(String),
+    /// A name that is not on the closed list of what may travel (see [`is_syncable`]).
+    NotSyncable(String),
 }
 
 impl fmt::Display for SyncError {
@@ -173,6 +179,9 @@ impl fmt::Display for SyncError {
             ),
             Self::TooManyFiles => write!(f, "more than {MAX_SYNC_FILES} files would be synced"),
             Self::Io(detail) => write!(f, "could not read or write the sync files: {detail}"),
+            Self::NotSyncable(path) => {
+                write!(f, "{path} is not a name the sync carries and was not used")
+            }
         }
     }
 }
@@ -551,6 +560,11 @@ impl SyncRepo {
     /// The folder of the clone.
     pub fn clone_dir(&self) -> &Path {
         &self.clone_dir
+    }
+
+    /// The space files of the config folder this sync works over (see [`SpaceFiles`]).
+    pub fn space_files(&self) -> SpaceFiles {
+        SpaceFiles::new(&self.config_dir)
     }
 
     fn is_cloned(&self) -> bool {
@@ -1078,6 +1092,11 @@ fn same_content(a: &Path, b: &Path) -> Result<bool, SyncError> {
 /// written; makes the folder of `to` when it is missing.
 fn write_file(from: &Path, to: &Path) -> Result<(), SyncError> {
     let bytes = fs::read(from).map_err(|e| SyncError::io(&e))?;
+    write_bytes(to, &bytes)
+}
+
+/// Writes `bytes` to `to` through a temporary file beside it (see [`write_file`]).
+pub(crate) fn write_bytes(to: &Path, bytes: &[u8]) -> Result<(), SyncError> {
     if let Some(parent) = to.parent() {
         fs::create_dir_all(parent).map_err(|e| SyncError::io(&e))?;
     }
@@ -1579,6 +1598,101 @@ mod tests {
             assert!(!a.sync.clone_dir().join(name).exists(), "{name}");
         }
         assert!(!a.sync.clone_dir().join("themes").join("leak.txt").exists());
+    }
+
+    #[test]
+    fn the_space_files_travel_and_the_record_of_their_links_stays_on_this_computer() {
+        use crate::sync_spaces::{SPACE_LINKS_FILE_NAME, SpaceFileLink, SpaceFileWrite};
+
+        let write = |name: &str, text: &str, id: &str| SpaceFileWrite {
+            name: name.to_owned(),
+            text: text.to_owned(),
+            space_id: id.to_owned(),
+        };
+        let remote = Remote::new();
+        let a = Machine::new("a", &remote);
+        a.sync
+            .space_files()
+            .write(&[
+                write("Work.noren-space.json", "{\"w\":1}\n", "s-a-work"),
+                write("Play.noren-space.json", "{\"p\":1}\n", "s-a-play"),
+            ])
+            .expect("write the space files");
+        a.write("config.jsonc", "{}\n");
+        a.sync.connect(&remote.url()).expect("connect a");
+        // The record sits in the config folder, and the sync sees only the space files.
+        assert!(a.config().join(SPACE_LINKS_FILE_NAME).exists());
+        let status = a.sync.status().expect("status");
+        let pending: Vec<_> = status.pending.iter().map(|c| c.path.as_str()).collect();
+        assert_eq!(
+            pending,
+            vec![
+                "config.jsonc",
+                "spaces/Play.noren-space.json",
+                "spaces/Work.noren-space.json"
+            ]
+        );
+        assert!(a.sync.push().expect("push a").pushed);
+        let wanted = vec![
+            "config.jsonc".to_owned(),
+            "spaces/Play.noren-space.json".to_owned(),
+            "spaces/Work.noren-space.json".to_owned(),
+        ];
+        assert_eq!(remote_files(&remote), wanted);
+        assert!(!a.sync.clone_dir().join(SPACE_LINKS_FILE_NAME).exists());
+        // The links of a are still the ones it wrote, and the clone is listed as the names taken.
+        let folder = a.sync.space_files().list().expect("list a");
+        assert!(folder.files.iter().all(|file| file.link.is_some()));
+        assert_eq!(folder.cloned.len(), 2);
+
+        // A second computer gets the files, no record, and ties them to its own spaces.
+        let b = Machine::new("b", &remote);
+        b.sync.connect(&remote.url()).expect("connect b");
+        assert_eq!(
+            b.sync.pull().expect("pull b"),
+            PullOutcome::Updated(wanted.clone())
+        );
+        assert!(!b.config().join(SPACE_LINKS_FILE_NAME).exists());
+        let folder = b.sync.space_files().list().expect("list b");
+        assert_eq!(folder.files.len(), 2);
+        assert!(folder.files.iter().all(|file| file.link.is_none()));
+        b.sync
+            .space_files()
+            .link(&[SpaceFileLink {
+                name: "Work.noren-space.json".to_owned(),
+                space_id: "s-b-work".to_owned(),
+            }])
+            .expect("link on b");
+        assert_eq!(b.sync.pull().expect("again"), PullOutcome::UpToDate);
+        let work = b.sync.space_files().list().expect("list b").files;
+        let work = work
+            .iter()
+            .find(|file| file.name == "Work.noren-space.json")
+            .expect("Work");
+        assert_eq!(
+            work.link.as_ref().map(|link| link.space_id.as_str()),
+            Some("s-b-work")
+        );
+
+        // A change of b to the file is a change of the file for a, whose link keeps the old hash.
+        b.sync
+            .space_files()
+            .write(&[write("Work.noren-space.json", "{\"w\":2}\n", "s-b-work")])
+            .expect("rewrite");
+        assert!(b.sync.push().expect("push b").pushed);
+        assert_eq!(
+            a.sync.pull().expect("pull a"),
+            PullOutcome::Updated(vec!["spaces/Work.noren-space.json".to_owned()])
+        );
+        let folder = a.sync.space_files().list().expect("list a");
+        let work = folder
+            .files
+            .iter()
+            .find(|file| file.name == "Work.noren-space.json")
+            .expect("Work");
+        let link = work.link.as_ref().expect("still linked");
+        assert_eq!(link.space_id, "s-a-work");
+        assert_ne!(link.hash, work.hash);
     }
 
     #[test]

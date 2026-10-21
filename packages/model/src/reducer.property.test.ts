@@ -10,12 +10,20 @@ import { layoutPanes, liveSessionIds } from "./sessions";
 import { shownItem, visiblePanes } from "./unread";
 import { deepFreeze, testContext } from "./test-helpers";
 import { treeGroups } from "./tree";
-import { DEFAULT_MAX_PANES, MAX_EXTRA_WINDOWS, type Id, type Item, type Workspace } from "./types";
+import {
+  DEFAULT_MAX_PANES,
+  MAX_CLOSED,
+  MAX_EXTRA_WINDOWS,
+  type Id,
+  type Item,
+  type Workspace,
+} from "./types";
 
 /** One key per action type: the compiler fails here when a new action is not listed. */
 const ACTION_TYPES: Record<ActionType, true> = {
   "space/create": true,
   "space/import": true,
+  "space/reimport": true,
   "space/rename": true,
   "space/set-color": true,
   "space/set-icon": true,
@@ -153,8 +161,8 @@ function sessionsEndedBy(ws: Workspace, action: Action): Set<Id> {
     ) {
       collect(Object.values(space.items).filter((item) => item.id === action.itemId));
     } else if (
-      action.type === "space/delete" &&
-      action.items.mode === "close" &&
+      ((action.type === "space/delete" && action.items.mode === "close") ||
+        action.type === "space/reimport") &&
       space.id === action.spaceId
     ) {
       collect(Object.values(space.items));
@@ -177,6 +185,7 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "space/move":
     case "space/activate":
     case "space/delete":
+    case "space/reimport":
       return !ws.spaces.some((space) => space.id === action.spaceId);
     case "space/set-active-item":
       return !ws.spaces.some(
@@ -373,6 +382,74 @@ function checkImport(
       ...treeGroups(added.tree).map((group) => group.id),
     ]) {
       if (before.has(id)) fail(`the imported space reuses the id ${id}`);
+    }
+  }
+}
+
+/**
+ * `space/reimport` makes the space again from the file: the same id at the same place, the same
+ * active space, the file back when it is exported again, ids no space, closed or archived tab ever
+ * had, and the tabs it had in the closed stack (the stack keeps its last `MAX_CLOSED`); a space that
+ * does not exist, or a file that is not valid, changes nothing.
+ */
+function checkReimport(
+  ws: Workspace,
+  next: Workspace,
+  action: Action,
+  limit: number,
+  where: () => string,
+): void {
+  if (action.type !== "space/reimport") return;
+  const fail = (what: string): never => {
+    throw new Error(`${where()}: ${what}`);
+  };
+  const index = ws.spaces.findIndex((space) => space.id === action.spaceId);
+  const old = ws.spaces[index];
+  if (old === undefined || !validateSpaceFile(action.file, limit).ok) {
+    if (next !== ws) fail("a reimport that could not be done changed the workspace");
+    return;
+  }
+  if (next === ws) return fail("a valid reimport changed nothing");
+  const made = next.spaces[index];
+  if (made?.id !== old.id || next.spaces.length !== ws.spaces.length) {
+    fail("the reimported space is not in its place");
+  } else if (next.activeSpaceId !== ws.activeSpaceId) {
+    fail("a reimport changed the active space");
+  } else if (made.background !== old.background) {
+    fail("a reimport lost the picture behind the terminals");
+  } else {
+    const back = exportSpace(made);
+    if (
+      !back.ok ||
+      JSON.stringify(back.file) !== JSON.stringify({ ...action.file, profiles: [] })
+    ) {
+      fail("exporting the reimported space does not give the file again");
+    }
+    const known = new Set<Id>();
+    const see = (item: Item): void => {
+      known.add(item.id);
+      for (const pane of layoutPanes(item.layout)) known.add(pane.id);
+    };
+    for (const space of ws.spaces) {
+      known.add(space.id);
+      Object.values(space.items).forEach(see);
+      for (const group of treeGroups(space.tree)) known.add(group.id);
+    }
+    ws.closed.forEach((entry) => see(entry.item));
+    ws.archive.forEach((entry) => see(entry.item));
+    for (const id of [
+      ...Object.keys(made.items),
+      ...treeGroups(made.tree).map((group) => group.id),
+      ...Object.values(made.items).flatMap((item) =>
+        layoutPanes(item.layout).map((pane) => pane.id),
+      ),
+    ]) {
+      if (known.has(id)) fail(`the reimported space reuses the id ${id}`);
+    }
+    const kept = new Set(next.closed.map((entry) => entry.item.id));
+    const wanted = Object.keys(old.items);
+    if (next.closed.length < MAX_CLOSED && !wanted.every((id) => kept.has(id))) {
+      fail("the tabs the space had are not in the closed stack");
     }
   }
 }
@@ -675,6 +752,7 @@ function playSequences(
             }
           }
           checkImport(ws, next, action, limit, where);
+          checkReimport(ws, next, action, limit, where);
           if (next !== ws) checkPaneDelta(ws, next, action, where);
           if (next !== ws) checkOrigin(ws, next, action, where);
           if (next !== ws) checkActiveItems(ws, next, action, where);

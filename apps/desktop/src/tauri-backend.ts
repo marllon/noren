@@ -11,8 +11,10 @@ import {
   parseGalleryIndex,
   parseSyncPull,
   parseSyncPush,
+  parseSyncSpaceFolder,
   parseSyncStatus,
   sniffImageMime,
+  syncSpaceWriteProblem,
 } from "@noren/model";
 import type {
   AgentEntry,
@@ -50,6 +52,9 @@ import type {
   SyncParse,
   SyncPullResult,
   SyncPushResult,
+  SyncSpaceFolder,
+  SyncSpaceLink,
+  SyncSpaceWrite,
   SyncStatus,
   TerminalTail,
   Unsubscribe,
@@ -632,6 +637,33 @@ export class TauriBackend implements Backend {
 
   async syncPush(): Promise<SyncPushResult> {
     return checkedSync(parseSyncPush(await this.#bridge.invoke<unknown>("sync_push")));
+  }
+
+  async syncSpaceFiles(): Promise<SyncSpaceFolder> {
+    return checkedSync(
+      parseSyncSpaceFolder(await this.#bridge.invoke<unknown>("sync_spaces_list")),
+    );
+  }
+
+  async syncReadSpaceFile(name: string): Promise<string> {
+    const text = await this.#bridge.invoke<unknown>("sync_spaces_read", { name });
+    if (typeof text !== "string") {
+      throw new Error(
+        "the app answered about the sync in an unexpected shape: the file is not text",
+      );
+    }
+    return text;
+  }
+
+  async syncWriteSpaceFiles(files: readonly SyncSpaceWrite[]): Promise<void> {
+    // Checked here as well, so a refusal costs no round trip; the app checks again.
+    const problem = syncSpaceWriteProblem(files);
+    if (problem !== undefined) throw new Error(problem);
+    await this.#bridge.invoke("sync_spaces_write", { files });
+  }
+
+  async syncLinkSpaceFiles(links: readonly SyncSpaceLink[]): Promise<void> {
+    await this.#bridge.invoke("sync_spaces_link", { links });
   }
 
   watchMods(callback: (files: ModFile[]) => void): Unsubscribe {

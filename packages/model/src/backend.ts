@@ -13,7 +13,14 @@ import type { BrowserBounds } from "./browser";
 import type { PluginFolder } from "./plugins-load";
 import type { FilePreview } from "./file-preview";
 import type { GalleryIndex, InstalledGalleryItem } from "./gallery";
-import type { SyncPullResult, SyncPushResult, SyncStatus } from "./sync";
+import type {
+  SyncPullResult,
+  SyncPushResult,
+  SyncSpaceFolder,
+  SyncSpaceLink,
+  SyncSpaceWrite,
+  SyncStatus,
+} from "./sync";
 import type { GitDiff } from "./git-diff";
 import type { Id } from "./types";
 import type { UserProfile } from "./user-profile-schema";
@@ -388,6 +395,31 @@ export interface Backend {
    * when git fails.
    */
   syncPush(): Promise<SyncPushResult>;
+  /**
+   * The space files of the config folder (`spaces/<name>.noren-space.json`, NOR-F19-01c): each
+   * with the hash of its bytes and the space the local record ties it to (`linked`, `null` for a
+   * file nobody has made a space from here yet), and the names the clone of the sync holds (what the
+   * remote had when it was last pulled or pushed). Only names of the closed list are listed, and a
+   * file over the ceiling is left out. Works without a remote. Rejects when the record cannot be read.
+   */
+  syncSpaceFiles(): Promise<SyncSpaceFolder>;
+  /**
+   * The text of one space file by its bare name (`Work.noren-space.json`). Rejects for a name off
+   * the closed list, a file that is missing or over the ceiling.
+   */
+  syncReadSpaceFile(name: string): Promise<string>;
+  /**
+   * Writes space files into the config folder and ties each to the space it is made from, with the
+   * hash of what was written. Every name, size and id is checked first: one refusal writes nothing,
+   * and rejects with a sentence. A file that holds the same text is not touched. The record is
+   * local to this computer and is never sent by a push.
+   */
+  syncWriteSpaceFiles(files: readonly SyncSpaceWrite[]): Promise<void>;
+  /**
+   * Ties space files already in the folder (a pull brought them) to the spaces made from them, with
+   * the hash of the files as they are now, so the next pull knows it has seen them.
+   */
+  syncLinkSpaceFiles(links: readonly SyncSpaceLink[]): Promise<void>;
   /**
    * Asks the system to paint `effect` behind the window (`none` takes any effect away), and tells
    * what the window has afterwards. It never rejects because the system cannot paint the effect:

@@ -163,6 +163,7 @@ export {
   SPACE_FILE_LIMITS,
   SPACE_FILE_VERSION,
   SpaceFileSchema,
+  exportFileName,
   exportSpace,
   looksSecret,
   parseSpaceFile,
@@ -410,16 +411,34 @@ export type { GalleryDownload } from "./gallery-fixture";
 export {
   SYNC_CHANGES,
   SYNC_LIMITS,
+  isSyncSpaceFileName,
   isSyncablePath,
   parseSyncPull,
   parseSyncPush,
+  parseSyncSpaceFolder,
   parseSyncStatus,
   syncPullSchema,
   syncPushSchema,
   syncRemoteProblem,
+  syncSpaceFileSchema,
+  syncSpaceFolderSchema,
+  syncSpaceWriteProblem,
   syncStatusSchema,
 } from "./sync";
-export type { SyncChange, SyncParse, SyncPullResult, SyncPushResult, SyncStatus } from "./sync";
+export type {
+  SyncChange,
+  SyncParse,
+  SyncPullResult,
+  SyncPushResult,
+  SyncSpaceFile,
+  SyncSpaceFolder,
+  SyncSpaceLink,
+  SyncSpaceWrite,
+  SyncStatus,
+} from "./sync";
+export { sha256Hex, sha256HexOfBytes } from "./sha256";
+export { planSpacePull, planSpacePush, spaceFileSignature, spacesToRead } from "./sync-spaces";
+export type { PlanPushOptions, SpacePullPlan, SpacePushPlan, SpacePushSkip } from "./sync-spaces";
 export { AGENT_LINE_MAX, buildAgentList, firstWaitingAgent, truncateLine } from "./agent-list";
 export type { AgentInfo, AgentRow } from "./agent-list";
 export {

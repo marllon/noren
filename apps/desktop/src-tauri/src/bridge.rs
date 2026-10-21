@@ -16,11 +16,11 @@ use noren_core::{
     CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, Gallery, GitHead, InstalledItem, MODS_DIR_NAME,
     ModFile, ModStore, ModWatcher, PLUGINS_DIR_NAME, PluginFolder, PluginStore, ProcessSource,
     Profile, ProfileSet, PullOutcome, PushOutcome, SCROLLBACK_DIR_NAME, ScrollbackStore,
-    SessionEvent, SessionId, SpawnSpec, SshProfile, StateStore, SyncRepo, SyncStatus,
-    SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect, Worktree,
-    check_catalog, create_worktree, detect_system_profiles, list_running_containers,
-    list_worktrees, native_path, read_head, read_project_file, read_ssh_hosts, remove_worktree,
-    run_short, scan_sessions,
+    SessionEvent, SessionId, SpaceFileLink, SpaceFileWrite, SpaceFolder, SpawnSpec, SshProfile,
+    StateStore, SyncRepo, SyncStatus, SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile,
+    WindowEffect, Worktree, check_catalog, create_worktree, detect_system_profiles,
+    list_running_containers, list_worktrees, native_path, read_head, read_project_file,
+    read_ssh_hosts, remove_worktree, run_short, scan_sessions,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -1653,6 +1653,66 @@ impl From<PushOutcome> for SyncPushDto {
     }
 }
 
+/// The space a space file is tied to on this computer, as the interface sees it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncSpaceLinkDto {
+    pub space_id: String,
+    pub hash: String,
+}
+
+/// One space file of the config folder: its name, the sha256 of its bytes and its link, if any.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SyncSpaceFileDto {
+    pub name: String,
+    pub hash: String,
+    pub linked: Option<SyncSpaceLinkDto>,
+}
+
+/// The space files of the config folder and the names the clone of the sync holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SyncSpaceFolderDto {
+    pub files: Vec<SyncSpaceFileDto>,
+    pub cloned: Vec<String>,
+}
+
+impl From<SpaceFolder> for SyncSpaceFolderDto {
+    fn from(folder: SpaceFolder) -> Self {
+        Self {
+            files: folder
+                .files
+                .into_iter()
+                .map(|file| SyncSpaceFileDto {
+                    name: file.name,
+                    hash: file.hash,
+                    linked: file.link.map(|link| SyncSpaceLinkDto {
+                        space_id: link.space_id,
+                        hash: link.hash,
+                    }),
+                })
+                .collect(),
+            cloned: folder.cloned,
+        }
+    }
+}
+
+/// A space file the interface asks to write, with the space it is made from.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncSpaceWriteDto {
+    pub name: String,
+    pub text: String,
+    pub space_id: String,
+}
+
+/// A space file the interface asks to tie to a space.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncSpaceLinkRequestDto {
+    pub name: String,
+    pub space_id: String,
+}
+
 /// The sync of the settings through git: one clone next to `config.jsonc`, one step at a time.
 pub struct SyncState {
     repo: SyncRepo,
@@ -1712,6 +1772,53 @@ impl SyncState {
     pub fn push(&self) -> Result<SyncPushDto, String> {
         self.step(SyncRepo::push).map(SyncPushDto::from)
     }
+
+    /// The space files of the config folder (see [`SpaceFiles::list`]). Only a read, but it waits
+    /// for a pull or a push in progress so it never sees half of one.
+    pub fn spaces_list(&self) -> Result<SyncSpaceFolderDto, String> {
+        let _turn = self.busy.lock().map_err(|e| e.to_string())?;
+        self.repo
+            .space_files()
+            .list()
+            .map(SyncSpaceFolderDto::from)
+            .map_err(|e| e.to_string())
+    }
+
+    /// The text of one space file (see [`SpaceFiles::read`]).
+    pub fn spaces_read(&self, name: &str) -> Result<String, String> {
+        let _turn = self.busy.lock().map_err(|e| e.to_string())?;
+        self.repo
+            .space_files()
+            .read(name)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Writes space files and ties them to their spaces (see [`SpaceFiles::write`]). Refused in a
+    /// smoke run, which must leave the files of the user as they are.
+    pub fn spaces_write(&self, files: Vec<SyncSpaceWriteDto>) -> Result<(), String> {
+        let files: Vec<SpaceFileWrite> = files
+            .into_iter()
+            .map(|file| SpaceFileWrite {
+                name: file.name,
+                text: file.text,
+                space_id: file.space_id,
+            })
+            .collect();
+        self.step(|repo| repo.space_files().write(&files))
+    }
+
+    /// Ties space files to the spaces made from them (see [`SpaceFiles::link`]). Refused in a
+    /// smoke run.
+    pub fn spaces_link(&self, links: Vec<SyncSpaceLinkRequestDto>) -> Result<(), String> {
+        let links: Vec<SpaceFileLink> = links
+            .into_iter()
+            .map(|link| SpaceFileLink {
+                name: link.name,
+                space_id: link.space_id,
+            })
+            .collect();
+        self.step(|repo| repo.space_files().link(&links))
+    }
 }
 
 /// Builds the sync of the user over the app config folder. Only resolves the path: the clone is
@@ -1759,6 +1866,53 @@ pub async fn sync_pull(state: State<'_, Arc<SyncState>>) -> Result<SyncPullDto, 
 pub async fn sync_push(state: State<'_, Arc<SyncState>>) -> Result<SyncPushDto, String> {
     let state = Arc::clone(&state);
     tauri::async_runtime::spawn_blocking(move || state.push())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// The space files of the config folder, their links to spaces and the names the clone holds.
+#[tauri::command]
+pub async fn sync_spaces_list(
+    state: State<'_, Arc<SyncState>>,
+) -> Result<SyncSpaceFolderDto, String> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || state.spaces_list())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// The text of one space file; a name off the closed list is refused.
+#[tauri::command]
+pub async fn sync_spaces_read(
+    state: State<'_, Arc<SyncState>>,
+    name: String,
+) -> Result<String, String> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || state.spaces_read(&name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Writes space files into the config folder and ties each to the space it was made from.
+#[tauri::command]
+pub async fn sync_spaces_write(
+    state: State<'_, Arc<SyncState>>,
+    files: Vec<SyncSpaceWriteDto>,
+) -> Result<(), String> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || state.spaces_write(files))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Ties space files already in the config folder to the spaces made from them.
+#[tauri::command]
+pub async fn sync_spaces_link(
+    state: State<'_, Arc<SyncState>>,
+    links: Vec<SyncSpaceLinkRequestDto>,
+) -> Result<(), String> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || state.spaces_link(links))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -2910,6 +3064,70 @@ mod tests {
             .expect("serialize"),
             r#"{"committed":true,"pushed":false,"files":["c"]}"#
         );
+    }
+
+    #[test]
+    fn space_files_reach_the_interface_in_the_wire_shape_and_come_back_the_same_way() {
+        let dir = TempDir::new("sync-spaces");
+        let state = SyncState::new(SyncRepo::new(&dir.0));
+        state
+            .spaces_write(vec![SyncSpaceWriteDto {
+                name: "Work.noren-space.json".to_owned(),
+                text: "{}\n".to_owned(),
+                space_id: "s1".to_owned(),
+            }])
+            .expect("write");
+        assert_eq!(
+            state.spaces_read("Work.noren-space.json").as_deref(),
+            Ok("{}\n")
+        );
+        let listed = serde_json::to_string(&state.spaces_list().expect("list")).expect("json");
+        let hash = "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356";
+        assert_eq!(
+            listed,
+            format!(
+                r#"{{"files":[{{"name":"Work.noren-space.json","hash":"{hash}","linked":{{"spaceId":"s1","hash":"{hash}"}}}}],"cloned":[]}}"#
+            )
+        );
+        // What the interface sends is read with camelCase keys.
+        let sent: Vec<SyncSpaceWriteDto> =
+            serde_json::from_str(r#"[{"name":"Play.noren-space.json","text":"x","spaceId":"s2"}]"#)
+                .expect("write request");
+        assert_eq!(sent[0].space_id, "s2");
+        let links: Vec<SyncSpaceLinkRequestDto> =
+            serde_json::from_str(r#"[{"name":"Play.noren-space.json","spaceId":"s2"}]"#)
+                .expect("link request");
+        assert_eq!(links[0].space_id, "s2");
+        // A name off the closed list is refused with words.
+        let refused = state.spaces_read("../config.jsonc").expect_err("refused");
+        assert!(refused.contains("not a name the sync carries"), "{refused}");
+    }
+
+    #[test]
+    fn a_smoke_run_reads_the_space_files_but_does_not_write_them() {
+        let dir = TempDir::new("sync-spaces-smoke");
+        let smoke = SyncState::new(SyncRepo::new(&dir.0)).without_syncing();
+        assert_eq!(
+            smoke
+                .spaces_write(vec![SyncSpaceWriteDto {
+                    name: "Work.noren-space.json".to_owned(),
+                    text: "{}".to_owned(),
+                    space_id: "s1".to_owned(),
+                }])
+                .expect_err("refused"),
+            "this run does not sync"
+        );
+        assert_eq!(
+            smoke
+                .spaces_link(vec![SyncSpaceLinkRequestDto {
+                    name: "Work.noren-space.json".to_owned(),
+                    space_id: "s1".to_owned(),
+                }])
+                .expect_err("refused"),
+            "this run does not sync"
+        );
+        assert_eq!(smoke.spaces_list().expect("list").files, Vec::new());
+        assert!(!dir.0.join("spaces").exists());
     }
 
     #[test]

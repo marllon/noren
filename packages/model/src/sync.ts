@@ -5,7 +5,7 @@ import { THEME_ID_PATTERN } from "./theme";
 // The sync through git, the pure side (NOR-F19-01a): the shape of what the app answers about the
 // sync, the check of it, the list of the files that may travel and the check of the address of the
 // remote. Running git, the clone and the copy of files are in `noren-core::sync`; the screen that
-// drives them comes in NOR-F19-01b. No DOM, no Tauri, no network here.
+// drives them is `SyncPanel` (NOR-F19-01b). No DOM, no Tauri, no network here.
 //
 // The list of names and the rules for an address are the same as in `noren-core` (`is_syncable` and
 // `validate_remote_url`); both sides are tested with the same cases.
@@ -191,6 +191,96 @@ export const syncPushSchema = z.strictObject({
 });
 export type SyncPushResult = z.infer<typeof syncPushSchema>;
 
+// The space files (NOR-F19-01c). A space travels as `spaces/<name>.noren-space.json`; the app lists
+// them, reads them, writes them and ties each to the space it stands for in a record that stays on
+// this computer (`noren-core::sync_spaces`). The pure planning of what to write and what to import
+// is in `sync-spaces.ts`.
+
+/** Whether `name` (without the `spaces/` folder) is the name of a space file that may travel. */
+export function isSyncSpaceFileName(name: string): boolean {
+  return isSyncablePath(`spaces/${name}`);
+}
+
+const sha256Text = z
+  .string({ error: "a hash must be text" })
+  .regex(/^[0-9a-f]{64}$/, { error: "a hash must be 64 lower case hexadecimal digits" });
+
+const spaceFileName = z
+  .string({ error: "a name must be text" })
+  .max(200, { error: "a name is too long" })
+  .refine(isSyncSpaceFileName, { error: "a name is not one a space file may have" });
+
+const spaceIdText = z
+  .string({ error: "a space id must be text" })
+  .min(1, { error: "a space id must not be empty" })
+  .max(200, { error: "a space id is too long" });
+
+/** One space file of the config folder: its name, the hash of its bytes and the space it stands for. */
+export const syncSpaceFileSchema = z.strictObject({
+  name: spaceFileName,
+  hash: sha256Text,
+  /** The space the record ties the file to on this computer, and the hash of the file when it did. */
+  linked: z.strictObject({ spaceId: spaceIdText, hash: sha256Text }).nullable(),
+});
+export type SyncSpaceFile = z.infer<typeof syncSpaceFileSchema>;
+
+/** The space files of the config folder and the names the clone of the sync holds. */
+export const syncSpaceFolderSchema = z.strictObject({
+  files: z.array(syncSpaceFileSchema).max(SYNC_LIMITS.files),
+  /** The space files the remote had when it was last pulled or pushed: names a new file should avoid. */
+  cloned: z.array(spaceFileName).max(SYNC_LIMITS.files),
+});
+export type SyncSpaceFolder = z.infer<typeof syncSpaceFolderSchema>;
+
+/** A space file to write, and the space it is made from. */
+export interface SyncSpaceWrite {
+  name: string;
+  text: string;
+  spaceId: string;
+}
+
+/** A space file already in the folder, and the space it now stands for. */
+export interface SyncSpaceLink {
+  name: string;
+  spaceId: string;
+}
+
+/** The size of `text` in UTF-8, the way a file is measured against the ceiling. */
+function utf8Length(text: string): number {
+  let bytes = 0;
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0;
+    bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
+  }
+  return bytes;
+}
+
+/**
+ * Why a batch of space files cannot be written, or `undefined` when it can: a name off the closed
+ * list, a space id that is empty or too long, a file over the ceiling, the same file twice (names
+ * that differ only in case are one file on Windows and macOS) or more files than a sync carries.
+ * `noren-core` checks the same and the app checks before it asks.
+ */
+export function syncSpaceWriteProblem(files: readonly SyncSpaceWrite[]): string | undefined {
+  const seen = new Set<string>();
+  for (const file of files) {
+    if (!isSyncSpaceFileName(file.name)) {
+      return `spaces/${file.name} is not a name the sync carries and was not used`;
+    }
+    if (file.spaceId === "" || [...file.spaceId].length > 200) {
+      return "the id of a space is not valid";
+    }
+    if (utf8Length(file.text) > SYNC_LIMITS.fileBytes) {
+      return `spaces/${file.name} is larger than ${SYNC_LIMITS.fileBytes / 1024} KiB and will not be synced`;
+    }
+    if (seen.has(file.name.toLowerCase())) return `${file.name} is written twice in one batch`;
+    seen.add(file.name.toLowerCase());
+  }
+  if (files.length > SYNC_LIMITS.files)
+    return `more than ${SYNC_LIMITS.files} files would be synced`;
+  return undefined;
+}
+
 export type SyncParse<T> = { ok: true; value: T } | { ok: false; error: string };
 
 function parseWith<T>(schema: z.ZodType<T>, value: unknown): SyncParse<T> {
@@ -212,4 +302,9 @@ export function parseSyncPull(value: unknown): SyncParse<SyncPullResult> {
 /** Checks what the app answered about a push. */
 export function parseSyncPush(value: unknown): SyncParse<SyncPushResult> {
   return parseWith(syncPushSchema, value);
+}
+
+/** Checks what the app answered about the space files. */
+export function parseSyncSpaceFolder(value: unknown): SyncParse<SyncSpaceFolder> {
+  return parseWith(syncSpaceFolderSchema, value);
 }

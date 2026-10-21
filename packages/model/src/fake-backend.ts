@@ -63,8 +63,22 @@ import type { FilePreview, PreviewEntry } from "./file-preview";
 import { FAKE_GALLERY_DOWNLOADS, FAKE_GALLERY_INDEX } from "./gallery-fixture";
 import type { GalleryDownload } from "./gallery-fixture";
 import type { GalleryIndex, InstalledGalleryItem } from "./gallery";
-import { isSyncablePath, syncRemoteProblem } from "./sync";
-import type { SyncPullResult, SyncPushResult, SyncStatus } from "./sync";
+import { sha256Hex } from "./sha256";
+import {
+  SYNC_LIMITS,
+  isSyncSpaceFileName,
+  isSyncablePath,
+  syncRemoteProblem,
+  syncSpaceWriteProblem,
+} from "./sync";
+import type {
+  SyncPullResult,
+  SyncPushResult,
+  SyncSpaceFolder,
+  SyncSpaceLink,
+  SyncSpaceWrite,
+  SyncStatus,
+} from "./sync";
 import type { GitDiff, GitDiffRefusal } from "./git-diff";
 import { MAX_MOD_BYTES, MAX_MODS, isValidModFileName } from "./mods";
 import { OutputStream } from "./output-stream";
@@ -912,7 +926,11 @@ class FakeAi implements AiBackend {
  *   both sides agreed on: a file changed on both sides to different content is a conflict (nothing
  *   is written, the paths come back), otherwise the remote's changes land. `setSyncLocalFile` is
  *   a file of the config folder, `setSyncRemoteFile` is another computer pushing, `setSyncFailure`
- *   makes every sync call reject (git is not installed); it never runs git or touches a network
+ *   makes every sync call reject (git is not installed); it never runs git or touches a network.
+ *   The space files (`syncSpaceFiles`, `syncReadSpaceFile`, `syncWriteSpaceFiles`,
+ *   `syncLinkSpaceFiles`) are the `spaces/` files among those local files, so a push carries them,
+ *   with the local record of which space each file stands for (the sha256 of `sha256.ts`) kept apart
+ *   and never pushed
  * - `listSshHosts` answers a fixture of hosts (`FAKE_SSH_HOSTS`), or what `setSshHosts` said (also a
  *   rejection); it never reads the `~/.ssh/config` of the machine
  * - `listDockerContainers` answers a fixture of containers (`FAKE_DOCKER_CONTAINERS`), or what
@@ -1055,6 +1073,8 @@ export class FakeBackend implements Backend {
   #syncBehind = 0;
   /** The files of the config folder of this computer, whatever their name. */
   #syncLocalFiles = new Map<string, string>();
+  /** The local record of the space files: file name to the space it stands for and the hash then. */
+  #syncSpaceLinks = new Map<string, { spaceId: string; hash: string }>();
   #syncApplied = false;
   #syncFailure: Error | undefined;
   #pluginsListFailure: Error | undefined;
@@ -1989,6 +2009,85 @@ export class FakeBackend implements Backend {
     this.#syncBaseRevision = this.#syncRemoteRevision;
     this.#syncAhead = 0;
     return { committed, pushed: true, files };
+  }
+
+  async syncSpaceFiles(): Promise<SyncSpaceFolder> {
+    this.#record("syncSpaceFiles");
+    if (this.#syncFailure) throw this.#syncFailure;
+    const files = this.#syncSpaceNames(this.#syncLocalFiles).flatMap((name) => {
+      const text = this.#syncLocalFiles.get(`spaces/${name}`) ?? "";
+      if (new TextEncoder().encode(text).length > SYNC_LIMITS.fileBytes) return [];
+      const link = this.#syncSpaceLinks.get(name);
+      return [{ name, hash: sha256Hex(text), linked: link === undefined ? null : { ...link } }];
+    });
+    return { files, cloned: this.#syncSpaceNames(this.#syncCloneFiles) };
+  }
+
+  async syncReadSpaceFile(name: string): Promise<string> {
+    this.#record("syncReadSpaceFile", name);
+    if (this.#syncFailure) throw this.#syncFailure;
+    if (!isSyncSpaceFileName(name)) {
+      throw new Error(`spaces/${name} is not a name the sync carries and was not used`);
+    }
+    const text = this.#syncLocalFiles.get(`spaces/${name}`);
+    if (text === undefined)
+      throw new Error(`could not read the sync files: spaces/${name} is not a file`);
+    return text;
+  }
+
+  async syncWriteSpaceFiles(files: readonly SyncSpaceWrite[]): Promise<void> {
+    this.#record("syncWriteSpaceFiles", structuredClone(files));
+    if (this.#syncFailure) throw this.#syncFailure;
+    const problem = syncSpaceWriteProblem(files);
+    if (problem !== undefined) throw new Error(problem);
+    const names = new Set(this.#syncSpaceNames(this.#syncLocalFiles));
+    for (const file of files) names.add(file.name);
+    if (names.size > SYNC_LIMITS.files) {
+      throw new Error(`more than ${SYNC_LIMITS.files} files would be synced`);
+    }
+    for (const file of files) {
+      this.#syncLocalFiles.set(`spaces/${file.name}`, file.text);
+      this.#syncSpaceLinks.set(file.name, { spaceId: file.spaceId, hash: sha256Hex(file.text) });
+    }
+    this.#syncPruneSpaceLinks();
+  }
+
+  async syncLinkSpaceFiles(links: readonly SyncSpaceLink[]): Promise<void> {
+    this.#record("syncLinkSpaceFiles", structuredClone(links));
+    if (this.#syncFailure) throw this.#syncFailure;
+    for (const link of links) {
+      if (!isSyncSpaceFileName(link.name)) {
+        throw new Error(`spaces/${link.name} is not a name the sync carries and was not used`);
+      }
+      if (link.spaceId === "" || [...link.spaceId].length > 200) {
+        throw new Error("the id of a space is not valid");
+      }
+      if (!this.#syncLocalFiles.has(`spaces/${link.name}`)) {
+        throw new Error(
+          `could not read the sync files: spaces/${link.name} cannot be tied to a space`,
+        );
+      }
+    }
+    for (const link of links) {
+      const text = this.#syncLocalFiles.get(`spaces/${link.name}`) ?? "";
+      this.#syncSpaceLinks.set(link.name, { spaceId: link.spaceId, hash: sha256Hex(text) });
+    }
+    this.#syncPruneSpaceLinks();
+  }
+
+  /** The bare names of the space files in `files` (paths of the config folder), in name order. */
+  #syncSpaceNames(files: ReadonlyMap<string, string>): string[] {
+    return [...files.keys()]
+      .filter((path) => path.startsWith("spaces/") && isSyncablePath(path))
+      .map((path) => path.slice("spaces/".length))
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  }
+
+  /** The record keeps only the files that are still in the folder. */
+  #syncPruneSpaceLinks(): void {
+    for (const name of [...this.#syncSpaceLinks.keys()]) {
+      if (!this.#syncLocalFiles.has(`spaces/${name}`)) this.#syncSpaceLinks.delete(name);
+    }
   }
 
   /** Puts `text` in the config folder of this computer as `path`; `undefined` removes it. Not a `Backend` call. */

@@ -173,6 +173,7 @@ import { ModStyles } from "./ModStyles";
 import { useModFiles } from "./mods-store";
 import { importSchemeFile } from "./scheme-import";
 import { downloadText } from "./download-text";
+import { appSpaceSyncPort } from "./space-sync";
 import { runSyncCommand } from "./sync-run";
 import {
   commitSpaceImport,
@@ -975,17 +976,19 @@ function Shell({ store }: { store: WorkspaceStore }) {
   // the settings screen. The answer is a notice; with no remote it says where to connect. One step
   // at a time, so a second press while git works is ignored.
   const syncRunning = useRef(false);
+  // The spaces and profiles of this window, for the sync to write as files and to make from files.
+  const spaceSync = useMemo(() => appSpaceSyncPort(store, backend), [store]);
   const runSync = useCallback(
     (command: "pull" | "push") => {
       if (syncRunning.current) return;
       syncRunning.current = true;
-      void runSyncCommand(backend, command)
+      void runSyncCommand(backend, command, spaceSync)
         .then((message) => showNotice(message.text))
         .finally(() => {
           syncRunning.current = false;
         });
     },
-    [showNotice],
+    [showNotice, spaceSync],
   );
   // "Import space...": like the color scheme, a hidden file input the palette clicks. The file is
   // checked and planned first; its new profiles go to `config.jsonc`, then the space is made. A file
@@ -2706,6 +2709,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
         {settingsOpen && (
           <SettingsDialog
             backend={backend}
+            spaceSync={spaceSync}
             onInsert={(text) => focusedHandle()?.insert(text) ?? false}
             onClose={() => {
               closeSettings();

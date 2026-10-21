@@ -423,7 +423,11 @@ body {
 }
 
 /* The tint of the active tab is darker than the surface: the muted text on it is pulled toward the text color to stay readable (4.5:1). */
-.tab-button[data-nr-state="active"] .tab-meta {
+.tab-button[data-nr-state="active"] .tab-meta,
+.tab-button[data-nr-state="active"] .item-command,
+.tab-button[data-nr-selected="true"] .tab-meta,
+.tab-button[data-nr-selected="true"] .item-command,
+.item-pane[aria-current="true"] .item-pane-command {
   color: color-mix(in srgb, var(--nr-muted) 70%, var(--nr-text));
 }
 
@@ -1947,6 +1951,13 @@ body {
   color: var(--nr-text);
 }
 
+/* The dialog is a div and the form sits in it, because a form may not carry the role dialog. */
+.space-dialog > .dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .space-dialog h2 {
   margin: 0;
   font-size: 16px;
@@ -2960,6 +2971,11 @@ body {
 
 .mru-row[data-nr-state="selected"] {
   background: color-mix(in srgb, var(--nr-text) 12%, transparent);
+}
+
+/* The selected row is tinted darker than the overlay: its muted text is pulled toward the text color (4.5:1). */
+.mru-row[data-nr-state="selected"] .mru-detail {
+  color: color-mix(in srgb, var(--nr-muted) 70%, var(--nr-text));
 }
 
 .mru-head {

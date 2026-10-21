@@ -203,7 +203,7 @@ test.describe("the providers of the file", () => {
       "The connection failed: this provider needs an API key",
     );
     await field(spare, "API key for spare").fill(KEY);
-    await button(spare, "Store the key of spare").click();
+    await button(spare, "Store key of spare").click();
     await expect(note(spare)).toHaveText("The key is stored in the keychain.");
     await expect(spare).toContainText("An API key is stored in the keychain.");
     await expect(field(spare, "API key for spare")).toHaveValue("");
@@ -216,7 +216,7 @@ test.describe("the providers of the file", () => {
     expect(await configText(page)).toBe(FILE);
     expect(await everythingStored(page)).not.toContain(KEY);
 
-    await button(spare, "Remove the key of spare").click();
+    await button(spare, "Remove key of spare").click();
     await expect(note(spare)).toHaveText("The key is removed from the keychain.");
     await expect(spare).toContainText("No API key is stored.");
     expect(await storedKey(page, "spare")).toBeUndefined();
@@ -227,7 +227,7 @@ test.describe("the providers of the file", () => {
     await start(page, { file: FILE });
     const ai = await openAi(page);
     const work = group(ai, "work");
-    await button(work, "Store the key of work").click();
+    await button(work, "Store key of work").click();
     await expect(note(work)).toHaveText("Paste the key in the box first.");
     expect(await keyCalls(page)).toEqual([]);
     await cancelSettings(page);
@@ -371,7 +371,7 @@ test.describe("adding and removing a provider", () => {
     const ai = await openAi(page);
     const spare = group(ai, "spare");
     await field(spare, "API key for spare").fill(KEY);
-    await button(spare, "Store the key of spare").click();
+    await button(spare, "Store key of spare").click();
     await expect(spare).toContainText("An API key is stored in the keychain.");
 
     await button(spare, "Remove provider spare").click();

@@ -182,6 +182,7 @@ export function QuickApp({ backend = pageBackend(), events, hide }: QuickAppProp
         <TerminalView
           key={shell}
           backend={backend}
+          label={t("quick.title")}
           theme={colors}
           onReady={(handle) => {
             terminal.current = handle;

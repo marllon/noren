@@ -84,32 +84,33 @@ export function SpaceBackgroundDialog({
 
   return (
     <div className="dialog-backdrop">
-      <form
+      <div
         className="space-dialog"
         data-nr-part="space-background"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        onSubmit={submit}
         onKeyDown={onKeyDown}
       >
-        <h2 id={titleId}>{t("background.title")}</h2>
-        <p className="settings-hint">{t("background.hint", { name: space.name })}</p>
-        {box("image", t("background.image"), { ref: imageRef, text: true })}
-        {box("opacity", t("background.opacity"))}
-        {box("blur", t("background.blur"))}
-        <div className="dialog-actions">
-          <button type="button" onClick={onCancel}>
-            {t("common.cancel")}
-          </button>
-          <button type="button" disabled={space.background === undefined} onClick={onClear}>
-            {t("background.remove")}
-          </button>
-          <button type="submit" className="primary">
-            {t("background.apply")}
-          </button>
-        </div>
-      </form>
+        <form className="dialog-form" onSubmit={submit}>
+          <h2 id={titleId}>{t("background.title")}</h2>
+          <p className="settings-hint">{t("background.hint", { name: space.name })}</p>
+          {box("image", t("background.image"), { ref: imageRef, text: true })}
+          {box("opacity", t("background.opacity"))}
+          {box("blur", t("background.blur"))}
+          <div className="dialog-actions">
+            <button type="button" onClick={onCancel}>
+              {t("common.cancel")}
+            </button>
+            <button type="button" disabled={space.background === undefined} onClick={onClear}>
+              {t("background.remove")}
+            </button>
+            <button type="submit" className="primary">
+              {t("background.apply")}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

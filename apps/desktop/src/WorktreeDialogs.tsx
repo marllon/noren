@@ -101,52 +101,53 @@ export function NewWorktreeDialog({ backend, cwd, onCreated, onClose }: NewWorkt
 
   return (
     <div className="dialog-backdrop">
-      <form
+      <div
         className="space-dialog worktree-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        onSubmit={submit}
         onKeyDown={onKeyDown}
       >
-        <h2 id={titleId}>{t("worktree.new.title")}</h2>
-        <label className="field">
-          <span>{t("worktree.new.branch")}</span>
-          <input
-            ref={inputRef}
-            value={branch}
-            placeholder={t("worktree.new.branchHint")}
-            spellCheck={false}
-            autoComplete="off"
-            onChange={(e) => {
-              setBranch(e.target.value);
-              setError(undefined);
-            }}
-          />
-        </label>
-        {repository.status === "loading" && (
-          <p className="worktree-note" role="status">
-            {t("worktree.loading")}
-          </p>
-        )}
-        {destination !== undefined && (
-          <p className="worktree-note">{t("worktree.new.folder", { path: destination })}</p>
-        )}
-        {repository.status === "failed" && <p role="alert">{repository.reason}</p>}
-        {error !== undefined && <p role="alert">{error}</p>}
-        <div className="dialog-actions">
-          <button type="button" onClick={onClose}>
-            {t("common.cancel")}
-          </button>
-          <button
-            type="submit"
-            className="primary"
-            disabled={busy || repository.status !== "ready" || problem !== undefined}
-          >
-            {busy ? t("worktree.new.creating") : t("worktree.new.create")}
-          </button>
-        </div>
-      </form>
+        <form className="dialog-form" onSubmit={submit}>
+          <h2 id={titleId}>{t("worktree.new.title")}</h2>
+          <label className="field">
+            <span>{t("worktree.new.branch")}</span>
+            <input
+              ref={inputRef}
+              value={branch}
+              placeholder={t("worktree.new.branchHint")}
+              spellCheck={false}
+              autoComplete="off"
+              onChange={(e) => {
+                setBranch(e.target.value);
+                setError(undefined);
+              }}
+            />
+          </label>
+          {repository.status === "loading" && (
+            <p className="worktree-note" role="status">
+              {t("worktree.loading")}
+            </p>
+          )}
+          {destination !== undefined && (
+            <p className="worktree-note">{t("worktree.new.folder", { path: destination })}</p>
+          )}
+          {repository.status === "failed" && <p role="alert">{repository.reason}</p>}
+          {error !== undefined && <p role="alert">{error}</p>}
+          <div className="dialog-actions">
+            <button type="button" onClick={onClose}>
+              {t("common.cancel")}
+            </button>
+            <button
+              type="submit"
+              className="primary"
+              disabled={busy || repository.status !== "ready" || problem !== undefined}
+            >
+              {busy ? t("worktree.new.creating") : t("worktree.new.create")}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

@@ -21,6 +21,7 @@ import { watchFirstPrompt } from "./first-prompt";
 import { perfMark, reportPromptShown } from "./perf-probe";
 import { pathLinksOfRow } from "./terminal-paths";
 import { isTranslucent } from "./theme";
+import { t } from "./i18n";
 
 /** What a right click does: copy the selection or paste, always paste, or leave the native menu. */
 export type RightClickAction = "copy-or-paste" | "paste" | "menu";
@@ -115,6 +116,8 @@ interface TerminalViewProps {
    * sessions, and the pane gets it back at the next start. Read once.
    */
   paneId?: string;
+  /** Name of the terminal region for assistive technology; "Terminal" when left out. */
+  label?: string;
   /**
    * Text to write to the terminal before anything the session prints: the scrollback saved before,
    * dimmed, and the line "session restored" (`restoredTerminalText`). It must already be clean.
@@ -229,6 +232,7 @@ export function TerminalView({
   cwd,
   env,
   paneId,
+  label = t("pane.title"),
   restored,
   onSessionStart,
   webglFirst = true,
@@ -700,7 +704,7 @@ export function TerminalView({
 
   return (
     <div ref={viewRef} className="terminal-view">
-      <div ref={container} className="terminal-host" role="region" aria-label="Terminal" />
+      <div ref={container} className="terminal-host" role="region" aria-label={label} />
       {pending !== null && (
         <PasteDialog
           text={pending}

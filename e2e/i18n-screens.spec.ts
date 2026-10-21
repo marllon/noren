@@ -605,17 +605,17 @@ test.describe("the AI", () => {
     await expect(work.locator('[data-nr-part="settings-ai-provider-note"]')).toHaveText(
       "A conexão funciona.",
     );
-    await button(work, "Guardar a chave de work").click();
+    await button(work, "Guardar chave de work").click();
     await expect(work.locator('[data-nr-part="settings-ai-provider-note"]')).toHaveText(
       "Cole a chave no campo primeiro.",
     );
     await work.getByLabel("Chave de API de work", { exact: true }).fill("sk-test-e2e-0123456789");
-    await button(work, "Guardar a chave de work").click();
+    await button(work, "Guardar chave de work").click();
     await expect(work.locator('[data-nr-part="settings-ai-provider-note"]')).toHaveText(
       "A chave foi guardada no cofre de chaves.",
     );
     await expect(work).toContainText("Há uma chave de API guardada no cofre de chaves.");
-    await expect(button(work, "Remover a chave de work")).toBeVisible();
+    await expect(button(work, "Remover chave de work")).toBeVisible();
     await expect(button(work, "Remover o provedor work")).toBeVisible();
 
     const form = ai.getByRole("group", { name: "Adicionar um provedor", exact: true });

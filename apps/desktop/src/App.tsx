@@ -456,6 +456,8 @@ interface PaneTerminalProps {
   store: WorkspaceStore;
   space: Space;
   pane: Pane;
+  /** Name of the terminal region: "Terminal", or its place among several panes of the tab. */
+  label: string;
   /** True when the terminal should hold the keyboard: its tab shows and it is the focused pane. */
   active: boolean;
   /** True for a tab that a space shows or will show first: its terminal draws as soon as it mounts. */
@@ -477,6 +479,7 @@ function PaneTerminal({
   store,
   space,
   pane,
+  label,
   active,
   first,
   colors,
@@ -539,6 +542,7 @@ function PaneTerminal({
       {...(cwd !== undefined ? { cwd } : {})}
       {...(env !== undefined ? { env } : {})}
       paneId={pane.id}
+      label={label}
       {...(restored !== undefined ? { restored } : {})}
       onSessionStart={(id) => store.getState().attachSession(pane.id, String(id))}
       onReady={(handle) => onReady(pane.id, handle)}
@@ -654,12 +658,22 @@ function ItemView({
           />
         );
       }
+      // Several panes in a tab are several regions: each is named by its place so they differ.
+      const panes = layoutPanes(item.layout);
+      const label =
+        panes.length > 1
+          ? t("pane.terminalNth", {
+              n: panes.findIndex((p) => p.id === pane.id) + 1,
+              total: panes.length,
+            })
+          : t("pane.title");
       return (
         <PaneTerminal
           key={pane.id}
           store={store}
           space={space}
           pane={pane}
+          label={label}
           active={shown && pane.id === item.focusedPaneId}
           first={first}
           colors={colors}

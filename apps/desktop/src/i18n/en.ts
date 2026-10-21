@@ -90,6 +90,7 @@ export const en = {
 
   // What a tab or a pane says about itself
   "pane.title": "Terminal",
+  "pane.terminalNth": "Terminal {n} of {total}",
   "pane.running": "running",
   "pane.idle": "idle",
   "pane.exit": "exit",
@@ -421,6 +422,7 @@ export const en = {
   "settings.backgroundHint":
     "A picture file on this computer: a full path, or a path inside the config folder (backgrounds/sky.jpg). Web addresses are not accepted. Empty opacity and blur let the theme decide. A space can have a picture of its own, in its menu.",
   "settings.terminal": "Terminal",
+  "settings.terminalSection": "Terminal options",
   "settings.fontList": "Font list",
   "settings.installedFont": "Installed font",
   "settings.chooseOne": "Choose one...",
@@ -946,9 +948,9 @@ export const en = {
   "providers.keyStored": "An API key is stored in the keychain.",
   "providers.keyNone": "No API key is stored.",
   "providers.keyLabel": "API key for {id}",
-  "providers.storeKeyLabel": "Store the key of {id}",
+  "providers.storeKeyLabel": "Store key of {id}",
   "providers.storeKey": "Store key",
-  "providers.removeKeyLabel": "Remove the key of {id}",
+  "providers.removeKeyLabel": "Remove key of {id}",
   "providers.removeKey": "Remove key",
   "providers.testLabel": "Test connection to {id}",
   "providers.removeProviderLabel": "Remove provider {id}",

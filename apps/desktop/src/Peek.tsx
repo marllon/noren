@@ -188,6 +188,7 @@ export function PeekPopover({ view }: { view: PeekView }) {
         </ol>
       )}
     </div>,
-    document.body,
+    // Inside the main landmark, so the lines of a peek are not content outside every landmark.
+    document.querySelector("main") ?? document.body,
   );
 }

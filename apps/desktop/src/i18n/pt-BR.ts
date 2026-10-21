@@ -92,6 +92,7 @@ export const ptBR: Dictionary = {
 
   // What a tab or a pane says about itself
   "pane.title": "Terminal",
+  "pane.terminalNth": "Terminal {n} de {total}",
   "pane.running": "em execução",
   "pane.idle": "ocioso",
   "pane.exit": "saída",
@@ -425,6 +426,7 @@ export const ptBR: Dictionary = {
   "settings.backgroundHint":
     "Um arquivo de imagem neste computador: um caminho completo ou um caminho dentro da pasta de configuração (backgrounds/sky.jpg). Endereços da web não são aceitos. Opacidade e desfoque vazios deixam o tema decidir. Um espaço pode ter uma imagem própria, no menu dele.",
   "settings.terminal": "Terminal",
+  "settings.terminalSection": "Opções do terminal",
   "settings.fontList": "Lista de fontes",
   "settings.installedFont": "Fonte instalada",
   "settings.chooseOne": "Escolha uma...",
@@ -959,9 +961,9 @@ export const ptBR: Dictionary = {
   "providers.keyStored": "Há uma chave de API guardada no cofre de chaves.",
   "providers.keyNone": "Nenhuma chave de API guardada.",
   "providers.keyLabel": "Chave de API de {id}",
-  "providers.storeKeyLabel": "Guardar a chave de {id}",
+  "providers.storeKeyLabel": "Guardar chave de {id}",
   "providers.storeKey": "Guardar chave",
-  "providers.removeKeyLabel": "Remover a chave de {id}",
+  "providers.removeKeyLabel": "Remover chave de {id}",
   "providers.removeKey": "Remover chave",
   "providers.testLabel": "Testar a conexão com {id}",
   "providers.removeProviderLabel": "Remover o provedor {id}",

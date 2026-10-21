@@ -530,7 +530,7 @@ export function SettingsDialog({ backend, spaceSync, onInsert, onClose }: Settin
               </section>
               <section
                 className="settings-section"
-                aria-label={t("settings.terminal")}
+                aria-label={t("settings.terminalSection")}
                 data-nr-part="settings-terminal"
               >
                 <h3>{t("settings.terminal")}</h3>

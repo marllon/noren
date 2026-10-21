@@ -80,7 +80,7 @@ export function TitleBar() {
   const t = useT();
   return (
     <header className={onMac ? "titlebar titlebar-mac" : "titlebar"} data-tauri-drag-region>
-      <span className="titlebar-title" data-tauri-drag-region>
+      <span className="titlebar-title" role="heading" aria-level={1} data-tauri-drag-region>
         Noren
       </span>
       {/* In the title bar so it is reachable even when the sidebar is hidden. */}

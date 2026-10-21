@@ -97,7 +97,7 @@ test.describe("opening the screen", () => {
     await expect(screen.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
     for (const name of [
       "Appearance",
-      "Terminal",
+      "Terminal options",
       "Profiles",
       "Shortcuts",
       "Notifications",
@@ -382,7 +382,7 @@ test.describe("the Terminal section", () => {
     await markPage(page);
 
     const screen = await openSettings(page);
-    const terminal = section(screen, "Terminal");
+    const terminal = section(screen, "Terminal options");
     // The screen shows what the file says, and the defaults for what it does not.
     await expect(textbox(terminal, "Font size (px)")).toHaveValue("16");
     await expect(radio(terminal, "Bar")).toBeChecked();
@@ -438,7 +438,7 @@ test.describe("the Terminal section", () => {
   }) => {
     await start(page, TERMINAL_FILE);
     const screen = await openSettings(page);
-    const terminal = section(screen, "Terminal");
+    const terminal = section(screen, "Terminal options");
     const size = textbox(terminal, "Font size (px)");
     await size.fill("500");
     await expect(size).toHaveAttribute("aria-invalid", "true");

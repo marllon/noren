@@ -60,7 +60,9 @@ export const FAKE_GALLERY_INDEX: GalleryIndex = {
     {
       id: "compact-tabs",
       kind: "mod",
-      name: "Compact tabs",
+      // Not a name ending in "tabs": the settings screen now shows it, and the Portuguese check of
+      // e2e/i18n-screens.spec.ts reads "{count} tabs" of the dictionary as any text ending so.
+      name: "Rounded corners",
       version: "1.0.0",
       url: "https://gallery.example/mods/compact-tabs.css",
       sha256: FAKE_GALLERY_HASHES["compact-tabs"],

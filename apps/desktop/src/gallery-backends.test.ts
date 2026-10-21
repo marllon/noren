@@ -125,6 +125,24 @@ describe("WebBackend gallery", () => {
     expect(backend.userThemeFiles).toEqual({ lagoon: text });
   });
 
+  it("answers the installed items seeded with the gallery, and leaves out the ones that are not records", async () => {
+    const seed = JSON.stringify({
+      index,
+      installed: [
+        { id: "lagoon", kind: "theme", version: "0.9.0", sha256: sha },
+        { id: "bad-kind", kind: "plugin", version: "1.0.0", sha256: sha },
+        { id: "no-version", kind: "mod", sha256: sha },
+        7,
+      ],
+    });
+    await expect(new WebBackend(storageWith(seed)).galleryInstalled()).resolves.toEqual([
+      { id: "lagoon", kind: "theme", version: "0.9.0", sha256: sha },
+    ]);
+    await expect(
+      new WebBackend(storageWith(JSON.stringify({ index }))).galleryInstalled(),
+    ).resolves.toEqual([]);
+  });
+
   it("keeps the fixture when the seed is not an index", async () => {
     for (const seed of ["{}", "[]", "nope", JSON.stringify({ index: { version: 2, items: [] } })]) {
       await expect(new WebBackend(storageWith(seed)).galleryIndex()).resolves.toEqual(

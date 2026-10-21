@@ -2332,6 +2332,33 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* The gallery in the settings screen: a row for each item, with its versions, its state and its button. */
+.settings-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-gallery-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  overflow-wrap: anywhere;
+}
+
+.settings-gallery-item > p {
+  flex-basis: 100%;
+}
+
+.settings-gallery-name {
+  font-weight: 600;
+}
+
 .settings-mod-move {
   display: inline-flex;
   gap: 4px;

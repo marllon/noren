@@ -33,6 +33,7 @@ import { commitProfileImport, readProfileFile, takenProfileIds } from "./profile
 import type { ProfileImportPlan } from "./profile-import";
 import { ProfileImportDialog } from "./ProfileImportDialog";
 import { BenchPanel } from "./BenchPanel";
+import { GalleryPanel } from "./GalleryPanel";
 import { ModelsPanel } from "./ModelsPanel";
 import { ProvidersPanel } from "./ProvidersPanel";
 import { useProfiles } from "./profiles-store";
@@ -206,10 +207,19 @@ const keyPresetOptions = (): readonly { value: Preset; label: string }[] => [
 ];
 
 interface SettingsDialogProps {
-  /** Where an imported color scheme is written (the themes folder). */
+  /** Where an imported color scheme is written (the themes folder), and the gallery. */
   backend: Pick<
     Backend,
-    "saveUserTheme" | "listMonospaceFonts" | "ai" | "listBenchResults" | "readHardware"
+    | "saveUserTheme"
+    | "listMonospaceFonts"
+    | "ai"
+    | "listBenchResults"
+    | "readHardware"
+    | "galleryIndex"
+    | "galleryInstalled"
+    | "galleryInstall"
+    | "listUserThemes"
+    | "listMods"
   >;
   /**
    * Puts text at the prompt of the focused terminal without Enter, for the install command of a
@@ -886,6 +896,14 @@ export function SettingsDialog({ backend, onInsert, onClose }: SettingsDialogPro
                     </ul>
                   </>
                 )}
+              </section>
+              <section
+                className="settings-section"
+                aria-label={t("settings.gallery")}
+                data-nr-part="settings-gallery"
+              >
+                <h3>{t("settings.gallery")}</h3>
+                <GalleryPanel backend={backend} />
               </section>
               <section className="settings-section" aria-label={t("settings.import")}>
                 <h3>{t("settings.import")}</h3>

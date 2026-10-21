@@ -319,6 +319,30 @@ export type {
   ApiOutcome,
   ApiRouting,
 } from "./api-dispatch";
+export {
+  PLUGIN_API_VERSION,
+  PLUGIN_LIMITS,
+  PLUGIN_METHODS,
+  PLUGIN_PERMISSIONS,
+  createPluginBroker,
+  parsePluginManifest,
+  pluginManifestSchema,
+} from "./plugins";
+export type {
+  PluginBroker,
+  PluginError,
+  PluginErrorCode,
+  PluginManifest,
+  PluginManifestResult,
+  PluginMethodName,
+  PluginPaletteAction,
+  PluginPanelRequest,
+  PluginPermission,
+  PluginRegistry,
+  PluginRequest,
+  PluginRequestId,
+  PluginResponse,
+} from "./plugins";
 export { AGENT_LINE_MAX, buildAgentList, firstWaitingAgent, truncateLine } from "./agent-list";
 export type { AgentInfo, AgentRow } from "./agent-list";
 export {

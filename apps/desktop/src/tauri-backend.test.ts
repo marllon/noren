@@ -1196,6 +1196,20 @@ describe("TauriBackend ai.chat and ai.cancel", () => {
     expect(bare[0]).toMatchObject({ type: "error", kind: "protocol" });
   });
 
+  it("hands over the count of tokens of the end when it is a whole number, and none otherwise", async () => {
+    await expect(chatAll(streaming([{ type: "done", outputTokens: 42 }]))).resolves.toEqual([
+      { type: "done", outputTokens: 42 },
+    ]);
+    await expect(chatAll(streaming([{ type: "done", outputTokens: 0 }]))).resolves.toEqual([
+      { type: "done", outputTokens: 0 },
+    ]);
+    for (const bad of [-1, 2.5, "7", null, Number.NaN, Number.MAX_SAFE_INTEGER + 2, {}]) {
+      // Not a whole non-negative number: the end arrives, as if the provider had given no count.
+      const events = await chatAll(streaming([{ type: "done", outputTokens: bad }]));
+      expect(events).toStrictEqual([{ type: "done" }]);
+    }
+  });
+
   it("hands over one end only, and nothing that comes after it", async () => {
     const fake = streaming([
       { type: "delta", text: "a" },

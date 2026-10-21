@@ -92,6 +92,8 @@ interface Script {
   endAfter: number;
   /** The end: `done`, an `error` event of this kind, `reject` (chat rejects) or `silent` (no end event). */
   end?: "done" | "reject" | "silent" | { error: AiErrorKind; message: string };
+  /** The count of tokens the provider reports with `done`; left out of the event when absent. */
+  outputTokens?: number;
 }
 
 class ScriptedAi implements AiBackend {
@@ -142,8 +144,13 @@ class ScriptedAi implements AiBackend {
     const end = script.end ?? "done";
     if (end === "reject") throw new Error("the provider is not there");
     if (end === "silent") return;
-    if (end === "done") onEvent({ type: "done" });
-    else onEvent({ type: "error", kind: end.error, message: end.message });
+    if (end === "done") {
+      onEvent(
+        script.outputTokens === undefined
+          ? { type: "done" }
+          : { type: "done", outputTokens: script.outputTokens },
+      );
+    } else onEvent({ type: "error", kind: end.error, message: end.message });
   }
 
   async cancel(requestId: string): Promise<boolean> {
@@ -382,6 +389,150 @@ describe("runBench: measuring", () => {
       now: () => clock.t,
     });
     expect(run.tasks[0]).toMatchObject({ totalMs: 0, ok: true, tokensPerSecond: null });
+  });
+});
+
+describe("runBench: the count of tokens the provider reports", () => {
+  it("uses the count of the stream for the tokens and the tokens per second", async () => {
+    const clock = { t: 1_000 };
+    const t = task("cmd-bash-10");
+    const ai = new ScriptedAi(clock, (request) => ({
+      deltas: [{ after: 100, text: rightAnswer(taskOf(request)) }],
+      endAfter: 400,
+      outputTokens: 20,
+    }));
+    const run = await runBench({
+      ai,
+      provider: OLLAMA,
+      model: "m",
+      tasks: [t],
+      now: () => clock.t,
+    });
+    expect(run.tasks[0]).toMatchObject({
+      ok: true,
+      totalMs: 500,
+      outputTokens: 20,
+      tokensSource: "stream",
+      tokensPerSecond: 40, // 20 tokens over 0.5 s, not the estimate of the characters
+    });
+    expect(estimateTokens(rightAnswer(t))).not.toBe(20);
+    expect(benchRunSchema.parse(JSON.parse(JSON.stringify(run)))).toEqual(run);
+  });
+
+  it("keeps the estimate when the provider reports no count", async () => {
+    const clock = { t: 0 };
+    const t = task("cmd-bash-10");
+    const ai = new ScriptedAi(clock, rightInOne(100, 300));
+    const run = await runBench({
+      ai,
+      provider: OLLAMA,
+      model: "m",
+      tasks: [t],
+      now: () => clock.t,
+    });
+    expect(run.tasks[0]).toMatchObject({
+      outputTokens: estimateTokens(rightAnswer(t)),
+      tokensSource: "estimate",
+      tokensPerSecond: 12.5,
+    });
+  });
+
+  it("mixes the two in one run, each task by what its provider said", async () => {
+    const clock = { t: 0 };
+    const tasks = SUITE.slice(0, 6);
+    // Tasks 0, 2 and 4 report a count (7, 8, 9); 1, 3 and 5 do not.
+    const ai = new ScriptedAi(clock, (request, index) => ({
+      deltas: [{ after: 50, text: rightAnswer(taskOf(request)) }],
+      endAfter: 50,
+      ...(index % 2 === 0 ? { outputTokens: 7 + index / 2 } : {}),
+    }));
+    const run = await runBench({
+      ai,
+      provider: OLLAMA,
+      model: "m",
+      tasks,
+      now: () => clock.t,
+    });
+    expect(run.tasks.map((r) => r.tokensSource)).toEqual([
+      "stream",
+      "estimate",
+      "stream",
+      "estimate",
+      "stream",
+      "estimate",
+    ]);
+    expect(run.tasks.filter((_, i) => i % 2 === 0).map((r) => r.outputTokens)).toEqual([7, 8, 9]);
+    for (const [i, r] of run.tasks.entries()) {
+      if (i % 2 === 1)
+        expect(r.outputTokens).toBe(estimateTokens(rightAnswer(tasks[i] as BenchTask)));
+      expect(r.tokensPerSecond).toBe(Math.round((r.outputTokens / 0.1) * 100) / 100);
+    }
+    // The schema takes both sources in one result, and so does a round trip through JSON.
+    expect(benchRunSchema.parse(JSON.parse(JSON.stringify(run)))).toEqual(run);
+  });
+
+  it("keeps the estimate for a count of 0 next to an answer with text", async () => {
+    const clock = { t: 0 };
+    const t = task("cmd-bash-10");
+    const ai = new ScriptedAi(clock, () => ({
+      deltas: [{ after: 10, text: rightAnswer(t) }],
+      endAfter: 10,
+      outputTokens: 0,
+    }));
+    const run = await runBench({
+      ai,
+      provider: OLLAMA,
+      model: "m",
+      tasks: [t],
+      now: () => clock.t,
+    });
+    expect(run.tasks[0]).toMatchObject({
+      outputTokens: estimateTokens(rightAnswer(t)),
+      tokensSource: "estimate",
+    });
+  });
+
+  it("does not use a count for a call that failed", async () => {
+    const clock = { t: 0 };
+    const t = task("cmd-bash-10");
+    const ai = new ScriptedAi(clock, () => ({
+      deltas: [{ after: 10, text: "chmod" }],
+      endAfter: 10,
+      end: { error: "network", message: "reset" },
+      outputTokens: 99,
+    }));
+    const run = await runBench({
+      ai,
+      provider: OLLAMA,
+      model: "m",
+      tasks: [t],
+      now: () => clock.t,
+    });
+    expect(run.tasks[0]).toMatchObject({
+      ok: false,
+      tokensSource: "estimate",
+      tokensPerSecond: null,
+    });
+    expect(run.tasks[0]?.outputTokens).toBe(estimateTokens("chmod"));
+  });
+
+  it("works through the fake backend when it reports a count per request", async () => {
+    const backend = new FakeBackend({
+      ollamaModels: ["llama3.2"],
+      aiReply: (request) => rightAnswer(taskOf(request)),
+      aiTokens: (request) => (taskOf(request).kind === "command" ? 11 : undefined),
+    });
+    const tasks = [task("cmd-bash-10"), task("explain-02")];
+    const run = await runBench({
+      ai: backend.ai,
+      provider: OLLAMA,
+      model: "llama3.2",
+      tasks,
+      now: steppingClock(),
+    });
+    expect(run.tasks.map((r) => r.tokensSource)).toEqual(["stream", "estimate"]);
+    expect(run.tasks[0]?.outputTokens).toBe(11);
+    expect(benchRunSchema.safeParse(run).success).toBe(true);
   });
 });
 

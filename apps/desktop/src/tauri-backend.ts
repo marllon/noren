@@ -117,6 +117,7 @@ interface AiStreamPayload {
   text?: unknown;
   kind?: unknown;
   message?: unknown;
+  outputTokens?: unknown;
 }
 
 /** A worktree as the bridge sends it, copied field by field so nothing else rides along. */
@@ -136,7 +137,14 @@ function chatEventOf(payload: AiStreamPayload): AiChatEvent | undefined {
   if (payload.type === "delta" && typeof payload.text === "string") {
     return { type: "delta", text: payload.text };
   }
-  if (payload.type === "done") return { type: "done" };
+  if (payload.type === "done") {
+    // The Rust side leaves the count out when the provider gave none; anything that is not a
+    // whole number of tokens is treated as none.
+    const count = payload.outputTokens;
+    return typeof count === "number" && Number.isSafeInteger(count) && count >= 0
+      ? { type: "done", outputTokens: count }
+      : { type: "done" };
+  }
   if (payload.type === "error") {
     const kind = AI_ERROR_KINDS.find((known) => known === payload.kind) ?? "protocol";
     const message =

@@ -47,7 +47,7 @@ const taskRunSchema = z
     totalMs: durationMs,
     /** The size of the answer in tokens, and where the number comes from. */
     outputTokens: z.number().int().nonnegative(),
-    /** `estimate`: characters of the answer divided by `BENCH_CHARS_PER_TOKEN`. `stream` is for the count the provider reports (NOR-F16-02b). */
+    /** `estimate`: characters of the answer divided by `BENCH_CHARS_PER_TOKEN`. `stream`: the count the provider reported in the stream (NOR-F16-02c). */
     tokensSource: z.enum(["estimate", "stream"]),
     /** `outputTokens` over `totalMs`; `null` for a failed call or one with no time or no tokens. */
     tokensPerSecond: durationMs.nullable(),
@@ -307,7 +307,8 @@ let runCounter = 0;
  *
  * - Each task is one `ai.chat` with a request id of its own; the deltas are joined into the answer,
  *   which `checkBenchAnswer` judges. The time to the first non-empty delta and to the last event are
- *   read from `now`; the tokens per second are the estimate of `estimateTokens` over the total time.
+ *   read from `now`; the tokens per second are the count over the total time: the one the provider
+ *   reported with `done` (`tokensSource: "stream"`), or else the estimate of `estimateTokens`.
  * - A call that fails (an `error` event, or `chat` rejecting) is a failed task with the kind of the
  *   error, and the run goes on with the next task.
  * - When `signal` aborts, the request in flight is cancelled with `ai.cancel`, no further task is
@@ -355,10 +356,18 @@ export async function runBench(options: RunBenchOptions): Promise<BenchRun> {
       progress({ type: "start", index, total: tasks.length, taskId: task.id });
       const requestId = `${prefix}-${index}`;
       const started = now();
-      const seen: { firstMs: number | null; endMs: number; text: string; ending: Ending | null } = {
+      const seen: {
+        firstMs: number | null;
+        endMs: number;
+        text: string;
+        /** The count of tokens the provider reported with `done`, when it did. */
+        tokens: number | null;
+        ending: Ending | null;
+      } = {
         firstMs: null,
         endMs: started,
         text: "",
+        tokens: null,
         ending: null,
       };
       const onEvent = (event: AiChatEvent): void => {
@@ -369,6 +378,9 @@ export async function runBench(options: RunBenchOptions): Promise<BenchRun> {
           return;
         }
         seen.endMs = now();
+        if (event.type === "done" && event.outputTokens !== undefined) {
+          seen.tokens = event.outputTokens;
+        }
         seen.ending =
           event.type === "done"
             ? { ok: true }
@@ -404,7 +416,13 @@ export async function runBench(options: RunBenchOptions): Promise<BenchRun> {
       }
 
       const totalMs = seen.endMs - started;
-      const outputTokens = estimateTokens(seen.text);
+      // A count the provider reported wins over the estimate. A count of 0 next to an answer with
+      // text says nothing, so the estimate stays; so does a count that is not a whole number.
+      const reported =
+        ending.ok && seen.tokens !== null && Number.isSafeInteger(seen.tokens) && seen.tokens > 0
+          ? seen.tokens
+          : null;
+      const outputTokens = reported ?? estimateTokens(seen.text);
       const checked = ending.ok ? checkBenchAnswer(task, seen.text) : undefined;
       const result: BenchTaskRun = {
         id: task.id,
@@ -418,7 +436,7 @@ export async function runBench(options: RunBenchOptions): Promise<BenchRun> {
         firstChunkMs: seen.firstMs,
         totalMs,
         outputTokens,
-        tokensSource: "estimate",
+        tokensSource: reported === null ? "estimate" : "stream",
         tokensPerSecond:
           ending.ok && totalMs > 0 && outputTokens > 0
             ? round2(outputTokens / (totalMs / 1000))

@@ -107,7 +107,13 @@ pub enum AiStreamEvent {
     Delta {
         text: String,
     },
-    Done,
+    /// `output_tokens` is the count the provider reported in the stream; it is left out of the
+    /// JSON when the provider did not report one.
+    #[serde(rename_all = "camelCase")]
+    Done {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        output_tokens: Option<u64>,
+    },
     /// `kind` is one of `invalid-request`, `auth`, `http`, `network`, `timeout`, `cancelled`,
     /// `provider`, `protocol`; `message` is meant to be shown to the user.
     Error {
@@ -120,7 +126,7 @@ impl From<StreamEvent> for AiStreamEvent {
     fn from(event: StreamEvent) -> Self {
         match event {
             StreamEvent::Delta(text) => AiStreamEvent::Delta { text },
-            StreamEvent::Done => AiStreamEvent::Done,
+            StreamEvent::Done { output_tokens } => AiStreamEvent::Done { output_tokens },
             StreamEvent::Error(error) => AiStreamEvent::Error {
                 kind: error_kind(&error),
                 message: error.to_string(),

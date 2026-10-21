@@ -191,6 +191,14 @@ const OPENAI_STREAM: &str = concat!(
     "data: [DONE]\n\n",
 );
 
+const OPENAI_STREAM_WITH_USAGE: &str = concat!(
+    "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\n",
+    "data: {\"choices\":[{\"delta\":{\"content\":\"lo\"}}]}\n\n",
+    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+    "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":2,\"total_tokens\":6}}\n\n",
+    "data: [DONE]\n\n",
+);
+
 const ANTHROPIC_STREAM: &str = concat!(
     "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m1\",\"role\":\"assistant\",\"content\":[]}}\n\n",
     "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hel\"}}\n\n",
@@ -388,7 +396,12 @@ async fn openai_compatible_streams_with_the_key_of_the_vault_in_the_header() {
     let (result, events) = ask(&state, "openai", "req-1").await;
     assert_eq!(result, Ok(()));
     assert_eq!(text_of(&events), "Hello");
-    assert_eq!(events.last(), Some(&AiStreamEvent::Done));
+    assert_eq!(
+        events.last(),
+        Some(&AiStreamEvent::Done {
+            output_tokens: None
+        })
+    );
     assert_eq!(
         events
             .iter()
@@ -418,7 +431,12 @@ async fn anthropic_streams_with_the_key_of_the_vault_in_the_header() {
     let (result, events) = ask(&state, "claude", "req-2").await;
     assert_eq!(result, Ok(()));
     assert_eq!(text_of(&events), "Hello");
-    assert_eq!(events.last(), Some(&AiStreamEvent::Done));
+    assert_eq!(
+        events.last(),
+        Some(&AiStreamEvent::Done {
+            output_tokens: None
+        })
+    );
     let request = server.request(0);
     assert_eq!(request.header("x-api-key"), Some(KEY));
     assert!(request.header("anthropic-version").is_some());
@@ -438,7 +456,12 @@ async fn the_model_of_the_request_replaces_the_default_one() {
         })
         .await
         .expect("started");
-    assert_eq!(events.last(), Some(&AiStreamEvent::Done));
+    assert_eq!(
+        events.last(),
+        Some(&AiStreamEvent::Done {
+            output_tokens: None
+        })
+    );
     let body: serde_json::Value = serde_json::from_str(&server.request(0).body).expect("body");
     assert_eq!(body["model"], "llama3.2");
     // Ollama has no key: no Authorization header goes out.
@@ -535,12 +558,22 @@ async fn cancelling_an_unknown_or_finished_request_does_nothing() {
     assert!(!state.cancel("../x"));
     let (result, events) = ask(&state, "ollama", "req-7").await;
     assert_eq!(result, Ok(()));
-    assert_eq!(events.last(), Some(&AiStreamEvent::Done));
+    assert_eq!(
+        events.last(),
+        Some(&AiStreamEvent::Done {
+            output_tokens: None
+        })
+    );
     // It finished and left the map: cancelling it now is harmless and does not touch the next
     // request that reuses the id.
     assert!(!state.cancel("req-7"));
     let (_, again) = ask(&state, "ollama", "req-7").await;
-    assert_eq!(again.last(), Some(&AiStreamEvent::Done));
+    assert_eq!(
+        again.last(),
+        Some(&AiStreamEvent::Done {
+            output_tokens: None
+        })
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -618,7 +651,28 @@ async fn a_broken_vault_stops_a_provider_with_a_key_but_not_ollama() {
     assert!(events.is_empty());
     let (result, events) = ask(&state, "ollama", "req-10").await;
     assert_eq!(result, Ok(()));
-    assert_eq!(events.last(), Some(&AiStreamEvent::Done));
+    assert_eq!(
+        events.last(),
+        Some(&AiStreamEvent::Done {
+            output_tokens: None
+        })
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_count_of_tokens_the_provider_reports_reaches_the_done_event() {
+    let server = TestServer::start(stream_back(OPENAI_STREAM_WITH_USAGE));
+    let state = state_for(&server, Arc::new(MemoryVault::new()));
+    state.set_key("openai", KEY).expect("set");
+    let (result, events) = ask(&state, "openai", "req-count").await;
+    assert_eq!(result, Ok(()));
+    assert_eq!(text_of(&events), "Hello");
+    assert_eq!(
+        events.last(),
+        Some(&AiStreamEvent::Done {
+            output_tokens: Some(2)
+        })
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -649,8 +703,16 @@ fn the_events_have_the_shape_the_page_reads() {
         serde_json::json!({ "type": "delta", "text": "hi" })
     );
     assert_eq!(
-        json(StreamEvent::Done),
+        json(StreamEvent::Done {
+            output_tokens: None
+        }),
         serde_json::json!({ "type": "done" })
+    );
+    assert_eq!(
+        json(StreamEvent::Done {
+            output_tokens: Some(42)
+        }),
+        serde_json::json!({ "type": "done", "outputTokens": 42 })
     );
     assert_eq!(
         json(StreamEvent::Error(AiError::Timeout)),
@@ -1032,7 +1094,12 @@ async fn a_provider_of_the_settings_answers_with_its_key_and_stops_when_it_leave
     let (result, events) = ask(&state, "work", "req-20").await;
     assert_eq!(result, Ok(()));
     assert_eq!(text_of(&events), "Hello");
-    assert_eq!(events.last(), Some(&AiStreamEvent::Done));
+    assert_eq!(
+        events.last(),
+        Some(&AiStreamEvent::Done {
+            output_tokens: None
+        })
+    );
     let request = server.request(0);
     assert_eq!(request.request_line, "POST /v1/chat/completions HTTP/1.1");
     assert_eq!(

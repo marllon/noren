@@ -196,6 +196,13 @@ export interface FakeBackendOptions {
    * back in deltas, a word at a time. Defaults to `DEFAULT_AI_REPLY`.
    */
   aiReply?: string | ((request: AiChatRequest) => string);
+  /**
+   * The count of tokens the fake provider reports in the `done` of an answer, as a provider does
+   * in the last chunk of its stream: a number, or a function of the request (`undefined` reports
+   * none, as a provider that gives no count). Anything that is not a whole number of 0 or more
+   * is left out, as the Rust side does. Defaults to none.
+   */
+  aiTokens?: AiTokens;
 }
 
 /** What the fake provider answers when a test did not say. */
@@ -561,6 +568,9 @@ function wordsOf(text: string): string[] {
 
 type AiReply = string | ((request: AiChatRequest) => string);
 
+/** The count of tokens the fake provider reports: a number, a function of the request, or none. */
+export type AiTokens = number | ((request: AiChatRequest) => number | undefined) | undefined;
+
 /** What the fake computer's keychain, providers and Ollama hold, behind `FakeBackend.ai`. */
 class FakeAi implements AiBackend {
   #providers: AiProviderConfig[] = [];
@@ -575,14 +585,17 @@ class FakeAi implements AiBackend {
   #holding = false;
   readonly #held = new Set<() => void>();
   #reply: AiReply;
+  #tokens: AiTokens;
 
   constructor(
     private readonly record: (method: FakeAiMethod, ...args: unknown[]) => void,
     ollamaModels: readonly string[] | undefined,
     keys: Record<string, string> | undefined,
     reply: AiReply | undefined,
+    tokens: AiTokens,
   ) {
     this.#reply = reply ?? DEFAULT_AI_REPLY;
+    this.#tokens = tokens;
     if (ollamaModels !== undefined) this.#ollama = [...ollamaModels];
     for (const [id, key] of Object.entries(keys ?? {})) this.#keys.set(id, key);
   }
@@ -701,7 +714,8 @@ class FakeAi implements AiBackend {
       } else if (failure !== undefined) {
         onEvent({ type: "error", kind: failure.kind, message: failure.message });
       } else {
-        onEvent({ type: "done" });
+        const count = this.#tokensFor(request);
+        onEvent(count === undefined ? { type: "done" } : { type: "done", outputTokens: count });
       }
     } finally {
       this.#chats.delete(requestId);
@@ -757,6 +771,19 @@ class FakeAi implements AiBackend {
 
   #replyTo(request: AiChatRequest): string {
     return typeof this.#reply === "string" ? this.#reply : this.#reply(request);
+  }
+
+  /** The count of tokens to report for `request`, if there is a valid one. */
+  #tokensFor(request: AiChatRequest): number | undefined {
+    const count = typeof this.#tokens === "function" ? this.#tokens(request) : this.#tokens;
+    return typeof count === "number" && Number.isSafeInteger(count) && count >= 0
+      ? count
+      : undefined;
+  }
+
+  /** Changes the count of tokens reported from now on; `undefined` reports none. */
+  setTokens(tokens: AiTokens): void {
+    this.#tokens = tokens;
   }
 
   /** Changes what the fake provider answers from now on; `undefined` goes back to the default. */
@@ -864,7 +891,8 @@ class FakeAi implements AiBackend {
  *   `storedAiKey` lets a test peek. `ai.testConnection` answers ok, unless the provider is Ollama
  *   that is not there, or Anthropic without a key, or `setAiConnectionResult` chose the answer (a
  *   key in its text is taken out). `ai.chat` is answered by a fake provider (`aiReply`,
- *   `setAiReply`) in deltas, a word at a time, then one `done`; it ends with an `error` instead when
+ *   `setAiReply`) in deltas, a word at a time, then one `done` (which carries `outputTokens` when
+ *   `aiTokens` or `setAiTokens` gives a count, as a provider that reports its usage); it ends with an `error` instead when
  *   the connection test would fail, and a `cancel` in between ends it with `error` of kind
  *   `cancelled`. `holdAiAnswer(true)` makes the answers wait after their first piece, so a test can
  *   stop one in the middle. Calls are recorded as `ai.providers`, `ai.setKey` (without the key), `ai.chat` (with
@@ -972,6 +1000,7 @@ export class FakeBackend implements Backend {
       options.ollamaModels,
       options.aiKeys,
       options.aiReply,
+      options.aiTokens,
     );
     this.ai = this.#ai;
     this.#commandExitCode = options.commandExitCode ?? 0;
@@ -1014,6 +1043,14 @@ export class FakeBackend implements Backend {
    */
   setAiReply(reply: string | ((request: AiChatRequest) => string) | undefined): void {
     this.#ai.setReply(reply);
+  }
+
+  /**
+   * Changes the count of tokens the fake provider reports in the `done` of its answers from now on:
+   * a number, or a function of the request; `undefined` reports none. Not a `Backend` call.
+   */
+  setAiTokens(tokens: AiTokens): void {
+    this.#ai.setTokens(tokens);
   }
 
   /**

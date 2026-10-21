@@ -85,14 +85,14 @@ Write the file in `bench/tasks/`, keep the id equal to the file name, give at le
 
 **What is measured, for each task.**
 
-| Field             | Meaning                                                                                                                                        |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ok`, `reason`    | The answer passed its check, or why it did not. A failed call is `the provider failed: <kind>`.                                                |
-| `firstChunkMs`    | From the request to the first delta that has text; `null` when none came.                                                                      |
-| `totalMs`         | From the request to its last event (`done` or `error`).                                                                                        |
-| `outputTokens`    | The characters of the answer divided by 4, rounded up (`tokensSource: "estimate"`). A count reported by the provider will be `"stream"`.       |
-| `tokensPerSecond` | `outputTokens` over `totalMs`, rounded to two decimals; `null` for a failed call, or one with no time or no tokens. An estimate, not a count.  |
-| `error`           | `{ kind, message }` of the provider when the call failed (`network`, `timeout`, `http`, ...); `null` otherwise. The message never holds a key. |
+| Field             | Meaning                                                                                                                                                                            |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ok`, `reason`    | The answer passed its check, or why it did not. A failed call is `the provider failed: <kind>`.                                                                                    |
+| `firstChunkMs`    | From the request to the first delta that has text; `null` when none came.                                                                                                          |
+| `totalMs`         | From the request to its last event (`done` or `error`).                                                                                                                            |
+| `outputTokens`    | The count the provider reported in the stream (`tokensSource: "stream"`), or else the characters of the answer divided by 4, rounded up (`"estimate"`).                            |
+| `tokensPerSecond` | `outputTokens` over `totalMs`, rounded to two decimals; `null` for a failed call, or one with no time or no tokens. A count when `tokensSource` is `stream`, an estimate when not. |
+| `error`           | `{ kind, message }` of the provider when the call failed (`network`, `timeout`, `http`, ...); `null` otherwise. The message never holds a key.                                     |
 
 A call that fails (an `error` event, `chat` rejecting, or an answer that ends without `done`) is a failed task with the kind of the error and the run goes on with the next task. A partial answer of a broken stream is never judged.
 
@@ -100,7 +100,9 @@ A call that fails (an `error` event, `chat` rejecting, or an answer that ends wi
 
 **Cancelling.** When `signal` aborts, the request in flight is cancelled with `ai.cancel`, no further task is sent and the result is `cancelled` with the tasks that were done; the one cut short is not among them. A task that ended with `done` before the cancel took effect is kept. `planned` tells how many tasks the run was asked to do.
 
-**The result.** `runBench` returns a `BenchRun` (and `benchRunSchema` reads it back from JSON): `version`, `startedAt` (ISO 8601, UTC), the `provider` (`id`, `kind` and `baseUrl`; never a key), the `model`, the `state` (`complete` or `cancelled`), `planned`, the `tasks`, the `totals` and `memory`, which is `null` until the memory of the model is measured. Its file is `bench-results/<YYYY-MM-DD-HHmmss>.json`, named from the start of the run in UTC by `benchResultPath`. The real token counts of the stream and the memory read from Ollama are not done yet (NOR-F16-02c).
+**The result.** `runBench` returns a `BenchRun` (and `benchRunSchema` reads it back from JSON): `version`, `startedAt` (ISO 8601, UTC), the `provider` (`id`, `kind` and `baseUrl`; never a key), the `model`, the `state` (`complete` or `cancelled`), `planned`, the `tasks`, the `totals` and `memory`, which is `null` until the memory of the model is measured. Its file is `bench-results/<YYYY-MM-DD-HHmmss>.json`, named from the start of the run in UTC by `benchResultPath`. The memory read from Ollama is not done yet (NOR-F16-02d).
+
+**Tokens of the stream.** When the provider reports how many tokens the answer has, that count is used and the task is marked `tokensSource: "stream"`; the tokens per second are then the count over the total time. For the chat completions format (Ollama, LM Studio and the rest) the request asks for it with `stream_options: { include_usage: true }` and the count is `usage.completion_tokens` of the last chunk, the one with no `choices`; for the Anthropic format it is `usage.output_tokens` of `message_delta`. The Rust parser puts it in the `done` it ends the stream with (`StreamEvent::Done { output_tokens }`), the bridge passes it on and the page gets `{ type: "done", outputTokens }`. A server that sends no count, or a count that is not a whole number of 0 or more, leaves it out: the task keeps the estimate and nothing fails. A count of 0 next to an answer that has text also keeps the estimate, and a failed call never uses a count. The two sources can be mixed in one run (a result is still valid), so the medians of the tokens per second are only comparable between runs of the same source. `FakeBackend` reports a count with `aiTokens` / `setAiTokens` (a number or a function of the request).
 
 Run the tests of the runner with `pnpm exec vitest run packages/model/src/bench-runner.test.ts`.
 

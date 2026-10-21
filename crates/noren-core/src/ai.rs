@@ -291,8 +291,10 @@ impl AiError {
 pub enum StreamEvent {
     /// A piece of the answer text.
     Delta(String),
-    /// The answer is complete.
-    Done,
+    /// The answer is complete. `output_tokens` is the number of tokens of the answer when the
+    /// provider reported it in the stream (`usage`), and `None` when it did not or sent something
+    /// that is not a whole non-negative number.
+    Done { output_tokens: Option<u64> },
     /// The answer stopped, and why.
     Error(AiError),
 }
@@ -409,6 +411,8 @@ pub struct StreamParser {
     /// The provider said the answer is complete but the stream is still open (the finish reason
     /// of a chunk of the chat completions format).
     complete: bool,
+    /// The count of tokens of the answer the provider reported, if it did (the last valid one).
+    output_tokens: Option<u64>,
     ended: bool,
 }
 
@@ -418,6 +422,7 @@ impl StreamParser {
             kind,
             sse: SseDecoder::new(),
             complete: false,
+            output_tokens: None,
             ended: false,
         }
     }
@@ -453,7 +458,7 @@ impl StreamParser {
         if !self.ended {
             self.ended = true;
             events.push(if self.complete {
-                StreamEvent::Done
+                self.done()
             } else {
                 StreamEvent::Error(AiError::Protocol(
                     "the stream ended before the answer was complete".to_string(),
@@ -477,6 +482,20 @@ impl StreamParser {
         events
     }
 
+    fn done(&self) -> StreamEvent {
+        StreamEvent::Done {
+            output_tokens: self.output_tokens,
+        }
+    }
+
+    /// Keeps the count in `counter` when it is a whole number of tokens; anything else (absent,
+    /// negative, fractional, text) is ignored, never an error.
+    fn note_tokens(&mut self, counter: Option<&Value>) {
+        if let Some(count) = counter.and_then(Value::as_u64) {
+            self.output_tokens = Some(count);
+        }
+    }
+
     fn end(&mut self, events: &mut Vec<StreamEvent>, event: StreamEvent) {
         self.ended = true;
         events.push(event);
@@ -490,7 +509,8 @@ impl StreamParser {
             return;
         }
         if data == "[DONE]" {
-            self.end(events, StreamEvent::Done);
+            let done = self.done();
+            self.end(events, done);
             return;
         }
         let value: Value = match serde_json::from_str(data) {
@@ -506,6 +526,8 @@ impl StreamParser {
             self.end(events, StreamEvent::Error(error));
             return;
         }
+        // With `stream_options.include_usage` the last chunk has no choices and carries the count.
+        self.note_tokens(value.pointer("/usage/completion_tokens"));
         let Some(choice) = value.get("choices").and_then(|c| c.get(0)) else {
             return;
         };
@@ -522,9 +544,9 @@ impl StreamParser {
         }
     }
 
-    /// Events of `messages`: `message_start`, `content_block_delta` (`delta.text`), `message_stop`
-    /// and `error`; the others (`ping`, `content_block_start`, `message_delta`, ...) say nothing
-    /// about the text.
+    /// Events of `messages`: `message_start` and `message_delta` (the count of output tokens in
+    /// `usage`), `content_block_delta` (`delta.text`), `message_stop` and `error`; the others
+    /// (`ping`, `content_block_start`, ...) say nothing about the text.
     fn read_anthropic(&mut self, message: &SseMessage, events: &mut Vec<StreamEvent>) {
         let data = message.data.trim();
         if data.is_empty() {
@@ -551,7 +573,12 @@ impl StreamParser {
                     events.push(StreamEvent::Delta(text.to_string()));
                 }
             }
-            "message_stop" => self.end(events, StreamEvent::Done),
+            "message_start" => self.note_tokens(value.pointer("/message/usage/output_tokens")),
+            "message_delta" => self.note_tokens(value.pointer("/usage/output_tokens")),
+            "message_stop" => {
+                let done = self.done();
+                self.end(events, done);
+            }
             "error" => {
                 let reason = value.get("error").map(error_reason).unwrap_or_default();
                 self.end(events, StreamEvent::Error(AiError::Provider(reason)));
@@ -612,6 +639,8 @@ fn request_body(provider: &Provider, messages: &[ChatMessage]) -> Result<Value, 
         ProviderKind::OpenAiCompatible => json!({
             "model": provider.model,
             "stream": true,
+            // Asks for the count of tokens in a last chunk of the stream.
+            "stream_options": { "include_usage": true },
             "messages": messages
                 .iter()
                 .map(|m| json!({ "role": m.role.as_str(), "content": m.content }))
@@ -1064,7 +1093,12 @@ mod tests {
         let expected = parse_in_pieces(ProviderKind::OpenAiCompatible, body.as_bytes(), body.len());
         let (text, ends) = deltas_and_end(&expected);
         assert_eq!(text, "Hello w\u{f6}rld \u{1F600}");
-        assert_eq!(ends, vec![StreamEvent::Done]);
+        assert_eq!(
+            ends,
+            vec![StreamEvent::Done {
+                output_tokens: None
+            }]
+        );
         for size in 1..=13 {
             let events = parse_in_pieces(ProviderKind::OpenAiCompatible, body.as_bytes(), size);
             assert_eq!(
@@ -1109,7 +1143,12 @@ mod tests {
         let events = parse_in_pieces(ProviderKind::OpenAiCompatible, body.as_bytes(), 1000);
         assert_eq!(
             events,
-            vec![StreamEvent::Delta("x".to_string()), StreamEvent::Done]
+            vec![
+                StreamEvent::Delta("x".to_string()),
+                StreamEvent::Done {
+                    output_tokens: None
+                }
+            ]
         );
     }
 
@@ -1139,8 +1178,193 @@ mod tests {
             let events = parse_in_pieces(ProviderKind::Anthropic, body.as_bytes(), size);
             let (text, ends) = deltas_and_end(&events);
             assert_eq!(text, "Hello w\u{f6}rld \u{1F600}", "{size}");
-            assert_eq!(ends, vec![StreamEvent::Done], "{size}");
+            assert_eq!(
+                ends,
+                vec![StreamEvent::Done {
+                    output_tokens: None
+                }],
+                "{size}"
+            );
         }
+    }
+
+    /// A stream of the chat completions format whose last chunk, after the finish reason, has no
+    /// choices and carries `usage` (what `stream_options.include_usage` asks for).
+    fn openai_stream_with_usage(usage: &str) -> String {
+        [
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null}],\"usage\":null}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}],\"usage\":null}\n\n",
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":null}\n\n",
+            &format!("data: {{\"choices\":[],\"usage\":{usage}}}\n\n"),
+            "data: [DONE]\n\n",
+        ]
+        .concat()
+    }
+
+    #[test]
+    fn the_count_in_the_last_chunk_reaches_done_in_any_piece_size() {
+        let body = openai_stream_with_usage(
+            "{\"prompt_tokens\":12,\"completion_tokens\":37,\"total_tokens\":49}",
+        );
+        let expected = vec![
+            StreamEvent::Delta("Hel".to_string()),
+            StreamEvent::Delta("lo".to_string()),
+            StreamEvent::Done {
+                output_tokens: Some(37),
+            },
+        ];
+        for size in (1..=17).chain([64, 200, body.len()]) {
+            let events = parse_in_pieces(ProviderKind::OpenAiCompatible, body.as_bytes(), size);
+            // The chunk with no choices is neither an error nor a piece of text.
+            assert_eq!(events, expected, "{size}");
+        }
+    }
+
+    #[test]
+    fn the_count_is_kept_when_the_body_ends_without_done() {
+        let body = openai_stream_with_usage("{\"completion_tokens\":5}");
+        let body = body.replace("data: [DONE]\n\n", "");
+        let events = parse_in_pieces(ProviderKind::OpenAiCompatible, body.as_bytes(), 9);
+        assert_eq!(
+            events.last(),
+            Some(&StreamEvent::Done {
+                output_tokens: Some(5)
+            })
+        );
+    }
+
+    #[test]
+    fn the_count_may_come_in_a_chunk_that_also_has_a_choice() {
+        let body = "data: {\"choices\":[{\"delta\":{\"content\":\"x\"},\"finish_reason\":\"stop\"}],\"usage\":{\"completion_tokens\":1}}\n\ndata: [DONE]\n\n";
+        let events = parse_in_pieces(ProviderKind::OpenAiCompatible, body.as_bytes(), 5);
+        assert_eq!(
+            events,
+            vec![
+                StreamEvent::Delta("x".to_string()),
+                StreamEvent::Done {
+                    output_tokens: Some(1)
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn a_stream_without_a_count_is_done_without_one() {
+        for body in [
+            openai_stream(),
+            // No completion_tokens in the usage, or no usage at all.
+            openai_stream_with_usage("{\"prompt_tokens\":3}"),
+            openai_stream_with_usage("null"),
+        ] {
+            let events = parse_in_pieces(ProviderKind::OpenAiCompatible, body.as_bytes(), 6);
+            assert_eq!(
+                events.last(),
+                Some(&StreamEvent::Done {
+                    output_tokens: None
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn a_count_that_is_not_a_whole_number_is_none_and_never_an_error() {
+        for bad in [
+            "-3",
+            "2.5",
+            "7.0",
+            "1e3",
+            "\"12\"",
+            "null",
+            "true",
+            "[4]",
+            "{}",
+            "18446744073709551616",
+        ] {
+            let body = openai_stream_with_usage(&format!("{{\"completion_tokens\":{bad}}}"));
+            let events = parse_in_pieces(ProviderKind::OpenAiCompatible, body.as_bytes(), 8);
+            let (text, ends) = deltas_and_end(&events);
+            assert_eq!(text, "Hello", "{bad}");
+            assert_eq!(
+                ends,
+                vec![StreamEvent::Done {
+                    output_tokens: None
+                }],
+                "{bad}"
+            );
+        }
+        // A bad count after a good one does not erase the good one.
+        let body = [
+            "data: {\"choices\":[],\"usage\":{\"completion_tokens\":9}}\n\n",
+            "data: {\"choices\":[],\"usage\":{\"completion_tokens\":-1}}\n\n",
+            "data: [DONE]\n\n",
+        ]
+        .concat();
+        let events = parse_in_pieces(ProviderKind::OpenAiCompatible, body.as_bytes(), 4);
+        assert_eq!(
+            events,
+            vec![StreamEvent::Done {
+                output_tokens: Some(9)
+            }]
+        );
+        // Zero is a whole number.
+        let body = "data: {\"choices\":[],\"usage\":{\"completion_tokens\":0}}\n\ndata: [DONE]\n\n";
+        let events = parse_in_pieces(ProviderKind::OpenAiCompatible, body.as_bytes(), 1000);
+        assert_eq!(
+            events,
+            vec![StreamEvent::Done {
+                output_tokens: Some(0)
+            }]
+        );
+    }
+
+    #[test]
+    fn anthropic_count_comes_from_message_delta_and_the_last_one_wins() {
+        let body = anthropic_stream()
+            .replace(
+                "\"content\":[]}}",
+                "\"content\":[],\"usage\":{\"input_tokens\":25,\"output_tokens\":1}}}",
+            )
+            .replace(
+                "\"delta\":{\"stop_reason\":\"end_turn\"}}",
+                "\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":15}}",
+            );
+        assert!(body.contains("\"output_tokens\":15"));
+        for size in [1, 2, 5, 33, body.len()] {
+            let events = parse_in_pieces(ProviderKind::Anthropic, body.as_bytes(), size);
+            let (text, ends) = deltas_and_end(&events);
+            assert_eq!(text, "Hello w\u{f6}rld \u{1F600}", "{size}");
+            assert_eq!(
+                ends,
+                vec![StreamEvent::Done {
+                    output_tokens: Some(15)
+                }],
+                "{size}"
+            );
+        }
+        // Only the start event has a count: it is the one reported.
+        let only_start = anthropic_stream().replace(
+            "\"content\":[]}}",
+            "\"content\":[],\"usage\":{\"output_tokens\":2}}}",
+        );
+        let events = parse_in_pieces(ProviderKind::Anthropic, only_start.as_bytes(), 1000);
+        assert_eq!(
+            events.last(),
+            Some(&StreamEvent::Done {
+                output_tokens: Some(2)
+            })
+        );
+        // A count that is not a whole number is none, and the text still arrives.
+        let bad = anthropic_stream().replace(
+            "\"delta\":{\"stop_reason\":\"end_turn\"}}",
+            "\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":-4}}",
+        );
+        let events = parse_in_pieces(ProviderKind::Anthropic, bad.as_bytes(), 1000);
+        assert_eq!(
+            events.last(),
+            Some(&StreamEvent::Done {
+                output_tokens: None
+            })
+        );
     }
 
     #[test]
@@ -1173,7 +1397,12 @@ mod tests {
         let mut parser = StreamParser::new(ProviderKind::OpenAiCompatible);
         let events = parser
             .push(b"data: [DONE]\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"late\"}}]}\n\n");
-        assert_eq!(events, vec![StreamEvent::Done]);
+        assert_eq!(
+            events,
+            vec![StreamEvent::Done {
+                output_tokens: None
+            }]
+        );
         assert!(parser.is_ended());
         assert!(parser.push(b"data: more\n\n").is_empty());
         assert!(parser.finish().is_empty());
@@ -1229,12 +1458,15 @@ mod tests {
         assert_eq!(openai["stream"], true);
         assert_eq!(openai["messages"].as_array().map(Vec::len), Some(4));
         assert_eq!(openai["messages"][0]["role"], "system");
+        // The count of tokens of the answer comes in a last chunk only when it is asked for.
+        assert_eq!(openai["stream_options"], json!({ "include_usage": true }));
 
         let mut provider = Provider::ollama("claude-test");
         provider.kind = ProviderKind::Anthropic;
         let anthropic = request_body(&provider, &messages).expect("body");
         assert_eq!(anthropic["system"], "Be brief.");
         assert_eq!(anthropic["stream"], true);
+        assert!(anthropic.get("stream_options").is_none());
         assert!(anthropic["max_tokens"].as_u64().is_some_and(|n| n > 0));
         assert_eq!(anthropic["messages"].as_array().map(Vec::len), Some(3));
         assert_eq!(anthropic["messages"][0]["role"], "user");
@@ -1552,7 +1784,12 @@ mod tests {
         assert_eq!(result, Ok(()));
         let (text, ends) = deltas_and_end(&events);
         assert_eq!(text, "Hello w\u{f6}rld \u{1F600}");
-        assert_eq!(ends, vec![StreamEvent::Done]);
+        assert_eq!(
+            ends,
+            vec![StreamEvent::Done {
+                output_tokens: None
+            }]
+        );
 
         let request = server.request(0);
         assert_eq!(request.request_line, "POST /v1/chat/completions HTTP/1.1");
@@ -1578,6 +1815,53 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn openai_compatible_asks_for_the_usage_and_delivers_the_count() {
+        let body = openai_stream_with_usage("{\"completion_tokens\":21}");
+        let server = TestServer::start(move |_, stream, _| {
+            start_event_stream(stream);
+            // Cuts inside the chunk that has the count.
+            send_in_pieces(stream, &body, &[40, body.len() - 40, body.len() - 14]);
+        });
+        let provider = provider_at(&server, ProviderKind::OpenAiCompatible);
+        let (result, events) = run(&client(3000), &provider, None, &CancellationToken::new()).await;
+        assert_eq!(result, Ok(()));
+        let (text, ends) = deltas_and_end(&events);
+        assert_eq!(text, "Hello");
+        assert_eq!(
+            ends,
+            vec![StreamEvent::Done {
+                output_tokens: Some(21)
+            }]
+        );
+        let sent: Value = serde_json::from_str(&server.request(0).body).expect("json body");
+        assert_eq!(sent["stream_options"]["include_usage"], true);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn anthropic_delivers_the_count_and_sends_no_stream_options() {
+        let body = anthropic_stream().replace(
+            "\"delta\":{\"stop_reason\":\"end_turn\"}}",
+            "\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":8}}",
+        );
+        let server = TestServer::start(move |_, stream, _| {
+            start_event_stream(stream);
+            send_in_pieces(stream, &body, &[]);
+        });
+        let provider = provider_at(&server, ProviderKind::Anthropic);
+        let key = Some("sk-ant-test");
+        let (result, events) = run(&client(3000), &provider, key, &CancellationToken::new()).await;
+        assert_eq!(result, Ok(()));
+        assert_eq!(
+            events.last(),
+            Some(&StreamEvent::Done {
+                output_tokens: Some(8)
+            })
+        );
+        let sent: Value = serde_json::from_str(&server.request(0).body).expect("json body");
+        assert!(sent.get("stream_options").is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn anthropic_streams_deltas_with_key_and_version_headers() {
         let body = anthropic_stream();
         let server = TestServer::start(move |_, stream, _| {
@@ -1595,7 +1879,12 @@ mod tests {
         assert_eq!(result, Ok(()));
         let (text, ends) = deltas_and_end(&events);
         assert_eq!(text, "Hello w\u{f6}rld \u{1F600}");
-        assert_eq!(ends, vec![StreamEvent::Done]);
+        assert_eq!(
+            ends,
+            vec![StreamEvent::Done {
+                output_tokens: None
+            }]
+        );
 
         let request = server.request(0);
         assert_eq!(request.request_line, "POST /v1/messages HTTP/1.1");

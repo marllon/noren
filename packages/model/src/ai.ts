@@ -150,10 +150,13 @@ export interface AiChatRequest {
  * What a question streams back: zero or more `delta` (the next piece of the answer, in order), then
  * exactly one `done` or `error`. `error.message` is a sentence for the person and never carries the
  * key; `kind` tells what to look at. A request cancelled ends with `error` of kind `cancelled`.
+ * `done.outputTokens` is the number of tokens of the answer when the provider reported it in the
+ * stream (a whole number, 0 or more); it is left out when the provider did not, and the page never
+ * guesses it there.
  */
 export type AiChatEvent =
   | { type: "delta"; text: string }
-  | { type: "done" }
+  | { type: "done"; outputTokens?: number | undefined }
   | { type: "error"; kind: AiErrorKind; message: string };
 
 /**

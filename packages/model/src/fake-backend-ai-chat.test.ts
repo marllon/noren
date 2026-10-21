@@ -56,6 +56,38 @@ describe("FakeBackend ai.chat", () => {
     expect(endsOf(events)).toHaveLength(1);
   });
 
+  it("reports no count of tokens unless the test gives one", async () => {
+    const events = await run(withOllama("one two"));
+    expect(events.at(-1)).toStrictEqual({ type: "done" });
+  });
+
+  it("reports the count of tokens in the done, from a number or a function of the request", async () => {
+    const fixed = new FakeBackend({ ollamaModels: ["llama3.2"], aiTokens: 33 });
+    expect((await run(fixed)).at(-1)).toStrictEqual({ type: "done", outputTokens: 33 });
+    const byRequest = new FakeBackend({
+      ollamaModels: ["llama3.2"],
+      aiTokens: (req) => (req.requestId === "r1" ? 5 : undefined),
+    });
+    expect((await run(byRequest)).at(-1)).toStrictEqual({ type: "done", outputTokens: 5 });
+    expect((await run(byRequest, { requestId: "r2" })).at(-1)).toStrictEqual({ type: "done" });
+    byRequest.setAiTokens(0);
+    expect((await run(byRequest)).at(-1)).toStrictEqual({ type: "done", outputTokens: 0 });
+    byRequest.setAiTokens(undefined);
+    expect((await run(byRequest)).at(-1)).toStrictEqual({ type: "done" });
+  });
+
+  it("leaves out a count that is not a whole number, and gives none to a failed or cancelled request", async () => {
+    for (const bad of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const backend = new FakeBackend({ ollamaModels: ["llama3.2"], aiTokens: bad });
+      expect((await run(backend)).at(-1)).toStrictEqual({ type: "done" });
+    }
+    const failing = new FakeBackend({ aiTokens: 9 });
+    const ends = endsOf(await run(failing));
+    expect(ends).toHaveLength(1);
+    expect(ends[0]).toMatchObject({ type: "error" });
+    expect(ends[0]).not.toHaveProperty("outputTokens");
+  });
+
   it("answers with the default text when the test gave none", async () => {
     const events = await run(withOllama());
     expect(deltasOf(events).join("")).toBe(DEFAULT_AI_REPLY);

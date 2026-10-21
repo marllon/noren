@@ -3611,6 +3611,72 @@ body {
   cursor: default;
 }
 
+/* The panel of a plugin: beside the terminal, like the Ask panel; its content is a frame with no power. */
+.plugin-panel {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 340px;
+  min-height: 0;
+  border-left: 1px solid var(--nr-border);
+  background: var(--nr-surface-glass, var(--nr-surface));
+  font-size: 13px;
+}
+
+.app-body[data-nr-side="right"] .plugin-panel {
+  border-right: 1px solid var(--nr-border);
+  border-left: 0;
+}
+
+.plugin-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--nr-border);
+}
+
+.plugin-panel-head h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-panel-from {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--nr-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-panel-close {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-surface);
+  color: inherit;
+  cursor: pointer;
+}
+
+.plugin-panel-close:hover {
+  border-color: var(--nr-accent);
+}
+
+.plugin-panel-frame {
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+}
+
 .ask-head {
   display: flex;
   align-items: center;

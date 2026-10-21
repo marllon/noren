@@ -699,6 +699,11 @@ export const ptBR: Dictionary = {
   "profileImport.done":
     'Importados {profiles}: {names}. Abra um com "Nova aba ..." na paleta de comandos.',
 
+  // O painel de um plugin
+  "pluginPanel.label": "Painel do plugin: {title}",
+  "pluginPanel.from": "Plugin · {name}",
+  "pluginPanel.close": "Fechar o painel do plugin",
+
   // O painel Perguntar
   "ask.label": "Perguntar",
   "ask.close": "Fechar Perguntar",

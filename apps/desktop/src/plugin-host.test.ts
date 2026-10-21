@@ -92,6 +92,13 @@ function setup(folders: PluginFolder[]) {
   return { host, workers, traffic, api };
 }
 
+const openPanel = (id: number, title: string, html: string) => ({
+  version: 1,
+  id,
+  method: "panel.open",
+  params: { title, html },
+});
+
 const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 const denied = (id: number, permission: string) =>
@@ -288,6 +295,102 @@ describe("PluginHost", () => {
     await host.start();
     expect(host.status()[0]).toMatchObject({ state: "running", id: "new-tab-action" });
     expect(workers.get("new-tab-action")?.source).toBe(EXAMPLE_PLUGIN_MAIN);
+  });
+
+  it("shows the panel a plugin with the permission opened, and closes it when asked", async () => {
+    const { host, workers } = setup([folder("alpha", ["panel"])]);
+    let heard = 0;
+    host.subscribe(() => (heard += 1));
+    await host.start();
+    expect(host.panel()).toBeNull();
+    const before = host.version();
+    workers.get("alpha")?.say(openPanel(1, "Notes", "<p>hi</p>"));
+    await settle();
+    expect(host.panel()).toEqual({
+      pluginId: "alpha",
+      pluginName: "Plugin alpha",
+      title: "Notes",
+      html: "<p>hi</p>",
+    });
+    expect(host.version()).toBe(before + 1);
+    expect(workers.get("alpha")?.received).toEqual([
+      { version: 1, id: 1, result: { title: "Notes" } },
+    ]);
+
+    // A later panel replaces it; the same one again changes nothing.
+    workers.get("alpha")?.say(openPanel(2, "Other", ""));
+    await settle();
+    expect(host.panel()?.title).toBe("Other");
+    const version = host.version();
+    workers.get("alpha")?.say(openPanel(3, "Other", ""));
+    await settle();
+    expect(host.version()).toBe(version);
+
+    host.closePanel();
+    expect(host.panel()).toBeNull();
+    expect(host.version()).toBe(version + 1);
+    // Closing again is nothing, and the plugin can open another panel.
+    host.closePanel();
+    expect(host.version()).toBe(version + 1);
+    workers.get("alpha")?.say(openPanel(4, "Back", "<p>back</p>"));
+    await settle();
+    expect(host.panel()?.title).toBe("Back");
+    expect(heard).toBeGreaterThan(0);
+  });
+
+  it("shows no panel for a plugin without the permission panel, which is told permission_denied", async () => {
+    const { host, workers, api } = setup([
+      folder("alpha", ["palette.actions", "tabs.create", "terminal.read"]),
+    ]);
+    await host.start();
+    workers.get("alpha")?.say(openPanel(1, "Sneaky", "<p>x</p>"));
+    await settle();
+    expect(workers.get("alpha")?.received).toEqual([denied(1, "panel")]);
+    expect(host.panel()).toBeNull();
+    expect(api.touched()).toBe(0);
+  });
+
+  it("shows no panel for a request the broker refused, and keeps the one on screen", async () => {
+    const { host, workers } = setup([folder("alpha", ["panel"])]);
+    await host.start();
+    workers.get("alpha")?.say(openPanel(1, "Keep", "<p>keep</p>"));
+    workers.get("alpha")?.say({ version: 1, id: 2, method: "panel.open", params: { title: "" } });
+    workers.get("alpha")?.say(openPanel(3, "Big", "x".repeat(20_001)));
+    await settle();
+    expect(host.panel()).toMatchObject({ title: "Keep", html: "<p>keep</p>" });
+    expect(workers.get("alpha")?.received.slice(1)).toEqual([
+      expect.objectContaining({
+        id: 2,
+        error: expect.objectContaining({ code: "invalid_params" }),
+      }),
+      expect.objectContaining({
+        id: 3,
+        error: expect.objectContaining({ code: "invalid_params" }),
+      }),
+    ]);
+  });
+
+  it("takes the panel away when its plugin fails or stops, and leaves the panel of nobody else", async () => {
+    const { host, workers } = setup([folder("alpha", ["panel"]), folder("beta", ["panel"])]);
+    await host.start();
+    workers.get("alpha")?.say(openPanel(1, "Alpha", "<p>a</p>"));
+    await settle();
+    // beta fails: alpha's panel stays.
+    workers.get("beta")?.onerror?.({ message: "boom" });
+    expect(host.panel()?.pluginId).toBe("alpha");
+    // alpha fails: its panel goes, no error is thrown, the status says why.
+    workers.get("alpha")?.onerror?.({ message: "alpha broke" });
+    expect(host.panel()).toBeNull();
+    expect(host.status().find((s) => s.folder === "alpha")).toMatchObject({ state: "failed" });
+  });
+
+  it("takes the panel away on stop", async () => {
+    const { host, workers } = setup([folder("alpha", ["panel"])]);
+    await host.start();
+    workers.get("alpha")?.say(openPanel(1, "Alpha", "<p>a</p>"));
+    await settle();
+    host.stop();
+    expect(host.panel()).toBeNull();
   });
 
   it("ends every Worker on stop", async () => {

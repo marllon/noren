@@ -6,7 +6,7 @@ import type { ApiCall, ApiErrorCode, ApiHost, ApiJson } from "./api-dispatch";
 // app exchange (protocol v1) and the broker that answers one plugin's requests. No DOM, no Worker,
 // no Tauri, no wall-clock time: the app lends the workspace and the shells through `ApiHost`, and
 // whatever carries the messages (a Worker, a frame) is not here. Loading the folder and running the
-// code come in NOR-F18-01b, the panel of the plugin in NOR-F18-01c.
+// code come in NOR-F18-01b, running it in a Worker in NOR-F18-01c and the panel of the plugin in NOR-F18-01d.
 //
 // A plugin starts with no power. Its manifest names the permissions it asks for, and the broker
 // looks at them before it looks at anything else of a request: a method whose permission the
@@ -14,7 +14,9 @@ import type { ApiCall, ApiErrorCode, ApiHost, ApiJson } from "./api-dispatch";
 // the host is not touched. Reading a terminal and making a tab go through `dispatchApiCall`, the
 // same code the local API runs (so the same limits and the same errors); registering an action of
 // the palette and opening a panel are only written down in a registry per plugin, which the host
-// reads and shows (the interface is not here).
+// reads and shows (the interface is not here). A panel is a title and the HTML text of its content;
+// the host shows that text in a frame with no power (apps/desktop/src/plugin-panel.ts), so what the
+// text says cannot reach the app.
 
 /** The version of the plugin API this build speaks; a manifest and every request carry it. */
 export const PLUGIN_API_VERSION = 1;
@@ -54,6 +56,8 @@ export const PLUGIN_LIMITS = {
   labelChars: 80,
   /** Most palette actions one plugin may hold. */
   actions: 64,
+  /** Longest content of a panel (the HTML text a plugin gives `panel.open`), in characters. */
+  panelHtmlChars: 20_000,
 } as const;
 
 const hasControl = (text: string): boolean => /\p{Cc}/u.test(text);
@@ -174,9 +178,11 @@ export interface PluginPaletteAction {
   label: string;
 }
 
-/** The panel a plugin asked to open. */
+/** The panel a plugin asked to open: a title and the HTML text the host shows in a frame of its own. */
 export interface PluginPanelRequest {
   title: string;
+  /** The content of the panel; empty when the plugin gave none. */
+  html: string;
 }
 
 /** What a plugin asked the app to show: the host reads it, the plugin cannot. */
@@ -240,7 +246,15 @@ const actionParams = z.strictObject({
   label: pluginTextSchema("label", PLUGIN_LIMITS.labelChars),
 });
 
-const panelParams = z.strictObject({ title: pluginTextSchema("title", PLUGIN_LIMITS.labelChars) });
+const panelParams = z.strictObject({
+  title: pluginTextSchema("title", PLUGIN_LIMITS.labelChars),
+  html: z
+    .string({ error: "html must be text" })
+    .max(PLUGIN_LIMITS.panelHtmlChars, {
+      error: `html is longer than ${PLUGIN_LIMITS.panelHtmlChars} characters`,
+    })
+    .default(""),
+});
 
 function problemOf(error: z.ZodError): string {
   const issue = error.issues[0];

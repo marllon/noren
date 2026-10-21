@@ -411,10 +411,61 @@ describe("the broker: a permission the manifest holds", () => {
     expect(b.registry.panel()).toBeNull();
     const response = await b.handle(request("panel.open", { title: "Notes" }));
     expect(response).toEqual({ version: 1, id: "r1", result: { title: "Notes" } });
-    expect(b.registry.panel()).toEqual({ title: "Notes" });
+    expect(b.registry.panel()).toEqual({ title: "Notes", html: "" });
     await b.handle(request("panel.open", { title: "Other" }));
-    expect(b.registry.panel()).toEqual({ title: "Other" });
+    expect(b.registry.panel()).toEqual({ title: "Other", html: "" });
     expect(untouched(r, before)).toBe(true);
+  });
+
+  it("keeps the content of the panel, as the text the plugin gave and nothing else of it", async () => {
+    const { r, b } = broker(["panel"]);
+    const before = r.workspace();
+    const html =
+      '<h3>Hello</h3><p style="color: red">line one\nline two</p><script>alert(1)</script>';
+    const response = await b.handle(request("panel.open", { title: "Notes", html }));
+    expect(response).toEqual({ version: 1, id: "r1", result: { title: "Notes" } });
+    // The broker does not clean, run or fetch the text: it is kept as it came, for the host to
+    // show in a frame that has no power.
+    expect(b.registry.panel()).toEqual({ title: "Notes", html });
+    // A later panel replaces the content, and an empty content is allowed.
+    await b.handle(request("panel.open", { title: "Again", html: "" }));
+    expect(b.registry.panel()).toEqual({ title: "Again", html: "" });
+    // What the registry hands out is a copy.
+    const asked = b.registry.panel();
+    if (asked !== null) asked.html = "changed";
+    expect(b.registry.panel()?.html).toBe("");
+    expect(untouched(r, before)).toBe(true);
+  });
+
+  it("takes content up to the limit and refuses more, keeping the panel it had", async () => {
+    const { b } = broker(["panel"]);
+    const fits = "x".repeat(PLUGIN_LIMITS.panelHtmlChars);
+    resultOf(await b.handle(request("panel.open", { title: "Big", html: fits })));
+    expect(b.registry.panel()?.html).toHaveLength(PLUGIN_LIMITS.panelHtmlChars);
+    const error = errorOf(
+      await b.handle(request("panel.open", { title: "Bigger", html: fits + "x" })),
+    );
+    expect(error.code).toBe("invalid_params");
+    expect(error.message).toContain(String(PLUGIN_LIMITS.panelHtmlChars));
+    expect(b.registry.panel()).toEqual({ title: "Big", html: fits });
+  });
+
+  it("refuses content that is not text, and a plugin without panel gets no panel at all", async () => {
+    const { b } = broker(["panel"]);
+    for (const html of [5, null, ["<p>"], { html: "<p>" }]) {
+      expect(errorOf(await b.handle(request("panel.open", { title: "T", html }))).code).toBe(
+        "invalid_params",
+      );
+    }
+    expect(b.registry.panel()).toBeNull();
+
+    const without = broker(["palette.actions", "tabs.create", "terminal.read"]).b;
+    const denied = errorOf(
+      await without.handle(request("panel.open", { title: "T", html: "<p>hi</p>" })),
+    );
+    expect(denied.code).toBe("permission_denied");
+    expect(denied.permission).toBe("panel");
+    expect(without.registry.panel()).toBeNull();
   });
 
   it("keeps the registry of one plugin apart from another's", async () => {
@@ -441,6 +492,8 @@ describe("the broker: a permission the manifest holds", () => {
     ["panel.open", { title: "a\nb" }],
     ["panel.open", { title: "a", url: "https://example.com" }],
     ["panel.open", [1]],
+    ["panel.open", { title: "a", html: 5 }],
+    ["panel.open", { title: "a", html: "x".repeat(PLUGIN_LIMITS.panelHtmlChars + 1) }],
   ])("answers invalid_params to %s with %j and keeps nothing", async (method, params) => {
     const { b } = broker(["palette.actions", "panel"]);
     expect(errorOf(await b.handle(request(method, params))).code).toBe("invalid_params");

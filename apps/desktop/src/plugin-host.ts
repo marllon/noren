@@ -16,6 +16,12 @@ import type { ApiHost, Backend, PluginBroker, PluginResponse } from "@noren/mode
 // whole power is the messages. A plugin that is invalid, or whose Worker fails, is only recorded
 // (`status()`), never an error dialog and never a reason for the others to stop.
 // docs/SECURITY_REVIEW.md, section 1, tells why `worker-src blob:` is in the policy.
+//
+// The panel (NOR-F18-01d): when a plugin that holds the permission `panel` opens one (`panel.open`
+// answered with a result), the host remembers the title and the HTML text the broker wrote to the
+// registry, and `PluginPanel` shows it in a frame with no power. One panel at a time: the last one
+// opened. The person closes it (`closePanel`); it also closes when its plugin fails or stops, so a
+// plugin that dies never leaves a panel behind.
 
 /** The part of a Worker the host uses; a test hands in a stand-in with the same shape. */
 export interface PluginWorker {
@@ -81,6 +87,14 @@ export interface PluginActionView {
   label: string;
 }
 
+/** The panel on screen: whose it is, its title and the HTML text of its content. */
+export interface PluginPanelView {
+  pluginId: string;
+  pluginName: string;
+  title: string;
+  html: string;
+}
+
 /** One message between the host and a plugin, kept for the test hook (`observe`). */
 export interface PluginTraffic {
   pluginId: string;
@@ -107,6 +121,12 @@ interface Running {
   worker: PluginWorker;
 }
 
+/** Whether the message is a request for `panel.open` (the broker has the last word on it). */
+const isPanelOpen = (message: unknown): boolean =>
+  typeof message === "object" &&
+  message !== null &&
+  (message as Record<string, unknown>)["method"] === "panel.open";
+
 const sentence = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 /** Runs the plugins and keeps what the palette needs from them. */
@@ -115,6 +135,7 @@ export class PluginHost {
   readonly #listeners = new Set<() => void>();
   readonly #running = new Map<string, Running>();
   #statuses: PluginStatus[] = [];
+  #panel: PluginPanelView | null = null;
   #version = 0;
   #actionsKey = "";
   #started = false;
@@ -167,6 +188,18 @@ export class PluginHost {
     return views;
   }
 
+  /** The panel on screen, or `null` when none is. */
+  panel(): PluginPanelView | null {
+    return this.#panel === null ? null : { ...this.#panel };
+  }
+
+  /** Takes the panel off the screen. The plugin is not told; it can open another one. */
+  closePanel(): void {
+    if (this.#panel === null) return;
+    this.#panel = null;
+    this.#changed();
+  }
+
   /** Tells the plugin that the action was chosen. An unknown plugin or action does nothing. */
   choose(pluginId: string, actionId: string): void {
     const plugin = this.#running.get(pluginId);
@@ -192,6 +225,7 @@ export class PluginHost {
   stop(): void {
     for (const plugin of this.#running.values()) this.#end(plugin);
     this.#running.clear();
+    this.#panel = null;
   }
 
   #run(folder: string, manifest: Parameters<typeof createPluginBroker>[0], main: string): void {
@@ -222,6 +256,19 @@ export class PluginHost {
     this.#options.observe?.({ pluginId: plugin.id, direction: "from-plugin", message });
     const response: PluginResponse = await plugin.broker.handle(message);
     if (this.#running.get(plugin.id) !== plugin) return;
+    // A panel is shown only when the broker said yes to the request (a plugin without the
+    // permission `panel` got `permission_denied` and nothing was written to its registry).
+    if (isPanelOpen(message) && "result" in response) {
+      const asked = plugin.broker.registry.panel();
+      if (asked !== null) {
+        this.#panel = {
+          pluginId: plugin.id,
+          pluginName: plugin.name,
+          title: asked.title,
+          html: asked.html,
+        };
+      }
+    }
     this.#post(plugin, response);
     this.#changed();
   }
@@ -239,6 +286,7 @@ export class PluginHost {
     if (this.#running.get(plugin.id) !== plugin) return;
     this.#running.delete(plugin.id);
     this.#end(plugin);
+    if (this.#panel?.pluginId === plugin.id) this.#panel = null;
     const at = this.#statuses.findIndex((status) => status.folder === plugin.folder);
     const failed: PluginStatus = {
       folder: plugin.folder,
@@ -265,7 +313,7 @@ export class PluginHost {
 
   /** The broker's registry does not tell when it changes: the host looks after each answer. */
   #changed(): void {
-    const key = JSON.stringify([this.#statuses, this.actions()]);
+    const key = JSON.stringify([this.#statuses, this.actions(), this.#panel]);
     if (key === this.#actionsKey) return;
     this.#actionsKey = key;
     this.#version += 1;
@@ -327,4 +375,22 @@ function subscribe(listener: () => void): () => void {
 /** The palette actions of the running plugins; draws again whenever they change. */
 export function usePluginActions(): readonly PluginActionView[] {
   return useSyncExternalStore(subscribe, snapshot, snapshot);
+}
+
+let lastPanelVersion = -1;
+let lastPanel: PluginPanelView | null = null;
+
+function panelSnapshot(): PluginPanelView | null {
+  const host = current;
+  if (host === undefined) return null;
+  if (host.version() !== lastPanelVersion) {
+    lastPanelVersion = host.version();
+    lastPanel = host.panel();
+  }
+  return lastPanel;
+}
+
+/** The panel a plugin opened, or `null`; draws again whenever it opens or closes. */
+export function usePluginPanel(): PluginPanelView | null {
+  return useSyncExternalStore(subscribe, panelSnapshot, panelSnapshot);
 }

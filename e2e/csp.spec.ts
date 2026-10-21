@@ -76,6 +76,7 @@ test("the policy is the strict one the app ships", () => {
   expect(POLICY).not.toContain("unsafe-eval");
   // The one door to a Worker (the plugins), and nothing else opened with it.
   expect(POLICY).toContain("worker-src blob:");
+  // The panel of a plugin is a srcdoc frame, which needs no source: frame-src stays closed (NOR-F18-01d).
   expect(POLICY).toContain("frame-src 'none'");
   expect(POLICY).not.toMatch(/https?:\/\/(?!ipc\.localhost)/);
 });
@@ -284,4 +285,109 @@ said("done: yes");`,
     "fetch: blocked",
   ]);
   expect(requested).toEqual([]);
+});
+
+/** Opens the palette on a plugin action by its words and chooses it. */
+async function choosePluginAction(page: Page, query: string): Promise<void> {
+  await page.locator('[data-nr-part="pane"]:visible').click();
+  await page.keyboard.press("Control+Shift+P");
+  const palette = page.locator('[data-nr-part="palette"]');
+  await expect(palette).toBeVisible();
+  await palette.getByRole("combobox", { name: "Command palette", exact: true }).fill(query);
+  const entry = palette.locator('[data-nr-kind="plugin"]');
+  await expect(entry).toHaveCount(1);
+  await expect(entry.first()).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(palette).toBeHidden();
+}
+
+const PANEL_FRAME = 'iframe[data-nr-part="plugin-panel-frame"]';
+
+test("the panel of a plugin draws under the policy: a sandboxed frame by srcdoc, no violation of the page", async ({
+  page,
+}) => {
+  const problems = await underPolicy(page);
+  await start(page);
+  await choosePluginAction(page, "show the panel");
+
+  // The frame comes from `srcdoc`, so it needs no source in the policy (frame-src stays 'none').
+  const inside = page.frameLocator(PANEL_FRAME);
+  await expect(inside.getByRole("heading", { name: "Hello from the plugin" })).toBeVisible();
+  await expect(inside.locator("#from-plugin")).toBeVisible();
+  expect(await page.locator(PANEL_FRAME).getAttribute("sandbox")).toBe("");
+
+  expect(await violations(page)).toEqual([]);
+  expect(problems).toEqual([]);
+});
+
+test("the content of a panel cannot move its frame, send a form, run a script or load a thing under the policy", async ({
+  page,
+}) => {
+  await underPolicy(page);
+  const requested: string[] = [];
+  // A request that the policy lets through would reach this route; a refused one never does.
+  await page.route("https://evil.example/**", (route) => {
+    requested.push(route.request().url());
+    return route.abort();
+  });
+  const html =
+    '<p id="marker" style="color: rgb(0, 120, 0)">kept</p>' +
+    "<script>document.getElementById('marker').textContent = 'script ran'</script>" +
+    "<img src=\"https://evil.example/pixel.png\" onerror=\"document.getElementById('marker').textContent = 'handler ran'\">" +
+    '<link rel="stylesheet" href="https://evil.example/style.css">' +
+    '<a id="link" href="https://evil.example/page">link</a>' +
+    '<a id="top" target="_top" href="https://evil.example/top">top</a>' +
+    '<form action="https://evil.example/form" method="post"><button id="send">send</button></form>' +
+    '<meta http-equiv="refresh" content="0; url=https://evil.example/refresh">' +
+    '<iframe src="https://evil.example/frame"></iframe>';
+  await seedPlugins(page, [
+    plugin(
+      "hostile-panel",
+      ["palette.actions", "panel"],
+      `globalThis.postMessage({ version: 1, id: "reg", method: "palette.register", params: { id: "show", label: "Show hostile panel" } });
+globalThis.onmessage = () => globalThis.postMessage({ version: 1, id: "panel", method: "panel.open", params: ${JSON.stringify({ title: "Hostile", html })} });`,
+    ),
+  ]);
+  await start(page);
+  await choosePluginAction(page, "show hostile panel");
+
+  const inside = page.frameLocator(PANEL_FRAME);
+  await expect(inside.locator("#marker")).toHaveCSS("color", "rgb(0, 120, 0)");
+  // The button (no allow-forms) and the link to the top (no allow-top-navigation) do nothing.
+  const url = page.url();
+  await inside.locator("#send").click({ force: true });
+  await inside.locator("#top").click({ force: true });
+  await page.waitForTimeout(300);
+  await expect(inside.locator("#marker")).toHaveText("kept");
+  expect(page.url()).toBe(url);
+  // A link that would move the frame itself is refused by the policy of the app (frame-src 'none'):
+  // the page hears of it and the address is never requested.
+  await inside.locator("#link").click({ force: true });
+  await expect
+    .poll(async () =>
+      (await violations(page)).filter((v) => v.blocked.startsWith("https://evil.example")),
+    )
+    .not.toEqual([]);
+  expect(page.url()).toBe(url);
+  expect(requested).toEqual([]);
+});
+
+test("a plugin without the permission panel gets no frame under the policy either", async ({
+  page,
+}) => {
+  const problems = await underPolicy(page);
+  await seedPlugins(page, [
+    plugin(
+      "no-panel",
+      ["palette.actions"],
+      `globalThis.postMessage({ version: 1, id: "reg", method: "palette.register", params: { id: "show", label: "Show nothing" } });
+globalThis.onmessage = () => globalThis.postMessage({ version: 1, id: "panel", method: "panel.open", params: { title: "No", html: "<p>no</p>" } });`,
+    ),
+  ]);
+  await start(page);
+  await choosePluginAction(page, "show nothing");
+  await page.waitForTimeout(300);
+  await expect(page.locator(PANEL_FRAME)).toHaveCount(0);
+  await expect(page.locator('[data-nr-part="plugin-panel"]')).toHaveCount(0);
+  expect(problems).toEqual([]);
 });

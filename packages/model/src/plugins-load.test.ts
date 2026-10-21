@@ -110,7 +110,7 @@ describe("FakeBackend.listPlugins", () => {
     expect(folders.map((folder) => folder.folder)).toEqual([EXAMPLE_PLUGIN_FOLDER]);
     const { valid, invalid } = checkPluginFolders(folders);
     expect(invalid).toEqual([]);
-    expect(valid[0]?.manifest.permissions).toEqual(["palette.actions", "tabs.create"]);
+    expect(valid[0]?.manifest.permissions).toEqual(["palette.actions", "tabs.create", "panel"]);
     expect(backend.calls.map((call) => call.method)).toEqual(["listPlugins"]);
   });
 

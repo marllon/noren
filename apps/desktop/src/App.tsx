@@ -64,6 +64,7 @@ import { moveItemToNewWindow, windowMoveProblem } from "./window-service";
 import { retryFailedLinks } from "./session-link-store";
 import { tauriBridge } from "./tauri-backend";
 import { AskPanel } from "./AskPanel";
+import { PluginPanel } from "./PluginPanel";
 import { BrowserPane } from "./BrowserPane";
 import { browserTitle } from "./browser-address";
 import { DiffPane } from "./DiffPane";
@@ -2493,6 +2494,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
               onClose={closeAsk}
             />
           )}
+          <PluginPanel />
         </TreeDnd>
         {overlayNode}
         {confirmNode}

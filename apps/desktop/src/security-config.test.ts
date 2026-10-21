@@ -34,6 +34,11 @@ const pageSources = sources(here).map(({ file, text }) => ({ file, text: code(te
 // fails the guard below until someone decides it is safe.
 const MAY_START_A_WORKER = ["plugin-host.ts"];
 
+// The one file that may make an iframe: the panel of a plugin, whose frame has an empty `sandbox`
+// (NOR-F18-01d, docs/SECURITY_REVIEW.md section 1). The list is explicit; any other file that makes
+// a frame fails the guard below until someone decides it is safe.
+const MAY_MAKE_A_FRAME = ["PluginPanel.tsx"];
+
 describe("what the page may not do", () => {
   it.each([
     ["window.open", /\bwindow\.open\s*\(|\bopen\s*\(\s*["'`]https?:/],
@@ -55,7 +60,8 @@ describe("what the page may not do", () => {
     ["EventSource", /\bnew\s+EventSource\s*\(/],
     ["a WebLinksAddon with the default handler", /new\s+WebLinksAddon\s*\(\s*\)/],
   ])("does not use %s", (what, pattern) => {
-    const exempt = what === "a worker" ? MAY_START_A_WORKER : [];
+    const exempt =
+      what === "a worker" ? MAY_START_A_WORKER : what === "an iframe" ? MAY_MAKE_A_FRAME : [];
     const offenders = pageSources
       .filter(({ file, text }) => pattern.test(text) && !exempt.includes(file))
       .map(({ file }) => file);
@@ -68,6 +74,23 @@ describe("what the page may not do", () => {
       .filter(({ text }) => /\bnew\s+Worker\s*\(/.test(text))
       .map(({ file }) => file);
     expect(hosts).toEqual(MAY_START_A_WORKER);
+  });
+
+  it("keeps the frame to the panel of a plugin, which has an empty sandbox and a page of its own", () => {
+    expect(MAY_MAKE_A_FRAME).toHaveLength(1);
+    const frames = pageSources
+      .filter(({ text }) => /<iframe|createElement\(\s*["']iframe["']/.test(text))
+      .map(({ file }) => file);
+    expect(frames).toEqual(MAY_MAKE_A_FRAME);
+    const panel = pageSources.find(({ file }) => file === "PluginPanel.tsx")?.text ?? "";
+    // The sandbox comes from one constant that is empty (see PluginPanel.test.tsx), the content only
+    // through srcDoc (never a src address), and nothing gives the frame a power back.
+    expect(panel).toMatch(/<iframe[^>]*\bsandbox=\{PANEL_SANDBOX\}/);
+    expect(panel).toMatch(/<iframe[^>]*\bsrcDoc=\{panelDocument\(/);
+    expect(panel).not.toMatch(/<iframe[^>]*\ssrc=/);
+    expect(panel).not.toMatch(/allow-/);
+    const document = pageSources.find(({ file }) => file === "plugin-panel.ts")?.text ?? "";
+    expect(document).not.toMatch(/allow-/);
   });
 
   it("gives the terminal a handler for OSC 8 links that does not open a window", () => {

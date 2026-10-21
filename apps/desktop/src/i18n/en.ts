@@ -691,6 +691,11 @@ export const en = {
   "profileImport.done":
     'Imported {profiles}: {names}. Open one with "New ... tab" in the command palette.',
 
+  // The panel of a plugin
+  "pluginPanel.label": "Plugin panel: {title}",
+  "pluginPanel.from": "Plugin · {name}",
+  "pluginPanel.close": "Close plugin panel",
+
   // The Ask panel
   "ask.label": "Ask",
   "ask.close": "Close Ask",

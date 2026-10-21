@@ -65,7 +65,9 @@ test("the example plugin puts its action in the palette and choosing it opens a 
   const answers = await answersTo(page, "new-tab-action");
   expect(answers[0]).toMatchObject({ version: 1, id: 1, result: { id: "open-tab" } });
   expect(answers).toContainEqual({ event: "action", id: "open-tab" });
-  expect(answers.at(-1)).toMatchObject({ version: 1, id: 2 });
+  // The example registers two actions (ids 1 and 2), so the request for the tab is the third.
+  expect(answers[1]).toMatchObject({ version: 1, id: 2, result: { id: "open-panel" } });
+  expect(answers.at(-1)).toMatchObject({ version: 1, id: 3 });
   expect(answers.at(-1)).toHaveProperty("result");
 
   // And again: one more tab each time the action is chosen.

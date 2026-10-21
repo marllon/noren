@@ -988,6 +988,19 @@ export const en = {
   "field.sessions": "Whether the shells of your panes outlive the window.",
   "field.sessions.keepOnClose":
     "On: closing the window leaves the shells of your panes running in the background (in the session daemon, norend) and opening Noren again gives each pane its shell back, with what it printed meanwhile. Off: closing the window ends every shell, as it always did. Shells that no pane comes back for are ended when Noren opens.",
+  "field.routing":
+    "Where a new tab goes: rules that match the folder or the command of the tab and name a space and a group. A tab that no rule matches goes where it would have gone.",
+  "field.routing.rules":
+    'The rules for a new tab, tried in the order of the file: the first one that matches decides the space (and the group). A rule with "cwd" and "command" needs both to match.',
+  "field.routing.rules.item": "One routing rule.",
+  "field.routing.rules.item.cwd":
+    'A glob for the whole folder of the tab: "*" is any characters inside one folder name, "**" is any number of folders, "?" is one character, "~" at the start is your home folder. "/" and "\\" are the same on Windows, which also ignores upper and lower case. Write it with "/" to work on every system.',
+  "field.routing.rules.item.command":
+    'A regular expression (JavaScript syntax) for the line the tab runs: the profile and its arguments, as in "pwsh -NoLogo". It matches anywhere in the line; anchor it with ^ and $ to match the whole line.',
+  "field.routing.rules.item.space":
+    "The name of the space the tab goes to. A rule whose space does not exist is skipped.",
+  "field.routing.rules.item.group":
+    "The name of a group in that space to put the tab in. Without it the tab goes to the space itself. A rule whose group is not in the space is skipped.",
   "field.agents":
     "CLI agents: which programs count as an agent, how often Noren looks for one under your shells, and how the state of an agent (working, waiting for you, idle) is told. An agent shows as an icon on its tab.",
   "field.agents.enabled":

@@ -118,6 +118,9 @@ Every setting is optional. Unknown settings are an error, so a typo does not go 
     "providers": [], // providers of your own; no key goes here, it lives in the system keychain
     "defaults": {}, // { "ask": { "provider": "ollama", "model": "llama3" } } and the same for "explain" and "command"
   },
+  "routing": {
+    "rules": [], // where a new tab goes, by its folder or its command, see Routing below
+  },
 }
 ```
 
@@ -225,6 +228,29 @@ The providers of the file are handed to the Rust side, the only one that talks t
 ### The AI in one space
 
 A space has its own switch, in its menu (right-click the space, or the **Space options** button): **AI in this space**. A new space has it on. The AI works in a space only when the settings turn it on **and** the space has not turned it off; off in either place means off. The choice belongs to the space, so it is kept in `state.json` with the rest of the space, not in this file. When the AI is off in the settings the menu says so, and the switch of the space has no effect until it is on.
+
+## Routing
+
+`routing.rules` says where a new tab goes. Each rule names a space (and, if you want, a group in it) and which tabs go there, by the **folder** the tab starts in (`cwd`, a glob) or by the **command** it runs (`command`, a regular expression). The rules are tried in the order of the file and the first one that matches decides:
+
+```jsonc
+"routing": {
+  "rules": [
+    { "cwd": "~/work/api/**", "space": "Work", "group": "Api" }, // a tab in that folder, or under it, goes to the group Api of the space Work
+    { "command": "^ssh ", "space": "Servers" }, // a tab whose command line starts with ssh goes to the space Servers
+    { "cwd": "~/work/**", "command": "node", "space": "Work" }, // both must match
+  ],
+},
+```
+
+- Each rule has `space` (the name of a space, required), `group` (the name of a group in that space, optional), and `cwd`, `command` or both. A rule with neither, an empty name, a field the schema does not know and more than 100 rules are errors of the file, shown with their line like any other. A rule with `cwd` and `command` needs **both** to match.
+- **`cwd` is a glob that has to match the whole folder.** `*` is any characters inside one folder name, `**` is any characters across folders (`**/` is any number of folders, even none, and a glob that ends in `/**` also matches the folder itself), `?` is one character that is not a separator. There is nothing else: no `[ab]`, no `{a,b}`, no `!`. `~` at the start is your home folder. A slash at the end of the folder or of the glob makes no difference. The glob is at most 512 characters.
+- **Windows and the rest.** On Windows `/` and `\` are the same and upper and lower case do not matter, so `C:/Work/*` matches `c:\work\proj`. On macOS and Linux case matters and `\` is an ordinary character. Write the glob with `/` so that the same file works everywhere.
+- **`command` is a regular expression** in the syntax of JavaScript, tested against the line the tab runs: the profile and its arguments, such as `pwsh -NoLogo`. It matches anywhere in the line; write `^` and `$` to match the whole line. An expression that cannot be compiled is an error of the file, with its line and the reason (`routing.rules[0].command: Not a valid regular expression: ...`), and the last valid settings stay in force. It is at most 256 characters. It is your own expression in your own file, so one written to backtrack for ever can make a new tab slow: keep it simple.
+- **Names, not ids.** `space` and `group` are found by their name in the workspace, the exact name first and then ignoring upper and lower case. A group is looked up inside the space of the rule, an outer group before an inner one. A rule whose space or group does not exist is **skipped** and the next rule is tried; it is not an error of the file, because the spaces change while the file does not.
+- **No match, no change.** A tab that no rule matches goes where it would have gone without the rules. A match with no group puts the tab in the space itself.
+
+`routeNewTab(rules, { cwd, command }, workspace, { platform, home })` of `@noren/model` (`routing.ts`) is the pure function that makes the choice; it answers `{ spaceId, groupId? }` or nothing, and takes the kind of system and the home folder as arguments. This version only reads and checks the rules: the new tabs of the window, the `items.create` call of the local API and `noren-cli new-tab` do not use them yet.
 
 ## The window and the background
 

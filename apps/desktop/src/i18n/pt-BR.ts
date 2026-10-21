@@ -996,6 +996,19 @@ export const ptBR: Dictionary = {
   "field.sessions": "Se os shells dos seus painéis sobrevivem à janela.",
   "field.sessions.keepOnClose":
     "Ligado: fechar a janela deixa os shells dos seus painéis rodando em segundo plano (no daemon de sessões, o norend) e abrir o Noren de novo devolve a cada painel o seu shell, com o que ele imprimiu nesse meio-tempo. Desligado: fechar a janela encerra todos os shells, como sempre foi. Os shells que nenhum painel reclama são encerrados quando o Noren abre.",
+  "field.routing":
+    "Para onde vai uma aba nova: regras que casam a pasta ou o comando da aba e nomeiam um space e um grupo. Uma aba que nenhuma regra casa vai para onde iria.",
+  "field.routing.rules":
+    'As regras para uma aba nova, tentadas na ordem do arquivo: a primeira que casa decide o space (e o grupo). Uma regra com "cwd" e "command" precisa casar nos dois.',
+  "field.routing.rules.item": "Uma regra de roteamento.",
+  "field.routing.rules.item.cwd":
+    'Um glob para a pasta inteira da aba: "*" é qualquer sequência de caracteres dentro do nome de uma pasta, "**" é qualquer número de pastas, "?" é um caractere, "~" no início é a sua pasta de usuário. No Windows "/" e "\\" são iguais e maiúsculas não contam. Escreva com "/" para valer em todos os sistemas.',
+  "field.routing.rules.item.command":
+    'Uma expressão regular (sintaxe do JavaScript) para a linha que a aba executa: o perfil e seus argumentos, como em "pwsh -NoLogo". Casa em qualquer ponto da linha; ancore com ^ e $ para casar a linha toda.',
+  "field.routing.rules.item.space":
+    "O nome do space para onde a aba vai. Uma regra cujo space não existe é pulada.",
+  "field.routing.rules.item.group":
+    "O nome de um grupo desse space para pôr a aba. Sem ele a aba vai para o próprio space. Uma regra cujo grupo não está no space é pulada.",
   "field.agents":
     "Agentes de CLI: quais programas contam como agente, com que frequência o Noren procura um sob os seus shells e como se descobre o estado de um agente (trabalhando, esperando você, ocioso). Um agente aparece como um ícone na aba.",
   "field.agents.enabled":

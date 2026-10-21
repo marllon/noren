@@ -22,6 +22,7 @@ import { DEFAULT_ARCHIVE_AFTER_HOURS, DEFAULT_ARCHIVE_ENABLED } from "./archive"
 import { MAX_BACKGROUND_BLUR, MAX_BACKGROUND_PATH, backgroundImageProblem } from "./background";
 import { DEFAULT_KEEP_SESSIONS } from "./keep-sessions";
 import { MAX_MODS, MOD_FILE_NAME_PATTERN, isReservedModName } from "./mods";
+import { RoutingSchema } from "./routing";
 import { DEFAULT_SAVE_SCROLLBACK, SCROLLBACK_SAVE_LINES } from "./scrollback";
 import {
   BELL_STYLES,
@@ -469,6 +470,7 @@ export const ConfigSchema = z
     agents: agentsSchema.optional(),
     ai: aiSchema.optional(),
     sessions: sessionsSchema.optional(),
+    routing: RoutingSchema.optional(),
   })
   .meta({
     title: "Noren settings",

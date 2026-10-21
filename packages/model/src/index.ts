@@ -508,6 +508,26 @@ export type {
   SystemNotification,
   SystemNotifierOptions,
 } from "./notifications";
+export {
+  MAX_ROUTING_GLOB,
+  MAX_ROUTING_NAME,
+  MAX_ROUTING_PATTERN,
+  MAX_ROUTING_RULES,
+  MAX_ROUTING_SUBJECT,
+  RoutingRuleSchema,
+  RoutingSchema,
+  commandMatches,
+  commandPatternProblem,
+  globMatchesPath,
+  routeNewTab,
+} from "./routing";
+export type {
+  RoutingContext,
+  RoutingDestination,
+  RoutingPlatform,
+  RoutingRule,
+  RoutingTarget,
+} from "./routing";
 export { OutputStream } from "./output-stream";
 export { spaceSessionEnv } from "./session-env";
 export { PaneLocationTracker } from "./pane-location";

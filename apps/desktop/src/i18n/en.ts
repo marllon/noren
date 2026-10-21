@@ -813,6 +813,42 @@ export const en = {
   "providers.ollama.other": "Ollama is running, with {count} models installed:",
   "providers.connection.works": "The connection works.",
   "providers.connection.failed": "The connection failed: {message}",
+  // The recommended local models and their guided install, in the AI section of the settings
+  "models.title": "Recommended models",
+  "models.loading": "Reading the memory of this computer...",
+  "models.unknown":
+    "The memory of this computer is not known (a browser cannot read it), so Noren cannot say which models fit it.",
+  "models.failed": "The memory of this computer could not be read: {reason}",
+  "models.invalid": "The memory read from this computer is not valid, so no models are listed.",
+  "models.hardware.vram": "This computer: {ram} of RAM and {vram} of video memory.",
+  "models.hardware.noVram": "This computer: {ram} of RAM, video memory not known.",
+  "models.chosenFor.vram":
+    "Chosen for the video memory: a model may take {budget} of it ({percent}%).",
+  "models.chosenFor.ram": "Chosen for the RAM: a model may take {budget} of it ({percent}%).",
+  "models.empty":
+    "No model of the list fits this computer: a model may take {budget} and the smallest one needs {smallest}.",
+  "models.table": "Recommended models for this computer",
+  "models.col.model": "Model",
+  "models.col.download": "Download",
+  "models.col.memory": "Memory needed",
+  "models.col.uses": "Good for",
+  "models.col.license": "License",
+  "models.col.reason": "Why",
+  "models.col.install": "Install",
+  "models.reason.largest-fit": "The most capable that fits, {headroom} to spare",
+  "models.reason.fits": "Fits, {headroom} to spare",
+  "models.install": "Install",
+  "models.installLabel": "Install {model}",
+  "models.confirmTitle": "Install {model}?",
+  "models.confirmMessage":
+    "This puts the command below at the prompt of the focused terminal. It does not press Enter: it runs only when you press Enter yourself. The model is {size} to download.",
+  "models.confirmButton": "Put at the prompt",
+  "models.inserted":
+    "Put at the prompt: {command}. It runs only when you press Enter in the terminal.",
+  "models.noTerminal":
+    "There is no terminal to put the command in. Open a terminal tab and try again.",
+  "models.footnote":
+    "The list is a fixed selection of open-weight models (Apache-2.0 or MIT). Installing needs Ollama on this computer and downloads the model from its library; Noren only writes the command at the prompt.",
   // The bench scoreboard, in the AI section of the settings
   "bench.title": "Model bench",
   "bench.loading": "Reading the bench results...",

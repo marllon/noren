@@ -33,6 +33,7 @@ import { commitProfileImport, readProfileFile, takenProfileIds } from "./profile
 import type { ProfileImportPlan } from "./profile-import";
 import { ProfileImportDialog } from "./ProfileImportDialog";
 import { BenchPanel } from "./BenchPanel";
+import { ModelsPanel } from "./ModelsPanel";
 import { ProvidersPanel } from "./ProvidersPanel";
 import { useProfiles } from "./profiles-store";
 import { QUICK_TOGGLE_ACTION, quickShortcutLine } from "./quick-shortcut";
@@ -206,7 +207,15 @@ const keyPresetOptions = (): readonly { value: Preset; label: string }[] => [
 
 interface SettingsDialogProps {
   /** Where an imported color scheme is written (the themes folder). */
-  backend: Pick<Backend, "saveUserTheme" | "listMonospaceFonts" | "ai" | "listBenchResults">;
+  backend: Pick<
+    Backend,
+    "saveUserTheme" | "listMonospaceFonts" | "ai" | "listBenchResults" | "readHardware"
+  >;
+  /**
+   * Puts text at the prompt of the focused terminal without Enter, for the install command of a
+   * recommended model; false when there is no terminal.
+   */
+  onInsert(text: string): boolean;
   onClose(): void;
 }
 
@@ -217,7 +226,7 @@ interface SettingsDialogProps {
  * follows the file, so the change shows without a reload. A file with a problem of its own is not
  * edited: Save waits until it is fixed. Importing is not part of the draft (see the Import section).
  */
-export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
+export function SettingsDialog({ backend, onInsert, onClose }: SettingsDialogProps) {
   const t = useT();
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -793,6 +802,7 @@ export function SettingsDialog({ backend, onClose }: SettingsDialogProps) {
                   onChange={(enabled) => changeAi({ enabled })}
                 />
                 <ProvidersPanel backend={backend} />
+                <ModelsPanel backend={backend} onInsert={onInsert} />
                 <BenchPanel backend={backend} />
                 <h4>{t("settings.aiDefaults")}</h4>
                 {AI_FUNCTIONS.map((fn) => {

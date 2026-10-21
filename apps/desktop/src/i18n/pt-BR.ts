@@ -821,6 +821,42 @@ export const ptBR: Dictionary = {
   "providers.ollama.other": "O Ollama está em execução, com {count} modelos instalados:",
   "providers.connection.works": "A conexão funciona.",
   "providers.connection.failed": "A conexão falhou: {message}",
+  // Os modelos locais recomendados e a instalação guiada, na seção de IA das configurações
+  "models.title": "Modelos recomendados",
+  "models.loading": "Lendo a memória deste computador...",
+  "models.unknown":
+    "A memória deste computador não é conhecida (um navegador não consegue lê-la), então o Noren não sabe dizer quais modelos cabem nele.",
+  "models.failed": "Não foi possível ler a memória deste computador: {reason}",
+  "models.invalid": "A memória lida deste computador não é válida, então nenhum modelo é listado.",
+  "models.hardware.vram": "Este computador: {ram} de RAM e {vram} de memória de vídeo.",
+  "models.hardware.noVram": "Este computador: {ram} de RAM, memória de vídeo desconhecida.",
+  "models.chosenFor.vram":
+    "Escolhidos pela memória de vídeo: um modelo pode usar {budget} dela ({percent}%).",
+  "models.chosenFor.ram": "Escolhidos pela RAM: um modelo pode usar {budget} dela ({percent}%).",
+  "models.empty":
+    "Nenhum modelo da lista cabe neste computador: um modelo pode usar {budget} e o menor precisa de {smallest}.",
+  "models.table": "Modelos recomendados para este computador",
+  "models.col.model": "Modelo",
+  "models.col.download": "Download",
+  "models.col.memory": "Memória necessária",
+  "models.col.uses": "Serve para",
+  "models.col.license": "Licença",
+  "models.col.reason": "Motivo",
+  "models.col.install": "Instalar",
+  "models.reason.largest-fit": "O mais capaz que cabe, com folga de {headroom}",
+  "models.reason.fits": "Cabe, com folga de {headroom}",
+  "models.install": "Instalar",
+  "models.installLabel": "Instalar {model}",
+  "models.confirmTitle": "Instalar {model}?",
+  "models.confirmMessage":
+    "Isto coloca o comando abaixo no prompt do terminal em foco. Não aperta Enter: ele só roda quando você mesmo apertar Enter. O modelo tem {size} para baixar.",
+  "models.confirmButton": "Colocar no prompt",
+  "models.inserted":
+    "Colocado no prompt: {command}. Só roda quando você apertar Enter no terminal.",
+  "models.noTerminal":
+    "Não há terminal para receber o comando. Abra uma aba de terminal e tente de novo.",
+  "models.footnote":
+    "A lista é uma seleção fixa de modelos de pesos abertos (Apache-2.0 ou MIT). Instalar exige o Ollama neste computador e baixa o modelo da biblioteca dele; o Noren só escreve o comando no prompt.",
   // O placar do bench, na seção de IA das configurações
   "bench.title": "Bench de modelos",
   "bench.loading": "Lendo os resultados do bench...",

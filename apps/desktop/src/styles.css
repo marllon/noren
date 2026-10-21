@@ -2212,6 +2212,11 @@ body {
   font-weight: 600;
 }
 
+/* The question before an install sits in the panel in the tree but is laid out as a dialog of its own. */
+.settings-confirm {
+  display: contents;
+}
+
 .settings-bench-actions {
   display: flex;
   flex-wrap: wrap;

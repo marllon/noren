@@ -300,6 +300,8 @@ export interface NorenTestHook {
   failCommands(code: number): void;
   /** Number of times the backend was asked to read an actions file. */
   actionsReads(): number;
+  /** Number of times the backend was asked to read the memory of the computer. */
+  hardwareReads(): number;
   /**
    * Moves the clock of the fake shell forward, so a `sleep` ends and a command lasts that long
    * (the clock does not move by itself in web mode).
@@ -1696,6 +1698,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
         commandRuns: () => fake.commands.map(({ cwd, command }) => ({ cwd, command })),
         failCommands: (code) => fake.setCommandExitCode(code),
         actionsReads: () => fake.callsTo("readActionsFile").length,
+        hardwareReads: () => fake.callsTo("readHardware").length,
         advanceClock: (ms) => {
           if (fake.clock instanceof ManualClock) fake.clock.advance(ms);
         },
@@ -2477,6 +2480,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
         {settingsOpen && (
           <SettingsDialog
             backend={backend}
+            onInsert={(text) => focusedHandle()?.insert(text) ?? false}
             onClose={() => {
               closeSettings();
               focusTerminal();

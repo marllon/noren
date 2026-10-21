@@ -1,6 +1,13 @@
 import { FakeBackend } from "@noren/model";
-import { WINDOW_EFFECT_LABELS, decodeGitDiff, isWindowEffect } from "@noren/model";
-import type { GitDiffRefusal, GitInfo, ShellProfile, WindowEffect, Worktree } from "@noren/model";
+import { WINDOW_EFFECT_LABELS, benchHardwareOf, decodeGitDiff, isWindowEffect } from "@noren/model";
+import type {
+  BenchHardware,
+  GitDiffRefusal,
+  GitInfo,
+  ShellProfile,
+  WindowEffect,
+  Worktree,
+} from "@noren/model";
 
 /** Key of `state.json` in the browser's storage (web mode only). */
 export const WEB_STATE_KEY = "noren.web.state";
@@ -99,6 +106,15 @@ export const WEB_AI_OLLAMA_KEY = "noren.web.ai-ollama";
  * app (a file that is not a valid run is skipped). Without it there are no results.
  */
 export const WEB_BENCH_RESULTS_KEY = "noren.web.bench-results";
+
+/**
+ * Key of the memory of the computer this page pretends to have, in web mode: a JSON object
+ * `{ "ramBytes": 8589934592, "vramBytes": null }` (`vramBytes` is `null` for a computer whose video
+ * memory is not known). The e2e tests seed it before the page loads; the recommended models are
+ * chosen for it. Without it, or with a value that is not a memory, the page knows nothing of its
+ * computer, which is what a browser really knows.
+ */
+export const WEB_HARDWARE_KEY = "noren.web.hardware";
 
 /** What web mode needs of the browser storage. */
 export type StateStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
@@ -306,6 +322,21 @@ export function seededBenchResults(
   }
 }
 
+/**
+ * The memory seeded under `WEB_HARDWARE_KEY`, or `undefined` when there is no usable seed. The
+ * reading goes through `benchHardwareOf`, the rule of the page for every backend: a RAM that is not
+ * a whole number above 0 is no reading, and a VRAM that is not one is `null`.
+ */
+export function seededHardware(storage: Pick<Storage, "getItem">): BenchHardware | undefined {
+  try {
+    const raw = storage.getItem(WEB_HARDWARE_KEY);
+    if (raw === null) return undefined;
+    return benchHardwareOf(JSON.parse(raw)) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The text seeded under `WEB_CONFIG_KEY`, or `null` when there is none or the storage is blocked. */
 export function seededConfig(storage: Pick<Storage, "getItem">): string | null {
   try {
@@ -381,6 +412,7 @@ export class WebBackend extends FakeBackend {
     const scrollback = seededScrollback(storage);
     const ollamaModels = seededOllamaModels(storage);
     const benchResults = seededBenchResults(storage);
+    const hardware = seededHardware(storage);
     super({
       ...(profiles !== undefined ? { profiles } : {}),
       ...(userThemes !== undefined ? { userThemes } : {}),
@@ -391,6 +423,7 @@ export class WebBackend extends FakeBackend {
       ...(scrollback !== undefined ? { scrollback } : {}),
       ...(ollamaModels !== undefined ? { ollamaModels } : {}),
       ...(benchResults !== undefined ? { benchResults } : {}),
+      ...(hardware !== undefined ? { hardware } : {}),
       windowEffects: seededWindowEffects(storage),
       config: seededConfig(storage),
     });

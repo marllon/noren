@@ -1,0 +1,30 @@
+{
+  "id": "explain-20",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences and say what it means.",
+  "input": "fatal: unable to access 'https://git.example.test/repo.git/': SSL certificate problem: unable to get local issuer certificate",
+  "check": {
+    "required": [
+      ["certificate"],
+      [
+        "trust",
+        "trusted",
+        "untrusted",
+        "issuer",
+        "verify",
+        "verified",
+        "validate",
+        "validated",
+        "authority"
+      ]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "Git cannot verify the server's TLS certificate because the issuer is not in your trusted certificate store.",
+      "The certificate authority that signed the certificate is not trusted on this machine, so the connection is refused."
+    ],
+    "fail": ["The password is wrong.", "The repository does not exist."]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "id": "explain-12",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences and say how to fix it.",
+  "input": "cp: error writing 'backup.tar': No space left on device",
+  "check": {
+    "required": [
+      ["full", "no free space", "out of space", "no space", "no room", "exhausted"],
+      ["delete", "free up", "free some", "clean", "remove", "clear", "df", "du", "bigger disk"]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "The disk is full, so the copy cannot finish. Delete files you do not need, or copy to a disk with more room.",
+      "There is no space left on the device; free up space (check with df and du) and try again."
+    ],
+    "fail": ["The file backup.tar is read-only.", "You do not have permission to write there."]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "summarize-01",
+  "kind": "summarize",
+  "prompt": "Summarize the state of this repository in one sentence of at most 40 words.",
+  "input": "On branch feature/login\nYour branch is ahead of 'origin/feature/login' by 1 commit.\n\nChanges not staged for commit:\n\tmodified:   src/auth.ts\n\tmodified:   src/session.ts\n\nUntracked files:\n\tnotes.txt",
+  "check": {
+    "required": [["feature/login"], ["ahead"], ["2", "two"], ["untracked"]],
+    "forbidden": ["nothing to commit"],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "On feature/login, one commit ahead of origin, with 2 modified files and an untracked notes.txt.",
+      "The branch feature/login is ahead of the remote by a commit; two files are modified and notes.txt is untracked."
+    ],
+    "fail": [
+      "Everything is committed and the working tree is clean.",
+      "The branch feature/login is ahead of origin and has some changes.",
+      "This is a long answer that repeats itself again and again without ever getting to the point, so it is far too long for a summary of the output, even though it mentions feature/login, being ahead of origin, 2 modified files and an untracked file called notes.txt in the working tree."
+    ]
+  }
+}

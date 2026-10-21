@@ -1,0 +1,34 @@
+{
+  "id": "explain-09",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences and say how to fix it safely.",
+  "input": "To git.example.test/team/app.git\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs to 'git.example.test/team/app.git'\nhint: Updates were rejected because the remote contains work that you do not have locally.",
+  "check": {
+    "required": [
+      ["rejected", "refused", "failed"],
+      [
+        "remote has",
+        "remote contains",
+        "remote changes",
+        "do not have locally",
+        "don't have locally",
+        "new commits",
+        "ahead",
+        "upstream"
+      ],
+      ["pull", "fetch", "rebase", "merge"]
+    ],
+    "forbidden": ["git push --force", "push -f"],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "The push was rejected because the remote has commits you do not have locally. Run git pull (or fetch and rebase) first, then push again.",
+      "The push is rejected because your branch is behind: the remote contains new commits. Fetch and merge them, then push."
+    ],
+    "fail": [
+      "The push was rejected. Just run git push --force to overwrite the remote.",
+      "You do not have permission to write to this repository."
+    ]
+  }
+}

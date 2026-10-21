@@ -1,0 +1,25 @@
+{
+  "id": "summarize-19",
+  "kind": "summarize",
+  "prompt": "Summarize what happened in this log in one sentence of at most 40 words.",
+  "input": "2026-03-02 09:00:01 INFO  server started on :8080\n2026-03-02 09:00:05 INFO  GET /health 200\n2026-03-02 09:01:12 ERROR db timeout after 5000ms\n2026-03-02 09:01:13 ERROR db timeout after 5000ms\n2026-03-02 09:01:15 WARN  retrying connection (attempt 2)\n2026-03-02 09:01:20 INFO  db connection restored",
+  "check": {
+    "required": [
+      ["db", "database"],
+      ["timeout", "timed out"],
+      ["restored", "recovered", "reconnected"]
+    ],
+    "forbidden": ["without any problems", "no errors"],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "The server started, then the database timed out twice, and the connection was restored after a retry.",
+      "Two db timeouts at 09:01 were followed by a retry and a restored connection."
+    ],
+    "fail": [
+      "The server ran without any problems.",
+      "The database timed out and the server stopped."
+    ]
+  }
+}

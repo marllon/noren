@@ -1,0 +1,17 @@
+{
+  "id": "summarize-20",
+  "kind": "summarize",
+  "prompt": "Summarize this line count in one sentence of at most 40 words.",
+  "input": "   120 a.csv\n  4531 b.csv\n    18 c.csv\n  4669 total",
+  "check": {
+    "required": [["4669", "4,669"], ["b.csv"], ["3", "three"]],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "The three CSV files hold 4669 lines in total, and b.csv is by far the longest with 4531.",
+      "b.csv has 4531 of the 4,669 lines across 3 files."
+    ],
+    "fail": ["There are 120 lines.", "The files hold 4669 lines."]
+  }
+}

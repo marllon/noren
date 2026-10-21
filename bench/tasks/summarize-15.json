@@ -1,0 +1,18 @@
+{
+  "id": "summarize-15",
+  "kind": "summarize",
+  "prompt": "Summarize these search results in one sentence of at most 40 words.",
+  "input": "src/api.ts:12:  // TODO: add retry\nsrc/api.ts:48:  // TODO: validate input\nsrc/db.ts:7:  // TODO: close pool\nsrc/ui/menu.ts:33:  // TODO: keyboard support",
+  "check": {
+    "required": [["4", "four"], ["todo", "todos"], ["api.ts"]],
+    "forbidden": ["no todo"],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "There are 4 TODO comments in 3 files; two of them are in src/api.ts.",
+      "Four TODOs were found, half of them in api.ts."
+    ],
+    "fail": ["No TODO comments were found.", "There are some TODO comments in src."]
+  }
+}

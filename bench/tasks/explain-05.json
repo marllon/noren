@@ -1,0 +1,30 @@
+{
+  "id": "explain-05",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences and say how to fix it.",
+  "input": "npm ERR! code ENOENT\nnpm ERR! syscall open\nnpm ERR! path /app/package.json\nnpm ERR! errno -2\nnpm ERR! enoent ENOENT: no such file or directory, open '/app/package.json'",
+  "check": {
+    "required": [
+      ["package.json"],
+      [
+        "missing",
+        "not found",
+        "does not exist",
+        "doesn't exist",
+        "no such file",
+        "cannot find",
+        "can't find",
+        "not exist"
+      ],
+      ["directory", "folder", "cd ", "project root", "run npm from", "npm init", "create"]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "npm cannot find package.json in /app. Run npm from your project folder, or create one with npm init.",
+      "The file package.json does not exist in this directory; change to the project root first."
+    ],
+    "fail": ["The network connection to the registry dropped.", "npm needs a newer Node version."]
+  }
+}

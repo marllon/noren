@@ -1,0 +1,31 @@
+{
+  "id": "explain-13",
+  "kind": "explain",
+  "prompt": "Explain this PowerShell error in one or two sentences and say what to check.",
+  "input": "Get-Item : Cannot find path 'C:\\data\\report.csv' because it does not exist.",
+  "check": {
+    "required": [
+      ["path", "file", "report.csv"],
+      ["does not exist", "doesn't exist", "not exist", "missing", "not found", "no such"],
+      [
+        "check",
+        "verify",
+        "spelling",
+        "typo",
+        "correct",
+        "create",
+        "location",
+        "folder",
+        "directory"
+      ]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "The file C:\\data\\report.csv does not exist. Check the spelling of the path and that the file is in that folder.",
+      "PowerShell cannot find that path because it is missing; verify the location or create the file."
+    ],
+    "fail": ["Access to the file was denied.", "The script has an execution policy problem."]
+  }
+}

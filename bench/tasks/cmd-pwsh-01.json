@@ -1,0 +1,25 @@
+{
+  "id": "cmd-pwsh-01",
+  "kind": "command",
+  "shell": "pwsh",
+  "prompt": "Write a PowerShell command that lists every item in the current folder, including hidden ones.",
+  "check": {
+    "accept": ["Get-ChildItem -Force"],
+    "aliases": [["Get-ChildItem", "gci", "ls", "dir"]],
+    "forbidden": ["Remove-Item", "rm", "del"]
+  },
+  "examples": {
+    "pass": [
+      "Get-ChildItem -Force",
+      "ls -Force",
+      "gci -force",
+      "```powershell\nGet-ChildItem -Force\n```"
+    ],
+    "fail": [
+      "Get-ChildItem",
+      "Remove-Item -Force",
+      "Get-ChildItem -Force; Remove-Item *",
+      "Get-ChildItem -Force\nGet-Date"
+    ]
+  }
+}

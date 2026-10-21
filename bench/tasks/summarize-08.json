@@ -1,0 +1,22 @@
+{
+  "id": "summarize-08",
+  "kind": "summarize",
+  "prompt": "Summarize this type checker output in one sentence of at most 40 words.",
+  "input": "src/a.ts(10,5): error TS2322: Type 'string' is not assignable to type 'number'.\nsrc/a.ts(22,1): error TS2304: Cannot find name 'foo'.\nsrc/b.ts(3,10): error TS2339: Property 'id' does not exist on type 'User'.\n\nFound 3 errors in 2 files.",
+  "check": {
+    "required": [
+      ["3", "three"],
+      ["error", "errors"],
+      ["2 files", "two files", "a.ts", "b.ts"]
+    ],
+    "forbidden": ["no errors", "0 errors"],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "TypeScript found 3 errors in 2 files: a wrong type, an unknown name and a missing property.",
+      "Three type errors in src/a.ts and src/b.ts."
+    ],
+    "fail": ["TypeScript found no errors.", "There are errors in the code."]
+  }
+}

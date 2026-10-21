@@ -1,0 +1,31 @@
+{
+  "id": "explain-17",
+  "kind": "explain",
+  "prompt": "Explain this log line in one or two sentences and say how to avoid it.",
+  "input": "Out of memory: Killed process 2211 (node) total-vm:8123456kB, anon-rss:7345678kB",
+  "check": {
+    "required": [
+      ["memory"],
+      ["killed", "kill", "terminated", "oom"],
+      [
+        "increase",
+        "more memory",
+        "limit",
+        "heap",
+        "max-old-space-size",
+        "reduce",
+        "swap",
+        "ram",
+        "less memory"
+      ]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "The system ran out of memory and the kernel killed the node process. Give the machine more RAM or swap, or reduce what the process holds.",
+      "The OOM killer terminated node for using too much memory; raise the memory limit or the heap size."
+    ],
+    "fail": ["The disk is full.", "Process 2211 exited normally."]
+  }
+}

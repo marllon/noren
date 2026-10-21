@@ -1,0 +1,29 @@
+{
+  "id": "explain-11",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences.",
+  "input": "Segmentation fault (core dumped)",
+  "check": {
+    "required": [
+      ["memory"],
+      [
+        "invalid",
+        "illegal",
+        "not allowed",
+        "protected",
+        "outside",
+        "does not own",
+        "doesn't own",
+        "unmapped"
+      ]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "The program touched memory it is not allowed to access, so the system stopped it and wrote a core dump. It is a bug in the program.",
+      "A segmentation fault means the program used an invalid memory address and crashed."
+    ],
+    "fail": ["The program ran out of disk space.", "Out of memory: the machine has too little RAM."]
+  }
+}

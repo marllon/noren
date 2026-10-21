@@ -1,0 +1,18 @@
+{
+  "id": "summarize-13",
+  "kind": "summarize",
+  "prompt": "Summarize this service list in one sentence of at most 40 words.",
+  "input": "Status   Name       DisplayName\n------   ----       -----------\nRunning  Spooler    Print Spooler\nStopped  Updater    Background Updater\nRunning  Dhcp       Address Client\nStopped  Indexer    Search Indexer",
+  "check": {
+    "required": [["running"], ["stopped"], ["updater", "indexer"]],
+    "forbidden": ["all services are running"],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "Two services are running (Spooler and Dhcp) and two are stopped (Updater and Indexer).",
+      "Spooler and Dhcp are running, while Updater and Indexer are stopped."
+    ],
+    "fail": ["All services are running.", "Four services are listed."]
+  }
+}

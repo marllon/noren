@@ -1,0 +1,21 @@
+{
+  "id": "summarize-12",
+  "kind": "summarize",
+  "prompt": "Summarize these response headers in one sentence of at most 30 words.",
+  "input": "HTTP/2 301\nlocation: https://example.test/new\ncontent-type: text/html\nserver: demo",
+  "check": {
+    "required": [
+      ["301"],
+      ["redirect", "moved permanently", "moves", "moved"],
+      ["https://example.test/new", "/new"]
+    ],
+    "maxWords": 30
+  },
+  "examples": {
+    "pass": [
+      "The server answers 301 Moved Permanently and redirects to https://example.test/new.",
+      "A permanent redirect (301) to /new."
+    ],
+    "fail": ["The page loaded fine with status 200.", "The server redirects somewhere else."]
+  }
+}

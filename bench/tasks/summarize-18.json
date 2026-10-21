@@ -1,0 +1,18 @@
+{
+  "id": "summarize-18",
+  "kind": "summarize",
+  "prompt": "Summarize this audit report in one sentence of at most 40 words.",
+  "input": "# npm audit report\n\nleftpad-x  <1.3.0\nSeverity: high\nPrototype pollution - https://example.test/advisory/1\nfix available via `npm audit fix`\n\ntiny-parse  <2.0.1\nSeverity: moderate\nSlow regular expression - https://example.test/advisory/2\nfix available via `npm audit fix`\n\n4 vulnerabilities (1 low, 2 moderate, 1 high)",
+  "check": {
+    "required": [["4", "four"], ["vulnerabilit"], ["high"], ["npm audit fix", "audit fix", "fix"]],
+    "forbidden": ["no vulnerabilities"],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "npm audit found 4 vulnerabilities, 1 of them high, and npm audit fix can resolve them.",
+      "Four vulnerabilities (one high, two moderate, one low); a fix is available."
+    ],
+    "fail": ["No vulnerabilities were found.", "There are 4 vulnerabilities in the project."]
+  }
+}

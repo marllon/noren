@@ -1,0 +1,17 @@
+{
+  "id": "summarize-16",
+  "kind": "summarize",
+  "prompt": "Summarize this commit history in one sentence of at most 40 words.",
+  "input": "a1b2c3d Fix crash when config is empty\nb2c3d4e Add dark theme\nc3d4e5f Add dark theme tests\nd4e5f6a Bump version to 1.2.0\ne5f6a7b Initial commit",
+  "check": {
+    "required": [["5", "five"], ["commit", "commits"], ["dark theme"], ["crash"]],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "The last 5 commits: a crash fix for an empty config, a dark theme with its tests, a version bump to 1.2.0 and the initial commit.",
+      "Five commits add a dark theme and its tests, fix a crash, and bump the version to 1.2.0."
+    ],
+    "fail": ["There is one commit.", "Five commits were made to the repository."]
+  }
+}

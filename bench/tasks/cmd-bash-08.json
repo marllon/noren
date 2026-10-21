@@ -1,0 +1,27 @@
+{
+  "id": "cmd-bash-08",
+  "kind": "command",
+  "shell": "bash",
+  "prompt": "Write a bash command that sets API_URL to http://localhost:8080 in the current shell so that programs it starts can see it.",
+  "check": {
+    "accept": [
+      "export API_URL=http://localhost:8080",
+      "API_URL=http://localhost:8080; export API_URL",
+      "declare -x API_URL=http://localhost:8080"
+    ]
+  },
+  "examples": {
+    "pass": [
+      "export API_URL=http://localhost:8080",
+      "export API_URL=\"http://localhost:8080\"",
+      "API_URL=http://localhost:8080; export API_URL",
+      "declare -x API_URL='http://localhost:8080'"
+    ],
+    "fail": [
+      "API_URL=http://localhost:8080",
+      "export API_URL=http://localhost:3000",
+      "export API_URL",
+      "set API_URL=http://localhost:8080"
+    ]
+  }
+}

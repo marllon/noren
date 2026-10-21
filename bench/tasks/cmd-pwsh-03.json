@@ -1,0 +1,33 @@
+{
+  "id": "cmd-pwsh-03",
+  "kind": "command",
+  "shell": "pwsh",
+  "prompt": "Write a PowerShell command that shows the last 20 lines of the file server.log.",
+  "check": {
+    "accept": [
+      "Get-Content server.log -Tail 20",
+      "Get-Content -Path server.log -Tail 20",
+      "Get-Content server.log | Select-Object -Last 20"
+    ],
+    "aliases": [
+      ["Get-Content", "gc", "cat", "type"],
+      ["Select-Object", "select"]
+    ],
+    "flagOrder": "any",
+    "flagsWithValue": ["-Tail", "-Path", "-Last"]
+  },
+  "examples": {
+    "pass": [
+      "Get-Content server.log -Tail 20",
+      "gc -Tail 20 server.log",
+      "Get-Content -Path server.log -Tail 20",
+      "cat server.log | select -Last 20"
+    ],
+    "fail": [
+      "Get-Content server.log",
+      "Get-Content server.log -Tail 200",
+      "Get-Content server.log -TotalCount 20",
+      "Get-Content other.log -Tail 20"
+    ]
+  }
+}

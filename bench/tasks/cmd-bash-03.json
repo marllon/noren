@@ -1,0 +1,13 @@
+{
+  "id": "cmd-bash-03",
+  "kind": "command",
+  "shell": "bash",
+  "prompt": "Write a bash command that prints the number of lines in the file data.csv.",
+  "check": {
+    "accept": ["wc -l data.csv", "wc -l < data.csv", "cat data.csv | wc -l"]
+  },
+  "examples": {
+    "pass": ["wc -l data.csv", "wc -l <data.csv", "cat data.csv | wc -l", "`wc -l data.csv`"],
+    "fail": ["wc -w data.csv", "wc data.csv", "wc -l other.csv", "cat data.csv"]
+  }
+}

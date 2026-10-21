@@ -1,0 +1,30 @@
+{
+  "id": "explain-14",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences and say what option exists.",
+  "input": "fatal: refusing to merge unrelated histories",
+  "check": {
+    "required": [
+      [
+        "unrelated",
+        "no common ancestor",
+        "no shared history",
+        "no common history",
+        "different histor",
+        "independent"
+      ],
+      ["allow-unrelated-histories"]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "The two branches have no common history. If you really want to join them, use git pull --allow-unrelated-histories.",
+      "Git refuses to merge unrelated histories; add the --allow-unrelated-histories flag if that is what you mean."
+    ],
+    "fail": [
+      "There is a merge conflict in one of the files.",
+      "The branch is behind the remote; run git pull."
+    ]
+  }
+}

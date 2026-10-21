@@ -1,0 +1,16 @@
+{
+  "id": "cmd-bash-01",
+  "kind": "command",
+  "shell": "bash",
+  "prompt": "Write a bash command that lists all files, hidden ones included, in long format, sorted by modification time with the newest first.",
+  "check": {
+    "accept": ["ls -lat"],
+    "flagOrder": "any",
+    "splitShortFlags": true,
+    "forbidden": ["sudo"]
+  },
+  "examples": {
+    "pass": ["ls -lat", "ls -alt", "ls -a -l -t", "ls -tla"],
+    "fail": ["ls -la", "ls -latr", "sudo ls -lat", "ls -lt"]
+  }
+}

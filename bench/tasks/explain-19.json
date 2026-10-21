@@ -1,0 +1,20 @@
+{
+  "id": "explain-19",
+  "kind": "explain",
+  "prompt": "Explain this PowerShell error in one or two sentences and say what to try.",
+  "input": "Remove-Item : Access to the path 'C:\\Windows\\Temp\\lock.dll' is denied.",
+  "check": {
+    "required": [
+      ["denied", "not allowed", "refused", "blocked", "lack permission", "no permission"],
+      ["administrator", "admin", "elevated", "permission", "in use", "locked", "protected"]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "Access was denied: you may need an elevated PowerShell (run as administrator), or another program is using the file.",
+      "The file is protected or locked and you lack permission to delete it; close the program that uses it."
+    ],
+    "fail": ["The folder does not exist.", "Remove-Item is not a PowerShell command."]
+  }
+}

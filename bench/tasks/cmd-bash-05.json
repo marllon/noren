@@ -1,0 +1,16 @@
+{
+  "id": "cmd-bash-05",
+  "kind": "command",
+  "shell": "bash",
+  "prompt": "Write a bash command that lists the TCP ports in the listening state, numeric, with the process that owns each one.",
+  "check": {
+    "accept": ["ss -ltnp", "sudo ss -ltnp"],
+    "aliases": [["ss", "netstat"]],
+    "flagOrder": "any",
+    "splitShortFlags": true
+  },
+  "examples": {
+    "pass": ["ss -ltnp", "ss -tlnp", "sudo ss -ltnp", "netstat -tlnp"],
+    "fail": ["ss -ltn", "ss -lunp", "ss -tnp", "ps aux"]
+  }
+}

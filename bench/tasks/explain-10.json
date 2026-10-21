@@ -1,0 +1,20 @@
+{
+  "id": "explain-10",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences and say how to fix it.",
+  "input": "docker: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
+  "check": {
+    "required": [
+      ["daemon"],
+      ["not running", "isn't running", "is not started", "stopped", "start", "not reachable"]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "The Docker daemon is not running, or its socket cannot be reached. Start Docker and run the command again.",
+      "Nothing is listening on the Docker socket because the daemon is stopped; start the daemon."
+    ],
+    "fail": ["The image was not found in the registry.", "Docker needs a newer kernel."]
+  }
+}

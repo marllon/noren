@@ -1,0 +1,21 @@
+{
+  "id": "summarize-10",
+  "kind": "summarize",
+  "prompt": "Summarize this folder listing in one sentence of at most 40 words.",
+  "input": "total 28\n-rw-r--r-- 1 ana ana  1204 Mar  3 10:11 README.md\n-rwxr-xr-x 1 ana ana   310 Mar  3 10:12 build.sh\ndrwxr-xr-x 4 ana ana  4096 Mar  3 10:15 src\ndrwxr-xr-x 2 ana ana  4096 Mar  3 10:16 tests\n-rw-r--r-- 1 ana ana 20211 Mar  3 10:20 data.csv",
+  "check": {
+    "required": [
+      ["data.csv"],
+      ["largest", "biggest", "20211", "20 kb", "20kb"],
+      ["2 directories", "two directories", "2 folders", "two folders", "src and tests"]
+    ],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "Five entries: two folders (src and tests) and three files; data.csv is the largest at about 20 KB.",
+      "The folder holds src and tests plus README.md, build.sh and data.csv, the biggest file."
+    ],
+    "fail": ["The folder is empty.", "It has three files."]
+  }
+}

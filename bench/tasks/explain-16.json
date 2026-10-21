@@ -1,0 +1,30 @@
+{
+  "id": "explain-16",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences and say what to check.",
+  "input": "curl: (6) Could not resolve host: api.example.test",
+  "check": {
+    "required": [
+      ["dns", "resolve", "name resolution", "look up", "looked up", "lookup"],
+      [
+        "typo",
+        "spelling",
+        "misspelled",
+        "network",
+        "internet",
+        "offline",
+        "connection",
+        "resolver",
+        "check"
+      ]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "curl could not resolve the host name through DNS. Check the spelling of the address and your network connection.",
+      "The name api.example.test cannot be looked up; you may be offline or the domain may be misspelled."
+    ],
+    "fail": ["The server answered with a 500 error.", "The TLS certificate has expired."]
+  }
+}

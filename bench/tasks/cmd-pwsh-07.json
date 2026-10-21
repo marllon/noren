@@ -1,0 +1,26 @@
+{
+  "id": "cmd-pwsh-07",
+  "kind": "command",
+  "shell": "pwsh",
+  "prompt": "Write a PowerShell command that forcibly stops the process with id 4242.",
+  "check": {
+    "accept": ["Stop-Process -Id 4242 -Force", "Stop-Process 4242 -Force"],
+    "aliases": [["Stop-Process", "kill", "spps"]],
+    "flagOrder": "any",
+    "flagsWithValue": ["-Id"]
+  },
+  "examples": {
+    "pass": [
+      "Stop-Process -Id 4242 -Force",
+      "Stop-Process -Force -Id 4242",
+      "kill 4242 -Force",
+      "Stop-Process 4242 -Force"
+    ],
+    "fail": [
+      "Stop-Process -Id 4242",
+      "Stop-Process -Name 4242 -Force",
+      "Stop-Process -Id 4243 -Force",
+      "Get-Process -Id 4242"
+    ]
+  }
+}

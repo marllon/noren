@@ -1,0 +1,24 @@
+{
+  "id": "explain-01",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences and say how to fix it.",
+  "input": "bash: ./deploy.sh: Permission denied",
+  "check": {
+    "required": [
+      ["permission", "not executable", "execute bit"],
+      ["chmod", "executable", "execute permission"]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "The script has no execute permission. Run chmod +x deploy.sh and try again.",
+      "Bash refuses to run the file because it is not executable; make it executable with chmod."
+    ],
+    "fail": [
+      "The file deploy.sh does not exist in this folder.",
+      "Permission was denied, so restart the computer.",
+      ""
+    ]
+  }
+}

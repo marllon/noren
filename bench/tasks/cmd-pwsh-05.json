@@ -1,0 +1,30 @@
+{
+  "id": "cmd-pwsh-05",
+  "kind": "command",
+  "shell": "pwsh",
+  "prompt": "Write a PowerShell command that sets the environment variable APP_ENV to production for the current session only.",
+  "check": {
+    "accept": [
+      "$env:APP_ENV = \"production\"",
+      "$env:APP_ENV=\"production\"",
+      "Set-Item -Path Env:APP_ENV -Value production",
+      "$env:APP_ENV = production"
+    ],
+    "flagOrder": "any",
+    "flagsWithValue": ["-Path", "-Value"]
+  },
+  "examples": {
+    "pass": [
+      "$env:APP_ENV = \"production\"",
+      "$env:APP_ENV = 'production'",
+      "$env:app_env=\"production\"",
+      "Set-Item -Value production -Path Env:APP_ENV"
+    ],
+    "fail": [
+      "set APP_ENV=production",
+      "export APP_ENV=production",
+      "$env:APP_ENV = \"development\"",
+      "[Environment]::SetEnvironmentVariable(\"APP_ENV\", \"production\", \"Machine\")"
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "id": "summarize-03",
+  "kind": "summarize",
+  "prompt": "Summarize the disk usage in this output in one sentence of at most 40 words.",
+  "input": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        50G   46G  1.8G  97% /\n/dev/sdb1       200G   80G  110G  42% /data\ntmpfs           1.6G     0  1.6G   0% /run",
+  "check": {
+    "required": [
+      ["97%", "97 percent", "97"],
+      ["root", "/dev/sda1", "main disk", "system disk", "primary disk", "first disk"]
+    ],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "The root disk is 97% full with only 1.8G free, while /data has plenty of space.",
+      "/dev/sda1 is almost full at 97 percent; the other disk is at 42%."
+    ],
+    "fail": ["All disks have plenty of free space.", "The /data disk is 42% used."]
+  }
+}

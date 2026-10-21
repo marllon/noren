@@ -1,0 +1,28 @@
+{
+  "id": "cmd-bash-09",
+  "kind": "command",
+  "shell": "bash",
+  "prompt": "Write a bash command that searches the folder src recursively for the text TODO in .js files only, printing line numbers.",
+  "check": {
+    "accept": ["grep -rn TODO src --include=*.js", "grep -rn TODO src --include *.js"],
+    "aliases": [["-r", "-R"]],
+    "flagOrder": "any",
+    "flagsWithValue": ["--include"],
+    "splitShortFlags": true,
+    "forbidden": ["sudo"]
+  },
+  "examples": {
+    "pass": [
+      "grep -rn \"TODO\" src --include=\"*.js\"",
+      "grep -Rn TODO src --include '*.js'",
+      "grep -n -r --include=*.js TODO src",
+      "grep -nr TODO src --include=*.js"
+    ],
+    "fail": [
+      "grep -n TODO src --include=*.js",
+      "grep -rn TODO src",
+      "grep -rn TODO src --include=*.ts",
+      "grep -r TODO src --include=*.js"
+    ]
+  }
+}

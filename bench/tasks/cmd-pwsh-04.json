@@ -1,0 +1,32 @@
+{
+  "id": "cmd-pwsh-04",
+  "kind": "command",
+  "shell": "pwsh",
+  "prompt": "Write a PowerShell command that shows the 5 processes using the most memory (working set).",
+  "check": {
+    "accept": [
+      "Get-Process | Sort-Object WorkingSet -Descending | Select-Object -First 5",
+      "Get-Process | Sort-Object -Property WorkingSet -Descending | Select-Object -First 5"
+    ],
+    "aliases": [
+      ["Get-Process", "gps", "ps"],
+      ["Sort-Object", "sort"],
+      ["Select-Object", "select"],
+      ["WorkingSet", "WS"]
+    ],
+    "flagOrder": "any",
+    "flagsWithValue": ["-First", "-Property"]
+  },
+  "examples": {
+    "pass": [
+      "Get-Process | Sort-Object WorkingSet -Descending | Select-Object -First 5",
+      "gps | sort -Property WS -Descending | select -First 5",
+      "Get-Process|Sort-Object -Descending WorkingSet|Select-Object -First 5"
+    ],
+    "fail": [
+      "Get-Process | Sort-Object WorkingSet | Select-Object -First 5",
+      "Get-Process | Sort-Object WorkingSet -Descending | Select-Object -First 50",
+      "Get-Process | Sort-Object CPU -Descending | Select-Object -First 5"
+    ]
+  }
+}

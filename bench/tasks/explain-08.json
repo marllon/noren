@@ -1,0 +1,17 @@
+{
+  "id": "explain-08",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences and say how to fix it.",
+  "input": "Traceback (most recent call last):\n  File \"app.py\", line 1, in <module>\n    import requests\nModuleNotFoundError: No module named 'requests'",
+  "check": {
+    "required": [["requests"], ["not installed", "missing", "install", "not available"], ["pip"]],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "The requests module is not installed in this Python environment. Install it with pip install requests.",
+      "Python cannot import requests because the package is missing; run pip install requests."
+    ],
+    "fail": ["The file app.py has a syntax error on line 1.", "Python is not installed."]
+  }
+}

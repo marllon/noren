@@ -1,0 +1,31 @@
+{
+  "id": "cmd-pwsh-06",
+  "kind": "command",
+  "shell": "pwsh",
+  "prompt": "Write a PowerShell command that counts the .ps1 files in the current folder and all its subfolders.",
+  "check": {
+    "accept": [
+      "(Get-ChildItem -Recurse -Filter *.ps1).Count",
+      "Get-ChildItem -Recurse -Filter *.ps1 | Measure-Object"
+    ],
+    "aliases": [
+      ["Get-ChildItem", "gci", "ls", "dir"],
+      ["Measure-Object", "measure"]
+    ],
+    "flagOrder": "any",
+    "flagsWithValue": ["-Filter", "-Include"]
+  },
+  "examples": {
+    "pass": [
+      "(Get-ChildItem -Recurse -Filter *.ps1).Count",
+      "(gci -Filter '*.ps1' -Recurse).Count",
+      "Get-ChildItem -Recurse -Filter *.ps1 | Measure-Object",
+      "dir -Recurse -Filter *.ps1 | measure"
+    ],
+    "fail": [
+      "(Get-ChildItem -Filter *.ps1).Count",
+      "Get-ChildItem -Recurse -Filter *.ps1",
+      "(Get-ChildItem -Recurse -Filter *.psm1).Count"
+    ]
+  }
+}

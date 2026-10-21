@@ -1,0 +1,31 @@
+{
+  "id": "cmd-pwsh-09",
+  "kind": "command",
+  "shell": "pwsh",
+  "prompt": "Write a PowerShell command that searches every .ts file under the folder src (including subfolders) for the text TODO.",
+  "check": {
+    "accept": [
+      "Get-ChildItem src -Recurse -Filter *.ts | Select-String TODO",
+      "Get-ChildItem -Path src -Recurse -Filter *.ts | Select-String -Pattern TODO"
+    ],
+    "aliases": [
+      ["Get-ChildItem", "gci", "ls", "dir"],
+      ["Select-String", "sls"]
+    ],
+    "flagOrder": "any",
+    "flagsWithValue": ["-Path", "-Filter", "-Pattern"]
+  },
+  "examples": {
+    "pass": [
+      "Get-ChildItem src -Recurse -Filter *.ts | Select-String TODO",
+      "gci -Path src -Filter '*.ts' -Recurse | sls -Pattern TODO",
+      "ls src -Recurse -Filter *.ts | Select-String \"TODO\""
+    ],
+    "fail": [
+      "Select-String -Path src -Pattern TODO",
+      "Get-ChildItem src -Recurse -Filter *.js | Select-String TODO",
+      "Get-ChildItem src -Recurse -Filter *.ts | Select-String FIXME",
+      "Get-ChildItem src -Filter *.ts | Select-String TODO"
+    ]
+  }
+}

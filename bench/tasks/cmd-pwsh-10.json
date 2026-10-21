@@ -1,0 +1,18 @@
+{
+  "id": "cmd-pwsh-10",
+  "kind": "command",
+  "shell": "pwsh",
+  "prompt": "Write a PowerShell command that prints the PATH environment variable with one entry per line.",
+  "check": {
+    "accept": ["$env:PATH -split ';'", "$env:PATH.Split(';')", "($env:PATH).Split(';')"]
+  },
+  "examples": {
+    "pass": [
+      "$env:PATH -split ';'",
+      "$env:Path -split \";\"",
+      "($env:PATH).Split(\";\")",
+      "$env:PATH.Split(';')"
+    ],
+    "fail": ["echo $env:PATH", "$env:PATH -split ','", "$env:PATH", "Get-Command"]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "explain-02",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences and say how to fix it.",
+  "input": "zsh: command not found: pnpm",
+  "check": {
+    "required": [
+      ["pnpm"],
+      ["not installed", "not found", "not in your path", "not on your path", "missing"],
+      ["path", "install"]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "The shell cannot find pnpm: it is not installed or its folder is not in your PATH. Install it or add it to PATH.",
+      "pnpm is not installed on this machine. Install it first, then run the command again."
+    ],
+    "fail": ["There is a syntax error in your script.", "The pnpm command ran out of memory."]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "id": "explain-06",
+  "kind": "explain",
+  "prompt": "Explain this PowerShell error in one or two sentences and say how to fix it.",
+  "input": "File C:\\scripts\\run.ps1 cannot be loaded because running scripts is disabled on this system.",
+  "check": {
+    "required": [
+      ["execution policy", "executionpolicy"],
+      [
+        "set-executionpolicy",
+        "remotesigned",
+        "bypass",
+        "change the policy",
+        "change the execution policy",
+        "allow scripts"
+      ]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "The PowerShell execution policy blocks scripts. Change it, for example with Set-ExecutionPolicy RemoteSigned for your user.",
+      "Scripts are disabled by the execution policy; use Set-ExecutionPolicy to allow them."
+    ],
+    "fail": ["The file run.ps1 contains a syntax error.", "You must run PowerShell on Linux."]
+  }
+}

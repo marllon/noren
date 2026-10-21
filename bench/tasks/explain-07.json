@@ -1,0 +1,30 @@
+{
+  "id": "explain-07",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences and say what to check.",
+  "input": "ssh: connect to host 10.0.0.5 port 22: Connection timed out",
+  "check": {
+    "required": [
+      ["timed out", "timeout", "no response", "not responding", "did not answer"],
+      [
+        "firewall",
+        "unreachable",
+        "host is down",
+        "network",
+        "offline",
+        "wrong address",
+        "not reachable",
+        "ssh service",
+        "ssh server"
+      ]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "The connection to 10.0.0.5 timed out: the host is down, or a firewall or the network blocks port 22.",
+      "There was no response from the server. Check the address, the network and that the ssh service is running."
+    ],
+    "fail": ["Your password was rejected.", "The ssh key has the wrong permissions."]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "id": "cmd-bash-06",
+  "kind": "command",
+  "shell": "bash",
+  "prompt": "Write a bash command that packs the folder project into a gzip-compressed tarball named project.tar.gz.",
+  "check": {
+    "accept": ["tar -czf project.tar.gz project", "tar czf project.tar.gz project"],
+    "flagOrder": "any",
+    "flagsWithValue": ["-f"],
+    "splitShortFlags": true
+  },
+  "examples": {
+    "pass": [
+      "tar -czf project.tar.gz project",
+      "tar czf project.tar.gz project",
+      "tar -zcf project.tar.gz project",
+      "tar -c -z -f project.tar.gz project"
+    ],
+    "fail": [
+      "tar -cf project.tar.gz project",
+      "tar -xzf project.tar.gz",
+      "tar -czf project.tar.gz other",
+      "gzip project"
+    ]
+  }
+}

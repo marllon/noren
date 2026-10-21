@@ -1,0 +1,26 @@
+{
+  "id": "explain-03",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences and say how to fix it.",
+  "input": "fatal: not a git repository (or any of the parent directories): .git",
+  "check": {
+    "required": [
+      [
+        "not a git repository",
+        "not inside a git repository",
+        "not in a git repository",
+        "no git repository",
+        "not a repository"
+      ],
+      ["git init", "git clone", "cd ", "change to", "move into", "go to"]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "This folder is not a git repository. Move into your project folder with cd, or create a repository with git init.",
+      "You are not in a git repository. Run git clone to get one or git init to start a new one."
+    ],
+    "fail": ["Git is not installed on this computer.", "The remote repository rejected your push."]
+  }
+}

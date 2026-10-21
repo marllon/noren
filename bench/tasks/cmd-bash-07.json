@@ -1,0 +1,26 @@
+{
+  "id": "cmd-bash-07",
+  "kind": "command",
+  "shell": "bash",
+  "prompt": "Write a bash command that shows the last 50 lines of app.log and keeps printing new lines as they are written.",
+  "check": {
+    "accept": ["tail -n 50 -f app.log", "tail -50 -f app.log"],
+    "flagOrder": "any",
+    "flagsWithValue": ["-n"],
+    "splitShortFlags": true
+  },
+  "examples": {
+    "pass": [
+      "tail -n 50 -f app.log",
+      "tail -f -n 50 app.log",
+      "tail -fn 50 app.log",
+      "tail -50 -f app.log"
+    ],
+    "fail": [
+      "tail -n 50 app.log",
+      "head -n 50 -f app.log",
+      "tail -f app.log",
+      "tail -n 5 -f app.log"
+    ]
+  }
+}

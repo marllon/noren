@@ -1,0 +1,18 @@
+{
+  "id": "summarize-14",
+  "kind": "summarize",
+  "prompt": "Summarize this list of outdated packages in one sentence of at most 40 words.",
+  "input": "Package    Version  Latest  Type\n---------- -------- ------- -----\nalpha-lib  2.4.0    2.5.1   wheel\nbeta-lib   0.9.3    0.9.4   wheel\ngamma-lib  1.0.2    4.0.0   wheel",
+  "check": {
+    "required": [["3", "three"], ["outdated", "out of date", "behind", "newer"], ["gamma-lib"]],
+    "forbidden": ["up to date"],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "Three packages are outdated; gamma-lib is the furthest behind (1.0.2 against 4.0.0).",
+      "3 packages have newer versions, and gamma-lib needs a major upgrade."
+    ],
+    "fail": ["All packages are up to date.", "Three packages are installed."]
+  }
+}

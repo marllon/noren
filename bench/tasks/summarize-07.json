@@ -1,0 +1,22 @@
+{
+  "id": "summarize-07",
+  "kind": "summarize",
+  "prompt": "Summarize this build output in one sentence of at most 40 words.",
+  "input": "   Compiling mathkit v0.3.1\nwarning: unused variable: `idx`\n --> src/lib.rs:12:9\nwarning: unused import: `std::fmt`\n --> src/lib.rs:2:5\nerror[E0308]: mismatched types\n --> src/lib.rs:30:20\n  expected `u32`, found `&str`\nerror: could not compile `mathkit` due to 1 previous error; 2 warnings emitted",
+  "check": {
+    "required": [
+      ["error", "failed", "could not compile", "did not compile", "does not compile"],
+      ["mismatched types", "type mismatch", "wrong type", "u32", "&str"],
+      ["2 warnings", "two warnings", "warnings"]
+    ],
+    "forbidden": ["build succeeded", "compiled successfully"],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "The build of mathkit failed with one type mismatch error (expected u32, found &str) in src/lib.rs, plus 2 warnings.",
+      "mathkit does not compile because of mismatched types at line 30; there are also two warnings."
+    ],
+    "fail": ["The build succeeded with 2 warnings.", "The build failed."]
+  }
+}

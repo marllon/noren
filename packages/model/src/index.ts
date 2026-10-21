@@ -526,3 +526,18 @@ export type {
   ShellEvent,
   ShellIntegrationParserOptions,
 } from "./shell-integration";
+export {
+  BENCH_DISTRIBUTION,
+  benchTaskSchema,
+  checkBenchAnswer,
+  checkBenchSuite,
+} from "./bench-suite";
+export type {
+  BenchKind,
+  BenchResult,
+  BenchShell,
+  BenchSuiteFile,
+  BenchSuiteReport,
+  BenchTask,
+  CommandBenchTask,
+} from "./bench-suite";

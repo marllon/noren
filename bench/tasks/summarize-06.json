@@ -1,0 +1,17 @@
+{
+  "id": "summarize-06",
+  "kind": "summarize",
+  "prompt": "Summarize this pytest run in one sentence of at most 40 words.",
+  "input": "============ test session starts ============\ncollected 12 items\n\ntests/test_api.py ..F.\ntests/test_db.py ........\n\n=============== FAILURES ===============\n___ test_create_user ___\nE   AssertionError: assert 201 == 400\n========= 1 failed, 11 passed in 2.31s =========",
+  "check": {
+    "required": [["test_create_user"], ["failed", "failure", "failing"], ["11", "12"]],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "11 of 12 tests passed; test_create_user failed because it returned 201 instead of 400.",
+      "One test failed out of 12: test_create_user, an assertion on the status code."
+    ],
+    "fail": ["All 12 tests passed.", "One test failed in tests/test_api.py."]
+  }
+}

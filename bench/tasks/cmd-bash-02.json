@@ -1,0 +1,29 @@
+{
+  "id": "cmd-bash-02",
+  "kind": "command",
+  "shell": "bash",
+  "prompt": "Write a bash command that finds the .log files under /var/log that were modified in the last 24 hours.",
+  "check": {
+    "accept": [
+      "find /var/log -name \"*.log\" -mtime -1",
+      "find /var/log -name \"*.log\" -mtime 0",
+      "find /var/log -name \"*.log\" -mmin -1440"
+    ],
+    "flagOrder": "any",
+    "flagsWithValue": ["-name", "-mtime", "-mmin"]
+  },
+  "examples": {
+    "pass": [
+      "find /var/log -name \"*.log\" -mtime -1",
+      "find /var/log -mtime -1 -name '*.log'",
+      "find /var/log -name *.log -mmin -1440",
+      "find /var/log -name \"*.log\" -mtime 0"
+    ],
+    "fail": [
+      "find /var/log -name \"*.log\"",
+      "find /var/log -name \"*.log\" -mtime +1",
+      "find /var/log -name \"*.txt\" -mtime -1",
+      "ls /var/log/*.log"
+    ]
+  }
+}

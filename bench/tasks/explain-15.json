@@ -1,0 +1,32 @@
+{
+  "id": "explain-15",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences and say how to avoid it.",
+  "input": "TypeError: Cannot read properties of undefined (reading 'length')",
+  "check": {
+    "required": [
+      ["undefined"],
+      ["property", "length", "read"],
+      [
+        "check",
+        "guard",
+        "null",
+        "initialize",
+        "initialise",
+        "not set",
+        "missing",
+        "optional chaining",
+        "?.",
+        "before"
+      ]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "The code reads the length property of a value that is undefined. Check that the value is set before using it, or use optional chaining.",
+      "A variable is undefined when the code reads its length; initialize it or guard the access."
+    ],
+    "fail": ["The array is too long.", "Node cannot find the module."]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "summarize-05",
+  "kind": "summarize",
+  "prompt": "Summarize this ping result in one sentence of at most 40 words.",
+  "input": "PING example.test (192.0.2.10) 56(84) bytes of data.\n64 bytes from 192.0.2.10: icmp_seq=1 ttl=57 time=21.3 ms\nRequest timeout for icmp_seq 2\n64 bytes from 192.0.2.10: icmp_seq=3 ttl=57 time=22.1 ms\n64 bytes from 192.0.2.10: icmp_seq=4 ttl=57 time=22.4 ms\n\n--- example.test ping statistics ---\n4 packets transmitted, 3 received, 25% packet loss\nrtt min/avg/max = 21.3/21.9/22.4 ms",
+  "check": {
+    "required": [
+      ["25%", "25 percent", "one of four", "1 of 4", "one in four", "a quarter"],
+      ["loss", "lost", "dropped", "missed", "timeout", "timed out"],
+      ["22", "21.9", "avg", "average", "ms"]
+    ],
+    "forbidden": ["no loss", "no packet loss", "0% packet loss"],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "Ping to example.test lost 25% of packets (3 of 4 received) with an average round trip of about 22 ms.",
+      "One of four pings timed out; the rest answered in around 22 ms."
+    ],
+    "fail": ["All packets arrived with no loss.", "The host answered in about 22 ms."]
+  }
+}

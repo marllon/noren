@@ -1,0 +1,18 @@
+{
+  "id": "summarize-17",
+  "kind": "summarize",
+  "prompt": "Summarize the load on this machine in one sentence of at most 40 words.",
+  "input": "top - 10:21:03 up 3 days, load average: 3.92, 3.10, 2.80\nTasks: 212 total, 2 running, 210 sleeping\n%Cpu(s): 91.0 us, 4.0 sy, 5.0 id\nMiB Mem: 16000 total, 900 free, 14800 used\n\n  PID USER  %CPU %MEM COMMAND\n 4412 ana   88.0 41.2 encoder\n 1021 root   3.0  2.1 agentd",
+  "check": {
+    "required": [["encoder"], ["88", "most cpu", "high cpu", "cpu"], ["memory", "ram", "mem"]],
+    "forbidden": ["idle"],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "The machine is under heavy load: the encoder process uses 88% CPU and 41% of the memory, leaving little free memory.",
+      "encoder takes most of the CPU (88%) and a lot of memory, and only 900 MiB is free."
+    ],
+    "fail": ["The system is idle.", "The encoder process is running."]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "summarize-02",
+  "kind": "summarize",
+  "prompt": "Summarize this test run in one sentence of at most 40 words.",
+  "input": "Test Suites: 2 failed, 8 passed, 10 total\nTests:       3 failed, 47 passed, 50 total\nSnapshots:   0 total\nTime:        12.4 s",
+  "check": {
+    "required": [
+      ["3", "three"],
+      ["failed", "failing", "failures"],
+      ["50", "47"]
+    ],
+    "forbidden": ["all tests passed", "all 50 tests passed"],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "3 of the 50 tests failed and 47 passed.",
+      "Three tests are failing out of 50 (47 pass), in 2 of the 10 suites."
+    ],
+    "fail": ["All 50 tests passed.", "Some tests failed in the run.", "The run took 12.4 seconds."]
+  }
+}

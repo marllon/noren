@@ -1,0 +1,36 @@
+{
+  "id": "explain-18",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences and say what to check.",
+  "input": "error: pathspec 'feature/login' did not match any file(s) known to git",
+  "check": {
+    "required": [
+      ["branch", "pathspec", "name"],
+      [
+        "does not exist",
+        "doesn't exist",
+        "not exist",
+        "no such",
+        "no branch",
+        "unknown",
+        "not match",
+        "didn't match",
+        "did not match",
+        "not found",
+        "typo"
+      ],
+      ["fetch", "spelling", "list", "git branch", "check", "create", "checkout -b", "switch -c"]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "Git has no branch called feature/login. Check the spelling with git branch, or fetch it from the remote first.",
+      "The name does not match any branch or file; list your branches or create it with git switch -c."
+    ],
+    "fail": [
+      "The working tree has uncommitted changes.",
+      "You have no permission on this repository."
+    ]
+  }
+}

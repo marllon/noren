@@ -1,0 +1,22 @@
+{
+  "id": "summarize-11",
+  "kind": "summarize",
+  "prompt": "Summarize the status of this service in one sentence of at most 40 words.",
+  "input": "● myapp.service - My App Server\n     Loaded: loaded (/etc/systemd/system/myapp.service; enabled)\n     Active: failed (Result: exit-code) since Mon 2026-03-02 08:14:10 UTC; 5min ago\n    Process: 811 ExecStart=/usr/bin/myapp (code=exited, status=1/FAILURE)\n\nMar 02 08:14:10 host myapp[811]: bind() to 0.0.0.0:80 failed (98: Address already in use)",
+  "check": {
+    "required": [
+      ["myapp"],
+      ["failed", "not running", "down", "crashed", "could not start"],
+      ["port 80", "80", "already in use", "address in use"]
+    ],
+    "forbidden": ["running normally", "active (running)"],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "The myapp service failed to start because port 80 is already in use.",
+      "myapp is down: it exited with status 1 since its address, 0.0.0.0:80, was already in use."
+    ],
+    "fail": ["myapp is running normally.", "The myapp service failed."]
+  }
+}

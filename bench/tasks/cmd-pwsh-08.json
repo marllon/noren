@@ -1,0 +1,26 @@
+{
+  "id": "cmd-pwsh-08",
+  "kind": "command",
+  "shell": "pwsh",
+  "prompt": "Write a PowerShell command that copies the folder src, with everything inside it, to a new folder named backup.",
+  "check": {
+    "accept": ["Copy-Item -Path src -Destination backup -Recurse", "Copy-Item src backup -Recurse"],
+    "aliases": [["Copy-Item", "cp", "copy", "cpi"]],
+    "flagOrder": "any",
+    "flagsWithValue": ["-Path", "-Destination"]
+  },
+  "examples": {
+    "pass": [
+      "Copy-Item -Path src -Destination backup -Recurse",
+      "Copy-Item src backup -Recurse",
+      "cp -Recurse src backup",
+      "Copy-Item -Recurse -Destination backup -Path src"
+    ],
+    "fail": [
+      "Copy-Item src backup",
+      "Move-Item src backup",
+      "Copy-Item backup src -Recurse",
+      "Copy-Item -Path src -Recurse"
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "summarize-09",
+  "kind": "summarize",
+  "prompt": "Summarize this lint report in one sentence of at most 40 words.",
+  "input": "/app/src/index.js\n  4:7   error    'x' is assigned a value but never used   no-unused-vars\n  9:1   warning  Unexpected console statement             no-console\n\n/app/src/util.js\n  2:3   error    Missing semicolon                        semi\n\n✖ 3 problems (2 errors, 1 warning)",
+  "check": {
+    "required": [
+      ["3", "three"],
+      ["2 errors", "two errors"],
+      ["1 warning", "one warning", "a warning"]
+    ],
+    "maxWords": 40
+  },
+  "examples": {
+    "pass": [
+      "The linter reports 3 problems: 2 errors (an unused variable and a missing semicolon) and 1 warning about console use.",
+      "Three problems: two errors and one warning, in index.js and util.js."
+    ],
+    "fail": ["The lint report is clean.", "There are 3 problems in the code."]
+  }
+}

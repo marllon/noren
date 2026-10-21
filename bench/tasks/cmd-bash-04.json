@@ -1,0 +1,31 @@
+{
+  "id": "cmd-bash-04",
+  "kind": "command",
+  "shell": "bash",
+  "prompt": "Write a bash command that shows the 10 largest files and folders under the current folder, with human-readable sizes.",
+  "check": {
+    "accept": [
+      "du -ah . | sort -rh | head -n 10",
+      "du -ah . | sort -rh | head -10",
+      "du -ah | sort -rh | head -n 10",
+      "du -ah | sort -rh | head -10"
+    ],
+    "flagOrder": "any",
+    "flagsWithValue": ["-n"],
+    "splitShortFlags": true
+  },
+  "examples": {
+    "pass": [
+      "du -ah . | sort -rh | head -n 10",
+      "du -ha . | sort -hr | head -10",
+      "du -ah | sort -h -r | head -n 10",
+      "du -a -h . | sort -rh | head -n 10"
+    ],
+    "fail": [
+      "du -ah . | sort -h | head -n 10",
+      "du -ah . | sort -rh | head -n 5",
+      "du -sh *",
+      "du -ah . | sort -rh"
+    ]
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "id": "explain-04",
+  "kind": "explain",
+  "prompt": "Explain this error in one or two sentences and say how to fix it.",
+  "input": "Error: listen EADDRINUSE: address already in use :::3000",
+  "check": {
+    "required": [
+      ["3000"],
+      ["already in use", "in use", "taken", "busy", "occupied"],
+      [
+        "another process",
+        "other process",
+        "already running",
+        "stop",
+        "kill",
+        "different port",
+        "another port",
+        "free"
+      ]
+    ],
+    "maxWords": 80
+  },
+  "examples": {
+    "pass": [
+      "Port 3000 is already in use by another process. Stop that process or start the server on a different port.",
+      "Something is already running on port 3000, so the port is taken; kill it or pick another port."
+    ],
+    "fail": ["The server could not find the file index.js.", "Port 3000 is closed by the firewall."]
+  }
+}

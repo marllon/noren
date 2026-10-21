@@ -387,6 +387,32 @@ fn a_web_view_opens_as_a_child_of_a_window_the_app_opened() {
 }
 
 #[test]
+fn a_window_with_a_web_view_of_a_pane_is_still_a_window_but_no_longer_a_webview_window() {
+    // Tauri calls a window a "webview window" only while its one web view is the only one it has.
+    // Once the web view of a pane is a child of it, `get_webview_window` does not find it any more
+    // and `get_window` does: `windows.rs` looks the windows up the second way for that reason (the
+    // lookups of `main` by the first way in other files, finding 256, miss it while a pane is open).
+    let app = app_with_windows();
+    let handle = app.handle();
+    windows::open_window(handle, "w1", "s2").expect("a window");
+    assert!(app.get_webview_window("window-w1").is_some());
+    open_in(
+        handle,
+        Parent::Window("w1"),
+        "p1",
+        "https://example.com/",
+        BOUNDS,
+        None,
+    )
+    .expect("open");
+    assert!(app.get_webview_window("window-w1").is_none());
+    assert!(app.get_window("window-w1").is_some());
+    assert!(app.windows().contains_key("window-w1"));
+    close(handle, "p1").expect("close");
+    assert!(app.get_webview_window("window-w1").is_some());
+}
+
+#[test]
 fn a_web_view_cannot_be_made_a_child_of_a_window_that_is_not_one_the_app_opened() {
     let app = app_with_windows();
     let handle = app.handle();

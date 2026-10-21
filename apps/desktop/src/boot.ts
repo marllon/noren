@@ -1,6 +1,13 @@
-import { FakeBackend, SystemNotifier, agentSettingsOf, scrollbackAllowed } from "@noren/model";
+import {
+  FakeBackend,
+  SystemNotifier,
+  TerminalTail,
+  agentSettingsOf,
+  scrollbackAllowed,
+} from "@noren/model";
 import type { Backend } from "@noren/model";
 import { startAgentScanner } from "./agent-service";
+import { startLocalApi } from "./api-bridge";
 import { startSessionLinks } from "./session-link-store";
 import { armAgentResumes } from "./resume-restore";
 import { resumeService } from "./resume-service";
@@ -37,7 +44,13 @@ import { loadUserThemes } from "./user-themes-store";
 import { createWorkspaceStore } from "./workspace-store";
 import type { WorkspaceStore } from "./workspace-store";
 
-export const backend: Backend = createBackend();
+/**
+ * The end of the output of every session this window holds, for `terminal.read` of the local API.
+ * The backend feeds it and forgets a session when it ends (the real backend only).
+ */
+export const apiTail = new TerminalTail();
+
+export const backend: Backend = createBackend({ tail: apiTail });
 
 export type BootResult =
   | { ok: true; store: WorkspaceStore; source: "saved" | "fresh" | "recovered" }
@@ -183,6 +196,9 @@ export async function bootWorkspace(
         },
         realClock,
       ).catch(() => undefined);
+      // The local API (NOR-F17-01c): the calls the server of the app validated run here, in the
+      // window that owns the workspace, and are answered through `api_respond`.
+      startLocalApi({ store, backend: target, tail: apiTail, bridge: tauriBridge() });
     }
     // The window shows the theme of the active space, if it has one, from the first frame.
     followActiveSpaceTheme(store);

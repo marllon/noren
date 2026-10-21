@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod ai;
+mod api_bridge;
 mod bridge;
 mod browser_pane;
 #[cfg(test)]
@@ -233,6 +234,7 @@ fn main() {
             notify::window_is_focused,
             deeplink::deep_link_take_waiting,
             deeplink::deep_link_applied,
+            api_bridge::api_respond,
         ])
         .setup(move |app| {
             perf::mark("setup-start");
@@ -320,6 +322,23 @@ fn main() {
                     )?));
                 }
             }
+            // The local API (NOR-F17-01c): its token lives in the data folder of the user, and a smoke
+            // run uses an endpoint and a folder of its own, like its daemon, so it never meets the API
+            // of a Noren the user has open. A server that does not start leaves the app without it.
+            api_bridge::install(
+                app.handle(),
+                if any_smoke {
+                    Ok(api_bridge::ApiSettings::for_run(
+                        smoke::run_daemon_name(),
+                        smoke::fresh_dir("noren-smoke-api"),
+                    ))
+                } else {
+                    app.path()
+                        .app_data_dir()
+                        .map(|dir| api_bridge::ApiSettings::normal(&dir))
+                        .map_err(|e| format!("could not find the app data folder: {e}"))
+                },
+            );
             // The window is created hidden (tauri.conf.json); only a normal start shows it.
             if smoke::should_show_window(any_smoke)
                 && let Some(window) = lifecycle::main_window(app.handle())
@@ -412,6 +431,9 @@ fn main() {
             // The shells of the panes outlive the app when the settings keep them and they live in
             // the daemon; every other session ends with it.
             handle.state::<AppState>().end_sessions_on_exit();
+            if let Some(api) = handle.try_state::<api_bridge::ApiState>() {
+                api.stop();
+            }
             if let Some(target) = handle.try_state::<smoke::DeepLinkTarget>() {
                 target.remove_state_dir();
             }

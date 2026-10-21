@@ -68,6 +68,35 @@ pub(crate) fn check_no_global_shortcut(app: &AppHandle) -> Result<(), String> {
     check_no_tray_icon(app)
 }
 
+/// Fails unless the local API is listening, and on an endpoint of this run: a smoke run starts the
+/// API like a normal start does, but on a name only it uses, so it never meets the API of a Noren
+/// the user has open (NOR-F17-01c). Only the start is checked here; a client that authenticates and
+/// makes a call is the next step (NOR-F17-01d).
+pub(crate) fn check_api_listening(app: &AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<crate::api_bridge::ApiState>()
+        .ok_or_else(|| "the local API was never installed".to_string())?;
+    match state.status() {
+        crate::api_bridge::ApiStatus::Off { reason } => {
+            Err(format!("the local API is not listening: {reason}"))
+        }
+        crate::api_bridge::ApiStatus::Listening { endpoint } => {
+            let users = noren_core::api::api_endpoint(noren_core::api::DEFAULT_API_NAME)
+                .map_err(|e| e.to_string())?
+                .to_string();
+            if *endpoint == users {
+                return Err(format!(
+                    "this run listens on the endpoint of a normal start ({endpoint})"
+                ));
+            }
+            print_line(&format!(
+                "SMOKE API listening on {endpoint} (an endpoint of this run)"
+            ));
+            Ok(())
+        }
+    }
+}
+
 /// Fails when the app shows a tray icon: no smoke run makes one (nobody is there to click it, and
 /// it would stay in the notification area of whoever runs the checks if a run were cut short).
 fn check_no_tray_icon(app: &AppHandle) -> Result<(), String> {
@@ -530,6 +559,7 @@ pub fn arm(app: &tauri::App) {
                 .and_then(|()| check_scrollback())
                 .and_then(|()| smoke_browser::check_browser_pane(&handle))
                 .and_then(|()| check_no_global_shortcut(&handle))
+                .and_then(|()| check_api_listening(&handle))
                 .and_then(|()| check_window_hidden(&handle))
                 .and_then(|()| check_daemon_stopped(&handle.state::<AppState>()));
             match result {

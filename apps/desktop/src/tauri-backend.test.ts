@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AI_ERROR_KINDS, decodeUtf8 } from "@noren/model";
+import { AI_ERROR_KINDS, TerminalTail, decodeUtf8 } from "@noren/model";
 import type {
   AiChatEvent,
   AiChatMessage,
@@ -946,6 +946,103 @@ describe("TauriBackend", () => {
   it("gives onOutput of an unknown session a harmless unsubscribe", () => {
     const backend = new TauriBackend(fakeBridge().bridge);
     expect(() => backend.onOutput(99, () => undefined)()).not.toThrow();
+  });
+});
+
+describe("TauriBackend feeding the tail of the local API", () => {
+  const text = (value: string): ArrayBuffer =>
+    new TextEncoder().encode(value).buffer as ArrayBuffer;
+
+  it("feeds the tail with the output of a session nobody subscribed to, as it comes", async () => {
+    const fake = fakeBridge({ session_create: 3 });
+    const tail = new TerminalTail();
+    const backend = new TauriBackend(fake.bridge, { tail });
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    fake.channels[0]?.onmessage(text("one\r\ntwo\r\n"));
+    expect(tail.read(id, 10)).toEqual(["one", "two"]);
+    fake.channels[0]?.onmessage(text("three\r\n"));
+    expect(tail.read(id, 10)).toEqual(["one", "two", "three"]);
+  });
+
+  it("leaves what is held for the first subscriber to the terminal view, which still gets it all", async () => {
+    const fake = fakeBridge({ session_create: 3 });
+    const tail = new TerminalTail();
+    const backend = new TauriBackend(fake.bridge, { tail });
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    fake.channels[0]?.onmessage(text("prompt> "));
+    expect(tail.read(id, 10)).toEqual(["prompt> "]);
+    // The view mounts after the shell printed: it is still given the held output.
+    const seen: string[] = [];
+    backend.onOutput(id, (data) => seen.push(decodeUtf8(data)));
+    expect(seen).toEqual(["prompt> "]);
+    fake.channels[0]?.onmessage(text("ls\r\n"));
+    expect(seen).toEqual(["prompt> ", "ls\r\n"]);
+    expect(tail.read(id, 10)).toEqual(["prompt> ls"]);
+  });
+
+  it("feeds the tail with a session taken over and with a pane's shell that came back", async () => {
+    const fake = fakeBridge({ session_reattach: 8 });
+    const tail = new TerminalTail();
+    const backend = new TauriBackend(fake.bridge, { tail });
+    await backend.attachSession(4);
+    fake.channels[0]?.onmessage(text("taken\r\n"));
+    expect(tail.read(4, 5)).toEqual(["taken"]);
+    const id = await backend.reattachSession("pane-1");
+    fake.channels[1]?.onmessage(text("back\r\n"));
+    expect(tail.read(id ?? -1, 5)).toEqual(["back"]);
+  });
+
+  it("forgets a session when it ends and takes nothing it prints afterwards", async () => {
+    const fake = fakeBridge({ session_create: 5 });
+    const tail = new TerminalTail();
+    const backend = new TauriBackend(fake.bridge, { tail });
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    fake.channels[0]?.onmessage(text("before\r\n"));
+    expect(tail.size).toBe(1);
+    fake.emitExit({ id, code: 0, signal: null });
+    expect(tail.size).toBe(0);
+    expect(tail.read(id, 5)).toEqual([]);
+    fake.channels[0]?.onmessage(text("late\r\n"));
+    expect(tail.size).toBe(0);
+  });
+
+  it("forgets a session that is killed, before its exit event arrives", async () => {
+    const fake = fakeBridge({ session_create: 6 });
+    const tail = new TerminalTail();
+    const backend = new TauriBackend(fake.bridge, { tail });
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    fake.channels[0]?.onmessage(text("x\r\n"));
+    await backend.kill(id);
+    expect(tail.size).toBe(0);
+    fake.channels[0]?.onmessage(text("after kill\r\n"));
+    expect(tail.size).toBe(0);
+  });
+
+  it("keeps the sessions apart", async () => {
+    let next = 10;
+    const fake = fakeBridge({}, { session_create: () => next++ });
+    const tail = new TerminalTail();
+    const backend = new TauriBackend(fake.bridge, { tail });
+    const a = await backend.createSession({ cols: 80, rows: 24 });
+    const b = await backend.createSession({ cols: 80, rows: 24 });
+    fake.channels[0]?.onmessage(text("from a\r\n"));
+    fake.channels[1]?.onmessage(text("from b\r\n"));
+    expect(tail.read(a, 5)).toEqual(["from a"]);
+    expect(tail.read(b, 5)).toEqual(["from b"]);
+    fake.emitExit({ id: a, code: 0, signal: null });
+    expect(tail.read(a, 5)).toEqual([]);
+    expect(tail.read(b, 5)).toEqual(["from b"]);
+  });
+
+  it("works as before without a tail", async () => {
+    const fake = fakeBridge({ session_create: 3 });
+    const backend = new TauriBackend(fake.bridge);
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    fake.channels[0]?.onmessage(text("hi"));
+    const seen: string[] = [];
+    backend.onOutput(id, (data) => seen.push(decodeUtf8(data)));
+    expect(seen).toEqual(["hi"]);
+    await backend.kill(id);
   });
 });
 

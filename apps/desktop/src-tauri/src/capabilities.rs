@@ -176,6 +176,9 @@ fn only_the_main_window_may_call_what_owns_or_changes_the_workspace() {
         "browser_navigate",
         "browser_set_bounds",
         "browser_close",
+        // The answer to a call of the local API: the main window runs the call (NOR-F17-01c), so
+        // only its page may say what came of it.
+        "api_respond",
     ];
     let main = permissions_of(&capability(MAIN_CAPABILITY));
     let quick = permissions_of(&capability(QUICK_CAPABILITY));

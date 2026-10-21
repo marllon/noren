@@ -67,6 +67,7 @@
     "allow-window-is-focused",
     "allow-deep-link-take-waiting",
     "allow-deep-link-applied",
+    "allow-api-respond",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:event:allow-emit",

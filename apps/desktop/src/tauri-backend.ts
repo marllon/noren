@@ -40,6 +40,7 @@ import type {
   SessionLink,
   SessionLinkState,
   ShellProfile,
+  TerminalTail,
   Unsubscribe,
   UserProfile,
   WindowEffect,
@@ -276,6 +277,14 @@ function tauriAi(bridge: TauriBridge): AiBackend {
   };
 }
 
+export interface TauriBackendOptions {
+  /**
+   * The tail that takes the output of every session this backend holds (the main window gives it,
+   * for `terminal.read` of the local API); a session that ends is forgotten by it.
+   */
+  tail?: TerminalTail;
+}
+
 /** `Backend` over the Tauri commands in `src-tauri/src/bridge.rs`. */
 export class TauriBackend implements Backend {
   readonly ai: AiBackend;
@@ -296,9 +305,39 @@ export class TauriBackend implements Backend {
   #configSubscription: Promise<() => void> | undefined;
   #modSubscription: Promise<() => void> | undefined;
 
-  constructor(bridge: TauriBridge = tauriBridge()) {
+  /** Where the output of every session also goes, for `terminal.read` of the local API. */
+  readonly #tail: TerminalTail | undefined;
+  /** The taps on the streams, so a session that ends stops feeding the tail. */
+  readonly #taps = new Map<SessionId, Unsubscribe>();
+
+  constructor(bridge: TauriBridge = tauriBridge(), options: TauriBackendOptions = {}) {
     this.#bridge = bridge;
+    this.#tail = options.tail;
     this.ai = tauriAi(bridge);
+  }
+
+  /**
+   * Keeps the stream of a session and, when there is a tail, feeds it everything the session
+   * prints. The tail listens by `tap`, so what is held for the first subscriber (the terminal view
+   * of the pane) is still held for it; and it is told the moment the stream is kept, so the output
+   * of a session no view ever mounted for is not lost either.
+   */
+  #track(id: SessionId, stream: OutputStream): void {
+    this.#streams.set(id, stream);
+    const tail = this.#tail;
+    if (tail === undefined) return;
+    this.#taps.get(id)?.();
+    this.#taps.set(
+      id,
+      stream.tap((data) => tail.feed(id, data)),
+    );
+  }
+
+  /** The session ended: nothing more is fed to the tail, and what it held is dropped. */
+  #untrack(id: SessionId): void {
+    this.#taps.get(id)?.();
+    this.#taps.delete(id);
+    this.#tail?.forget(id);
   }
 
   listProfiles(): Promise<ShellProfile[]> {
@@ -326,7 +365,7 @@ export class TauriBackend implements Backend {
       ...(options.env !== undefined ? { env: options.env } : {}),
       ...(options.paneId !== undefined ? { paneId: options.paneId } : {}),
     });
-    this.#streams.set(id, stream);
+    this.#track(id, stream);
 
     const early = this.#earlyExits.get(id);
     if (early) {
@@ -351,7 +390,7 @@ export class TauriBackend implements Backend {
       onOutput: channel,
       ...(options?.replay === true ? { replay: true } : {}),
     });
-    this.#streams.set(id, stream);
+    this.#track(id, stream);
 
     const early = this.#earlyExits.get(id);
     if (early) {
@@ -374,7 +413,7 @@ export class TauriBackend implements Backend {
       onOutput: channel,
     });
     if (id === null) return undefined;
-    this.#streams.set(id, stream);
+    this.#track(id, stream);
 
     const early = this.#earlyExits.get(id);
     if (early) {
@@ -409,6 +448,7 @@ export class TauriBackend implements Backend {
 
   async kill(id: SessionId): Promise<void> {
     this.#released.add(id);
+    this.#untrack(id);
     await this.#bridge.invoke("session_kill", { id });
   }
 
@@ -789,6 +829,7 @@ export class TauriBackend implements Backend {
 
   #handleExit(exit: SessionExit): void {
     this.#streams.delete(exit.id);
+    this.#untrack(exit.id);
     for (const listener of [...this.#exitListeners]) listener(exit);
     // The Rust session manager only frees an id in `session_kill`, never by itself.
     if (!this.#released.delete(exit.id)) {

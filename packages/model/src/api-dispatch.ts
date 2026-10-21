@@ -3,6 +3,7 @@ import { keySequences } from "./api-keys";
 import type { Backend, CreateSessionOptions, SessionId } from "./backend";
 import { DEFAULT_PROFILE_ID } from "./factories";
 import { layoutPanes } from "./sessions";
+import { spaceSessionEnv } from "./session-env";
 import { spaceItemIds } from "./tree";
 import type { Id, Item, Pane, Space, Workspace } from "./types";
 import { DEFAULT_MAX_PANES } from "./types";
@@ -349,25 +350,6 @@ const itemIdsOf = (ws: Workspace): Set<Id> =>
 const paneIdsOf = (item: Item | undefined): Set<Id> =>
   new Set(item === undefined ? [] : layoutPanes(item.layout).map((p) => p.id));
 
-/**
- * The environment a shell of the space starts with: the git identity as author and committer,
- * under the variables of the space, which win on a conflict (names compare ignoring case). Same
- * rule as the app's `spaceSessionEnv`.
- */
-function sessionEnvOf(space: Space): Record<string, string> {
-  const { env, gitIdentity } = space.defaults;
-  if (gitIdentity === undefined) return env;
-  const taken = new Set(Object.keys(env).map((name) => name.toUpperCase()));
-  const fromIdentity: Record<string, string> = {};
-  const add = (names: string[], value: string) => {
-    if (value === "") return;
-    for (const name of names) if (!taken.has(name)) fromIdentity[name] = value;
-  };
-  add(["GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"], gitIdentity.name);
-  add(["GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"], gitIdentity.email);
-  return { ...fromIdentity, ...env };
-}
-
 /** The session number of a terminal pane, when it holds one. */
 function sessionOf(pane: Pane): SessionId | undefined {
   if (pane.type !== "terminal" || pane.sessionId === undefined) return undefined;
@@ -433,7 +415,7 @@ async function startShell(
   profileId: string,
   cwd: string | undefined,
 ): Promise<Shell> {
-  const env = sessionEnvOf(space);
+  const env = spaceSessionEnv(space);
   const options: CreateSessionOptions = {
     ...(profileId !== DEFAULT_PROFILE_ID ? { profileId } : {}),
     ...(cwd !== undefined ? { cwd } : {}),

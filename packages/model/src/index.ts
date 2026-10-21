@@ -508,6 +508,7 @@ export type {
   SystemNotifierOptions,
 } from "./notifications";
 export { OutputStream } from "./output-stream";
+export { spaceSessionEnv } from "./session-env";
 export { PaneLocationTracker } from "./pane-location";
 export type {
   PaneAttentionEvent,

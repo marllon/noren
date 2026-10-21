@@ -2,6 +2,7 @@ import * as fc from "fast-check";
 import type { Action, Placement } from "./actions";
 import { splitAt, splitPaths } from "./layout";
 import { layoutPanes } from "./sessions";
+import { exportSpace, type SpaceFile } from "./space-file";
 import { treeGroups, treeItemIds } from "./tree";
 import type { Id, Item, Workspace } from "./types";
 import { windowCanShowTab, workspaceWindows } from "./windows";
@@ -125,6 +126,59 @@ const arbPreviewPath = fc.oneof(
 );
 /** Reaches both ends and a little past them. */
 const arbIndex = fc.integer({ min: -1, max: 8 });
+
+const EMPTY_FILE: SpaceFile = {
+  format: "noren-space",
+  version: 1,
+  space: {
+    name: "Imported",
+    icon: "terminal",
+    color: "#6b8afd",
+    modIds: [],
+    aiEnabled: true,
+    saveScrollback: true,
+    defaults: { env: {} },
+    pinned: [],
+    tree: [],
+    items: [],
+  },
+  profiles: [],
+};
+
+/**
+ * The file of a space of the workspace (one that exports; a name that is blank is made one), now
+ * and then spoiled: another version, a blank name, a tab the tree names but the file does not have,
+ * a field the format does not have. Imports must not make the workspace grow without end over a
+ * long run (each one adds a copy of a space), so a workspace with many spaces, or a space with many
+ * tabs, offers the empty file instead.
+ */
+function arbSpaceFile(ws: Workspace): fc.Arbitrary<SpaceFile> {
+  // Only the file of the space drawn is made: making all of them at every step costs too much.
+  const small = ws.spaces.length < 5;
+  const candidates = small ? ws.spaces.filter((space) => Object.keys(space.items).length <= 6) : [];
+  const valid: fc.Arbitrary<SpaceFile> =
+    candidates.length === 0
+      ? fc.constant(EMPTY_FILE)
+      : fc.constantFrom(...candidates).map((space) => {
+          // A space with tabs always shows one (the reducer settles it); the file must say which.
+          const active = space.activeItemId ?? Object.keys(space.items)[0];
+          const made = exportSpace({
+            ...space,
+            name: space.name.trim() === "" ? "Space" : space.name,
+            ...(active !== undefined ? { activeItemId: active } : {}),
+          });
+          return made.ok ? made.file : EMPTY_FILE;
+        });
+  const spoiled = valid.chain((file) =>
+    fc.constantFrom(
+      { ...file, version: 2 } as unknown as SpaceFile,
+      { ...file, space: { ...file.space, name: "" } },
+      { ...file, space: { ...file.space, tree: [...file.space.tree, { kind: "item", id: "zz" }] } },
+      { ...file, extra: true } as unknown as SpaceFile,
+    ),
+  );
+  return fc.oneof({ weight: 6, arbitrary: valid }, { weight: 1, arbitrary: spoiled });
+}
 
 /**
  * Actions that make sense for `ws` as it is now: targets are ids that exist in it (with a few
@@ -295,6 +349,13 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
           gitIdentity: arbIdentity,
         },
         { requiredKeys: ["type", "spaceId"] },
+      ),
+    ),
+    weighted(
+      1,
+      fc.record(
+        { type: tag("space/import"), file: arbSpaceFile(ws), activate: fc.boolean() },
+        { requiredKeys: ["type", "file"] },
       ),
     ),
     weighted(1, fc.record({ type: tag("space/rename"), spaceId, name: arbName })),

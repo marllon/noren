@@ -10,6 +10,7 @@ import {
   createTab,
   type EmptySpaceOptions,
 } from "./factories";
+import { validEnv } from "./env";
 import { previewPathProblem } from "./file-preview";
 import { neighborPane } from "./geometry";
 import {
@@ -26,6 +27,7 @@ import { MAX_BACKGROUND_BLUR, backgroundImageProblem } from "./background";
 import { MAX_MODS, isValidModFileName, sameModList } from "./mods";
 import { isLiveSource } from "./live-groups";
 import { layoutPanes, liveSessionIds, withoutSessions } from "./sessions";
+import { spaceFromFile } from "./space-file";
 import { isMarked, isPaneVisible, mapPanes, shownItem, visiblePanes, withoutMarks } from "./unread";
 import {
   editChildren,
@@ -73,6 +75,8 @@ import {
   type Workspace,
 } from "./types";
 
+export { validEnv };
+
 /**
  * Applies an action to a workspace and returns the new workspace. Pure: the input is never
  * mutated, and ids and time come from `ctx`. An action that cannot apply (unknown target, third
@@ -106,6 +110,8 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
   switch (action.type) {
     case "space/create":
       return createSpace(ws, action, ctx);
+    case "space/import":
+      return importSpace(ws, action, ctx);
     case "space/rename": {
       const name = clean(action.name);
       if (name === undefined) return ws;
@@ -757,6 +763,20 @@ function createSpace(
   };
 }
 
+function importSpace(
+  ws: Workspace,
+  action: Extract<Action, { type: "space/import" }>,
+  ctx: ReducerContext,
+): Workspace {
+  const made = spaceFromFile(action.file, idPool(ws, ctx), ctx.clock.now(), ctx.maxPanes);
+  if (!made.ok) return ws;
+  return {
+    ...ws,
+    spaces: [...ws.spaces, made.space],
+    activeSpaceId: action.activate === false ? ws.activeSpaceId : made.space.id,
+  };
+}
+
 function setSpaceDefaults(
   ws: Workspace,
   action: Extract<Action, { type: "space/set-defaults" }>,
@@ -804,14 +824,6 @@ function normalizeIdentity(identity: {
   const name = identity.name.trim();
   const email = identity.email.trim();
   return name === "" && email === "" ? undefined : { name, email };
-}
-
-/** True when every name is a usable environment variable name and no value holds a NUL. */
-export function validEnv(env: Record<string, string>): boolean {
-  return Object.entries(env).every(
-    ([name, value]) =>
-      name !== "" && !/[=\s]/.test(name) && !name.includes("\u0000") && !value.includes("\u0000"),
-  );
 }
 
 function sameEnv(a: Record<string, string>, b: Record<string, string>): boolean {

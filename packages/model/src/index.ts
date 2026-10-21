@@ -158,6 +158,33 @@ export type {
 export { REDACTION_KINDS, redactSecrets, redactionMarker } from "./redact";
 export type { Redaction, RedactionKind } from "./redact";
 export {
+  SPACE_FILE_EXTENSION,
+  SPACE_FILE_FORMAT,
+  SPACE_FILE_LIMITS,
+  SPACE_FILE_VERSION,
+  SpaceFileSchema,
+  exportSpace,
+  looksSecret,
+  parseSpaceFile,
+  planProfiles,
+  spaceFromFile,
+  validateSpaceFile,
+  withoutSecretEnv,
+} from "./space-file";
+export type {
+  ExportRemovals,
+  ExportSpaceOptions,
+  ProfileConflict,
+  ProfilePlan,
+  SpaceExport,
+  SpaceFile,
+  SpaceFileItem,
+  SpaceFileNode,
+  SpaceFileParse,
+  SpaceFileSpace,
+  SpaceFromFile,
+} from "./space-file";
+export {
   ASK_SYSTEM_PROMPT,
   MAX_ASK_CHIP_CHARS,
   MAX_ASK_QUESTION_CHARS,

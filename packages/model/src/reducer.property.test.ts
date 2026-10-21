@@ -4,6 +4,7 @@ import { arbAction } from "./action-arbitraries";
 import type { Action, ActionType } from "./actions";
 import { arbWorkspace } from "./arbitraries";
 import { checkInvariants } from "./invariants";
+import { exportSpace, validateSpaceFile } from "./space-file";
 import { reduce, reduceStrict } from "./reducer";
 import { layoutPanes, liveSessionIds } from "./sessions";
 import { shownItem, visiblePanes } from "./unread";
@@ -14,6 +15,7 @@ import { DEFAULT_MAX_PANES, MAX_EXTRA_WINDOWS, type Id, type Item, type Workspac
 /** One key per action type: the compiler fails here when a new action is not listed. */
 const ACTION_TYPES: Record<ActionType, true> = {
   "space/create": true,
+  "space/import": true,
   "space/rename": true,
   "space/set-color": true,
   "space/set-icon": true,
@@ -319,6 +321,62 @@ function checkOrigin(ws: Workspace, next: Workspace, action: Action, where: () =
   }
 }
 
+/**
+ * `space/import` adds exactly one space, at the end, made of ids no other space, item, group or
+ * pane had, and exporting it again gives the file it came from; a file that is not valid (or has a
+ * tab over `maxPanes`) adds nothing.
+ */
+function checkImport(
+  ws: Workspace,
+  next: Workspace,
+  action: Action,
+  limit: number,
+  where: () => string,
+): void {
+  if (action.type !== "space/import") return;
+  const fail = (what: string): never => {
+    throw new Error(`${where()}: ${what}`);
+  };
+  if (!validateSpaceFile(action.file, limit).ok) {
+    if (next !== ws) fail("a file that is not valid added a space");
+    return;
+  }
+  if (next === ws) return fail("a valid file added nothing");
+  const added = next.spaces.at(-1);
+  if (next.spaces.length !== ws.spaces.length + 1 || added === undefined) {
+    fail("an import did not add exactly one space at the end");
+  } else if (action.activate !== false && next.activeSpaceId !== added.id) {
+    fail("the imported space did not become the active one");
+  } else if (action.activate === false && next.activeSpaceId !== ws.activeSpaceId) {
+    fail("an import that asked not to activate changed the active space");
+  } else {
+    const back = exportSpace(added);
+    if (
+      !back.ok ||
+      JSON.stringify(back.file) !== JSON.stringify({ ...action.file, profiles: [] })
+    ) {
+      fail("exporting the imported space does not give the file again");
+    }
+    const before = new Set(
+      ws.spaces.flatMap((space) => [
+        space.id,
+        ...Object.keys(space.items),
+        ...treeGroups(space.tree).map((group) => group.id),
+        ...Object.values(space.items).flatMap((item) =>
+          layoutPanes(item.layout).map((pane) => pane.id),
+        ),
+      ]),
+    );
+    for (const id of [
+      added.id,
+      ...Object.keys(added.items),
+      ...treeGroups(added.tree).map((group) => group.id),
+    ]) {
+      if (before.has(id)) fail(`the imported space reuses the id ${id}`);
+    }
+  }
+}
+
 /** What an action that did something must do to the panes of the live items. */
 function checkPaneDelta(ws: Workspace, next: Workspace, action: Action, where: () => string): void {
   const fail = (what: string): never => {
@@ -616,6 +674,7 @@ function playSequences(
               if (next !== ws) throw new Error(`${where()}: split passed maxPanes`);
             }
           }
+          checkImport(ws, next, action, limit, where);
           if (next !== ws) checkPaneDelta(ws, next, action, where);
           if (next !== ws) checkOrigin(ws, next, action, where);
           if (next !== ws) checkActiveItems(ws, next, action, where);

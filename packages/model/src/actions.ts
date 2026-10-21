@@ -1,5 +1,6 @@
 import type { Clock } from "./clock";
 import type { IdGenerator } from "./ids";
+import type { SpaceFile } from "./space-file";
 import type { Id, LiveSource, Pane, SpaceBackground } from "./types";
 
 /**
@@ -52,6 +53,15 @@ export type Action =
       env?: Record<string, string>;
       gitIdentity?: { name: string; email: string };
     }
+  /**
+   * Adds the space a `.noren-space.json` file describes (`space-file.ts`) as a new space at the end:
+   * the space, its items, groups and panes all get fresh ids, so nothing collides with the
+   * workspace, and every tab starts with no session. The file is checked again (`validateSpaceFile`
+   * with the `maxPanes` of the context); one that is not valid, or has a tab with more panes than
+   * the limit, changes nothing. The profiles of the file are not part of the workspace (see
+   * `planProfiles`). Becomes the active space unless `activate` is `false`.
+   */
+  | { type: "space/import"; file: SpaceFile; activate?: boolean }
   | { type: "space/rename"; spaceId: Id; name: string }
   | { type: "space/set-color"; spaceId: Id; color: string }
   | { type: "space/set-icon"; spaceId: Id; icon: string }

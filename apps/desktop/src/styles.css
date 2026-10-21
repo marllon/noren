@@ -859,6 +859,49 @@ body {
   font-size: 11px;
 }
 
+/* The entries a live group lists under its header (NOR-F17-04b); they are not tabs. */
+.live-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--nr-radius) * 0.6);
+  background: transparent;
+  color: var(--nr-muted);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.live-entry:hover {
+  background: color-mix(in srgb, var(--nr-text) 8%, transparent);
+}
+
+.live-entry:focus-visible {
+  outline-offset: -2px;
+}
+
+.live-entry-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-error {
+  display: block;
+  padding: 0 8px 2px;
+  overflow: hidden;
+  color: var(--nr-text);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .group-button {
   display: flex;
   align-items: center;

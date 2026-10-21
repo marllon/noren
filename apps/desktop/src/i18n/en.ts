@@ -316,6 +316,7 @@ export const en = {
   "action.agents.focus-waiting": "Go to the agent waiting for you",
   "action.worktree.new": "New worktree",
   "action.worktree.remove": "Remove worktree",
+  "action.live.worktrees": "New group of worktrees",
   "action.diff.open": "Show git diff beside this pane",
   "action.window.move-tab": "Move tab to new window",
   "action.tab.mru-next": "Next recent tab",
@@ -605,6 +606,10 @@ export const en = {
     "The folder of the worktree is deleted; the branch {branch} is kept. Git refuses to remove a worktree that has changes.",
   "worktree.remove.confirm": "Remove worktree",
   "worktree.removed": "Worktree removed: {path}",
+
+  // Live groups: groups whose entries come from the machine
+  "live.worktrees.name": "Worktrees of {folder}",
+  "live.error": "Could not update: {reason}",
 
   // The dialog of a space
   "spaceDialog.edit": "Edit space",

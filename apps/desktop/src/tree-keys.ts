@@ -5,8 +5,11 @@ import type { TreeRow } from "./sidebar-tree";
 // row folds or unfolds, and where the focus goes when a row goes away. Pure; the component only
 // reads the DOM and calls `focus()`.
 
-/** What a row of the tree is: a group header, a tab, or a pane of an unfolded split tab. */
-export type NavKind = "group" | "item" | "pane";
+/**
+ * What a row of the tree is: a group header, a tab, a pane of an unfolded split tab, or an entry of
+ * a live group (NOR-F17-04b; not a tab).
+ */
+export type NavKind = "group" | "item" | "pane" | "entry";
 
 /** A row of the tree as the keyboard sees it, in the order shown. */
 export interface NavEntry {
@@ -28,6 +31,7 @@ export interface NavEntry {
 export const groupKey = (groupId: Id): string => `g:${groupId}`;
 export const itemKey = (itemId: Id): string => `i:${itemId}`;
 export const paneKey = (paneId: Id): string => `p:${paneId}`;
+export const liveKey = (groupId: Id, key: string): string => `l:${groupId}:${key}`;
 
 /** The panes a split tab lists: undefined for a tab that is not a split, `expanded` false when folded. */
 export interface SplitPanes {
@@ -38,11 +42,14 @@ export interface SplitPanes {
 /**
  * The rows of the tree for the keyboard. `rows` are the visible rows of the sidebar (pinned tabs
  * first, then the tree); a group's children follow it with one more depth. `panesOf` says which tabs
- * are split and whether their pane list is open.
+ * are split and whether their pane list is open. `liveOf` gives the keys of the entries a live group
+ * lists (none for any other group): they come right after the group row, before its tabs, and are
+ * left out when the group is folded.
  */
 export function buildNav(
   rows: readonly TreeRow[],
   panesOf: (itemId: Id) => SplitPanes | undefined,
+  liveOf: (groupId: Id) => readonly string[] = () => [],
 ): NavEntry[] {
   const entries: NavEntry[] = [];
   // The set each group or tab belongs to: the Pinned list, or the group (or the root) it sits in.
@@ -66,6 +73,21 @@ export function buildNav(
         expanded: !row.group.collapsed,
       });
       groups[row.depth] = key;
+      if (row.group.collapsed) continue;
+      const live = liveOf(row.group.id);
+      live.forEach((entryKey, index) => {
+        entries.push({
+          key: liveKey(row.group.id, entryKey),
+          kind: "entry",
+          id: entryKey,
+          level: level + 1,
+          setSize: live.length,
+          posInSet: index + 1,
+          parentKey: key,
+          expanded: undefined,
+        });
+        setOf.push(undefined);
+      });
       continue;
     }
     const key = itemKey(row.id);
@@ -89,13 +111,15 @@ export function buildNav(
   // The size of a set and the place in it are known once every row has been seen.
   const counts = new Map<string | undefined, number>();
   entries.forEach((entry, index) => {
-    if (entry.kind === "pane") return;
+    if (entry.kind === "pane" || entry.kind === "entry") return;
     const set = setOf[index];
     counts.set(set, (counts.get(set) ?? 0) + 1);
     entry.posInSet = counts.get(set) ?? 1;
   });
   return entries.map((entry, index) =>
-    entry.kind === "pane" ? entry : { ...entry, setSize: counts.get(setOf[index]) ?? 1 },
+    entry.kind === "pane" || entry.kind === "entry"
+      ? entry
+      : { ...entry, setSize: counts.get(setOf[index]) ?? 1 },
   );
 }
 

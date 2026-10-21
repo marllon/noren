@@ -95,6 +95,7 @@ import {
 import type { ClickModifiers, Selection } from "./sidebar-tree";
 import { sidebarMode } from "./layout";
 import { useLanguage, t, tabCount } from "./i18n";
+import { refreshLiveGroups, worktreesGroupName } from "./live-groups-service";
 import { agentStateLabel, nothingUnreadNotice, shortCwd, summarizeItem } from "./pane-info";
 import { peekLinesOfItem } from "./peek-source";
 import { configManager, useConfigState } from "./config-store";
@@ -1065,6 +1066,34 @@ function Shell({ store }: { store: WorkspaceStore }) {
     },
     [store, showNotice, focusTerminal],
   );
+  /**
+   * Makes a live group of the worktrees of the repository of the folder of the focused pane (else
+   * the start folder of the space) in the active space and asks its source at once, so the entries
+   * show without waiting for the next round; with no folder known a notice says so.
+   */
+  const addWorktreesGroup = useCallback(() => {
+    setPaletteOpen(false);
+    setSearchText(null);
+    const state = store.getState();
+    const active = activeSpaceOf(state.workspace);
+    const itemId = activeItemIdOf(state);
+    const item = itemId === undefined ? undefined : active.items[itemId];
+    const folder =
+      item !== undefined ? summarizeItem(item, active.defaults.cwd).cwd : active.defaults.cwd;
+    if (folder === undefined || folder.trim() === "") {
+      showNotice(t("worktree.noFolder"));
+      focusTerminal();
+      return;
+    }
+    store.getState().dispatch({
+      type: "group/create",
+      spaceId: active.id,
+      name: worktreesGroupName(folder),
+      live: { source: "worktrees", folder },
+    });
+    void refreshLiveGroups();
+    focusTerminal();
+  }, [store, showNotice, focusTerminal]);
   /** Closes the dialog of a worktree and gives the keyboard back to the terminal on screen. */
   const closeWorktree = useCallback(() => {
     setWorktreeDialog(null);
@@ -1515,6 +1544,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         }
         return;
       }
+      if (action.command.kind === "live-worktrees") {
+        if (!modalOpen.current) addWorktreesGroup();
+        return;
+      }
       if (action.command.kind === "diff-open") {
         if (!modalOpen.current) openDiffBeside();
         return;
@@ -1955,6 +1988,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
       // The dialog takes the keyboard itself; the palette must not hand it to the terminal.
       openWorktree(entry.action.command.kind === "worktree-new" ? "new" : "remove");
       return;
+    } else if (entry.action.command.kind === "live-worktrees") {
+      addWorktreesGroup();
+      return;
     } else if (entry.action.command.kind === "quick-toggle") {
       // The quick window takes the keyboard itself; the palette closes first so it does not hand
       // the focus back to the terminal of this window.
@@ -2323,6 +2359,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
                 rows={rows}
                 home={home}
                 onPaneClick={onPaneClick}
+                onLiveEntryClick={(groupId, key) => {
+                  clearSelection();
+                  store.getState().openLiveEntry(groupId, key);
+                }}
                 onPeek={(itemId) => {
                   const item = space.items[itemId];
                   return item !== undefined ? peekLinesOfItem(backend, item) : [];
@@ -2461,6 +2501,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
               // The tab opens in the new folder and takes the keyboard like any new tab.
               setWorktreeDialog(null);
               newTab({ cwd: worktree.path });
+              // A live group of worktrees lists the new one now, not at the next round.
+              void refreshLiveGroups();
             }}
             onClose={closeWorktree}
           />
@@ -2472,6 +2514,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
             onRemoved={(worktree) => {
               setWorktreeDialog(null);
               showNotice(t("worktree.removed", { path: worktree.path }));
+              void refreshLiveGroups();
               focusTerminal();
             }}
             onClose={closeWorktree}

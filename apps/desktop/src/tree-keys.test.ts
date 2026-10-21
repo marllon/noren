@@ -187,3 +187,56 @@ describe("focusAfterRemoval", () => {
     expect(focusAfterRemoval(nav, "i:gone", new Set())).toBeUndefined();
   });
 });
+
+describe("the entries of a live group", () => {
+  /** group L { entries e1 e2, tab t }, then tab z; a folded live group F with an entry. */
+  const liveRows: TreeRow[] = [
+    groupRow("L", 0),
+    itemRow("t", 1),
+    groupRow("F", 0, true),
+    itemRow("z", 0),
+  ];
+  const liveOf = (groupId: string): string[] =>
+    groupId === "L" ? ["e1", "e2"] : groupId === "F" ? ["f1"] : [];
+  const withLive = buildNav(liveRows, () => undefined, liveOf);
+  const at = (key: string): NavEntry => {
+    const found = withLive.find((entry) => entry.key === key);
+    if (!found) throw new Error(`no row ${key}`);
+    return found;
+  };
+
+  it("puts them right after the group, before its tabs, and none under a folded group", () => {
+    expect(keys(withLive)).toEqual(["g:L", "l:L:e1", "l:L:e2", "i:t", "g:F", "i:z"]);
+    expect(at("l:L:e1")).toMatchObject({
+      kind: "entry",
+      id: "e1",
+      level: 2,
+      setSize: 2,
+      posInSet: 1,
+      parentKey: "g:L",
+      expanded: undefined,
+    });
+    expect(at("l:L:e2")).toMatchObject({ posInSet: 2 });
+  });
+
+  it("leaves the numbering of the tabs as it was without them", () => {
+    const without = buildNav(liveRows, () => undefined);
+    const tabs = (entries: readonly NavEntry[]) =>
+      entries.filter((entry) => entry.kind !== "entry");
+    expect(tabs(withLive)).toEqual(tabs(without));
+    expect(at("i:t")).toMatchObject({ setSize: 1, posInSet: 1, level: 2 });
+  });
+
+  it("draws no entry when the caller gives none", () => {
+    expect(keys(buildNav(liveRows, () => undefined))).toEqual(["g:L", "i:t", "g:F", "i:z"]);
+  });
+
+  it("walks into them with the arrows and back to the group with Left", () => {
+    const press = (current: string, key: string) => treeKeyAction(withLive, current, key);
+    expect(press("g:L", "ArrowRight")).toEqual({ type: "focus", key: "l:L:e1" });
+    expect(press("l:L:e1", "ArrowDown")).toEqual({ type: "focus", key: "l:L:e2" });
+    expect(press("l:L:e2", "ArrowDown")).toEqual({ type: "focus", key: "i:t" });
+    expect(press("l:L:e2", "ArrowLeft")).toEqual({ type: "focus", key: "g:L" });
+    expect(press("l:L:e1", "ArrowRight")).toBeUndefined();
+  });
+});

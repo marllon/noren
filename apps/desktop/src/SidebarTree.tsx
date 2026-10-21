@@ -9,7 +9,7 @@ import {
   Pin,
   WifiOff,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { layoutPanes } from "@noren/model";
 import { useAgentOfPane } from "./agent-store";
@@ -53,6 +53,8 @@ import {
 } from "./tree-keys";
 import type { NavEntry } from "./tree-keys";
 import { spaceItemIds } from "./workspace-store";
+import { liveEntriesOf, liveErrorOf, useLiveGroupsVersion } from "./live-groups-service";
+import { LiveEntryRows } from "./LiveEntries";
 
 /** The peek of a tab when the tree is given no way to read its lines: nothing to show. */
 const noPeek = (): readonly string[] => [];
@@ -90,10 +92,15 @@ interface SidebarTreeProps {
   onPeek?(itemId: Id): Promise<readonly string[]> | readonly string[];
   /** Try again on a tab whose connection to its shell failed: connect its sessions once more. */
   onRetryLink?(itemId: Id): void;
+  /**
+   * An entry under a live group was clicked: open it. Without it the tree lists no entries (the
+   * window of a single tab has no updater to ask).
+   */
+  onLiveEntryClick?(groupId: Id, key: string): void;
 }
 
 /** What a row of the tree needs to be a treeitem the keyboard can reach (see `tree-keys.ts`). */
-type RowProps = (key: string) => {
+export type RowProps = (key: string) => {
   role: "treeitem";
   tabIndex: number;
   onFocus(): void;
@@ -402,8 +409,11 @@ export function SidebarTree({
   onCancelEdit,
   onPeek,
   onRetryLink,
+  onLiveEntryClick,
 }: SidebarTreeProps) {
   const t = useT();
+  // The entries of the live groups come from the updater; this draws again when it tells a list changed.
+  useLiveGroupsVersion();
   const agentOf = useAgentOfPane();
   const agentStateOf = useAgentStateOfPane();
   const linkOf = useLinkOfPane();
@@ -441,11 +451,16 @@ export function SidebarTree({
   const dragging = useDragging();
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const focusAfter = useRef<string | null>(null);
-  const nav = buildNav(rows, (itemId) => {
-    const item = space.items[itemId];
-    const paneIds = item === undefined ? [] : layoutPanes(item.layout).map((pane) => pane.id);
-    return paneIds.length >= 2 ? { paneIds, expanded: !folded.has(itemId) } : undefined;
-  });
+  const nav = buildNav(
+    rows,
+    (itemId) => {
+      const item = space.items[itemId];
+      const paneIds = item === undefined ? [] : layoutPanes(item.layout).map((pane) => pane.id);
+      return paneIds.length >= 2 ? { paneIds, expanded: !folded.has(itemId) } : undefined;
+    },
+    (groupId) =>
+      onLiveEntryClick === undefined ? [] : liveEntriesOf(groupId).map((entry) => entry.key),
+  );
   const navByKey = new Map<string, NavEntry>(nav.map((entry) => [entry.key, entry]));
   const activeKey = activeId !== undefined ? itemKey(activeId) : undefined;
   const tabbableKey =
@@ -491,8 +506,8 @@ export function SidebarTree({
     const entry = key === undefined ? undefined : navByKey.get(key);
     if (key === undefined || entry === undefined) return;
     if (event.key === "Delete") {
-      // A pane leaves with Close pane, not from here.
-      if (entry.kind === "pane") return;
+      // A pane leaves with Close pane, and an entry of a live group is not a tab: not from here.
+      if (entry.kind === "pane" || entry.kind === "entry") return;
       event.preventDefault();
       const closing = entry.kind === "item" ? menuTargets(selected, entry.id) : [];
       const removed = new Set(entry.kind === "item" ? closing.map(itemKey) : [key]);
@@ -519,7 +534,7 @@ export function SidebarTree({
     }
   };
 
-  const renderRow = (row: TreeRow) => {
+  const renderRow = (row: TreeRow): ReactNode => {
     const indent = { marginInlineStart: row.depth * 14 };
     if (row.kind === "group") {
       const { group, count } = row;
@@ -749,6 +764,31 @@ export function SidebarTree({
     );
   };
 
+  // A live group shows what its source lists right under its header, before its tabs; folded, it shows nothing.
+  const renderRowWithLive = (row: TreeRow): ReactNode => {
+    if (
+      row.kind !== "group" ||
+      row.group.live === undefined ||
+      row.group.collapsed ||
+      onLiveEntryClick === undefined
+    ) {
+      return renderRow(row);
+    }
+    return (
+      <Fragment key={row.group.id}>
+        {renderRow(row)}
+        <LiveEntryRows
+          groupId={row.group.id}
+          depth={row.depth}
+          entries={liveEntriesOf(row.group.id)}
+          error={liveErrorOf(row.group.id)}
+          rowProps={rowProps}
+          onOpen={onLiveEntryClick}
+        />
+      </Fragment>
+    );
+  };
+
   const pinnedRows = rows.filter((row) => row.kind === "item" && row.pinned);
   const treeRows = rows.filter((row) => !(row.kind === "item" && row.pinned));
   return (
@@ -764,7 +804,7 @@ export function SidebarTree({
         onKeyDown={onTreeKeyDown}
       >
         {pinnedRows.length > 0 && <PinnedList>{pinnedRows.map(renderRow)}</PinnedList>}
-        {treeRows.map(renderRow)}
+        {treeRows.map(renderRowWithLive)}
       </ul>
       {peek.view !== null && <PeekPopover view={peek.view} />}
     </>

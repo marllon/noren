@@ -135,6 +135,20 @@ describe("buildEntries", () => {
   });
 });
 
+describe("the live group command", () => {
+  it("lists New group of worktrees as an action with no chord, in both languages", async () => {
+    const { entries } = await sources();
+    expect(action(entries, "New group of worktrees")).toMatchObject({
+      detail: "General",
+      action: { id: "live.worktrees", command: { kind: "live-worktrees" } },
+    });
+    expect(action(entries, "New group of worktrees")?.chord).toBeUndefined();
+    expect(searchEntries(entries, ">group of work").map((entry) => entry.title)).toContain(
+      "New group of worktrees",
+    );
+  });
+});
+
 const order = (kind: PaletteEntry["kind"]) => ["tab", "space", "action"].indexOf(kind);
 
 describe("parseQuery", () => {

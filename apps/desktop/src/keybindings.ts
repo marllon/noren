@@ -39,6 +39,7 @@ export type ActionCommand =
   | { kind: "agent-waiting" }
   | { kind: "worktree-new" }
   | { kind: "worktree-remove" }
+  | { kind: "live-worktrees" }
   | { kind: "diff-open" }
   | { kind: "window-move-tab" }
   | { kind: "quick-toggle" }
@@ -270,6 +271,15 @@ export const ACTIONS: readonly ActionDef[] = [
     title: "Remove worktree",
     category: "General",
     command: { kind: "worktree-remove" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
+  },
+  {
+    // A live group of the worktrees of the repository of the folder on screen (NOR-F17-04b); no chord, the palette is the way in.
+    id: "live.worktrees",
+    title: "New group of worktrees",
+    category: "General",
+    command: { kind: "live-worktrees" },
     repeat: false,
     chords: { safe: undefined, browser: undefined },
   },

@@ -321,6 +321,7 @@ export const ptBR: Dictionary = {
   "action.agents.focus-waiting": "Ir ao agente que está esperando você",
   "action.worktree.new": "Nova worktree",
   "action.worktree.remove": "Remover worktree",
+  "action.live.worktrees": "Novo grupo de worktrees",
   "action.diff.open": "Mostrar o diff do git ao lado deste painel",
   "action.window.move-tab": "Levar a aba para uma janela nova",
   "action.tab.mru-next": "Próxima aba recente",
@@ -613,6 +614,10 @@ export const ptBR: Dictionary = {
     "A pasta da worktree é apagada; a branch {branch} fica. O git se recusa a remover uma worktree com alterações.",
   "worktree.remove.confirm": "Remover worktree",
   "worktree.removed": "Worktree removida: {path}",
+
+  // Grupos vivos: grupos cujas entradas vêm da máquina
+  "live.worktrees.name": "Worktrees de {folder}",
+  "live.error": "Não foi possível atualizar: {reason}",
 
   // A caixa de um espaço
   "spaceDialog.edit": "Editar espaço",

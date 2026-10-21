@@ -231,6 +231,7 @@ fn main() {
             lifecycle::app_close_ready,
             bridge::mod_list,
             bridge::mod_watch,
+            bridge::plugins_list,
             bridge::window_effect_set,
             bridge::background_image_read,
             bridge::file_preview_read,
@@ -338,6 +339,8 @@ fn main() {
                     // folder: watching would create it.
                     let mods = ModState::new(bridge::mod_store(app.handle())?);
                     app.manage(if smoke { mods.without_watching() } else { mods });
+                    // The plugins of the user are only read, never watched or made.
+                    app.manage(bridge::plugin_store(app.handle())?);
                     // The pictures of a background are only read.
                     app.manage(BackgroundState::new(bridge::background_store(
                         app.handle(),

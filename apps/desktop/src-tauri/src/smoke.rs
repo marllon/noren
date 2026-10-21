@@ -12,8 +12,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use noren_core::{
     BENCH_DIR_NAME, BackgroundStore, BenchStore, CONFIG_FILE_NAME, ConfigStore, MODS_DIR_NAME,
-    ModStore, ProcessSource, SCROLLBACK_DIR_NAME, ScrollbackStore, SessionId, StateStore,
-    SystemProcesses, THEMES_DIR_NAME, ThemeStore, WindowEffect, is_powershell,
+    ModStore, PLUGINS_DIR_NAME, PluginStore, ProcessSource, SCROLLBACK_DIR_NAME, ScrollbackStore,
+    SessionId, StateStore, SystemProcesses, THEMES_DIR_NAME, ThemeStore, WindowEffect,
+    is_powershell,
 };
 use serde_json::{Value, json};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -639,7 +640,7 @@ pub fn deeplink_target(args: &[String]) -> Result<DeepLinkTarget, String> {
 
 /// Every file of the app for a smoke run that must not touch the files of the user, kept in one
 /// folder of its own: the saved state (empty), the settings, the themes, the bench results, the scrollback snapshots,
-/// the mods and the pictures of a background (relative paths are inside the folder).
+/// the mods, the plugins and the pictures of a background (relative paths are inside the folder).
 pub struct SandboxStores {
     pub state: StateStore,
     pub config: ConfigStore,
@@ -647,6 +648,7 @@ pub struct SandboxStores {
     pub bench: BenchStore,
     pub scrollback: ScrollbackStore,
     pub mods: ModStore,
+    pub plugins: PluginStore,
     pub background: BackgroundStore,
 }
 
@@ -659,6 +661,7 @@ pub fn sandbox_stores(dir: &Path) -> SandboxStores {
         bench: BenchStore::new(dir.join(BENCH_DIR_NAME)),
         scrollback: ScrollbackStore::new(dir.join(SCROLLBACK_DIR_NAME)),
         mods: ModStore::new(dir.join(MODS_DIR_NAME)),
+        plugins: PluginStore::new(dir.join(PLUGINS_DIR_NAME)),
         background: BackgroundStore::new(dir.to_path_buf()),
     }
 }
@@ -674,6 +677,7 @@ pub fn manage_sandbox_stores(app: &tauri::App, dir: &Path) {
     app.manage(BenchState::new(stores.bench));
     app.manage(ScrollbackState::new(stores.scrollback));
     app.manage(ModState::new(stores.mods).without_watching());
+    app.manage(stores.plugins);
     app.manage(BackgroundState::new(stores.background));
 }
 
@@ -1123,6 +1127,8 @@ mod tests {
         assert_eq!(stores.bench.dir(), first.state_dir.join("bench-results"));
         // And the mods folder.
         assert_eq!(stores.mods.dir(), first.state_dir.join("mods"));
+        // And the plugins folder.
+        assert_eq!(stores.plugins.dir(), first.state_dir.join("plugins"));
         // And the scrollback snapshots.
         assert_eq!(stores.scrollback.dir(), first.state_dir.join("scrollback"));
     }

@@ -1,0 +1,8 @@
+{
+  "id": "new-tab-action",
+  "name": "New tab action",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "main": "main.js",
+  "permissions": ["palette.actions", "tabs.create"]
+}

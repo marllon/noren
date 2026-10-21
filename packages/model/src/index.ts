@@ -343,6 +343,14 @@ export type {
   PluginRequestId,
   PluginResponse,
 } from "./plugins";
+export { checkPluginFolders } from "./plugins-load";
+export type { LoadedPlugin, PluginFolder, PluginFolderCheck, RejectedPlugin } from "./plugins-load";
+export {
+  EXAMPLE_PLUGIN_FOLDER,
+  EXAMPLE_PLUGIN_MAIN,
+  EXAMPLE_PLUGIN_MANIFEST,
+  FAKE_PLUGINS,
+} from "./plugins-example";
 export { AGENT_LINE_MAX, buildAgentList, firstWaitingAgent, truncateLine } from "./agent-list";
 export type { AgentInfo, AgentRow } from "./agent-list";
 export {

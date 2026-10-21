@@ -51,6 +51,7 @@
     "allow-app-close-ready",
     "allow-mod-list",
     "allow-mod-watch",
+    "allow-plugins-list",
     "allow-window-effect-set",
     "allow-background-image-read",
     "allow-file-preview-read",

@@ -15,6 +15,7 @@ pub mod hardware;
 pub mod integration;
 pub mod link;
 pub mod mods;
+pub mod plugins;
 pub mod preview;
 pub mod profiles;
 pub mod project;
@@ -63,6 +64,10 @@ pub use link::{LinkError, MAX_LINK_BYTES, check_external_link};
 pub use mods::{
     MAX_MOD_BYTES, MAX_MODS, MODS_DIR_NAME, ModError, ModFile, ModStore, ModWatcher,
     is_valid_mod_file_name,
+};
+pub use plugins::{
+    MANIFEST_FILE_NAME, MAX_PLUGIN_FILE_BYTES, MAX_PLUGINS, PLUGINS_DIR_NAME, PluginError,
+    PluginFiles, PluginFolder, PluginStore,
 };
 pub use preview::{
     FilePreview, MAX_PREVIEW_IMAGE_BYTES, MAX_PREVIEW_PATH, MAX_PREVIEW_TEXT_BYTES, PreviewImage,

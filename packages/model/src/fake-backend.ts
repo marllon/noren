@@ -63,6 +63,8 @@ import type { FilePreview, PreviewEntry } from "./file-preview";
 import type { GitDiff, GitDiffRefusal } from "./git-diff";
 import { MAX_MOD_BYTES, MAX_MODS, isValidModFileName } from "./mods";
 import { OutputStream } from "./output-stream";
+import { FAKE_PLUGINS } from "./plugins-example";
+import type { PluginFolder } from "./plugins-load";
 import { MAX_SCROLLBACK_BYTES, isScrollbackPaneId } from "./scrollback";
 import { fontNameList } from "./terminal-options";
 import { THEME_ID_PATTERN } from "./theme";
@@ -888,6 +890,8 @@ class FakeAi implements AiBackend {
  *   dashed branch, a folder that exists, a branch checked out elsewhere) and makes the new folder a
  *   fake repository on its branch; `removeWorktree` refuses the main worktree, a path that is none
  *   and one marked with `setWorktreeDirty`
+ * - `listPlugins` answers the example plugin (`FAKE_PLUGINS`), or the folders `setPlugins` said (also
+ *   a rejection, with `setPluginsListFailure`); it never reads the `plugins` folder of the machine
  * - `listSshHosts` answers a fixture of hosts (`FAKE_SSH_HOSTS`), or what `setSshHosts` said (also a
  *   rejection); it never reads the `~/.ssh/config` of the machine
  * - `listDockerContainers` answers a fixture of containers (`FAKE_DOCKER_CONTAINERS`), or what
@@ -1012,6 +1016,9 @@ export class FakeBackend implements Backend {
   #monospaceFonts: readonly string[];
   #hardware: BenchHardware | null;
   #modListFailure: Error | undefined;
+  /** The plugin folders `listPlugins` answers: the example, changed with `setPlugins`. */
+  #plugins: PluginFolder[] = FAKE_PLUGINS.map((plugin) => ({ ...plugin }));
+  #pluginsListFailure: Error | undefined;
   #scrollbackFailure: Error | undefined;
   #userThemeSaveFailure: Error | undefined;
   #benchSaveFailure: Error | undefined;
@@ -1759,6 +1766,26 @@ export class FakeBackend implements Backend {
   /** Makes `listMods` reject with `error` (the folder cannot be read); `undefined` undoes it. */
   setModListFailure(error: Error | undefined): void {
     this.#modListFailure = error;
+  }
+
+  async listPlugins(): Promise<PluginFolder[]> {
+    this.#record("listPlugins");
+    if (this.#pluginsListFailure) throw this.#pluginsListFailure;
+    return this.#plugins.map((plugin) => ({ ...plugin }));
+  }
+
+  /**
+   * Sets the plugin folders `listPlugins` answers (the example plugin until then), in the order
+   * given. Not a `Backend` call, so it is not recorded; the real folder lists by name and is read
+   * when asked, and so is this.
+   */
+  setPlugins(plugins: readonly PluginFolder[]): void {
+    this.#plugins = plugins.map((plugin) => ({ ...plugin }));
+  }
+
+  /** Makes `listPlugins` reject with `error` (the folder cannot be read); `undefined` undoes it. */
+  setPluginsListFailure(error: Error | undefined): void {
+    this.#pluginsListFailure = error;
   }
 
   /** What the real folder lists: valid names, not too large, the first `MAX_MODS` by name. */

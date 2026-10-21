@@ -51,6 +51,7 @@ const COMMANDS: &[&str] = &[
     "app_close_ready",
     "mod_list",
     "mod_watch",
+    "plugins_list",
     "window_effect_set",
     "background_image_read",
     "file_preview_read",

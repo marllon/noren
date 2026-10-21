@@ -35,6 +35,7 @@ import type {
   ModFile,
   OllamaMemoryReading,
   OllamaModels,
+  PluginFolder,
   SessionExit,
   SessionId,
   SessionLink,
@@ -533,6 +534,26 @@ export class TauriBackend implements Backend {
   async listMods(): Promise<ModFile[]> {
     const files = await this.#bridge.invoke<ModFile[]>("mod_list");
     return files.map(({ name, text }) => ({ name, text }));
+  }
+
+  async listPlugins(): Promise<PluginFolder[]> {
+    const folders = await this.#bridge.invoke<unknown>("plugins_list");
+    if (!Array.isArray(folders)) return [];
+    const plugins: PluginFolder[] = [];
+    for (const entry of folders as unknown[]) {
+      if (typeof entry !== "object" || entry === null) continue;
+      const { folder, manifest, main, error } = entry as Record<string, unknown>;
+      if (typeof folder !== "string") continue;
+      if (typeof manifest === "string" && typeof main === "string") {
+        plugins.push({ folder, manifest, main });
+      } else {
+        plugins.push({
+          folder,
+          error: typeof error === "string" ? error : "the folder could not be read",
+        });
+      }
+    }
+    return plugins;
   }
 
   watchMods(callback: (files: ModFile[]) => void): Unsubscribe {

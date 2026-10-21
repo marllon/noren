@@ -14,11 +14,12 @@ use noren_core::daemon::LinkState;
 use noren_core::{
     ACTIONS_FILE_PATH, AgentEntry, BENCH_DIR_NAME, BackgroundStore, BenchFile, BenchStore,
     CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, GitHead, MODS_DIR_NAME, ModFile, ModStore,
-    ModWatcher, ProcessSource, Profile, ProfileSet, SCROLLBACK_DIR_NAME, ScrollbackStore,
-    SessionEvent, SessionId, SpawnSpec, SshProfile, StateStore, SystemProcesses, THEMES_DIR_NAME,
-    ThemeStore, UserProfile, WindowEffect, Worktree, check_catalog, create_worktree,
-    detect_system_profiles, list_running_containers, list_worktrees, native_path, read_head,
-    read_project_file, read_ssh_hosts, remove_worktree, run_short, scan_sessions,
+    ModWatcher, PLUGINS_DIR_NAME, PluginFolder, PluginStore, ProcessSource, Profile, ProfileSet,
+    SCROLLBACK_DIR_NAME, ScrollbackStore, SessionEvent, SessionId, SpawnSpec, SshProfile,
+    StateStore, SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect, Worktree,
+    check_catalog, create_worktree, detect_system_profiles, list_running_containers,
+    list_worktrees, native_path, read_head, read_project_file, read_ssh_hosts, remove_worktree,
+    run_short, scan_sessions,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -1405,6 +1406,69 @@ pub async fn mod_watch(app: AppHandle, state: State<'_, ModState>) -> Result<(),
     })
 }
 
+/// One folder of the plugins folder as the interface sees it: its name and either the text of the
+/// manifest and of the main file or the sentence that says why it is not a plugin.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PluginFolderDto {
+    pub folder: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub main: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl From<PluginFolder> for PluginFolderDto {
+    fn from(plugin: PluginFolder) -> Self {
+        match plugin.files {
+            Ok(files) => Self {
+                folder: plugin.folder,
+                manifest: Some(files.manifest),
+                main: Some(files.main),
+                error: None,
+            },
+            Err(error) => Self {
+                folder: plugin.folder,
+                manifest: None,
+                main: None,
+                error: Some(error),
+            },
+        }
+    }
+}
+
+/// The plugin folders of the store (see [`PluginStore::list`]). Only reads: the folder is never
+/// made, and nothing watches it.
+pub fn list_plugins(store: &PluginStore) -> Result<Vec<PluginFolderDto>, String> {
+    store
+        .list()
+        .map(|plugins| plugins.into_iter().map(PluginFolderDto::from).collect())
+        .map_err(|e| e.to_string())
+}
+
+/// Builds the store for the plugins of the user: the `plugins` folder inside the app config
+/// folder. Only resolves the path: the folder is the user's to make.
+pub fn plugin_store(app: &AppHandle) -> Result<PluginStore, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("could not find the app config folder: {e}"))?;
+    Ok(PluginStore::new(dir.join(PLUGINS_DIR_NAME)))
+}
+
+/// The plugin folders of the user, by name: the text of `plugin.json` and of the file its `main`
+/// names, or why the folder is not a plugin. Checking the manifest and running the code belong to
+/// the interface.
+#[tauri::command]
+pub async fn plugins_list(store: State<'_, PluginStore>) -> Result<Vec<PluginFolderDto>, String> {
+    // Up to a few dozen files of 256 KiB: read off the thread that answers the interface.
+    let store = PluginStore::new(store.dir());
+    tauri::async_runtime::spawn_blocking(move || list_plugins(&store))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// Longest a project command (the `stop` of an action) may run before it is killed.
 pub const PROJECT_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -2434,6 +2498,51 @@ mod tests {
             .list()
             .expect_err("fails");
         assert!(message.starts_with("could not read the mods folder"));
+    }
+
+    #[test]
+    fn plugin_folders_reach_the_interface_as_files_or_a_sentence() {
+        let dir = TempDir::new("plugins-list");
+        let folder = dir.0.join("not-yet").join(PLUGINS_DIR_NAME);
+        let store = PluginStore::new(&folder);
+        assert_eq!(list_plugins(&store), Ok(Vec::new()));
+        assert!(!folder.exists(), "listing created the plugins folder");
+
+        std::fs::create_dir_all(folder.join("a")).expect("folder");
+        std::fs::create_dir_all(folder.join("b")).expect("folder");
+        std::fs::write(folder.join("a").join("plugin.json"), r#"{"main":"m.js"}"#).expect("write");
+        std::fs::write(folder.join("a").join("m.js"), "ok").expect("write");
+        assert_eq!(
+            list_plugins(&store),
+            Ok(vec![
+                PluginFolderDto {
+                    folder: "a".to_owned(),
+                    manifest: Some(r#"{"main":"m.js"}"#.to_owned()),
+                    main: Some("ok".to_owned()),
+                    error: None,
+                },
+                PluginFolderDto {
+                    folder: "b".to_owned(),
+                    manifest: None,
+                    main: None,
+                    error: Some("plugin.json not found".to_owned()),
+                },
+            ])
+        );
+        let json = serde_json::to_string(&list_plugins(&store).expect("list")).expect("json");
+        assert_eq!(
+            json,
+            r#"[{"folder":"a","manifest":"{\"main\":\"m.js\"}","main":"ok"},{"folder":"b","error":"plugin.json not found"}]"#
+        );
+    }
+
+    #[test]
+    fn plugin_list_failure_is_a_message_for_the_interface() {
+        let dir = TempDir::new("plugins-blocked");
+        let blocked = dir.0.join("blocked");
+        std::fs::write(&blocked, b"in the way").expect("write");
+        let message = list_plugins(&PluginStore::new(&blocked)).expect_err("fails");
+        assert!(message.starts_with("could not read the plugins folder"));
     }
 
     #[test]

@@ -10,6 +10,7 @@ import type { AiBackend } from "./ai";
 import type { BackgroundImageFile } from "./background";
 import type { BenchHardware } from "./bench-models";
 import type { BrowserBounds } from "./browser";
+import type { PluginFolder } from "./plugins-load";
 import type { FilePreview } from "./file-preview";
 import type { GitDiff } from "./git-diff";
 import type { Id } from "./types";
@@ -324,6 +325,17 @@ export interface Backend {
    * leaves the list as it was is not delivered. Stops when the returned function is called.
    */
   watchMods(callback: (files: ModFile[]) => void): Unsubscribe;
+  /**
+   * The folders of the plugins of the user (`plugins/<folder>/` next to `config.jsonc`), in the
+   * order of the folder names: for each, the text of `plugin.json` and of the file its `main`
+   * names, or a short sentence about why the folder could not be read as a plugin (no
+   * `plugin.json`, a `main` that is absolute, uses `..` or leaves the folder by a link, is missing,
+   * is larger than 256 KiB or is not UTF-8 text). Files and folders whose name starts with a dot
+   * are left out; at most 50 folders are listed. The folder missing is no plugins and is never
+   * made. Whether the text is a valid manifest is the caller's job (`checkPluginFolders`). Rejects
+   * when the folder cannot be read.
+   */
+  listPlugins(): Promise<PluginFolder[]>;
   /**
    * Asks the system to paint `effect` behind the window (`none` takes any effect away), and tells
    * what the window has afterwards. It never rejects because the system cannot paint the effect:

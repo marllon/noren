@@ -14,7 +14,8 @@
 //
 // Options: --skip-e2e, --skip-pty, --skip-app, --only-app (the other two skipped), --no-build (use
 // the release binary that is already there), --first-only (the runs of 1 tab only, no 30-tab memory
-// runs; NOR-F11-01d, to compare two builds of the first prompt). Environment: NOREN_PERF_BINARY (the
+// runs; NOR-F11-01d, to compare two builds of the first prompt), --app-tabs <n> (the many-tabs side
+// of the app runs opens n tabs, 2 to 100, instead of 30; NOR-F20-04). Environment: NOREN_PERF_BINARY (the
 // `noren.exe` to run instead of target/release/noren.exe, with --no-build); NOREN_PERF_MB (size of the file the PTY
 // prints, default 50), NOREN_PERF_REPS (repetitions of the PTY test and of the app, default 5),
 // NOREN_PERF_PRODUCER (`type` or `cat`), NOREN_PERF_LINE_BYTES, NOREN_E2E_PORT (see docs/DEV.md).
@@ -33,7 +34,15 @@ import { dirname, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { summarize } from "../e2e/perf-stats.ts";
-import { launchTo, marksSince, processTree, sumMemory } from "./perf-app-lib.mjs";
+import {
+  appSummary,
+  launchTo,
+  marksSince,
+  parseAppTabs,
+  processTree,
+  resultWaitSeconds,
+  sumMemory,
+} from "./perf-app-lib.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const isWindows = process.platform === "win32";
@@ -95,6 +104,13 @@ function stop(message) {
 }
 
 const APP_REPS = Number(process.env.NOREN_PERF_REPS ?? 5);
+// The many-tabs side of the app runs: 30 tabs, or `--app-tabs <n>` (NOR-F20-04: 100).
+let MANY_TABS;
+try {
+  MANY_TABS = parseAppTabs(process.argv.slice(2));
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
 const SETTLE_MS = 3000;
 const MEMORY_SAMPLES = 3;
 const MEMORY_GAP_MS = 1000;
@@ -157,7 +173,7 @@ async function runApp(binary, tabs) {
   });
   const exited = new Promise((done) => child.once("exit", done));
   try {
-    const result = await waitForResult(out, child, 120);
+    const result = await waitForResult(out, child, resultWaitSeconds(tabs));
     if (result.error) stop(`the app reported: ${result.error}`);
     const prompts = result.promptsUnixMs.map((at) => launchTo(launched, at));
     await sleep(SETTLE_MS);
@@ -233,13 +249,13 @@ async function measureApp() {
 
   console.log("\n== real app: hidden `noren --smoke-perf`, release build ==");
   const first = [];
-  const thirty = [];
+  const many = [];
   for (let rep = 1; rep <= APP_REPS; rep++) {
     const kinds = args.has("--first-only")
       ? [[1, first]]
       : [
           [1, first],
-          [30, thirty],
+          [MANY_TABS, many],
         ];
     for (const [tabs, into] of kinds) {
       const entry = await runApp(binary, tabs);
@@ -249,61 +265,7 @@ async function measureApp() {
       appendFileSync(out, `${line}\n`);
     }
   }
-  const pick = (list, key) => summarize(list.map((entry) => entry[key]));
-  const rolePick = (list, name, key) => summarize(list.map((entry) => entry.roles[name][key]));
-  const summary = {
-    "first prompt, 1 tab (ms from process creation)": pick(first, "firstPromptMs"),
-    "first prompt, 1 tab (ms from launch in the script)": pick(first, "firstPromptFromLaunchMs"),
-    "first prompt, 1 tab (ms from main)": pick(first, "firstPromptFromMainMs"),
-    "app-ready, 1 tab (ms from main)": pick(first, "appReadyFromMainMs"),
-  };
-  if (thirty.length > 0) {
-    Object.assign(summary, {
-      "first prompt, 30 tabs (ms from process creation)": pick(thirty, "firstPromptMs"),
-      "last of 30 prompts (ms from process creation)": pick(thirty, "lastPromptMs"),
-      "memory, 30 tabs, TOTAL by the spec: private working set of Noren + web view + consoles (MB)":
-        pick(thirty, "ownedPrivateWorkingSetMb"),
-      "memory, 30 tabs, working set sum, whole tree (MB)": pick(thirty, "workingSetMb"),
-      "memory, 30 tabs, private working set sum, whole tree (MB)": pick(
-        thirty,
-        "privateWorkingSetMb",
-      ),
-      "memory, 30 tabs, Noren process, working set (MB)": rolePick(thirty, "noren", "workingSetMb"),
-      "memory, 30 tabs, web view processes, working set (MB)": rolePick(
-        thirty,
-        "webview",
-        "workingSetMb",
-      ),
-      "memory, 30 tabs, console hosts, working set (MB)": rolePick(
-        thirty,
-        "consoles",
-        "workingSetMb",
-      ),
-      "memory, 30 tabs, shells, working set (MB)": rolePick(thirty, "shells", "workingSetMb"),
-      "memory, 30 tabs, web view processes, private (MB)": rolePick(
-        thirty,
-        "webview",
-        "privateWorkingSetMb",
-      ),
-      "memory, 30 tabs, console hosts, private (MB)": rolePick(
-        thirty,
-        "consoles",
-        "privateWorkingSetMb",
-      ),
-      "memory, 30 tabs, shells, private (MB)": rolePick(thirty, "shells", "privateWorkingSetMb"),
-      "memory, 30 tabs, Noren process, private (MB)": rolePick(
-        thirty,
-        "noren",
-        "privateWorkingSetMb",
-      ),
-      "processes, 30 tabs": pick(thirty, "processes"),
-    });
-  }
-  Object.assign(summary, {
-    "memory, 1 tab, working set sum, whole tree (MB)": pick(first, "workingSetMb"),
-    "memory, 1 tab, private working set sum, whole tree (MB)": pick(first, "privateWorkingSetMb"),
-    "memory, 1 tab, TOTAL by the spec (MB)": pick(first, "ownedPrivateWorkingSetMb"),
-  });
+  const summary = appSummary(first, many, MANY_TABS, summarize);
   // Where the time goes: each mark of the 1-tab runs, median over the repetitions (NOR-F11-01d).
   const markNames = [...new Set(first.flatMap((entry) => Object.keys(entry.marks)))];
   const markRows = markNames

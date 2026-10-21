@@ -2,8 +2,17 @@
 // packages/ and apps/).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { median } from "../e2e/perf-stats.ts";
-import { launchTo, marksSince, processTree, sumMemory } from "./perf-app-lib.mjs";
+import { median, summarize } from "../e2e/perf-stats.ts";
+import {
+  DEFAULT_MANY_TABS,
+  appSummary,
+  launchTo,
+  marksSince,
+  parseAppTabs,
+  processTree,
+  resultWaitSeconds,
+  sumMemory,
+} from "./perf-app-lib.mjs";
 
 const MB = 1024 * 1024;
 const proc = (pid, ppid, name, ws = MB, wsPrivate = MB / 2) => ({ pid, ppid, name, ws, wsPrivate });
@@ -97,4 +106,94 @@ test("the marks are counted from the creation of the process, to a tenth, first 
   ]);
   assert.deepEqual(since, { main: 73.4, "setup-start": 361.6 });
   assert.deepEqual(marksSince(1_000, undefined), {});
+});
+
+const runEntry = (firstPromptMs, ownedMb) => ({
+  firstPromptMs,
+  lastPromptMs: firstPromptMs + 100,
+  firstPromptFromLaunchMs: firstPromptMs + 5,
+  firstPromptFromMainMs: firstPromptMs - 70,
+  appReadyFromMainMs: firstPromptMs - 80,
+  workingSetMb: ownedMb * 10,
+  privateWorkingSetMb: ownedMb * 4,
+  ownedPrivateWorkingSetMb: ownedMb,
+  processes: 12,
+  roles: Object.fromEntries(
+    ["noren", "webview", "consoles", "shells"].map((role) => [
+      role,
+      { workingSetMb: 10, privateWorkingSetMb: 5 },
+    ]),
+  ),
+});
+
+test("--app-tabs keeps 30 as the default and takes a number from 2 to 100", () => {
+  assert.equal(DEFAULT_MANY_TABS, 30);
+  assert.equal(parseAppTabs([]), 30);
+  assert.equal(parseAppTabs(["--only-app", "--no-build"]), 30);
+  assert.equal(parseAppTabs(["--only-app", "--app-tabs", "100"]), 100);
+  assert.equal(parseAppTabs(["--app-tabs=45", "--no-build"]), 45);
+  assert.equal(parseAppTabs(["--app-tabs", "2"]), 2);
+});
+
+test("--app-tabs refuses what the app cannot open, with a sentence that says so", () => {
+  for (const bad of [["--app-tabs"], ["--app-tabs", "--no-build"], ["--app-tabs", ""]]) {
+    assert.throws(() => parseAppTabs(bad), /--app-tabs/);
+  }
+  for (const text of ["0", "1", "101", "1000", "-5", "30.5", "abc", "1e2", "0x10", " 30"]) {
+    assert.throws(
+      () => parseAppTabs(["--app-tabs", text]),
+      /takes a whole number from 2 to 100/,
+      text,
+    );
+  }
+});
+
+test("the wait for the report grows with the tabs and never drops under 120 s", () => {
+  assert.equal(resultWaitSeconds(1), 120);
+  assert.equal(resultWaitSeconds(30), 150);
+  assert.equal(resultWaitSeconds(100), 360);
+});
+
+test("the summary of the default run keeps the labels of the 30-tab side", () => {
+  const summary = appSummary([runEntry(600, 100)], [runEntry(1400, 270)], 30, summarize);
+  const labels = Object.keys(summary);
+  assert.ok(labels.includes("first prompt, 30 tabs (ms from process creation)"));
+  assert.ok(labels.includes("last of 30 prompts (ms from process creation)"));
+  assert.ok(
+    labels.includes(
+      "memory, 30 tabs, TOTAL by the spec: private working set of Noren + web view + consoles (MB)",
+    ),
+  );
+  assert.ok(labels.includes("processes, 30 tabs"));
+  assert.equal(
+    summary[
+      "memory, 30 tabs, TOTAL by the spec: private working set of Noren + web view + consoles (MB)"
+    ].median,
+    270,
+  );
+  assert.equal(summary["first prompt, 1 tab (ms from process creation)"].median, 600);
+  assert.equal(summary["memory, 1 tab, TOTAL by the spec (MB)"].median, 100);
+});
+
+test("with --app-tabs 100 the many-tabs rows say 100 and carry the numbers of that side", () => {
+  const first = [runEntry(600, 100), runEntry(500, 100), runEntry(700, 100)];
+  const many = [runEntry(2000, 700), runEntry(2100, 800), runEntry(2200, 750)];
+  const summary = appSummary(first, many, 100, summarize);
+  const labels = Object.keys(summary);
+  assert.equal(labels.filter((label) => label.includes("30")).length, 0);
+  assert.equal(labels.filter((label) => label.includes("100 tabs")).length, 13);
+  const total =
+    summary[
+      "memory, 100 tabs, TOTAL by the spec: private working set of Noren + web view + consoles (MB)"
+    ];
+  assert.deepEqual([total.median, total.min, total.max, total.n], [750, 700, 800, 3]);
+  assert.equal(summary["last of 100 prompts (ms from process creation)"].median, 2200);
+  assert.equal(summary["first prompt, 1 tab (ms from process creation)"].median, 600);
+  assert.equal(summary["processes, 100 tabs"].median, 12);
+});
+
+test("a run with no many-tabs side (--first-only) has only the 1-tab rows", () => {
+  const summary = appSummary([runEntry(600, 100)], [], 100, summarize);
+  assert.equal(Object.keys(summary).filter((label) => /\d{2,3} tabs/.test(label)).length, 0);
+  assert.ok("first prompt, 1 tab (ms from process creation)" in summary);
 });

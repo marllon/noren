@@ -106,3 +106,94 @@ export function marksSince(createdMs, marks) {
   }
   return since;
 }
+
+/** Tabs of the many-tabs side of the app measurement when `--app-tabs` is not given (NOR-F11-01b). */
+export const DEFAULT_MANY_TABS = 30;
+/** The most tabs `noren --smoke-perf --perf-tabs` takes (`MAX_TABS` in `src-tauri/src/perf.rs`). */
+export const MAX_MANY_TABS = 100;
+
+/**
+ * The number of tabs of the many-tabs side from the arguments of the script: `--app-tabs <n>`
+ * (`--app-tabs=<n>` too), a whole number from 2 to 100, or the default (30) when the option is not
+ * there. It throws a sentence that says what is wrong, so the script can end before it launches
+ * anything.
+ */
+export function parseAppTabs(argv) {
+  let text;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--app-tabs") {
+      text = argv[i + 1];
+      if (text === undefined || text.startsWith("--")) throw new Error("--app-tabs needs a number");
+    } else if (argv[i].startsWith("--app-tabs=")) {
+      text = argv[i].slice("--app-tabs=".length);
+    }
+  }
+  if (text === undefined) return DEFAULT_MANY_TABS;
+  const tabs = /^\d+$/.test(text) ? Number(text) : Number.NaN;
+  if (!Number.isInteger(tabs) || tabs < 2 || tabs > MAX_MANY_TABS) {
+    throw new Error(`--app-tabs takes a whole number from 2 to ${MAX_MANY_TABS}, not ${text}`);
+  }
+  return tabs;
+}
+
+/**
+ * Seconds the script waits for the report of the prompts of a run. The shells of a restored
+ * workspace start one after the other, so the wait grows with the tabs: never under 120 s.
+ */
+export function resultWaitSeconds(tabs) {
+  return Math.max(120, 60 + 3 * tabs);
+}
+
+/**
+ * The summary the script prints and writes (`summarize` is `e2e/perf-stats.ts`): the 1-tab runs
+ * (`first`) and the many-tabs runs (`many`, `tabs` tabs each; none with `--first-only`), as
+ * `{ label: Summary }`. The labels of the 30-tab side are the ones `docs/PERF.md` has always quoted.
+ */
+export function appSummary(first, many, tabs, summarize) {
+  const pick = (list, key) => summarize(list.map((entry) => entry[key]));
+  const rolePick = (list, name, key) => summarize(list.map((entry) => entry.roles[name][key]));
+  const summary = {
+    "first prompt, 1 tab (ms from process creation)": pick(first, "firstPromptMs"),
+    "first prompt, 1 tab (ms from launch in the script)": pick(first, "firstPromptFromLaunchMs"),
+    "first prompt, 1 tab (ms from main)": pick(first, "firstPromptFromMainMs"),
+    "app-ready, 1 tab (ms from main)": pick(first, "appReadyFromMainMs"),
+  };
+  if (many.length > 0) {
+    const t = `${tabs} tabs`;
+    Object.assign(summary, {
+      [`first prompt, ${t} (ms from process creation)`]: pick(many, "firstPromptMs"),
+      [`last of ${tabs} prompts (ms from process creation)`]: pick(many, "lastPromptMs"),
+      [`memory, ${t}, TOTAL by the spec: private working set of Noren + web view + consoles (MB)`]:
+        pick(many, "ownedPrivateWorkingSetMb"),
+      [`memory, ${t}, working set sum, whole tree (MB)`]: pick(many, "workingSetMb"),
+      [`memory, ${t}, private working set sum, whole tree (MB)`]: pick(many, "privateWorkingSetMb"),
+      [`memory, ${t}, Noren process, working set (MB)`]: rolePick(many, "noren", "workingSetMb"),
+      [`memory, ${t}, web view processes, working set (MB)`]: rolePick(
+        many,
+        "webview",
+        "workingSetMb",
+      ),
+      [`memory, ${t}, console hosts, working set (MB)`]: rolePick(many, "consoles", "workingSetMb"),
+      [`memory, ${t}, shells, working set (MB)`]: rolePick(many, "shells", "workingSetMb"),
+      [`memory, ${t}, web view processes, private (MB)`]: rolePick(
+        many,
+        "webview",
+        "privateWorkingSetMb",
+      ),
+      [`memory, ${t}, console hosts, private (MB)`]: rolePick(
+        many,
+        "consoles",
+        "privateWorkingSetMb",
+      ),
+      [`memory, ${t}, shells, private (MB)`]: rolePick(many, "shells", "privateWorkingSetMb"),
+      [`memory, ${t}, Noren process, private (MB)`]: rolePick(many, "noren", "privateWorkingSetMb"),
+      [`processes, ${t}`]: pick(many, "processes"),
+    });
+  }
+  Object.assign(summary, {
+    "memory, 1 tab, working set sum, whole tree (MB)": pick(first, "workingSetMb"),
+    "memory, 1 tab, private working set sum, whole tree (MB)": pick(first, "privateWorkingSetMb"),
+    "memory, 1 tab, TOTAL by the spec (MB)": pick(first, "ownedPrivateWorkingSetMb"),
+  });
+  return summary;
+}

@@ -1,13 +1,16 @@
 # Performance
 
-The targets of the product, how each one is measured, and what was measured. Five tasks fill this
+The targets of the product, how each one is measured, and what was measured. Six tasks fill this
 page: NOR-F11-01a (the measurements that need no window, rows 1 to 4 of "Results"), NOR-F11-01b
 (the ones that need the real app in a release build: the first prompt and the memory of 30 tabs,
 rows 5 and 6), NOR-F11-01c (why the first switch of space was sometimes slow, and the fix, row 4),
-NOR-F11-01d (where the time to the first prompt went, and the cuts, row 5) and NOR-F11-01e (what
-"total memory" counts, and the verdict of row 6).
+NOR-F11-01d (where the time to the first prompt went, and the cuts, row 5), NOR-F11-01e (what
+"total memory" counts, and the verdict of row 6) and NOR-F20-04 (the harder targets of version 1,
+row 7, and the report on the renderer in [RENDERER.md](RENDERER.md)).
 
 ## Targets
+
+The first table is the targets of the first release; the harder ones of version 1 follow it.
 
 | #   | Target (spec, section 11)                                                  | Measured in | Status                                                                                                                         |
 | --- | -------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -16,6 +19,13 @@ NOR-F11-01d (where the time to the first prompt went, and the cuts, row 5) and N
 | 3   | 30 tabs open: total memory under 500 MB                                    | NOR-F11-01e | **met**: 270.1 MB median (269.5 to 272.4), private working set of Noren, web view and console hosts; whole tree 3,555 MB of WS |
 | 4   | Changing space: under 100 ms                                               | NOR-F11-01a | **met** (16 ms), also the first switch of a page (43.7 ms median, worst 49.8 of 25) after NOR-F11-01c                          |
 |     | Terminal throughput (no number in the spec)                                | NOR-F11-01a | measured, see below                                                                                                            |
+
+Version 1 (NOR-F20-04), same definitions, same release build, row 7 below:
+
+| #   | Target (version 1)                                                  | Measured in | Status                                                                                                            |
+| --- | ------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------- |
+| v1a | Opening the app to the first prompt: under 500 ms (median of 5)     | NOR-F20-04  | **not met, borderline**: 526, 478, 491 and 495 ms in four series of 5 (497 over all 20; 9 of 20 runs over 500 ms) |
+| v1b | 100 tabs open: total memory under 800 MB (same definition as row 3) | NOR-F20-04  | **met**: 467.5 MB median (465.7 to 472.7), 41 % under the target; whole tree 10,434 MB of WS                      |
 
 ## Machine
 
@@ -98,8 +108,10 @@ node scripts/perf.mjs --skip-e2e   # only the PTY ones (about 17 minutes)
 node scripts/perf.mjs --only-app   # only the real app: release build, then 5 + 5 hidden runs (about 5 minutes)
 ```
 
-`--only-app` also takes `--no-build` (use the release binary that is there) and `--first-only` (only
-the 1-tab runs, no 30-tab memory runs), and the environment variable `NOREN_PERF_BINARY` (run that
+`--only-app` also takes `--no-build` (use the release binary that is there), `--first-only` (only
+the 1-tab runs, no many-tabs memory runs) and `--app-tabs <n>` (the many-tabs side opens `n` tabs,
+2 to 100, instead of 30: `--app-tabs 100` is the v1 memory target; the rows of the summary then say
+`n tabs`), and the environment variable `NOREN_PERF_BINARY` (run that
 `noren.exe` instead of `target/release/noren.exe`; its `resources/` folder has to sit beside it), which
 is how two builds are launched alternately for a comparison on the same day. Besides the summary it
 prints the stamps of the app and of the page ("Where the time went", section 5). It refuses to start if a
@@ -508,6 +520,125 @@ made 1.5 s after the page is up: 3,556.1 MB of working set (3,551.1 to 3,590.9),
 to 1,391.5), 501.4 MB in the web view processes, 68 processes. That is about 95 MB under 01b; the cause was not
 isolated (the repetitions agree within 0.2 %, but it is one day against another); the run of
 NOR-F11-01e (3,555.4 MB, above) agrees with this one.
+
+### 7. Version 1: the first prompt under 500 ms and 100 tabs under 800 MB (NOR-F20-04)
+
+The two targets of version 1, measured the way rows 5 and 6 are, in the release build of the commit
+before this task (`f97d5ce`, built by `pnpm desktop:build` the same day; this task changed no code of
+the app). `node scripts/perf.mjs --only-app --no-build --app-tabs 100` (1-tab runs and 100-tab runs
+alternating, 5 each, hidden window), then `--only-app --no-build` (1 and 30 tabs) and
+`--only-app --no-build --first-only` twice more, on the machine above with nothing else running.
+After every run the script checks that no `noren.exe` is left, and `Get-Process noren` was empty at
+the end of the round. The defined rule for a target is the one of the roadmap: the **median of 5**
+repetitions. Because the first prompt sat right at its target, it was measured in four series of 5
+instead of one.
+
+#### v1a. First prompt under 500 ms
+
+Time from the creation of the `noren.exe` process to the prompt in the terminal, one tab saved, in
+ms (the "from the creation of the process" clock of row 5):
+
+| Series                                       | 1   | 2   | 3   | 4   | 5   | Median  | Min / max | Verdict     |
+| -------------------------------------------- | --- | --- | --- | --- | --- | ------- | --------- | ----------- |
+| A: with the 100-tab runs (first after build) | 572 | 515 | 514 | 557 | 526 | **526** | 514 / 572 | over        |
+| B: with the 30-tab runs                      | 449 | 475 | 515 | 510 | 478 | **478** | 449 / 515 | under       |
+| C: `--first-only`                            | 491 | 489 | 514 | 479 | 498 | **491** | 479 / 514 | under       |
+| D: `--first-only`                            | 473 | 479 | 510 | 496 | 495 | **495** | 473 / 510 | under       |
+| All 20 runs                                  |     |     |     |     |     | **497** | 449 / 572 | on the line |
+
+**Target: under 500 ms in the median of 5. Verdict: not met, borderline.** Three series of four are
+under it, but by 22, 9 and 5 ms; the fourth is 26 ms over, 9 of the 20 runs are over 500 ms and the
+slowest is 572. The median of all 20 is 497, 3 ms under the line, and the difference between series
+(478 to 526) is wider than that margin, so a pass today is not a pass tomorrow. Series A is the
+first after the build, and the disk cache of the machine may have been colder; it was not
+isolated. The figure has no room for anything that is slower on another computer or in a window
+that is shown (not verified, D19: `apps/desktop/src-tauri/src/main.rs:207`, `tauri.conf.json:20`).
+It stays **not met** until a series with a margin says otherwise. Row 5 measured 621 ms on the day
+of NOR-F11-01d; the machine is noisy from one day to the next (see there), so the two days are not
+compared.
+
+Where the 478 to 526 ms go (the stamps of row 5, median of 5 in ms from the creation of the process;
+series B is a good run, series A a slow one):
+
+| Step (stamp)                                       | B        | A        | Segment                                                            |
+| -------------------------------------------------- | -------- | -------- | ------------------------------------------------------------------ |
+| `main` starts                                      | 76       | 86       | 76 to 86: the process, the loader, before the app's code           |
+| builder done (`built`)                             | 84       | 95       | 8 to 9                                                             |
+| shell started ahead (`shell-spawned`)              | 147      | 184      | off the path                                                       |
+| web view navigates (`page-navigation-start`)       | 281      | 322      | **197 to 227 ms**: WebView2 creating its environment and processes |
+| shell prompt bytes (`shell-prompt-bytes`)          | 373      | 417      | the shell is ready 100 ms before the terminal can show it          |
+| page script runs (`page-script`)                   | 375      | 420      | **94 to 98 ms**: loading and parsing the page's scripts            |
+| boot begins, ends (`boot-start`, `boot-done`)      | 397, 428 | 441, 469 | 28 to 31 ms: settings, themes, mods, profiles, the shell claimed   |
+| terminal mounts (`terminal-mount`)                 | 440      | 482      | 11 to 13 ms after the render                                       |
+| terminal open, listening (`terminal-listening`)    | 461      | 506      | 21 to 24 ms: xterm opens, the WebGL context is made                |
+| page says it is up (`app-ready`)                   | 464      | 510      |                                                                    |
+| **prompt taken in by xterm (`perf-prompt-shown`)** | 478      | 526      | 17 to 20 ms after the terminal listens                             |
+
+By process: the app's own code (`noren.exe`, Rust) is on the path only up to `built` (84 to 95 ms,
+18 % of the total) and the shell is not on it at all, since its prompt bytes are ready about 100 ms
+before the terminal can take them. What is left, 394 to 431 ms (about 82 %), is the web view
+process and the page: WebView2 starting (about 40 %), the page's scripts being loaded (about 20 %),
+and the page booting, mounting and opening the terminal (about 17 %). So the time is in the part the
+app controls the least.
+
+Hypothesis for the cut (not a profile, nothing was changed or tried in this round, as the
+task forbids optimizing): (1) the 197 to 227 ms between the end of the builder and the first
+navigation is the biggest block and is WebView2 creating its environment; starting that earlier or
+in parallel with the rest of `setup`, or checking what the user data folder costs, is the most
+that is left to take, and its size is unknown. (2) The first path of the page loads about 1.4 MB of
+JavaScript in six large chunks (`TerminalView` 547 KB, `App` 245 KB, `index` 215 KB, `jsx-runtime`
+179 KB, `SplitLayout` 147 KB, `boot` 72 KB: the sizes of the built files in `apps/desktop/dist/assets`, before compression);
+splitting what the first terminal does not need (the panes of the AI, the browser, the diff, the
+settings) from that path could take part of the 94 to 98 ms. (3) the 21 to 24 ms to open the
+terminal include the first WebGL context; the first terminal could be drawn by the DOM renderer and
+switch to WebGL after the prompt, at the price of a visible change in the first frames. A gain of 30
+to 50 ms is what a safe pass needs; (1) and (2) are the only places that can give it.
+
+With many tabs saved the first prompt is later, and it grows with the number of tabs (`first prompt`
+is the earliest prompt of any tab, `last` the last of them), medians of 5:
+
+| Tabs saved | First prompt of any tab   | Last prompt               | Extra over 1 tab, per tab |
+| ---------- | ------------------------- | ------------------------- | ------------------------- |
+| 1          | 478 to 526                | same                      |                           |
+| 30         | 1,223 ms (1,183 to 1,263) | 1,359 ms (1,307 to 1,376) | 26 ms                     |
+| 100        | 3,448 ms (3,369 to 3,592) | 3,559 ms (3,450 to 3,751) | 30 ms                     |
+
+The target is the first start (one tab), so this is not a v1 miss, but a person who closes the app
+with 100 tabs waits 3.4 s for the first prompt, because the terminals of all the tabs are mounted
+before the first one shows (hypothesis from the flat cost per tab, not a profile). It is written as
+an open finding in the report of the round.
+
+#### v1b. 100 tabs under 800 MB
+
+`noren --smoke-perf --perf-tabs 100`: 100 tabs in one space, one Windows PowerShell each, all 100
+prompts on screen, 3 seconds of rest, then the process list; 5 repetitions, each the median of three
+readings. **Total memory** is the definition of row 6: the private working set summed over `noren.exe`,
+its web view processes and the console hosts made for the tabs; the 100 shells are not counted.
+208 processes in every run (1 `noren.exe`, 7 `msedgewebview2.exe`, 100 `conhost.exe`, 100
+`powershell.exe`). In MB:
+
+| Repetition                                         | 1        | 2        | 3        | 4        | 5        | Median       | Min / max           |
+| -------------------------------------------------- | -------- | -------- | -------- | -------- | -------- | ------------ | ------------------- |
+| `noren.exe`                                        | 26.0     | 24.1     | 24.8     | 24.9     | 25.5     | 24.9         | 24.1 / 26.0         |
+| Web view (7 processes)                             | 343.1    | 343.5    | 345.8    | 344.6    | 349.3    | 344.6        | 343.1 / 349.3       |
+| Console hosts (100 processes)                      | 98.2     | 98.1     | 98.1     | 98.1     | 98.0     | 98.1         | 98.0 / 98.2         |
+| **Total memory (the sum of the three rows above)** | 467.3    | 465.7    | 468.7    | 467.5    | 472.7    | **467.5**    | 465.7 / 472.7       |
+| _Not counted:_ 100 shells (private working set)    | 3,658.1  | 3,659.4  | 3,660.7  | 3,679.5  | 3,649.2  | 3,659.4      | 3,649.2 / 3,679.5   |
+| _Beside it:_ private working set, whole tree       | 4,125.3  | 4,125.1  | 4,129.4  | 4,147.0  | 4,121.9  | 4,125.3      | 4,121.9 / 4,147.0   |
+| _Beside it:_ **working set summed over the tree**  | 10,434.4 | 10,435.1 | 10,417.6 | 10,444.1 | 10,418.5 | **10,434.4** | 10,417.6 / 10,444.1 |
+
+**Target: 100 tabs open, total memory under 800 MB. Verdict: met**: 467.5 MB median, 465.7 to 472.7 in
+the 5 repetitions (41 % under the target, a margin of 332 MB; the spread is 1.5 %). Beside it,
+the same script on the same day with 30 tabs: 262.6 MB (260.1 to 265.9), where row 6 had 270.1, and
+with 1 tab 148.2 to 150.7 MB across the series. A tab therefore costs 2.9 MB of Noren's own between
+30 and 100 tabs (web view 1.8 MB, console host 1.0 MB, `noren.exe` 0.1 MB): the growth is linear and
+the fixed part (the total with one tab, about 149 MB) is a third of it. What the figure
+leaves out, being the user's: the 100 shells are 3,659 MB of private working set (89 % of the private
+working set of the tree) and 8,881 MB of working set here; no terminal that runs 100 of these shells
+can count them and stay under 800 MB, which is why the definition of row 6 leaves them out. The 100
+tabs did not bring the app or the machine down: all 100 prompts arrived in every repetition, the
+script's wait for the report scales with the tabs (`resultWaitSeconds`), and no `noren.exe` was left.
+Not verified (D19): the memory with the window shown; the margin to the target is 332 MB.
 
 ## Limits of these numbers
 

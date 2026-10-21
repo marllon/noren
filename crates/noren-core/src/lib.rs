@@ -2,6 +2,7 @@
 
 pub mod agents;
 pub mod ai;
+pub mod api;
 pub mod background;
 pub mod bench;
 pub mod config;

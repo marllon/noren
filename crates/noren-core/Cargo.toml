@@ -59,6 +59,11 @@ tokio-util = { version = "0.7.20", default-features = false }
 # futures-util's `StreamExt::next` over the body stream. 0.3, MIT OR Apache-2.0 (already in the
 # tree through Tauri).
 futures-util = { version = "0.3", default-features = false }
+# The token of the local API (`api` module) is 32 bytes from the random generator of the system
+# (BCryptGenRandom / ProcessPrng on Windows, getrandom(2) on Linux, getentropy on macOS), which
+# std does not expose. 0.3.4, MIT OR Apache-2.0 (already in the tree through Tauri and
+# rand_core; no crate is added, only the edge from noren-core).
+getrandom = "0.3"
 
 # The API keys of the AI providers live in the keychain of the system, never in a file (`vault`
 # module). `keyring` 3.6.3 (MIT OR Apache-2.0) is one small API over the native store of each

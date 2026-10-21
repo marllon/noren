@@ -445,7 +445,14 @@ export type {
 } from "./sync";
 export { sha256Hex, sha256HexOfBytes } from "./sha256";
 export { DEFAULT_PUSH_ON_CLOSE, closePushDecision, pushOnCloseAllowed } from "./sync-close";
-export type { ClosePushDecision, ClosePushFacts, ClosePushSkip } from "./sync-close";
+export type {
+  ClosePushDecision,
+  ClosePushFacts,
+  ClosePushSkip,
+  ClosePushStatus,
+} from "./sync-close";
+export { DEFAULT_SYNC_METHOD, SYNC_METHODS, syncMethodOf } from "./sync-method";
+export type { SyncMethod } from "./sync-method";
 export { planSpacePull, planSpacePush, spaceFileSignature, spacesToRead } from "./sync-spaces";
 export type { PlanPushOptions, SpacePullPlan, SpacePushPlan, SpacePushSkip } from "./sync-spaces";
 export { AGENT_LINE_MAX, buildAgentList, firstWaitingAgent, truncateLine } from "./agent-list";

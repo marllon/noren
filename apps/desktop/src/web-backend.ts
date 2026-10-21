@@ -83,7 +83,11 @@ export const WEB_GALLERY_KEY = "noren.web.gallery";
  * `localFiles` is what the config folder of this computer holds for the sync (path to text, only
  * paths on the closed list travel), `remoteFiles` is what another computer already pushed to the
  * remote, and `failure` (optional) is a message every sync call then fails with (git is missing,
- * say). Nothing runs git or touches a network; without it the remote is empty.
+ * say). Nothing runs git or touches a network; without it the remote is empty. For the sync through
+ * a gist (NOR-F19-02b) the same object may also hold `gists` (the gists GitHub holds, by id, each
+ * `{ public?, files }` with its files by flat name, as `putSyncGist` takes them) and `gistFailure`
+ * (a message every call of the gist sync then fails with); the files of this computer are the
+ * `localFiles` the two methods share.
  */
 export const WEB_SYNC_KEY = "noren.web.sync";
 
@@ -197,6 +201,8 @@ export interface SyncSeed {
   localFiles: Record<string, string>;
   remoteFiles: Record<string, string>;
   failure?: string;
+  gists: Record<string, { public: boolean; files: Record<string, string> }>;
+  gistFailure?: string;
 }
 
 /** The sync seeded under `WEB_SYNC_KEY`, or `undefined` when there is no usable seed. */
@@ -212,11 +218,24 @@ export function seededSync(storage: Pick<Storage, "getItem">): SyncSeed | undefi
       for (const [path, text] of Object.entries(of)) if (typeof text === "string") out[path] = text;
       return out;
     };
-    const { localFiles, remoteFiles, failure } = value as Record<string, unknown>;
+    const { localFiles, remoteFiles, failure, gists, gistFailure } = value as Record<
+      string,
+      unknown
+    >;
+    const seededGists: SyncSeed["gists"] = {};
+    if (typeof gists === "object" && gists !== null && !Array.isArray(gists)) {
+      for (const [id, gist] of Object.entries(gists)) {
+        if (typeof gist !== "object" || gist === null || Array.isArray(gist)) continue;
+        const held = gist as Record<string, unknown>;
+        seededGists[id] = { public: held["public"] === true, files: files(held["files"]) };
+      }
+    }
     return {
       localFiles: files(localFiles),
       remoteFiles: files(remoteFiles),
       ...(typeof failure === "string" ? { failure } : {}),
+      gists: seededGists,
+      ...(typeof gistFailure === "string" ? { gistFailure } : {}),
     };
   } catch {
     return undefined;
@@ -576,6 +595,8 @@ export class WebBackend extends FakeBackend {
         this.setSyncRemoteFile(path, text);
       }
       if (sync.failure !== undefined) this.setSyncFailure(new Error(sync.failure));
+      for (const [id, gist] of Object.entries(sync.gists)) this.putSyncGist(id, gist);
+      if (sync.gistFailure !== undefined) this.setSyncGistFailure(new Error(sync.gistFailure));
     }
   }
 

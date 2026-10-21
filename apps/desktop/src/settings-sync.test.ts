@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { SyncStatus } from "@noren/model";
+import type { SyncGistStatus, SyncPullResult, SyncStatus } from "@noren/model";
 import {
+  checkGistId,
+  checkGistToken,
   checkRemote,
   connectedMessage,
   failureMessage,
+  gistConnectedMessage,
+  gistPendingLines,
+  gistPublicWarning,
+  gistStatusText,
+  gistTokenText,
+  notConnectedMessage,
   pendingLines,
   pulledKinds,
   pullMessage,
@@ -203,5 +211,123 @@ describe("pulledKinds", () => {
       mods: false,
     });
     expect(pulledKinds([])).toEqual({ config: false, themes: false, mods: false });
+  });
+});
+
+describe("the sync through a gist (NOR-F19-02b)", () => {
+  const gist = (over: Partial<SyncGistStatus> = {}): SyncGistStatus => ({
+    connected: true,
+    gistId: "abc123def456",
+    public: false,
+    hasToken: true,
+    pending: [],
+    ...over,
+  });
+
+  it("gistStatusText: not connected, up to date, files to send", () => {
+    expect(gistStatusText(gist({ connected: false, gistId: null }))).toBe(
+      "Not connected to a gist.",
+    );
+    expect(gistStatusText(gist())).toBe("Connected to the gist abc123def456. Up to date.");
+    expect(gistStatusText(gist({ pending: [{ path: "config.jsonc", change: "added" }] }))).toBe(
+      "Connected to the gist abc123def456. 1 file to send.",
+    );
+    expect(
+      gistStatusText(
+        gist({
+          pending: [
+            { path: "config.jsonc", change: "added" },
+            { path: "mods/a.css", change: "modified" },
+          ],
+        }),
+      ),
+    ).toBe("Connected to the gist abc123def456. 2 files to send.");
+  });
+
+  it("gistTokenText only says whether there is a token", () => {
+    expect(gistTokenText(gist())).toBe("A token is stored in the system keychain.");
+    expect(gistTokenText(gist({ hasToken: false }))).toBe("No token is stored.");
+    expect(gistTokenText(undefined)).toBe("No token is stored.");
+  });
+
+  it("gistPendingLines words the files like the ones of git", () => {
+    expect(
+      gistPendingLines(
+        gist({
+          pending: [
+            { path: "config.jsonc", change: "added" },
+            { path: "mods/a.css", change: "modified" },
+          ],
+        }),
+      ),
+    ).toEqual(["config.jsonc (new)", "mods/a.css (changed)"]);
+  });
+
+  it("warns about a public gist and about nothing else", () => {
+    const warning = gistPublicWarning(gist({ public: true }));
+    expect(warning?.alert).toBe(true);
+    expect(warning?.text).toContain("This gist is public");
+    expect(warning?.text).toContain("anyone can find and read your config.jsonc");
+    expect(gistPublicWarning(gist())).toBeUndefined();
+    expect(
+      gistPublicWarning(gist({ connected: false, gistId: null, public: true })),
+    ).toBeUndefined();
+    expect(gistPublicWarning(undefined)).toBeUndefined();
+  });
+
+  it("checkGistId drops the blanks and refuses what is not an id", () => {
+    expect(checkGistId("  abc123  ")).toEqual({ ok: true, gistId: "abc123" });
+    for (const bad of ["", "   ", "https://gist.github.com/me/abc", "abc 123", "a/b"]) {
+      const checked = checkGistId(bad);
+      expect(checked.ok, bad).toBe(false);
+      if (!checked.ok) {
+        expect(checked.message.alert).toBe(true);
+        expect(checked.message.text).toContain("Nothing was connected.");
+      }
+    }
+  });
+
+  it("checkGistToken drops the blanks and never repeats a refused token", () => {
+    expect(checkGistToken("  ghp_abc123  ")).toEqual({ ok: true, token: "ghp_abc123" });
+    const refused = checkGistToken("ghp with space");
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) {
+      expect(refused.message.text).toContain("This is not a usable token");
+      expect(refused.message.text).toContain("Nothing was saved.");
+      expect(refused.message.text).not.toContain("ghp with space");
+    }
+    expect(checkGistToken("   ").ok).toBe(false);
+  });
+
+  it("gistConnectedMessage says a new gist is secret and what that does not mean", () => {
+    const message = gistConnectedMessage(gist(), true);
+    expect(message.alert).toBe(false);
+    expect(message.text).toContain("Made the secret gist abc123def456.");
+    expect(message.text).toContain("not listed or searchable");
+    expect(message.text).toContain("anyone who has its link can read it");
+    expect(message.text).toContain("All of config.jsonc travels");
+  });
+
+  it("gistConnectedMessage adds the warning when the gist connected to is public", () => {
+    const message = gistConnectedMessage(gist({ public: true }), false);
+    expect(message.alert).toBe(true);
+    expect(message.text).toContain("Connected to the gist abc123def456.");
+    expect(message.text).toContain("This gist is public");
+  });
+
+  it("pullMessage names how to settle a conflict for each method", () => {
+    const conflict: SyncPullResult = { kind: "conflict", paths: ["config.jsonc"] };
+    expect(pullMessage(conflict).text).toContain("Settle the difference in the repository");
+    const viaGist = pullMessage(conflict, "gist");
+    expect(viaGist.alert).toBe(true);
+    expect(viaGist.text).toContain("config.jsonc changed here and in the gist");
+    expect(viaGist.text).toContain("Nothing changed on this computer.");
+    expect(viaGist.text).not.toContain("repository");
+  });
+
+  it("notConnectedMessage says where to connect, or that a token is missing", () => {
+    expect(notConnectedMessage("git").text).toContain("No remote is connected");
+    expect(notConnectedMessage("gist").text).toContain("No gist is connected");
+    expect(notConnectedMessage("gist", false).text).toContain("No GitHub token is stored");
   });
 });

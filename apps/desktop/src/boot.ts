@@ -5,6 +5,7 @@ import {
   agentSettingsOf,
   pushOnCloseAllowed,
   scrollbackAllowed,
+  syncMethodOf,
 } from "@noren/model";
 import type { Backend } from "@noren/model";
 import { startAgentScanner } from "./agent-service";
@@ -230,6 +231,7 @@ export async function bootWorkspace(
         backend: target,
         spaces: spaceSync,
         enabled: () => pushOnCloseAllowed(configManager.state.config.sync),
+        method: () => syncMethodOf(configManager.state.config.sync),
         clock: realClock,
         limitMs: CLOSE_PUSH_LIMIT_MS,
         log: (message) => {

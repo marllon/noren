@@ -1,8 +1,15 @@
 import { closePushDecision, parseUserThemes } from "@noren/model";
-import type { Backend, ClosePushSkip, Clock } from "@noren/model";
+import type { Backend, ClosePushSkip, ClosePushStatus, Clock, SyncMethod } from "@noren/model";
 import { t } from "./i18n";
 import { setModFiles } from "./mods-store";
-import { failureMessage, pullMessage, pulledKinds, pushMessage, reasonOf } from "./settings-sync";
+import {
+  failureMessage,
+  notConnectedMessage,
+  pullMessage,
+  pulledKinds,
+  pushMessage,
+  reasonOf,
+} from "./settings-sync";
 import type { SyncMessage } from "./settings-sync";
 import {
   importNotes,
@@ -16,15 +23,34 @@ import { setUserThemes } from "./user-themes-store";
 
 // Running a pull or a push for the Sync section and for the palette commands (NOR-F19-01b): asks
 // the backend, turns the answer into a sentence and, after a pull that wrote themes or mods, reads
-// them again. With the spaces of the window (NOR-F19-01c) a push first writes every space as a file,
+// them again. The method (NOR-F19-02b) is `sync.method` of the settings: git, or a gist; every
+// step here asks the calls of the method chosen, and nothing else differs between the two. With the spaces of the window (NOR-F19-01c) a push first writes every space as a file,
 // and a pull first writes the spaces that already have one and, once it is done, makes spaces of the
 // files that came in. Never rejects: whatever went wrong is the sentence.
 
 export type SyncBackend = Pick<
   Backend,
-  "syncStatus" | "syncPull" | "syncPush" | "listUserThemes" | "listMods"
+  | "syncStatus"
+  | "syncPull"
+  | "syncPush"
+  | "syncGistStatus"
+  | "syncGistPull"
+  | "syncGistPush"
+  | "listUserThemes"
+  | "listMods"
 > &
   SpaceSyncBackend;
+
+/** The calls a push needs, of either method. */
+type PushBackend = Pick<Backend, "syncPush" | "syncGistPush"> & SpaceSyncBackend;
+
+/** The pull of the method: the same answer from either. */
+const pullOf = (backend: Pick<Backend, "syncPull" | "syncGistPull">, method: SyncMethod) =>
+  method === "gist" ? backend.syncGistPull() : backend.syncPull();
+
+/** The push of the method: the same answer from either. */
+const pushOf = (backend: Pick<Backend, "syncPush" | "syncGistPush">, method: SyncMethod) =>
+  method === "gist" ? backend.syncGistPush() : backend.syncPush();
 
 /**
  * Reads again what a pull wrote. `config.jsonc` and the mods are watched by the backend and the
@@ -47,7 +73,11 @@ export async function reloadPulled(
  * here is one side of the merge), and after a pull that does not conflict the files in the folder
  * that are new or changed become spaces; the sentence says how many.
  */
-export async function runPull(backend: SyncBackend, spaces?: SpaceSyncPort): Promise<SyncMessage> {
+export async function runPull(
+  backend: SyncBackend,
+  spaces?: SpaceSyncPort,
+  method: SyncMethod = "git",
+): Promise<SyncMessage> {
   if (spaces !== undefined) {
     try {
       await writeSpaceFiles(backend, spaces, { linkedOnly: true });
@@ -57,11 +87,11 @@ export async function runPull(backend: SyncBackend, spaces?: SpaceSyncPort): Pro
   }
   let result;
   try {
-    result = await backend.syncPull();
+    result = await pullOf(backend, method);
   } catch (error) {
     return failureMessage("pull", error);
   }
-  const message = pullMessage(result);
+  const message = pullMessage(result, method);
   if (result.kind === "conflict") return message;
   if (result.kind === "updated") {
     try {
@@ -98,8 +128,9 @@ export async function runPull(backend: SyncBackend, spaces?: SpaceSyncPort): Pro
  * the text of the backend.
  */
 export async function runPush(
-  backend: Pick<Backend, "syncPush"> & SpaceSyncBackend,
+  backend: PushBackend,
   spaces?: SpaceSyncPort,
+  method: SyncMethod = "git",
 ): Promise<SyncMessage> {
   let notes: string[] = [];
   if (spaces !== undefined) {
@@ -110,7 +141,7 @@ export async function runPush(
     }
   }
   try {
-    const message = pushMessage(await backend.syncPush());
+    const message = pushMessage(await pushOf(backend, method));
     return notes.length === 0 ? message : { text: [message.text, ...notes].join(" "), alert: true };
   } catch (error) {
     return failureMessage("push", error);
@@ -125,7 +156,10 @@ export type PushOnCloseOutcome =
   | { kind: "timeout" };
 
 export interface PushOnCloseDeps {
-  backend: Pick<Backend, "syncStatus" | "syncPush"> & SpaceSyncBackend;
+  backend: Pick<Backend, "syncStatus" | "syncPush" | "syncGistStatus" | "syncGistPush"> &
+    SpaceSyncBackend;
+  /** `syncMethodOf` of the settings now, read when the close happens; none: git. */
+  method?: (() => SyncMethod) | undefined;
   /** The window's spaces, written as files before the push like the Push of the screen; none: no spaces. */
   spaces: SpaceSyncPort | undefined;
   /** `pushOnCloseAllowed` of the settings now, read when the close happens. */
@@ -149,7 +183,9 @@ export interface PushOnCloseDeps {
 export async function runPushOnClose(deps: PushOnCloseDeps): Promise<PushOnCloseOutcome> {
   const attempt = async (): Promise<PushOnCloseOutcome> => {
     if (!deps.enabled()) return { kind: "skipped", reason: "off" };
-    const status = await deps.backend.syncStatus();
+    const method = deps.method?.() ?? "git";
+    const status: ClosePushStatus =
+      method === "gist" ? await deps.backend.syncGistStatus() : await deps.backend.syncStatus();
     if (!status.connected) return { kind: "skipped", reason: "no-remote" };
     let spaceFilesWritten = 0;
     if (deps.spaces !== undefined) {
@@ -159,7 +195,7 @@ export async function runPushOnClose(deps: PushOnCloseDeps): Promise<PushOnClose
     }
     const decision = closePushDecision({ enabled: true, status, spaceFilesWritten });
     if (decision.action === "skip") return { kind: "skipped", reason: decision.reason };
-    const result = await deps.backend.syncPush();
+    const result = await pushOf(deps.backend, method);
     if (result.committed && !result.pushed) {
       return { kind: "failed", reason: "the files were committed but not sent" };
     }
@@ -183,19 +219,26 @@ export async function runPushOnClose(deps: PushOnCloseDeps): Promise<PushOnClose
 }
 
 /**
- * The palette command: a pull or a push for the remote already connected. With no remote it says
- * where to connect and asks for nothing; the notice is the sentence.
+ * The palette command: a pull or a push for the remote or the gist already connected, by the method.
+ * With none connected it says where to connect (and, for a gist, that a token is missing) and asks
+ * for nothing; the notice is the sentence.
  */
 export async function runSyncCommand(
   backend: SyncBackend,
   command: "pull" | "push",
   spaces?: SpaceSyncPort,
+  method: SyncMethod = "git",
 ): Promise<SyncMessage> {
   try {
-    const status = await backend.syncStatus();
-    if (!status.connected) return { text: t("settings.syncNoRemote"), alert: true };
+    if (method === "gist") {
+      const status = await backend.syncGistStatus();
+      if (!status.hasToken) return notConnectedMessage("gist", false);
+      if (!status.connected) return notConnectedMessage("gist");
+    } else if (!(await backend.syncStatus()).connected) {
+      return notConnectedMessage("git");
+    }
   } catch (error) {
     return failureMessage("status", error);
   }
-  return command === "pull" ? runPull(backend, spaces) : runPush(backend, spaces);
+  return command === "pull" ? runPull(backend, spaces, method) : runPush(backend, spaces, method);
 }

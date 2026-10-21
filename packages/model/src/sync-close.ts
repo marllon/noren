@@ -22,11 +22,19 @@ export type ClosePushSkip = "off" | "no-remote" | "nothing-pending";
 
 export type ClosePushDecision = { action: "skip"; reason: ClosePushSkip } | { action: "push" };
 
+/**
+ * What the decision needs of the status of either method: a git status has `ahead` (commits waiting),
+ * a gist status has none (a gist keeps no commits of its own here).
+ */
+export type ClosePushStatus = Pick<SyncStatus, "connected" | "pending"> & {
+  ahead?: number | undefined;
+};
+
 export interface ClosePushFacts {
   /** `pushOnCloseAllowed` of the settings now. */
   enabled: boolean;
   /** Where the sync stands (read with no network); `undefined` when it could not be read. */
-  status: SyncStatus | undefined;
+  status: ClosePushStatus | undefined;
   /** How many space files were written to the config folder just now (they are not in `status` yet). */
   spaceFilesWritten: number;
 }
@@ -41,6 +49,7 @@ export function closePushDecision(facts: ClosePushFacts): ClosePushDecision {
   if (!facts.enabled) return { action: "skip", reason: "off" };
   const status = facts.status;
   if (status === undefined || !status.connected) return { action: "skip", reason: "no-remote" };
-  const waiting = status.pending.length > 0 || status.ahead > 0 || facts.spaceFilesWritten > 0;
+  const waiting =
+    status.pending.length > 0 || (status.ahead ?? 0) > 0 || facts.spaceFilesWritten > 0;
   return waiting ? { action: "push" } : { action: "skip", reason: "nothing-pending" };
 }

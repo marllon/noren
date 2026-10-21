@@ -224,3 +224,59 @@ describe("runPushOnClose", () => {
     expect(Object.keys(backend.syncRemoteFiles())).toEqual(["config.jsonc"]);
   });
 });
+
+describe("runPushOnClose by method (NOR-F19-02b)", () => {
+  async function gistSetup(method: () => "git" | "gist") {
+    const base = setup({ connect: false });
+    await base.backend.syncGistSetToken("ghp_test");
+    base.backend.putSyncGist("abc123", {});
+    await base.backend.syncGistConnect("abc123");
+    base.backend.setSyncLocalFile("config.jsonc", "{}");
+    return { ...base, deps: { ...base.deps, method } };
+  }
+
+  it("pushes to the gist, and not to git, when the method is gist", async () => {
+    const { backend, deps, log } = await gistSetup(() => "gist");
+    const outcome = await runPushOnClose(deps);
+    expect(outcome.kind).toBe("pushed");
+    expect(Object.keys(backend.syncGistFiles("abc123")).sort()).toEqual([
+      "config.jsonc",
+      expect.stringMatching(/^spaces--.*\.noren-space\.json$/) as unknown as string,
+    ]);
+    expect(backend.callsTo("syncGistPush")).toHaveLength(1);
+    expect(backend.callsTo("syncPush")).toHaveLength(0);
+    expect(backend.callsTo("syncStatus")).toHaveLength(0);
+    expect(log).toEqual([]);
+  });
+
+  it("reads the method when the close happens", async () => {
+    let method: "git" | "gist" = "git";
+    const { backend, deps } = await gistSetup(() => method);
+    // The method is git and no remote is connected: nothing is pushed, though the gist is.
+    expect(await runPushOnClose(deps)).toEqual({ kind: "skipped", reason: "no-remote" });
+    expect(backend.callsTo("syncGistPush")).toHaveLength(0);
+    method = "gist";
+    expect((await runPushOnClose(deps)).kind).toBe("pushed");
+  });
+
+  it("skips with no gist connected and with nothing waiting", async () => {
+    const none = setup({ connect: false });
+    await none.ready;
+    expect(await runPushOnClose({ ...none.deps, method: () => "gist" })).toEqual({
+      kind: "skipped",
+      reason: "no-remote",
+    });
+    const { deps } = await gistSetup(() => "gist");
+    expect((await runPushOnClose(deps)).kind).toBe("pushed");
+    expect(await runPushOnClose(deps)).toEqual({ kind: "skipped", reason: "nothing-pending" });
+  });
+
+  it("records a failure of the gist push, and the close goes on", async () => {
+    const { backend, deps, log } = await gistSetup(() => "gist");
+    await backend.syncGistClearToken();
+    const outcome = await runPushOnClose(deps);
+    expect(outcome.kind).toBe("failed");
+    expect(log[0]).toContain("push on close failed:");
+    expect(log[0]).toContain("no GitHub token");
+  });
+});

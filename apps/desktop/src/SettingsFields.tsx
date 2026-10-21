@@ -18,6 +18,8 @@ export interface NumberBoxProps {
   text?: boolean;
   /** A box wide enough for a list of names or a path. */
   wide?: boolean;
+  /** A box for a secret (a token): the text is hidden, never completed or checked for spelling. */
+  secret?: boolean;
   onChange(text: string): void;
 }
 
@@ -28,6 +30,7 @@ export function NumberBox({
   problem,
   text = false,
   wide = false,
+  secret = false,
   onChange,
 }: NumberBoxProps) {
   const hintId = useId();
@@ -36,10 +39,10 @@ export function NumberBox({
       <label className="settings-option" title={describe(field)}>
         <span>{label}</span>
         <input
-          type="text"
-          inputMode={text ? "text" : "decimal"}
-          spellCheck={text ? false : undefined}
-          autoComplete={text ? "off" : undefined}
+          type={secret ? "password" : "text"}
+          inputMode={text || secret ? "text" : "decimal"}
+          spellCheck={text || secret ? false : undefined}
+          autoComplete={text || secret ? "off" : undefined}
           value={value}
           aria-invalid={problem !== undefined ? true : undefined}
           aria-describedby={problem !== undefined ? hintId : undefined}

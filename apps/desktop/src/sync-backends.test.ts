@@ -168,11 +168,33 @@ describe("WebBackend sync seed (noren.web.sync)", () => {
     expect(read({ localFiles: { "config.jsonc": "{}", bad: 3 }, remoteFiles: 7 })).toEqual({
       localFiles: { "config.jsonc": "{}" },
       remoteFiles: {},
+      gists: {},
     });
     expect(read({ failure: "no git" })).toEqual({
       localFiles: {},
       remoteFiles: {},
       failure: "no git",
+      gists: {},
+    });
+    // The gists of the sync through a gist: only objects with files, public only when it says true.
+    expect(
+      read({
+        gists: {
+          abc: { public: true, files: { "config.jsonc": "{}", bad: 3 } },
+          def: { files: {} },
+          ghi: 5,
+          jkl: [],
+        },
+        gistFailure: "GitHub is down",
+      }),
+    ).toEqual({
+      localFiles: {},
+      remoteFiles: {},
+      gists: {
+        abc: { public: true, files: { "config.jsonc": "{}" } },
+        def: { public: false, files: {} },
+      },
+      gistFailure: "GitHub is down",
     });
     expect(seededSync({ getItem: () => "not json" })).toBeUndefined();
   });
@@ -188,6 +210,30 @@ describe("WebBackend sync seed (noren.web.sync)", () => {
     // The pull wrote the mod where the app reads it.
     await expect(backend.listMods()).resolves.toEqual([{ name: "a.css", text: "/* a */\n" }]);
     await expect(backend.syncPush()).resolves.toMatchObject({ pushed: true });
+  });
+
+  it("puts the seeded gists on GitHub, so a connect by id and a pull bring their files", async () => {
+    const backend = withSeed({
+      localFiles: { "config.jsonc": "{}" },
+      gists: { abc123: { public: true, files: { "mods--a.css": "/* a */\n" } } },
+    });
+    await backend.syncGistSetToken("ghp_test");
+    const status = await backend.syncGistConnect("abc123");
+    expect(status).toMatchObject({ connected: true, gistId: "abc123", public: true });
+    await expect(backend.syncGistPull()).resolves.toEqual({
+      kind: "updated",
+      files: ["mods/a.css"],
+    });
+    // The pull wrote the mod where the app reads it, like the pull through git.
+    await expect(backend.listMods()).resolves.toEqual([{ name: "a.css", text: "/* a */\n" }]);
+  });
+
+  it("makes every call of the gist sync fail when the seed says so", async () => {
+    const backend = withSeed({ gistFailure: "GitHub is down" });
+    await expect(backend.syncGistStatus()).rejects.toThrow("GitHub is down");
+    await expect(backend.syncGistPush()).rejects.toThrow("GitHub is down");
+    // The sync through git is not touched by it.
+    await expect(backend.syncStatus()).resolves.toMatchObject({ connected: false });
   });
 
   it("keeps the space files like the fake backend, and a pull brings the remote's unlinked", async () => {

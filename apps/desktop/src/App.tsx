@@ -12,6 +12,7 @@ import {
   previewPathProblem,
   resolveOutputPath,
   scrollbackAllowed,
+  syncMethodOf,
   treeGroups,
   windowShowing,
   withMod,
@@ -354,6 +355,16 @@ export interface NorenTestHook {
   syncRemoteFiles(): Record<string, string>;
   /** Makes every sync call fail with this message (git is missing, say); `null` undoes it. */
   failSync(message: string | null): void;
+  /** A gist as another computer (or its web page) left it: files by flat name; replaces that id (NOR-F19-02b). */
+  putSyncGist(id: string, gist: { public?: boolean; files?: Record<string, string> }): void;
+  /** Sets a file of a gist by its flat name, as an edit on the web page does; `null` removes it. */
+  setSyncGistFile(id: string, name: string, text: string | null): void;
+  /** The files a gist holds now, by flat name. */
+  syncGistFiles(id: string): Record<string, string>;
+  /** The ids of the gists GitHub holds. */
+  syncGistIds(): string[];
+  /** Makes every call of the gist sync fail with this message; `null` undoes it. */
+  failSyncGist(message: string | null): void;
   /** The providers lists handed to the AI side (`ai.configure`), in order, as the ids of each list. */
   aiConfigures(): string[][];
   /** The provider ids a key was stored or taken out for (`ai.setKey`), in order. The key is never recorded. */
@@ -982,7 +993,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
     (command: "pull" | "push") => {
       if (syncRunning.current) return;
       syncRunning.current = true;
-      void runSyncCommand(backend, command, spaceSync)
+      void runSyncCommand(
+        backend,
+        command,
+        spaceSync,
+        syncMethodOf(configManager.state.config.sync),
+      )
         .then((message) => showNotice(message.text))
         .finally(() => {
           syncRunning.current = false;
@@ -1888,6 +1904,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
         syncRemoteFiles: () => fake.syncRemoteFiles(),
         failSync: (message) =>
           fake.setSyncFailure(message === null ? undefined : new Error(message)),
+        putSyncGist: (id, gist) => fake.putSyncGist(id, gist),
+        setSyncGistFile: (id, name, text) => fake.setSyncGistFile(id, name, text ?? undefined),
+        syncGistFiles: (id) => fake.syncGistFiles(id),
+        syncGistIds: () => fake.syncGistIds(),
+        failSyncGist: (message) =>
+          fake.setSyncGistFailure(message === null ? undefined : new Error(message)),
         aiConfigures: () =>
           fake
             .callsTo("ai.configure")

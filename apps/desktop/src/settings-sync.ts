@@ -1,5 +1,11 @@
-import { syncRemoteProblem } from "@noren/model";
-import type { SyncPullResult, SyncPushResult, SyncStatus } from "@noren/model";
+import { isSyncGistId, syncGistTokenProblem, syncRemoteProblem } from "@noren/model";
+import type {
+  SyncGistStatus,
+  SyncMethod,
+  SyncPullResult,
+  SyncPushResult,
+  SyncStatus,
+} from "@noren/model";
 import { t } from "./i18n";
 
 // What the Sync section of the settings screen and the palette commands say (NOR-F19-01b): the
@@ -75,8 +81,12 @@ export function checkRemote(input: string): RemoteCheck {
   return { ok: true, remote };
 }
 
-/** What a pull said: up to date, the files it wrote, or the paths in conflict and that nothing changed. */
-export function pullMessage(result: SyncPullResult): SyncMessage {
+/**
+ * What a pull said: up to date, the files it wrote, or the paths in conflict and that nothing
+ * changed. A conflict says how to settle it for the method: in the repository for git, on either
+ * side of the file for a gist.
+ */
+export function pullMessage(result: SyncPullResult, method: SyncMethod = "git"): SyncMessage {
   switch (result.kind) {
     case "up_to_date":
       return { text: t("settings.syncPull.upToDate"), alert: false };
@@ -93,7 +103,9 @@ export function pullMessage(result: SyncPullResult): SyncMessage {
       };
     case "conflict":
       return {
-        text: t("settings.syncPull.conflict", { paths: listOf(result.paths) }),
+        text: t(method === "gist" ? "settings.gistPull.conflict" : "settings.syncPull.conflict", {
+          paths: listOf(result.paths),
+        }),
         alert: true,
       };
   }
@@ -164,4 +176,91 @@ export function pulledKinds(files: readonly string[]): PulledKinds {
     themes: files.some((file) => file.startsWith("themes/")),
     mods: files.some((file) => file.startsWith("mods/")),
   };
+}
+
+// ---- the sync through a gist (NOR-F19-02b) ----------------------------------------------------
+
+/**
+ * Where the sync through a gist stands, in one sentence: not connected, or the gist with one of "up
+ * to date" and "N files to send". A gist has no branch and nothing to compare with before the
+ * network, so there is no "behind" here: Pull is what finds out.
+ */
+export function gistStatusText(status: SyncGistStatus): string {
+  if (!status.connected || status.gistId === null) return t("settings.gistStatus.notConnected");
+  const head = t("settings.gistStatus.connected", { id: status.gistId });
+  const state =
+    status.pending.length === 0
+      ? t("settings.syncState.upToDate")
+      : status.pending.length === 1
+        ? t("settings.syncState.toSend.one")
+        : t("settings.syncState.toSend.other", { n: status.pending.length });
+  return `${head} ${state}`;
+}
+
+/** Whether a token is stored, in a sentence. The token itself is never known to the screen. */
+export function gistTokenText(status: SyncGistStatus | undefined): string {
+  return status?.hasToken === true ? t("settings.gistToken.stored") : t("settings.gistToken.none");
+}
+
+/** The files a push through the gist would carry, one line each; the same lines as for git. */
+export function gistPendingLines(status: SyncGistStatus): string[] {
+  return pendingLines({ ...status, remote: null, branch: null, ahead: 0, behind: 0 });
+}
+
+/** The warning for a gist that anyone can read, or `undefined` for a secret one (or none). */
+export function gistPublicWarning(status: SyncGistStatus | undefined): SyncMessage | undefined {
+  if (status === undefined || !status.connected || !status.public) return undefined;
+  return { text: t("settings.gistPublic"), alert: true };
+}
+
+/** What the id typed in the box comes to: the id to connect to, or why not. */
+export type GistIdCheck = { ok: true; gistId: string } | { ok: false; message: SyncMessage };
+
+/** The id typed, without the blanks around it, checked before anything is asked of the backend. */
+export function checkGistId(input: string): GistIdCheck {
+  const gistId = input.trim();
+  if (!isSyncGistId(gistId)) {
+    return { ok: false, message: { text: t("settings.gistIdRefused"), alert: true } };
+  }
+  return { ok: true, gistId };
+}
+
+/** What the token typed in the box comes to: the token to store, or why it is not stored. */
+export type GistTokenCheck = { ok: true; token: string } | { ok: false; message: SyncMessage };
+
+/**
+ * The token typed, checked by `syncGistTokenProblem` before it is handed to the backend. The
+ * sentence of a refusal never repeats it.
+ */
+export function checkGistToken(input: string): GistTokenCheck {
+  const problem = syncGistTokenProblem(input);
+  if (problem !== undefined) {
+    return {
+      ok: false,
+      message: { text: t("settings.gistTokenRefused", { reason: problem }), alert: true },
+    };
+  }
+  return { ok: true, token: input.trim() };
+}
+
+/**
+ * What the person is told once connected to a gist: the status, what travels, and, for a gist that
+ * anyone can read, the warning for that. A gist the app just made says it is secret and what that
+ * does and does not mean (not listed, but open to whoever has the link).
+ */
+export function gistConnectedMessage(status: SyncGistStatus, created: boolean): SyncMessage {
+  const publicWarning = gistPublicWarning(status);
+  const head =
+    created && status.gistId !== null
+      ? t("settings.gistCreated", { id: status.gistId })
+      : gistStatusText(status);
+  const parts = [head, t("settings.gistConnectedWarning")];
+  if (publicWarning !== undefined) parts.push(publicWarning.text);
+  return { text: parts.join(" "), alert: publicWarning !== undefined };
+}
+
+/** What a palette command says when the method has no connection: where to connect, or that a token is missing. */
+export function notConnectedMessage(method: SyncMethod, hasToken = true): SyncMessage {
+  if (method === "git") return { text: t("settings.syncNoRemote"), alert: true };
+  return { text: t(hasToken ? "settings.gistNoGist" : "settings.gistNoToken"), alert: true };
 }

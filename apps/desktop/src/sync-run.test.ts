@@ -357,3 +357,113 @@ describe("the spaces in a push and a pull", () => {
     expect(a.backend.syncRemoteFiles()["spaces/Work.noren-space.json"]).toContain('"name": "Work"');
   });
 });
+
+describe("the method: git or a gist (NOR-F19-02b)", () => {
+  /** A backend with a token and a gist already connected, holding what another computer left. */
+  async function gistBackend(
+    remote: Record<string, string> = {},
+    options: { token?: boolean; connect?: boolean } = {},
+  ): Promise<WebBackend> {
+    const backend = webBackend();
+    if (options.token !== false) await backend.syncGistSetToken("ghp_test");
+    backend.putSyncGist("abc123", { files: remote });
+    if (options.connect !== false) await backend.syncGistConnect("abc123");
+    return backend;
+  }
+
+  it("runPull asks the gist, not the git remote, and reads what it wrote again", async () => {
+    const backend = await gistBackend({ "themes--lagoon.json": FAKE_GALLERY_LAGOON });
+    const message = await runPull(backend, undefined, "gist");
+    expect(message).toEqual({ text: "Pulled 1 file: themes/lagoon.json.", alert: false });
+    expect(getUserThemes().map((theme) => theme.id)).toEqual(["lagoon"]);
+    expect(backend.callsTo("syncGistPull")).toHaveLength(1);
+    expect(backend.callsTo("syncPull")).toHaveLength(0);
+  });
+
+  it("runPush asks the gist, not the git remote", async () => {
+    const backend = await gistBackend();
+    backend.setSyncLocalFile("config.jsonc", "{}");
+    expect(await runPush(backend, undefined, "gist")).toEqual({
+      text: "Pushed 1 file: config.jsonc.",
+      alert: false,
+    });
+    expect(backend.syncGistFiles("abc123")).toEqual({ "config.jsonc": "{}" });
+    expect(backend.callsTo("syncGistPush")).toHaveLength(1);
+    expect(backend.callsTo("syncPush")).toHaveLength(0);
+  });
+
+  it("a pull in conflict through the gist writes nothing and says how to settle it", async () => {
+    const backend = await gistBackend({ "config.jsonc": '{ "theme": "base" }' });
+    await runPull(backend, undefined, "gist");
+    backend.setSyncLocalFile("config.jsonc", '{ "theme": "mine" }');
+    backend.setSyncGistFile("abc123", "config.jsonc", '{ "theme": "theirs" }');
+    const message = await runPull(backend, undefined, "gist");
+    expect(message.alert).toBe(true);
+    expect(message.text).toContain("config.jsonc changed here and in the gist");
+    expect(backend.syncLocalFile("config.jsonc")).toBe('{ "theme": "mine" }');
+  });
+
+  it("a push the gist refuses carries the words of the backend", async () => {
+    const backend = await gistBackend({ "config.jsonc": "{}" });
+    await runPull(backend, undefined, "gist");
+    backend.setSyncGistFile("abc123", "mods--a.css", MOD);
+    backend.setSyncLocalFile("config.jsonc", '{ "theme": "mine" }');
+    const message = await runPush(backend, undefined, "gist");
+    expect(message.alert).toBe(true);
+    expect(message.text).toMatch(/^Could not push: .*pull first/);
+  });
+
+  it("runSyncCommand uses the method: the gist calls for gist, the git calls for git", async () => {
+    const backend = await gistBackend();
+    backend.setSyncLocalFile("config.jsonc", "{}");
+    expect((await runSyncCommand(backend, "push", undefined, "gist")).text).toBe(
+      "Pushed 1 file: config.jsonc.",
+    );
+    backend.setSyncGistFile("abc123", "mods--a.css", MOD);
+    expect((await runSyncCommand(backend, "pull", undefined, "gist")).text).toBe(
+      "Pulled 1 file: mods/a.css.",
+    );
+    expect(backend.callsTo("syncGistStatus")).toHaveLength(2);
+    expect(backend.callsTo("syncGistPush")).toHaveLength(1);
+    expect(backend.callsTo("syncGistPull")).toHaveLength(1);
+    expect(backend.callsTo("syncStatus")).toHaveLength(0);
+    expect(backend.callsTo("syncPush")).toHaveLength(0);
+    expect(backend.callsTo("syncPull")).toHaveLength(0);
+
+    // The default, and "git", leave the gist alone.
+    const gitBackend = await connectedBackend();
+    await runSyncCommand(gitBackend, "pull");
+    await runSyncCommand(gitBackend, "push", undefined, "git");
+    expect(gitBackend.callsTo("syncGistStatus")).toHaveLength(0);
+    expect(gitBackend.callsTo("syncGistPush")).toHaveLength(0);
+    expect(gitBackend.callsTo("syncGistPull")).toHaveLength(0);
+  });
+
+  it("says where to connect with no gist, and that a token is missing without one, asking nothing more", async () => {
+    const noGist = await gistBackend({}, { connect: false });
+    for (const command of ["pull", "push"] as const) {
+      expect((await runSyncCommand(noGist, command, undefined, "gist")).text).toBe(
+        "No gist is connected. Connect one in Settings, in the Sync section.",
+      );
+    }
+    expect(noGist.callsTo("syncGistPull")).toHaveLength(0);
+    expect(noGist.callsTo("syncGistPush")).toHaveLength(0);
+
+    const noToken = await gistBackend({}, { token: false, connect: false });
+    expect((await runSyncCommand(noToken, "push", undefined, "gist")).text).toBe(
+      "No GitHub token is stored. Save one in Settings, in the Sync section.",
+    );
+    expect(noToken.callsTo("syncGistPush")).toHaveLength(0);
+    // The git remote is not asked either.
+    expect(noToken.callsTo("syncStatus")).toHaveLength(0);
+  });
+
+  it("says the status could not be read when the gist sync fails", async () => {
+    const backend = new FakeBackend();
+    backend.setSyncGistFailure(new Error("the keychain is locked"));
+    expect(await runSyncCommand(backend, "pull", undefined, "gist")).toEqual({
+      text: "Could not read the sync status: the keychain is locked",
+      alert: true,
+    });
+  });
+});

@@ -524,7 +524,7 @@ export const en = {
   "settings.syncRemotePlaceholder": "https://example.com/you/noren-settings.git",
   "settings.syncPushOnClose": "Push when Noren closes",
   "settings.syncPushOnCloseHint":
-    "Off by default. When on, closing Noren pushes first if a remote is connected and something is waiting to be sent, like the Push button. It waits a few seconds at most: a push that fails or is too slow is skipped and Noren closes anyway. Hiding the window in the tray does not close Noren.",
+    "Off by default. When on, closing Noren pushes first if a remote or a gist is connected and something is waiting to be sent, like the Push button. It waits a few seconds at most: a push that fails or is too slow is skipped and Noren closes anyway. Hiding the window in the tray does not close Noren.",
   "settings.syncConnect": "Connect",
   "settings.syncPull": "Pull",
   "settings.syncPush": "Push",
@@ -570,6 +570,40 @@ export const en = {
   "settings.syncSpaces.failed": "Could not make a space from spaces/{file}: {reason}",
   "settings.syncSpaces.stepFailed":
     "The files were pulled, but the spaces could not be made from them: {reason}",
+  "settings.syncMethod": "Sync through",
+  "settings.syncMethod.git": "A git remote",
+  "settings.syncMethod.gist": "A secret GitHub gist",
+  "settings.gistHint":
+    "Keeps config.jsonc, your themes, your mods and your spaces (one file each) in a GitHub gist of your account. Pull brings the gist's files to this computer; Push sends the ones that changed here. It needs a personal access token with the gist permission.",
+  "settings.gistWarning":
+    "All of config.jsonc is sent, not only the settings you changed, so keep nothing secret in it. A secret gist is not private: it is left out of searches, but anyone who has its link can read it. Removing a space does not remove its file: it stays in the gist and on your other computers.",
+  "settings.gistToken": "GitHub token",
+  "settings.gistTokenHint":
+    "Kept in the system keychain, sent only to api.github.com and never shown again. Make it with the gist permission and nothing else.",
+  "settings.gistTokenSave": "Save token",
+  "settings.gistTokenClear": "Remove token",
+  "settings.gistToken.stored": "A token is stored in the system keychain.",
+  "settings.gistToken.none": "No token is stored.",
+  "settings.gistTokenRefused": "This is not a usable token: {reason}. Nothing was saved.",
+  "settings.gistTokenSaved": "The token was saved in the system keychain.",
+  "settings.gistTokenCleared": "The token was removed from the system keychain.",
+  "settings.gistTokenFailed": "Could not save the token: {reason}",
+  "settings.gistTokenClearFailed": "Could not remove the token: {reason}",
+  "settings.gistId": "Gist id",
+  "settings.gistIdRefused":
+    "This is not the id of a gist: use the letters and digits after the last / of its address. Nothing was connected.",
+  "settings.gistCreate": "Make a secret gist",
+  "settings.gistStatus.notConnected": "Not connected to a gist.",
+  "settings.gistStatus.connected": "Connected to the gist {id}.",
+  "settings.gistPublic":
+    "This gist is public: anyone can find and read your config.jsonc and the other files in it. Make a secret gist and connect to that one instead.",
+  "settings.gistCreated":
+    "Made the secret gist {id}. Secret means it is not listed or searchable, but anyone who has its link can read it: keep nothing secret in your settings.",
+  "settings.gistConnectedWarning": "All of config.jsonc travels, so keep nothing secret in it.",
+  "settings.gistPull.conflict":
+    "Pull stopped: {paths} changed here and in the gist in different ways. Nothing changed on this computer. Make the file the same on both sides (edit it here or on the page of the gist), then pull again.",
+  "settings.gistNoGist": "No gist is connected. Connect one in Settings, in the Sync section.",
+  "settings.gistNoToken": "No GitHub token is stored. Save one in Settings, in the Sync section.",
   "action.sync.pull": "Pull settings",
   "action.sync.push": "Push settings",
   "settings.modMissing": "not in the folder, so it is ignored",
@@ -1107,9 +1141,12 @@ export const en = {
   "field.sessions": "Whether the shells of your panes outlive the window.",
   "field.sessions.keepOnClose":
     "On: closing the window leaves the shells of your panes running in the background (in the session daemon, norend) and opening Noren again gives each pane its shell back, with what it printed meanwhile. Off: closing the window ends every shell, as it always did. Shells that no pane comes back for are ended when Noren opens.",
-  "field.sync": "Sync through git: what Noren does on its own.",
+  "field.sync":
+    "Sync of the settings through git or a gist: which one, and what Noren does on its own.",
+  "field.sync.method":
+    'How Pull, Push and the push on close sync your settings. "git": through the git remote connected in the Sync section of the settings. "gist": through a secret GitHub gist, with a token that lives in the system keychain. Each method keeps its own connection, so switching does not disconnect the other.',
   "field.sync.pushOnClose":
-    "On: closing Noren pushes to the connected git remote first, when something is waiting to be sent (the settings file, themes, mods and spaces, the same files as Push in the settings). It waits a few seconds at most and never stops Noren from closing: a push that fails or is too slow is skipped. Off: Noren only syncs when you press Pull or Push.",
+    "On: closing Noren pushes to the connected git remote or gist first, when something is waiting to be sent (the settings file, themes, mods and spaces, the same files as Push in the settings). It waits a few seconds at most and never stops Noren from closing: a push that fails or is too slow is skipped. Off: Noren only syncs when you press Pull or Push.",
   "field.routing":
     "Where a new tab goes: rules that match the folder or the command of the tab and name a space and a group. A tab that no rule matches goes where it would have gone.",
   "field.routing.rules":

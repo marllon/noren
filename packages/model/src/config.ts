@@ -25,6 +25,7 @@ import { MAX_MODS, MOD_FILE_NAME_PATTERN, isReservedModName } from "./mods";
 import { RoutingSchema } from "./routing";
 import { DEFAULT_SAVE_SCROLLBACK, SCROLLBACK_SAVE_LINES } from "./scrollback";
 import { DEFAULT_PUSH_ON_CLOSE } from "./sync-close";
+import { DEFAULT_SYNC_METHOD, SYNC_METHODS } from "./sync-method";
 import {
   BELL_STYLES,
   CURSOR_STYLES,
@@ -241,13 +242,21 @@ const sessionsSchema = z
 
 const syncSchema = z
   .strictObject({
+    method: setting(
+      z.enum(SYNC_METHODS),
+      'How Pull, Push and the push on close sync your settings. "git": through the git remote connected in the Sync section of the settings. "gist": through a secret GitHub gist, with a token that lives in the system keychain. Each method keeps its own connection, so switching does not disconnect the other.',
+      DEFAULT_SYNC_METHOD,
+    ),
     pushOnClose: setting(
       z.boolean(),
-      "On: closing Noren pushes to the connected git remote first, when something is waiting to be sent (the settings file, themes, mods and spaces, the same files as Push in the settings). It waits a few seconds at most and never stops Noren from closing: a push that fails or is too slow is skipped. Off: Noren only syncs when you press Pull or Push.",
+      "On: closing Noren pushes to the connected git remote or gist first, when something is waiting to be sent (the settings file, themes, mods and spaces, the same files as Push in the settings). It waits a few seconds at most and never stops Noren from closing: a push that fails or is too slow is skipped. Off: Noren only syncs when you press Pull or Push.",
       DEFAULT_PUSH_ON_CLOSE,
     ),
   })
-  .meta({ description: "Sync through git: what Noren does on its own." });
+  .meta({
+    description:
+      "Sync of the settings through git or a gist: which one, and what Noren does on its own.",
+  });
 
 const archiveSchema = z
   .strictObject({

@@ -529,7 +529,7 @@ export const ptBR: Dictionary = {
   "settings.syncRemotePlaceholder": "https://example.com/voce/noren-settings.git",
   "settings.syncPushOnClose": "Enviar ao fechar o Noren",
   "settings.syncPushOnCloseHint":
-    "Desligado por padrão. Ligado, fechar o Noren faz antes um push se houver um remoto conectado e algo esperando para ser enviado, como o botão Push. Ele espera alguns segundos no máximo: um push que falha ou demora demais é pulado e o Noren fecha do mesmo jeito. Esconder a janela na bandeja não fecha o Noren.",
+    "Desligado por padrão. Ligado, fechar o Noren faz antes um push se houver um remoto ou um gist conectado e algo esperando para ser enviado, como o botão Push. Ele espera alguns segundos no máximo: um push que falha ou demora demais é pulado e o Noren fecha do mesmo jeito. Esconder a janela na bandeja não fecha o Noren.",
   "settings.syncConnect": "Conectar",
   "settings.syncPull": "Pull",
   "settings.syncPush": "Push",
@@ -577,6 +577,42 @@ export const ptBR: Dictionary = {
     "Não foi possível criar um space a partir de spaces/{file}: {reason}",
   "settings.syncSpaces.stepFailed":
     "Os arquivos foram trazidos, mas não foi possível criar os spaces a partir deles: {reason}",
+  "settings.syncMethod": "Sincronizar por",
+  "settings.syncMethod.git": "Um remoto git",
+  "settings.syncMethod.gist": "Um gist secreto do GitHub",
+  "settings.gistHint":
+    "Guarda o config.jsonc, os seus temas, os seus mods e os seus spaces (um arquivo cada) num gist do GitHub da sua conta. O Pull traz os arquivos do gist para este computador; o Push envia os que mudaram aqui. Precisa de um token de acesso pessoal com a permissão gist.",
+  "settings.gistWarning":
+    "O config.jsonc inteiro é enviado, não só o que você mudou, então não guarde segredo nele. Um gist secreto não é privado: ele fica fora das buscas, mas qualquer pessoa com o link consegue lê-lo. Remover um space não remove o arquivo dele: ele continua no gist e nos seus outros computadores.",
+  "settings.gistToken": "Token do GitHub",
+  "settings.gistTokenHint":
+    "Fica no cofre do sistema, é enviado só para api.github.com e nunca mais aparece aqui. Crie-o com a permissão gist e mais nada.",
+  "settings.gistTokenSave": "Salvar token",
+  "settings.gistTokenClear": "Remover token",
+  "settings.gistToken.stored": "Há um token guardado no cofre do sistema.",
+  "settings.gistToken.none": "Não há token guardado.",
+  "settings.gistTokenRefused": "Este token não serve: {reason}. Nada foi salvo.",
+  "settings.gistTokenSaved": "O token foi salvo no cofre do sistema.",
+  "settings.gistTokenCleared": "O token foi removido do cofre do sistema.",
+  "settings.gistTokenFailed": "Não foi possível salvar o token: {reason}",
+  "settings.gistTokenClearFailed": "Não foi possível remover o token: {reason}",
+  "settings.gistId": "Id do gist",
+  "settings.gistIdRefused":
+    "Este não é o id de um gist: use as letras e os dígitos depois da última / do endereço dele. Nada foi conectado.",
+  "settings.gistCreate": "Criar um gist secreto",
+  "settings.gistStatus.notConnected": "Sem gist conectado.",
+  "settings.gistStatus.connected": "Conectado ao gist {id}.",
+  "settings.gistPublic":
+    "Este gist é público: qualquer pessoa pode achar e ler o seu config.jsonc e os outros arquivos dele. Crie um gist secreto e conecte-se a ele.",
+  "settings.gistCreated":
+    "Criou o gist secreto {id}. Secreto quer dizer que ele não aparece em listas nem em buscas, mas qualquer pessoa com o link consegue lê-lo: não guarde segredo nas suas configurações.",
+  "settings.gistConnectedWarning": "O config.jsonc inteiro viaja, então não guarde segredo nele.",
+  "settings.gistPull.conflict":
+    "O pull parou: {paths} mudou aqui e no gist de jeitos diferentes. Nada mudou neste computador. Deixe o arquivo igual dos dois lados (edite aqui ou na página do gist) e faça o pull de novo.",
+  "settings.gistNoGist":
+    "Não há gist conectado. Conecte um em Configurações, na seção Sincronização.",
+  "settings.gistNoToken":
+    "Não há token do GitHub guardado. Salve um em Configurações, na seção Sincronização.",
   "action.sync.pull": "Trazer configurações (pull)",
   "action.sync.push": "Enviar configurações (push)",
   "settings.modMissing": "não está na pasta, então é ignorado",
@@ -1118,9 +1154,12 @@ export const ptBR: Dictionary = {
   "field.sessions": "Se os shells dos seus painéis sobrevivem à janela.",
   "field.sessions.keepOnClose":
     "Ligado: fechar a janela deixa os shells dos seus painéis rodando em segundo plano (no daemon de sessões, o norend) e abrir o Noren de novo devolve a cada painel o seu shell, com o que ele imprimiu nesse meio-tempo. Desligado: fechar a janela encerra todos os shells, como sempre foi. Os shells que nenhum painel reclama são encerrados quando o Noren abre.",
-  "field.sync": "Sincronização por git: o que o Noren faz por conta própria.",
+  "field.sync":
+    "Sincronização das configurações por git ou por um gist: qual, e o que o Noren faz por conta própria.",
+  "field.sync.method":
+    'Como o Pull, o Push e o push ao fechar sincronizam as suas configurações. "git": pelo remoto git conectado na seção Sincronização das configurações. "gist": por um gist secreto do GitHub, com um token que fica no cofre do sistema. Cada método guarda a sua própria conexão, então trocar de um para o outro não desconecta o outro.',
   "field.sync.pushOnClose":
-    "Ligado: fechar o Noren faz antes um push para o remoto git conectado, quando há algo esperando para ser enviado (o arquivo de configurações, temas, mods e spaces, os mesmos arquivos do Push nas configurações). Espera alguns segundos no máximo e nunca impede o Noren de fechar: um push que falha ou demora demais é pulado. Desligado: o Noren só sincroniza quando você aperta Pull ou Push.",
+    "Ligado: fechar o Noren faz antes um push para o remoto git ou o gist conectado, quando há algo esperando para ser enviado (o arquivo de configurações, temas, mods e spaces, os mesmos arquivos do Push nas configurações). Espera alguns segundos no máximo e nunca impede o Noren de fechar: um push que falha ou demora demais é pulado. Desligado: o Noren só sincroniza quando você aperta Pull ou Push.",
   "field.routing":
     "Para onde vai uma aba nova: regras que casam a pasta ou o comando da aba e nomeiam um space e um grupo. Uma aba que nenhuma regra casa vai para onde iria.",
   "field.routing.rules":

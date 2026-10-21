@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TauriBackend } from "./tauri-backend";
 import type { TauriBridge } from "./tauri-backend";
-import { WebBackend } from "./web-backend";
+import { WEB_SYNC_KEY, WebBackend, seededSync } from "./web-backend";
 
 // The sync through git on the two backends the app runs on: the Tauri one (`sync_status`,
 // `sync_connect`, `sync_pull` and `sync_push` of src-tauri/src/bridge.rs, whose JSON is checked
@@ -83,5 +83,54 @@ describe("WebBackend sync", () => {
       pushed: true,
       files: ["config.jsonc"],
     });
+  });
+});
+
+describe("WebBackend sync seed (noren.web.sync)", () => {
+  const withSeed = (seed: unknown) => {
+    const held = new Map<string, string>([[WEB_SYNC_KEY, JSON.stringify(seed)]]);
+    return new WebBackend({
+      getItem: (key) => held.get(key) ?? null,
+      setItem: (key, value) => void held.set(key, value),
+      removeItem: (key) => void held.delete(key),
+    });
+  };
+
+  it("reads only the shapes it knows", () => {
+    const read = (value: unknown) =>
+      seededSync({ getItem: () => (value === null ? null : JSON.stringify(value)) });
+    expect(read(null)).toBeUndefined();
+    expect(read([])).toBeUndefined();
+    expect(read({ localFiles: { "config.jsonc": "{}", bad: 3 }, remoteFiles: 7 })).toEqual({
+      localFiles: { "config.jsonc": "{}" },
+      remoteFiles: {},
+    });
+    expect(read({ failure: "no git" })).toEqual({
+      localFiles: {},
+      remoteFiles: {},
+      failure: "no git",
+    });
+    expect(seededSync({ getItem: () => "not json" })).toBeUndefined();
+  });
+
+  it("puts the seeded files on both sides, so a pull brings the remote's and a push sends this computer's", async () => {
+    const backend = withSeed({
+      localFiles: { "config.jsonc": "{}" },
+      remoteFiles: { "mods/a.css": "/* a */\n" },
+    });
+    const status = await backend.syncConnect("https://example.com/me/s.git");
+    expect(status.pending).toEqual([{ path: "config.jsonc", change: "added" }]);
+    await expect(backend.syncPull()).resolves.toEqual({ kind: "updated", files: ["mods/a.css"] });
+    // The pull wrote the mod where the app reads it.
+    await expect(backend.listMods()).resolves.toEqual([{ name: "a.css", text: "/* a */\n" }]);
+    await expect(backend.syncPush()).resolves.toMatchObject({ pushed: true });
+  });
+
+  it("makes every sync call fail with the seeded message", async () => {
+    const backend = withSeed({ failure: "git is not installed" });
+    await expect(backend.syncStatus()).rejects.toThrow("git is not installed");
+    await expect(backend.syncConnect("https://example.com/me/s.git")).rejects.toThrow(
+      "git is not installed",
+    );
   });
 });

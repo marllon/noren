@@ -2359,6 +2359,23 @@ body {
   font-weight: 600;
 }
 
+/* The sync through git in the settings screen: the remote, its buttons, the status and the files a push would carry. */
+.settings-sync-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.settings-sync-pending {
+  margin: 0;
+  padding-left: 18px;
+  overflow-wrap: anywhere;
+}
+
+[data-nr-part="settings-sync"] > p {
+  overflow-wrap: anywhere;
+}
+
 .settings-mod-move {
   display: inline-flex;
   gap: 4px;

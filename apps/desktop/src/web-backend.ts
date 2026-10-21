@@ -15,6 +15,7 @@ import type {
   InstalledGalleryItem,
   PluginFolder,
   ShellProfile,
+  SyncPullResult,
   WindowEffect,
   Worktree,
 } from "@noren/model";
@@ -76,6 +77,15 @@ export const WEB_PLUGINS_KEY = "noren.web.plugins";
  * them. It replaces the fixture `galleryIndex` answers, so a test can serve a gallery of its own.
  */
 export const WEB_GALLERY_KEY = "noren.web.gallery";
+
+/**
+ * The sync through git for a test (NOR-F19-01b): a JSON object `{ localFiles, remoteFiles, failure }`.
+ * `localFiles` is what the config folder of this computer holds for the sync (path to text, only
+ * paths on the closed list travel), `remoteFiles` is what another computer already pushed to the
+ * remote, and `failure` (optional) is a message every sync call then fails with (git is missing,
+ * say). Nothing runs git or touches a network; without it the remote is empty.
+ */
+export const WEB_SYNC_KEY = "noren.web.sync";
 
 /**
  * Key of the scrollback snapshots in web mode (`scrollback/<paneId>.txt` of the real app): a JSON
@@ -177,6 +187,37 @@ export function seededPlugins(storage: Pick<Storage, "getItem">): PluginFolder[]
       } else if (typeof error === "string") folders.push({ folder, error });
     }
     return folders;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The sync seeded under `WEB_SYNC_KEY`. */
+export interface SyncSeed {
+  localFiles: Record<string, string>;
+  remoteFiles: Record<string, string>;
+  failure?: string;
+}
+
+/** The sync seeded under `WEB_SYNC_KEY`, or `undefined` when there is no usable seed. */
+export function seededSync(storage: Pick<Storage, "getItem">): SyncSeed | undefined {
+  try {
+    const raw = storage.getItem(WEB_SYNC_KEY);
+    if (raw === null) return undefined;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    const files = (of: unknown): Record<string, string> => {
+      const out: Record<string, string> = {};
+      if (typeof of !== "object" || of === null || Array.isArray(of)) return out;
+      for (const [path, text] of Object.entries(of)) if (typeof text === "string") out[path] = text;
+      return out;
+    };
+    const { localFiles, remoteFiles, failure } = value as Record<string, unknown>;
+    return {
+      localFiles: files(localFiles),
+      remoteFiles: files(remoteFiles),
+      ...(typeof failure === "string" ? { failure } : {}),
+    };
   } catch {
     return undefined;
   }
@@ -528,6 +569,32 @@ export class WebBackend extends FakeBackend {
       this.setGalleryIndex(gallery.index, gallery.downloads);
       this.setGalleryInstalled(gallery.installed);
     }
+    const sync = seededSync(storage);
+    if (sync !== undefined) {
+      for (const [path, text] of Object.entries(sync.localFiles)) this.setSyncLocalFile(path, text);
+      for (const [path, text] of Object.entries(sync.remoteFiles)) {
+        this.setSyncRemoteFile(path, text);
+      }
+      if (sync.failure !== undefined) this.setSyncFailure(new Error(sync.failure));
+    }
+  }
+
+  /**
+   * Like the fake one, and the files a pull delivers land where the real app writes them: the
+   * config text, the theme files and the mod files, so the app follows them as it follows an edit
+   * of the folder (the config and the mods are watched; the screen reads the themes again).
+   */
+  override async syncPull(): Promise<SyncPullResult> {
+    const result = await super.syncPull();
+    if (result.kind !== "updated") return result;
+    for (const path of result.files) {
+      const text = this.syncLocalFile(path);
+      if (text === undefined) continue;
+      if (path === "config.jsonc") this.setConfig(text);
+      else if (path.startsWith("themes/")) this.putUserTheme(path.slice(7, -".json".length), text);
+      else if (path.startsWith("mods/")) this.setMod(path.slice(5), text);
+    }
+    return result;
   }
 
   /** A browser window has no effect of its own to paint; the desktop app does. */

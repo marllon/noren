@@ -173,6 +173,7 @@ import { ModStyles } from "./ModStyles";
 import { useModFiles } from "./mods-store";
 import { importSchemeFile } from "./scheme-import";
 import { downloadText } from "./download-text";
+import { runSyncCommand } from "./sync-run";
 import {
   commitSpaceImport,
   exportFailureNotice,
@@ -340,6 +341,18 @@ export interface NorenTestHook {
    * so a reload finds them.
    */
   setMod(name: string, text: string | null): void;
+  /** Every call the backend got about the sync through git, in order, with the address for a connect. */
+  syncCalls(): { method: string; remote?: string }[];
+  /** Another computer pushed `text` as `path` to the remote (`null` removes it). */
+  setSyncRemoteFile(path: string, text: string | null): void;
+  /** Puts `text` in the config folder as `path` for the sync (`null` removes it). */
+  setSyncLocalFile(path: string, text: string | null): void;
+  /** The text of `path` in the config folder as the sync sees it, `null` for none. */
+  syncLocalFile(path: string): string | null;
+  /** What the remote of the sync holds now, by path. */
+  syncRemoteFiles(): Record<string, string>;
+  /** Makes every sync call fail with this message (git is missing, say); `null` undoes it. */
+  failSync(message: string | null): void;
   /** The providers lists handed to the AI side (`ai.configure`), in order, as the ids of each list. */
   aiConfigures(): string[][];
   /** The provider ids a key was stored or taken out for (`ai.setKey`), in order. The key is never recorded. */
@@ -958,6 +971,22 @@ function Shell({ store }: { store: WorkspaceStore }) {
     downloadText(fileName, made.text);
     showNotice(exportNotice(active.name, fileName, made.removed));
   }, [store, showNotice]);
+  // "Pull settings" and "Push settings": the sync through git for the remote already connected in
+  // the settings screen. The answer is a notice; with no remote it says where to connect. One step
+  // at a time, so a second press while git works is ignored.
+  const syncRunning = useRef(false);
+  const runSync = useCallback(
+    (command: "pull" | "push") => {
+      if (syncRunning.current) return;
+      syncRunning.current = true;
+      void runSyncCommand(backend, command)
+        .then((message) => showNotice(message.text))
+        .finally(() => {
+          syncRunning.current = false;
+        });
+    },
+    [showNotice],
+  );
   // "Import space...": like the color scheme, a hidden file input the palette clicks. The file is
   // checked and planned first; its new profiles go to `config.jsonc`, then the space is made. A file
   // that is not a space file says why in a notice and changes nothing.
@@ -1663,6 +1692,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) openSpacePicker();
         return;
       }
+      if (action.command.kind === "sync-pull" || action.command.kind === "sync-push") {
+        if (!modalOpen.current) runSync(action.command.kind === "sync-pull" ? "pull" : "push");
+        return;
+      }
       if (action.command.kind === "focus-sidebar") {
         if (!modalOpen.current) focusSidebar();
         return;
@@ -1839,6 +1872,19 @@ function Shell({ store }: { store: WorkspaceStore }) {
         openUrl: (url) => handleDeepLink(url),
         setConfig: (text) => fake.setConfig(text),
         setMod: (name, text) => fake.setMod(name, text),
+        syncCalls: () =>
+          fake.calls
+            .filter((call) => call.method.startsWith("sync"))
+            .map((call) => ({
+              method: call.method,
+              ...(call.method === "syncConnect" ? { remote: String(call.args[0]) } : {}),
+            })),
+        setSyncRemoteFile: (path, text) => fake.setSyncRemoteFile(path, text ?? undefined),
+        setSyncLocalFile: (path, text) => fake.setSyncLocalFile(path, text ?? undefined),
+        syncLocalFile: (path) => fake.syncLocalFile(path) ?? null,
+        syncRemoteFiles: () => fake.syncRemoteFiles(),
+        failSync: (message) =>
+          fake.setSyncFailure(message === null ? undefined : new Error(message)),
         aiConfigures: () =>
           fake
             .callsTo("ai.configure")
@@ -2126,6 +2172,13 @@ function Shell({ store }: { store: WorkspaceStore }) {
     } else if (entry.action.command.kind === "export-space") {
       closePalette();
       exportActiveSpace();
+      return;
+    } else if (
+      entry.action.command.kind === "sync-pull" ||
+      entry.action.command.kind === "sync-push"
+    ) {
+      closePalette();
+      runSync(entry.action.command.kind === "sync-pull" ? "pull" : "push");
       return;
     } else if (entry.action.command.kind === "ask-toggle") {
       // The panel takes the keyboard itself; the palette must not hand it to the terminal.

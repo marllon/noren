@@ -34,6 +34,7 @@ import type { ProfileImportPlan } from "./profile-import";
 import { ProfileImportDialog } from "./ProfileImportDialog";
 import { BenchPanel } from "./BenchPanel";
 import { GalleryPanel } from "./GalleryPanel";
+import { SyncPanel } from "./SyncPanel";
 import { ModelsPanel } from "./ModelsPanel";
 import { ProvidersPanel } from "./ProvidersPanel";
 import { useProfiles } from "./profiles-store";
@@ -218,6 +219,10 @@ interface SettingsDialogProps {
     | "galleryIndex"
     | "galleryInstalled"
     | "galleryInstall"
+    | "syncStatus"
+    | "syncConnect"
+    | "syncPull"
+    | "syncPush"
     | "listUserThemes"
     | "listMods"
   >;
@@ -904,6 +909,14 @@ export function SettingsDialog({ backend, onInsert, onClose }: SettingsDialogPro
               >
                 <h3>{t("settings.gallery")}</h3>
                 <GalleryPanel backend={backend} />
+              </section>
+              <section
+                className="settings-section"
+                aria-label={t("settings.sync")}
+                data-nr-part="settings-sync"
+              >
+                <h3>{t("settings.sync")}</h3>
+                <SyncPanel backend={backend} />
               </section>
               <section className="settings-section" aria-label={t("settings.import")}>
                 <h3>{t("settings.import")}</h3>

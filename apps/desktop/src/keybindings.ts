@@ -60,6 +60,8 @@ export type ActionCommand =
   | { kind: "import-scheme" }
   | { kind: "export-space" }
   | { kind: "import-space" }
+  | { kind: "sync-pull" }
+  | { kind: "sync-push" }
   | { kind: "focus-sidebar" }
   | LayoutCommand
   | { kind: "last-unread" }
@@ -360,6 +362,22 @@ export const ACTIONS: readonly ActionDef[] = [
     title: "Import space...",
     category: "Spaces",
     command: { kind: "import-space" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
+  },
+  {
+    id: "sync.pull",
+    title: "Pull settings",
+    category: "General",
+    command: { kind: "sync-pull" },
+    repeat: false,
+    chords: { safe: undefined, browser: undefined },
+  },
+  {
+    id: "sync.push",
+    title: "Push settings",
+    category: "General",
+    command: { kind: "sync-push" },
     repeat: false,
     chords: { safe: undefined, browser: undefined },
   },

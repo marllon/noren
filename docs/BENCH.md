@@ -1,6 +1,6 @@
 # Bench task suite
 
-`bench/tasks/` holds 60 tasks that a local model is asked to do, each with an automatic check. A runner (NOR-F16-02) will send the tasks to a model server and count the right answers; this page is the format of a task and the rules of the check. The code is `packages/model/src/bench-suite.ts` and the test `bench-suite.test.ts`, which reads every file in the folder.
+`bench/tasks/` holds 60 tasks that a local model is asked to do, each with an automatic check. A runner sends the tasks to a model server and counts the right answers; this page is the format of a task, the rules of the check and what the runner does and records. The code of the suite is `packages/model/src/bench-suite.ts` and the test `bench-suite.test.ts`, which reads every file in the folder; the runner is `packages/model/src/bench-runner.ts`.
 
 The check only compares text. It never runs a command that a model wrote.
 
@@ -74,3 +74,32 @@ A term matches at the start of a word: `permission` matches `permissions`, and `
 ## Adding a task
 
 Write the file in `bench/tasks/`, keep the id equal to the file name, give at least two `pass` and two `fail` examples (a `fail` example that is nearly right is the most useful), and run `pnpm exec vitest run packages/model/src/bench-suite.test.ts`. The test also counts the suite, so a new task changes `BENCH_DISTRIBUTION` too.
+
+## The runner
+
+`runBench({ ai, provider, model, tasks, now, signal, onProgress })` runs the tasks against one provider through `AiBackend.chat`, one at a time. It is pure TypeScript: it opens no connection of its own (the Rust side talks to the provider), reads no file and takes the clock (`now`, in milliseconds) from its caller, so a test sets every latency.
+
+**What is sent.** Each task is one request with an id of its own and two messages. The system message depends on the kind: a command task asks for one command for the shell of the task (PowerShell or bash) alone on a line, with no explanation and no code fence; an explanation task asks for what the error means and how to fix it in a few sentences; a summary task asks for one short sentence. The user message is the prompt of the task, followed by its `input` in a code fence when it has one. The deltas of the answer are joined and given to `checkBenchAnswer`.
+
+**Only a model on this computer.** The run is refused, before any request, when the address of the provider is not `localhost`, `127.0.0.1` or `::1` (any port, `http` or `https`), when the address holds a user name or password, when no model is named (a blank `model` takes the default model of the provider) or when two tasks share an id. The refusal is a `BenchRefusedError` that says why. A provider elsewhere would be sent 60 prompts, and the bench is meant for models you run yourself.
+
+**What is measured, for each task.**
+
+| Field             | Meaning                                                                                                                                        |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ok`, `reason`    | The answer passed its check, or why it did not. A failed call is `the provider failed: <kind>`.                                                |
+| `firstChunkMs`    | From the request to the first delta that has text; `null` when none came.                                                                      |
+| `totalMs`         | From the request to its last event (`done` or `error`).                                                                                        |
+| `outputTokens`    | The characters of the answer divided by 4, rounded up (`tokensSource: "estimate"`). A count reported by the provider will be `"stream"`.       |
+| `tokensPerSecond` | `outputTokens` over `totalMs`, rounded to two decimals; `null` for a failed call, or one with no time or no tokens. An estimate, not a count.  |
+| `error`           | `{ kind, message }` of the provider when the call failed (`network`, `timeout`, `http`, ...); `null` otherwise. The message never holds a key. |
+
+A call that fails (an `error` event, `chat` rejecting, or an answer that ends without `done`) is a failed task with the kind of the error and the run goes on with the next task. A partial answer of a broken stream is never judged.
+
+**Totals.** For the whole run and for each kind: tasks run, passed, calls that failed, accuracy (passed over run, 0 when none ran) and the medians of the time to the first delta, of the total time and of the tokens per second. The medians leave out the tasks whose call failed, so a refused connection does not look fast. The result checks itself: `benchRunSchema` refuses a result whose totals are not what its tasks add up to.
+
+**Cancelling.** When `signal` aborts, the request in flight is cancelled with `ai.cancel`, no further task is sent and the result is `cancelled` with the tasks that were done; the one cut short is not among them. A task that ended with `done` before the cancel took effect is kept. `planned` tells how many tasks the run was asked to do.
+
+**The result.** `runBench` returns a `BenchRun` (and `benchRunSchema` reads it back from JSON): `version`, `startedAt` (ISO 8601, UTC), the `provider` (`id`, `kind` and `baseUrl`; never a key), the `model`, the `state` (`complete` or `cancelled`), `planned`, the `tasks`, the `totals` and `memory`, which is `null` until the memory of the model is measured. Its file is `bench-results/<YYYY-MM-DD-HHmmss>.json`, named from the start of the run in UTC by `benchResultPath`. Writing it is not done yet (NOR-F16-02b), nor are the real token counts of the stream and the memory read from Ollama.
+
+Run the tests of the runner with `pnpm exec vitest run packages/model/src/bench-runner.test.ts`.

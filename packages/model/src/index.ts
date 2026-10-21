@@ -527,6 +527,28 @@ export type {
   ShellIntegrationParserOptions,
 } from "./shell-integration";
 export {
+  BENCH_CHARS_PER_TOKEN,
+  BENCH_RESULTS_DIR,
+  BENCH_RUN_VERSION,
+  BenchRefusedError,
+  benchMessages,
+  benchProviderProblem,
+  benchResultPath,
+  benchRunSchema,
+  estimateTokens,
+  benchMedian,
+  runBench,
+  summarizeBenchTasks,
+} from "./bench-runner";
+export type {
+  BenchAbortSignal,
+  BenchProgress,
+  BenchRun,
+  BenchTaskRun,
+  BenchTotals,
+  RunBenchOptions,
+} from "./bench-runner";
+export {
   BENCH_DISTRIBUTION,
   benchTaskSchema,
   checkBenchAnswer,

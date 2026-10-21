@@ -139,10 +139,13 @@ async fn execute(command: &Command, target: &ApiTarget) -> Result<Value, Failure
             cwd,
             profile,
         } => {
-            let listed = client.call(ApiMethod::SpacesList, json!({})).await?;
-            let space = resolve_space(&listed, space).map_err(Failure::Refused)?;
             let mut params = Map::new();
-            params.insert("space".into(), space.into());
+            // Without a space Noren picks it (a routing rule, else the active space): nothing to look up.
+            if let Some(wanted) = space {
+                let listed = client.call(ApiMethod::SpacesList, json!({})).await?;
+                let space = resolve_space(&listed, wanted).map_err(Failure::Refused)?;
+                params.insert("space".into(), space.into());
+            }
             insert_some(&mut params, "cwd", cwd);
             insert_some(&mut params, "profile", profile);
             Ok(client.call(ApiMethod::ItemsCreate, params.into()).await?)

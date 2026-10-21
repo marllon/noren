@@ -86,11 +86,13 @@ Names of things are the ids that `spaces.list` shows. A terminal is named by the
 | --------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `spaces.list`   | none                                                           | `{ spaces: [{ id, name, active, items: [{ id, title?, pinned, active, focused, panes: [{ id, type, status, profile, cwd?, session }] }] }] }` |
 | `spaces.create` | `{ name }`                                                     | `{ space, name }`; the space is made, not shown                                                                                               |
-| `items.create`  | `{ space, cwd?, profile? }`                                    | `{ space, item, terminal, session }`; a tab with a new shell                                                                                  |
+| `items.create`  | `{ space?, cwd?, profile? }`                                   | `{ space, group?, item, terminal, session }`; a tab with a new shell                                                                          |
 | `splits.create` | `{ item, direction: "right" \| "down", cwd?, profile? }`       | `{ item, terminal, session }`; a new pane with a new shell beside the pane in focus                                                           |
 | `terminal.send` | `{ terminal, text?, keys?: [name] }` (at least one of the two) | `{ terminal, bytes }`                                                                                                                         |
 | `terminal.read` | `{ terminal, lines? }` (1 to 10000)                            | `{ terminal, lines: [text], truncated }`; the newest lines, within 1 MiB                                                                      |
 | `notify`        | `{ title, body?, terminal? }`                                  | `{ shown, terminal? }`; a notification of the system                                                                                          |
+
+`items.create` without a `space` lets Noren choose it with the routing rules of the user (`routing.rules` in `config.jsonc`, see [Routing](CONFIG.md#routing)): the first rule that matches the `cwd` of the call and its `profile` decides the space and, if the rule names one, the group in it, and the answer says the `space` used (and the `group`, when the tab went into one). The folder the rules see is `cwd`, or the default folder of the active space when the call gives none; the "command" is the `profile` id of the call, or the default profile of the active space when it gives none. A rule whose space or group does not exist is skipped. With no rules, no match or a rule that could not be read, the tab goes to the active space. A `space` in the call is used as it is and the rules are not looked at. The rules are read at every call, so a change of the settings counts at once. An empty `space` is `invalid_params`; so is a `space` that is not text.
 
 `session` is the number of the shell session as text (`"7"`): the id that `terminal.output` and `agent.state` events carry as `sessionId`. In `spaces.list` it is `session: null` for a pane with no shell (a browser pane, or a terminal whose shell did not start).
 
@@ -133,4 +135,4 @@ For tests or a second copy of the app, `--endpoint <name>` (`NOREN_API_ENDPOINT`
 ## Not here yet
 
 - A `noren-cli` command for `spaces.list` (the API has it; the command line does not wrap it yet), and a way for a shell to know its own terminal id.
-- Routing rules for new tabs and the CLI (NOR-F17-03).
+- Routing rules for the new tabs of the window itself (NOR-F17-03c); the API and the CLI use them already.

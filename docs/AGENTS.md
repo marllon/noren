@@ -29,15 +29,16 @@ The terminal you just made is in the answer: `terminal` is the id you pass to `s
 
 `noren-cli` has no command yet that lists the terminals that already exist, and the shells Noren starts do not carry their own pane id in the environment. The list is the API method `spaces.list` (every space, tab and pane with its id, folder and `session`), which a client of the [API](API.md#methods) can call; if a person gives you a terminal id, use it as it is.
 
-`--space` takes the id or the name of a space. A name that two spaces share is refused (use the id). `--cwd .` means the folder you run the command in; any relative folder is made absolute first, because the app does not know where you are.
+`--space` takes the id or the name of a space. A name that two spaces share is refused (use the id). **You can leave `--space` out**: Noren then puts the tab where the user's routing rules say (`routing.rules` in the settings file, matched against `--cwd` and `--profile`), and in the active space when no rule matches. The answer says which space it used, so read `space` in it. Name the space yourself when it matters: the user may not want your tab in the one they are working in. `--cwd .` means the folder you run the command in; any relative folder is made absolute first, because the app does not know where you are.
 
 ## The commands
 
 Every command prints the answer of Noren as **one line of JSON** on standard output and exits with a code. A message for a person goes to standard error.
 
 ```sh
-# A tab with a new shell in a space (id or name), in this folder.
-noren-cli new-tab --space Work --cwd . [--profile <id>]
+# A tab with a new shell in a space (id or name), in this folder. Without --space the user's
+# routing rules pick the space, else the active one; the answer names it.
+noren-cli new-tab [--space Work] --cwd . [--profile <id>]
 
 # A new pane beside the focused pane of a tab (the item id), to the right or down.
 noren-cli split --item i9 --direction right [--cwd <folder>] [--profile <id>]

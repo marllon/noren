@@ -103,7 +103,13 @@ pub fn call_event(id: u64, call: &ApiCall) -> Value {
             space,
             cwd,
             profile,
-        } => with_optional(json!({ "space": space }), cwd, profile),
+        } => {
+            let mut params = json!({});
+            if let Some(space) = space {
+                params["space"] = json!(space);
+            }
+            with_optional(params, cwd, profile)
+        }
         ApiCall::SplitsCreate {
             item,
             direction,
@@ -593,12 +599,17 @@ mod tests {
                 name: "Work".into(),
             },
             ApiCall::ItemsCreate {
-                space: "s1".into(),
+                space: Some("s1".into()),
                 cwd: None,
                 profile: None,
             },
             ApiCall::ItemsCreate {
-                space: "s1".into(),
+                space: None,
+                cwd: None,
+                profile: None,
+            },
+            ApiCall::ItemsCreate {
+                space: Some("s1".into()),
                 cwd: Some("C:\\work".into()),
                 profile: Some("pwsh".into()),
             },
@@ -670,7 +681,7 @@ mod tests {
         let event = call_event(
             1,
             &ApiCall::ItemsCreate {
-                space: "s".into(),
+                space: Some("s".into()),
                 cwd: None,
                 profile: None,
             },

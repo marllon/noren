@@ -317,6 +317,7 @@ export type {
   ApiNotification,
   ApiMethodName,
   ApiOutcome,
+  ApiRouting,
 } from "./api-dispatch";
 export { AGENT_LINE_MAX, buildAgentList, firstWaitingAgent, truncateLine } from "./agent-list";
 export type { AgentInfo, AgentRow } from "./agent-list";

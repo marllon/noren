@@ -12,16 +12,18 @@ import {
   dispatchApiCall,
   parseApiCall,
 } from "./api-dispatch";
-import type { ApiCall, ApiHost, ApiNotification, ApiOutcome } from "./api-dispatch";
+import type { ApiCall, ApiHost, ApiNotification, ApiOutcome, ApiRouting } from "./api-dispatch";
 import type { Backend } from "./backend";
 import { createDefaultWorkspace } from "./default-workspace";
 import { createBrowserPane } from "./factories";
 import { FakeBackend } from "./fake-backend";
 import { createSequentialIds } from "./ids";
 import { checkInvariants } from "./invariants";
+import type { RoutingRule } from "./routing";
 import { layoutPanes } from "./sessions";
 import { TerminalTail } from "./terminal-tail";
 import { applyChecked, testContext } from "./test-helpers";
+import { treeGroups } from "./tree";
 import type { Id, LayoutNode, Space, Workspace } from "./types";
 
 // The dispatcher of the local API (NOR-F17-01b; `notify` and the session ids NOR-F17-02a): each method against a workspace that
@@ -48,6 +50,8 @@ interface RigOptions {
   whileStarting?: (rig: Rig) => void;
   /** What the notifier of the host answers; `true` (shown) when left out. */
   shows?: boolean | Promise<boolean> | (() => never);
+  /** The routing rules of the host; none when left out. */
+  routing?: () => ApiRouting | undefined;
 }
 
 function rig(options: RigOptions = {}): Rig {
@@ -100,6 +104,7 @@ function rig(options: RigOptions = {}): Rig {
         return typeof shows === "function" ? shows() : shows;
       },
       ...(options.maxPanes !== undefined ? { maxPanes: options.maxPanes } : {}),
+      ...(options.routing !== undefined ? { routing: options.routing } : {}),
     },
   };
   return self;
@@ -366,7 +371,7 @@ describe("items.create", () => {
   it("refuses parameters that do not fit, with no shell started", async () => {
     const r = rig();
     for (const params of [
-      {},
+      { cwd: "" },
       { space: "" },
       { space: 1 },
       { space: "w1", cwd: "" },
@@ -378,6 +383,209 @@ describe("items.create", () => {
       expect(errorOf(await run(r, "items.create", params)).code).toBe("invalid_params");
     }
     expect(r.backend.callsTo("createSession")).toHaveLength(0);
+  });
+});
+
+describe("items.create without a space (routing rules)", () => {
+  const UNIX = { platform: "unix", home: "/home/ana" } as const;
+  const rules = (list: RoutingRule[]): (() => ApiRouting) => {
+    return () => ({ rules: list, context: UNIX });
+  };
+
+  /** Main (w1, the active one) plus Work and Play, with a group "Api" in Work. */
+  function routed(options: RigOptions = {}): Rig & { work: Id; play: Id; api: Id } {
+    const r = rig(options);
+    r.apply({ type: "space/create", name: "Work", activate: false });
+    r.apply({ type: "space/create", name: "Play", activate: false });
+    const work = r.workspace().spaces.find((s) => s.name === "Work")?.id as Id;
+    const play = r.workspace().spaces.find((s) => s.name === "Play")?.id as Id;
+    r.apply({ type: "group/create", spaceId: work, name: "Api" });
+    const api = treeGroups(r.workspace().spaces.find((s) => s.id === work)?.tree ?? [])[0]
+      ?.id as Id;
+    return Object.assign(r, { work, play, api });
+  }
+
+  const withRules = (r: Rig, list: RoutingRule[]): ApiHost => ({ ...r.host, routing: rules(list) });
+  const inSpace = (r: Rig, id: Id): Space => {
+    const space = r.workspace().spaces.find((s) => s.id === id);
+    if (!space) throw new Error(`no space ${id}`);
+    return space;
+  };
+
+  it("goes to the active space when the host has no rules", async () => {
+    const r = routed();
+    const tab = resultOf(await run(r, "items.create", { cwd: "/code/api" }));
+    expect(tab.space).toBe("w1");
+    expect(tab).not.toHaveProperty("group");
+    expect(mainSpace(r).activeItemId).toBe(tab.item);
+  });
+
+  it("goes to the active space when there are no rules or none matches", async () => {
+    const r = routed();
+    r.apply({ type: "space/activate", spaceId: r.play });
+    for (const routing of [
+      undefined,
+      (): ApiRouting => ({ rules: undefined, context: UNIX }),
+      rules([]),
+      rules([{ cwd: "/code/**", space: "Work" }]),
+    ]) {
+      const host: ApiHost = { ...r.host, ...(routing !== undefined ? { routing } : {}) };
+      const tab = resultOf(await dispatchApiCall(call("items.create", { cwd: "/tmp" }), host));
+      expect(tab.space).toBe(r.play);
+    }
+    expect(inSpace(r, r.work).tree.every((n) => n.kind === "group")).toBe(true);
+  });
+
+  it("goes to the space of the first rule that matches the folder", async () => {
+    const r = routed();
+    const host = withRules(r, [
+      { cwd: "/code/**", space: "Work" },
+      { cwd: "/code/play/**", space: "Play" },
+    ]);
+    const tab = resultOf(
+      await dispatchApiCall(call("items.create", { cwd: "/code/play/x" }), host),
+    );
+    expect(tab.space).toBe(r.work);
+    expect(inSpace(r, r.work).activeItemId).toBe(tab.item);
+    expect(created(r)[0]).toMatchObject({ cwd: "/code/play/x" });
+    expect(checkInvariants(r.workspace())).toEqual([]);
+  });
+
+  it("goes by the folder the space it falls to would have used, when the call gives none", async () => {
+    const r = routed();
+    r.apply({ type: "space/set-defaults", spaceId: "w1", cwd: "/home/ana/notes" });
+    const host = withRules(r, [{ cwd: "~/notes", space: "Play" }]);
+    const tab = resultOf(await dispatchApiCall(call("items.create"), host));
+    expect(tab.space).toBe(r.play);
+  });
+
+  it("goes by the profile the call names, or the default one when it names none", async () => {
+    const r = routed();
+    const host = withRules(r, [
+      { command: "^zsh$", space: "Play" },
+      { command: "^default$", space: "Work" },
+    ]);
+    const named = resultOf(await dispatchApiCall(call("items.create", { profile: "zsh" }), host));
+    expect(named.space).toBe(r.play);
+    const plain = resultOf(await dispatchApiCall(call("items.create"), host));
+    expect(plain.space).toBe(r.work);
+    const other = resultOf(await dispatchApiCall(call("items.create", { profile: "fake" }), host));
+    expect(other.space).toBe("w1");
+  });
+
+  it("needs both parts of a rule that has a folder and a command", async () => {
+    const r = routed();
+    const host = withRules(r, [{ cwd: "/code/**", command: "^zsh$", space: "Work" }]);
+    const one = await dispatchApiCall(call("items.create", { cwd: "/code/a" }), host);
+    expect(resultOf(one).space).toBe("w1");
+    const both = await dispatchApiCall(
+      call("items.create", { cwd: "/code/a", profile: "zsh" }),
+      host,
+    );
+    expect(resultOf(both).space).toBe(r.work);
+  });
+
+  it("puts the tab in the group the rule names, and says which", async () => {
+    const r = routed();
+    const host = withRules(r, [{ cwd: "/code/api", space: "Work", group: "Api" }]);
+    const tab = resultOf(await dispatchApiCall(call("items.create", { cwd: "/code/api" }), host));
+    expect(tab).toMatchObject({ space: r.work, group: r.api, session: "1" });
+    const group = treeGroups(inSpace(r, r.work).tree).find((g) => g.id === r.api);
+    expect(group?.children.map((n) => n.id)).toEqual([tab.item]);
+    expect(inSpace(r, r.work).activeItemId).toBe(tab.item);
+    expect(checkInvariants(r.workspace())).toEqual([]);
+  });
+
+  it("puts the tab at the top of the space when the rule names no group", async () => {
+    const r = routed();
+    const host = withRules(r, [{ cwd: "/code/api", space: "Work" }]);
+    const tab = resultOf(await dispatchApiCall(call("items.create", { cwd: "/code/api" }), host));
+    expect(inSpace(r, r.work).tree.map((n) => n.id)).toContain(tab.item);
+    expect(treeGroups(inSpace(r, r.work).tree).find((g) => g.id === r.api)?.children).toEqual([]);
+    expect(tab).not.toHaveProperty("group");
+  });
+
+  it("falls to the active space when the space or the group of a rule is not there", async () => {
+    const r = routed();
+    const host = withRules(r, [
+      { cwd: "/code/**", space: "Gone" },
+      { cwd: "/code/**", space: "Work", group: "Gone" },
+    ]);
+    const tab = resultOf(await dispatchApiCall(call("items.create", { cwd: "/code/a" }), host));
+    expect(tab.space).toBe("w1");
+    expect(tab).not.toHaveProperty("group");
+    // A rule further down that does match is used, as the rules are tried in order.
+    const second = withRules(r, [
+      { cwd: "/code/**", space: "Gone" },
+      { cwd: "/code/**", space: "Play" },
+    ]);
+    const next = resultOf(await dispatchApiCall(call("items.create", { cwd: "/code/a" }), second));
+    expect(next.space).toBe(r.play);
+  });
+
+  it("ignores the rules when the call names a space", async () => {
+    const r = routed();
+    const host = withRules(r, [{ cwd: "/code/**", space: "Work", group: "Api" }]);
+    const tab = resultOf(
+      await dispatchApiCall(call("items.create", { space: r.play, cwd: "/code/a" }), host),
+    );
+    expect(tab.space).toBe(r.play);
+    expect(tab).not.toHaveProperty("group");
+    expect(inSpace(r, r.work).tree.every((n) => n.kind === "group")).toBe(true);
+  });
+
+  it("reads the rules at every call, so a change of the settings counts at once", async () => {
+    const r = routed();
+    let current: RoutingRule[] = [];
+    const host: ApiHost = { ...r.host, routing: () => ({ rules: current, context: UNIX }) };
+    const first = resultOf(await dispatchApiCall(call("items.create", { cwd: "/code/a" }), host));
+    current = [{ cwd: "/code/**", space: "Play" }];
+    const second = resultOf(await dispatchApiCall(call("items.create", { cwd: "/code/a" }), host));
+    current = [];
+    const third = resultOf(await dispatchApiCall(call("items.create", { cwd: "/code/a" }), host));
+    expect([first.space, second.space, third.space]).toEqual(["w1", r.play, "w1"]);
+  });
+
+  it("makes the tab in the active space when the rules cannot be read", async () => {
+    const r = routed();
+    const host: ApiHost = {
+      ...r.host,
+      routing: () => {
+        throw new Error("settings broke");
+      },
+    };
+    const tab = resultOf(await dispatchApiCall(call("items.create", { cwd: "/code/a" }), host));
+    expect(tab.space).toBe("w1");
+  });
+
+  it("starts the shell with the defaults of the space the rule picked", async () => {
+    const r = routed();
+    r.apply({ type: "space/set-defaults", spaceId: r.work, profileId: "zsh", cwd: "/work" });
+    const host = withRules(r, [{ cwd: "/code/**", space: "Work" }]);
+    await dispatchApiCall(call("items.create", { cwd: "/code/a" }), host);
+    expect(created(r)[0]).toMatchObject({ profileId: "zsh", cwd: "/code/a" });
+    const none = routed();
+    none.apply({ type: "space/set-defaults", spaceId: none.work, profileId: "zsh", cwd: "/work" });
+    await dispatchApiCall(
+      call("items.create", { profile: "fake" }),
+      withRules(none, [{ command: "^fake$", space: "Work" }]),
+    );
+    expect(created(none)[0]).toMatchObject({ profileId: "fake", cwd: "/work" });
+  });
+
+  it("puts the tab at the top of the space when the group went while the shell started", async () => {
+    const r = routed({
+      whileStarting: (self) => {
+        const groups = self.workspace().spaces.flatMap((s) => treeGroups(s.tree));
+        for (const group of groups) self.apply({ type: "group/ungroup", groupId: group.id });
+      },
+    });
+    const host = withRules(r, [{ cwd: "/code/api", space: "Work", group: "Api" }]);
+    const tab = resultOf(await dispatchApiCall(call("items.create", { cwd: "/code/api" }), host));
+    expect(tab.space).toBe(r.work);
+    expect(tab).not.toHaveProperty("group");
+    expect(inSpace(r, r.work).tree.map((n) => n.id)).toEqual([tab.item]);
+    expect(checkInvariants(r.workspace())).toEqual([]);
   });
 });
 
@@ -1141,6 +1349,12 @@ describe("parseApiCall", () => {
       params: { space: "s", cwd: null, profile: null },
     });
     expect(parsed).toEqual({ ok: true, call: { method: "items.create", params: { space: "s" } } });
+    const none = parseApiCall({ method: "items.create", params: { space: null } });
+    expect(none).toEqual({ ok: true, call: { method: "items.create", params: {} } });
+    expect(parseApiCall({ method: "items.create" })).toEqual({
+      ok: true,
+      call: { method: "items.create", params: {} },
+    });
   });
 
   it("counts the length of a line in characters and of a text in bytes", () => {
@@ -1210,6 +1424,8 @@ describe("the format of the Rust side", () => {
     expect(fieldsOf("SpacesList")).toEqual([]);
     expect(fieldsOf("SpacesCreate")).toEqual(["name"]);
     expect(fieldsOf("ItemsCreate")).toEqual(["cwd", "profile", "space"]);
+    // The space of items.create is the one optional id: a tab with none is placed by the app.
+    expect(rust).toMatch(/ItemsCreate \{\s*space: Option<String>,/);
     expect(fieldsOf("SplitsCreate")).toEqual(["cwd", "direction", "item", "profile"]);
     expect(fieldsOf("TerminalSend")).toEqual(["keys", "terminal", "text"]);
     expect(fieldsOf("TerminalRead")).toEqual(["lines", "terminal"]);

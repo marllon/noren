@@ -6,7 +6,7 @@ import {
   layoutPanes,
   restoreWorkspace,
 } from "@noren/model";
-import type { ApiCall, ApiOutcome, NotificationSettings } from "@noren/model";
+import type { ApiCall, ApiOutcome, ApiRouting, NotificationSettings } from "@noren/model";
 import { describe, expect, it, vi } from "vitest";
 import {
   API_CALL_EVENT,
@@ -269,7 +269,13 @@ describe("the listener of the local API", () => {
 
 // ---- the page's host: the real workspace store and the fake shells -------------------------------
 
-async function openApp(options: { settings?: NotificationSettings; noNotifier?: boolean } = {}) {
+async function openApp(
+  options: {
+    settings?: NotificationSettings;
+    noNotifier?: boolean;
+    routing?: () => ApiRouting | undefined;
+  } = {},
+) {
   const backend = new FakeBackend();
   const newId = createSequentialIds("n");
   const clock = { now: () => 1000 };
@@ -287,6 +293,7 @@ async function openApp(options: { settings?: NotificationSettings; noNotifier?: 
     tail,
     bridge: fake.bridge,
     ...(options.noNotifier === true ? {} : { notifier }),
+    ...(options.routing !== undefined ? { routing: options.routing } : {}),
   });
   await settle();
   let next = 100;
@@ -436,6 +443,42 @@ describe("the local API over the app's workspace", () => {
     });
   });
 
+  it("places a tab that names no space by the rules of the settings, read at every call", async () => {
+    let rules: ApiRouting["rules"] = undefined;
+    const { store, call } = await openApp({
+      routing: () => ({ rules, context: { platform: "unix", home: "/home/ana" } }),
+    });
+    const active = store.getState().workspace.activeSpaceId;
+    const made = (await call("spaces.create", { name: "Work" }))["result"] as { space: string };
+    const first = (await call("items.create", { cwd: "/code/api" }))["result"] as {
+      space: string;
+    };
+    expect(first.space).toBe(active);
+    // The settings changed since: the next call follows them with no restart.
+    rules = [{ cwd: "/code/**", space: "Work" }];
+    const second = (await call("items.create", { cwd: "/code/api" }))["result"] as {
+      space: string;
+      item: string;
+    };
+    expect(second.space).toBe(made.space);
+    const work = store.getState().workspace.spaces.find((s) => s.id === made.space);
+    expect(Object.keys(work?.items ?? {})).toContain(second.item);
+    // A space in the call wins over the rules.
+    const named = (await call("items.create", { space: active, cwd: "/code/api" }))["result"] as {
+      space: string;
+    };
+    expect(named.space).toBe(active);
+  });
+
+  it("makes a tab that names no space in the active space when the app gives no rules", async () => {
+    const { store, call } = await openApp();
+    const active = store.getState().workspace.activeSpaceId;
+    const made = (await call("items.create", { cwd: "/code/api" }))["result"] as {
+      space: string;
+    };
+    expect(made.space).toBe(active);
+  });
+
   it("builds the host from the store, the backend and the tail", async () => {
     const backend = new FakeBackend();
     const newId = createSequentialIds("h");
@@ -448,5 +491,8 @@ describe("the local API over the app's workspace", () => {
     tail.feed(5, "a\r\nb\r\n");
     expect(host.readLines(5, 10)).toEqual(["a", "b"]);
     expect(host.backend).toBe(backend);
+    expect(host.routing).toBeUndefined();
+    const routing = (): ApiRouting => ({ rules: [], context: { platform: "windows" } });
+    expect(appApiHost({ store, backend, tail, routing }).routing).toBe(routing);
   });
 });

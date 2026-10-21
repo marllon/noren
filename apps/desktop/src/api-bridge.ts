@@ -9,6 +9,7 @@ import type {
   ApiCall,
   ApiHost,
   ApiOutcome,
+  ApiRouting,
   Backend,
   SystemNotifier,
   TerminalTail,
@@ -115,6 +116,11 @@ export interface AppApiHostOptions {
   tail: Pick<TerminalTail, "read">;
   /** Shows the notifications of `notify`, under the user's settings; without it none is shown. */
   notifier?: Pick<SystemNotifier, "send">;
+  /**
+   * The routing rules of the settings and what matching them needs, asked at every `items.create`
+   * that names no space (NOR-F17-03b). Without it such a tab goes to the active space.
+   */
+  routing?: () => ApiRouting | undefined;
 }
 
 /** The pane a `notify` that names no terminal counts as coming from (for the repeat guard). */
@@ -122,13 +128,14 @@ const API_NOTIFY_SOURCE = "api";
 
 /** The host of the dispatcher over the real workspace store, backend and terminal tail. */
 export function appApiHost(options: AppApiHostOptions): ApiHost {
-  const { store, backend, tail, notifier } = options;
+  const { store, backend, tail, notifier, routing } = options;
   return {
     workspace: () => store.getState().workspace,
     dispatch: (action) => store.getState().dispatch(action),
     attachSession: (paneId, sessionId) => store.getState().attachSession(paneId, sessionId),
     backend,
     readLines: (sessionId, count) => tail.read(sessionId, count),
+    ...(routing !== undefined ? { routing } : {}),
     ...(notifier !== undefined
       ? {
           notify: ({ title, body, paneId }) =>

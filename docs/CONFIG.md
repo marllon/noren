@@ -250,7 +250,7 @@ A space has its own switch, in its menu (right-click the space, or the **Space o
 - **Names, not ids.** `space` and `group` are found by their name in the workspace, the exact name first and then ignoring upper and lower case. A group is looked up inside the space of the rule, an outer group before an inner one. A rule whose space or group does not exist is **skipped** and the next rule is tried; it is not an error of the file, because the spaces change while the file does not.
 - **No match, no change.** A tab that no rule matches goes where it would have gone without the rules. A match with no group puts the tab in the space itself.
 
-`routeNewTab(rules, { cwd, command }, workspace, { platform, home })` of `@noren/model` (`routing.ts`) is the pure function that makes the choice; it answers `{ spaceId, groupId? }` or nothing, and takes the kind of system and the home folder as arguments. This version only reads and checks the rules: the new tabs of the window, the `items.create` call of the local API and `noren-cli new-tab` do not use them yet.
+`routeNewTab(rules, { cwd, command }, workspace, { platform, home })` of `@noren/model` (`routing.ts`) is the pure function that makes the choice; it answers `{ spaceId, groupId? }` or nothing, and takes the kind of system and the home folder as arguments. The `items.create` call of the local API and `noren-cli new-tab` use the rules when they name no space (the "command" there is the profile id of the call, and the folder is the `cwd` of the call or the default folder of the active space); the rules are read at every call. The new tabs of the window itself do not use them yet.
 
 ## The window and the background
 

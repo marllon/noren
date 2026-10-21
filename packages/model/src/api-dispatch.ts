@@ -2,9 +2,11 @@ import type { Action } from "./actions";
 import { keySequences } from "./api-keys";
 import type { Backend, CreateSessionOptions, SessionId } from "./backend";
 import { DEFAULT_PROFILE_ID } from "./factories";
+import { routeNewTab } from "./routing";
+import type { RoutingContext, RoutingDestination, RoutingRule } from "./routing";
 import { layoutPanes } from "./sessions";
 import { spaceSessionEnv } from "./session-env";
-import { spaceItemIds } from "./tree";
+import { spaceItemIds, treeGroups } from "./tree";
 import type { Id, Item, Pane, Space, Workspace } from "./types";
 import { DEFAULT_MAX_PANES } from "./types";
 import { encodeUtf8 } from "./utf8";
@@ -20,6 +22,11 @@ import { encodeUtf8 } from "./utf8";
 // The call is checked again here (`parseApiCall`) because it crosses from Rust to the page as JSON
 // and the page is not obliged to trust it; a call the server would have refused gets the same
 // error code it would have.
+//
+// `items.create` without a `space` is placed by the routing rules of the user (NOR-F17-03b): the
+// first rule of `routing.rules` that matches the folder and the profile of the tab names the space
+// (and a group in it); with no match, or no rules, the tab goes to the active space. A `space` in the
+// call is taken as it is and the rules are not looked at.
 //
 // D8: a call sends what it carries and nothing else. Text is written as given, a key is the bytes
 // of its name, and no Enter is ever added; a command runs only if the caller wrote the line end.
@@ -99,7 +106,7 @@ export type ApiJson = null | boolean | number | string | ApiJson[] | { [key: str
 export type ApiCall =
   | { method: "spaces.list"; params: Record<string, never> }
   | { method: "spaces.create"; params: { name: string } }
-  | { method: "items.create"; params: { space: string; cwd?: string; profile?: string } }
+  | { method: "items.create"; params: { space?: string; cwd?: string; profile?: string } }
   | {
       method: "splits.create";
       params: { item: string; direction: "right" | "down"; cwd?: string; profile?: string };
@@ -114,6 +121,14 @@ export interface ApiNotification {
   body?: string;
   /** The pane the notification is about, when the call named one (it exists and is a terminal). */
   paneId?: Id;
+}
+
+/** The rules for a new tab and what matching them depends on, as the app has them now. */
+export interface ApiRouting {
+  /** `routing.rules` of the settings; none when the user wrote none. */
+  rules: readonly RoutingRule[] | undefined;
+  /** The kind of system and the home folder, which the match reads as arguments. */
+  context: RoutingContext;
 }
 
 /** What the dispatcher needs from the app. */
@@ -141,6 +156,11 @@ export interface ApiHost {
   readonly size?: { cols: number; rows: number };
   /** Most panes one tab may hold; `DEFAULT_MAX_PANES` when left out. */
   readonly maxPanes?: number;
+  /**
+   * The routing rules, asked at every `items.create` that names no space, so the settings of the
+   * moment count. Without it (or without rules) such a tab goes to the active space.
+   */
+  routing?(): ApiRouting | undefined;
   /**
    * Shows a notification of the system, if the user's settings allow it, and tells whether one was
    * shown (the app's `SystemNotifier`). Never rejects. Without it, `notify` answers `shown: false`.
@@ -306,7 +326,7 @@ function readParams(method: ApiMethodName, fields: Fields): ApiCall {
       return {
         method,
         params: some({
-          space: fields.text("space", idChars, "line", true),
+          space: fields.text("space", idChars, "line", false),
           cwd: fields.text("cwd", pathChars, "line", false),
           profile: fields.text("profile", idChars, "line", false),
         }),
@@ -477,17 +497,50 @@ async function dropShell(host: ApiHost, id: SessionId): Promise<void> {
   }
 }
 
+/**
+ * Where a tab with no `space` goes: the destination of the first routing rule that matches its
+ * folder and its profile, else the active space. What the tab would have used without a rule (the
+ * folder and profile defaults of the active space) is what the rules are asked about. A host whose
+ * rules cannot be read counts as one with no rules: the tab is still made.
+ */
+function chooseDestination(
+  host: ApiHost,
+  ws: Workspace,
+  params: { cwd?: string; profile?: string },
+): RoutingDestination {
+  const active: RoutingDestination = { spaceId: ws.activeSpaceId };
+  let routing: ApiRouting | undefined;
+  try {
+    routing = host.routing?.();
+  } catch {
+    return active;
+  }
+  if (routing === undefined || routing.rules === undefined || routing.rules.length === 0) {
+    return active;
+  }
+  const defaults = ws.spaces.find((s) => s.id === ws.activeSpaceId)?.defaults;
+  const target = {
+    cwd: params.cwd ?? defaults?.cwd,
+    command: params.profile ?? defaults?.profileId ?? DEFAULT_PROFILE_ID,
+  };
+  return routeNewTab(routing.rules, target, ws, routing.context) ?? active;
+}
+
 async function createItem(
   host: ApiHost,
-  params: { space: string; cwd?: string; profile?: string },
+  params: { space?: string; cwd?: string; profile?: string },
 ): Promise<ApiOutcome> {
-  const space = host.workspace().spaces.find((s) => s.id === params.space);
-  if (space === undefined)
-    return failure("not_found", `no space has the id ${shorten(params.space)}`);
+  const ws = host.workspace();
+  const destination: RoutingDestination =
+    params.space !== undefined ? { spaceId: params.space } : chooseDestination(host, ws, params);
+  const space = ws.spaces.find((s) => s.id === destination.spaceId);
+  if (space === undefined) {
+    return failure("not_found", `no space has the id ${shorten(destination.spaceId)}`);
+  }
   const profileId = params.profile ?? space.defaults.profileId ?? DEFAULT_PROFILE_ID;
   const shell = await startShell(host, space, profileId, params.cwd ?? space.defaults.cwd);
   if (!shell.ok) return shell.error;
-  return holdingShell(host, shell.id, () => placeItem(host, space.id, params, shell.id));
+  return holdingShell(host, shell.id, () => placeItem(host, destination, params, shell.id));
 }
 
 /** Runs the step that puts a new shell in the workspace; a step that breaks ends the shell. */
@@ -506,14 +559,21 @@ async function holdingShell(
 
 async function placeItem(
   host: ApiHost,
-  spaceId: Id,
+  destination: RoutingDestination,
   params: { cwd?: string; profile?: string },
   shellId: SessionId,
 ): Promise<ApiOutcome> {
   const before = host.workspace();
+  const { spaceId } = destination;
+  // The group a rule named may have gone while the shell was starting: then the tab goes to the
+  // top of the tree, as it would have without the rule.
+  const groupId = treeGroups(before.spaces.find((s) => s.id === spaceId)?.tree ?? []).find(
+    (g) => g.id === destination.groupId,
+  )?.id;
   host.dispatch({
     type: "item/create",
     spaceId,
+    ...(groupId !== undefined ? { placement: { to: "tree" as const, groupId } } : {}),
     ...(params.profile !== undefined ? { profileId: params.profile } : {}),
     ...(params.cwd !== undefined ? { cwd: params.cwd } : {}),
     sessionId: String(shellId),
@@ -528,7 +588,13 @@ async function placeItem(
     return failure("failed", "the tab was not made");
   }
   return {
-    result: { space: spaceId, item: item.id, terminal: pane.id, session: String(shellId) },
+    result: {
+      space: spaceId,
+      ...(groupId !== undefined ? { group: groupId } : {}),
+      item: item.id,
+      terminal: pane.id,
+      session: String(shellId),
+    },
   };
 }
 
@@ -709,7 +775,7 @@ async function notifyHost(
  * fails and any bug are all an error answer (`invalid_params`, `not_found`, `failed`, `internal`).
  *
  * Methods: `spaces.list` (every space with its tabs and panes; a terminal is named by its pane
- * id), `spaces.create` (the space is made but not shown), `items.create` (a tab with a new shell),
+ * id), `spaces.create` (the space is made but not shown), `items.create` (a tab with a new shell; without a `space`, in the space of the first routing rule that matches, else the active one),
  * `splits.create` (a new pane with a new shell beside the pane in focus), `terminal.send` (text
  * as given, then the keys), `terminal.read` (the last lines of the output), `notify` (a notification of
  * the system, when the user's settings allow it; the answer says whether it was shown). A terminal

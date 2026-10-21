@@ -104,9 +104,10 @@ pub enum ApiCall {
     SpacesList,
     /// `spaces.create`: `{ name }`.
     SpacesCreate { name: String },
-    /// `items.create`: `{ space, cwd?, profile? }`.
+    /// `items.create`: `{ space?, cwd?, profile? }`. Without a `space` the app picks it: the one a
+    /// routing rule names for the tab, else the active one.
     ItemsCreate {
-        space: String,
+        space: Option<String>,
         cwd: Option<String>,
         profile: Option<String>,
     },
@@ -468,7 +469,7 @@ pub fn parse_call(method: ApiMethod, params: Option<Value>) -> Result<ApiCall, A
             ApiCall::SpacesCreate { name }
         }
         ApiMethod::ItemsCreate => ApiCall::ItemsCreate {
-            space: fields.required_text("space", MAX_ID_CHARS, TextRule::Line)?,
+            space: fields.optional_text("space", MAX_ID_CHARS, TextRule::Line)?,
             cwd: fields.optional_text("cwd", MAX_PATH_CHARS, TextRule::Line)?,
             profile: fields.optional_text("profile", MAX_ID_CHARS, TextRule::Line)?,
         },
@@ -697,8 +698,32 @@ mod tests {
             (
                 r#"{"id":4,"method":"items.create","params":{"space":"s1","cwd":"/tmp"}}"#,
                 ApiCall::ItemsCreate {
-                    space: "s1".into(),
+                    space: Some("s1".into()),
                     cwd: Some("/tmp".into()),
+                    profile: None,
+                },
+            ),
+            (
+                r#"{"id":41,"method":"items.create","params":{"profile":"pwsh"}}"#,
+                ApiCall::ItemsCreate {
+                    space: None,
+                    cwd: None,
+                    profile: Some("pwsh".into()),
+                },
+            ),
+            (
+                r#"{"id":42,"method":"items.create"}"#,
+                ApiCall::ItemsCreate {
+                    space: None,
+                    cwd: None,
+                    profile: None,
+                },
+            ),
+            (
+                r#"{"id":43,"method":"items.create","params":{"space":null}}"#,
+                ApiCall::ItemsCreate {
+                    space: None,
+                    cwd: None,
                     profile: None,
                 },
             ),
@@ -816,7 +841,14 @@ mod tests {
             ("spaces.create", json!({ "name": "a\nb" })),
             ("spaces.create", json!({ "name": long_name })),
             ("spaces.create", json!({ "name": "ok", "color": "red" })),
-            ("items.create", json!({ "cwd": "/tmp" })),
+            ("items.create", json!({ "space": "" })),
+            (
+                "items.create",
+                json!({ "space": "a
+b" }),
+            ),
+            ("items.create", json!({ "space": 7 })),
+            ("items.create", json!({ "cwd": "" })),
             ("items.create", json!({ "space": "s", "cwd": "" })),
             ("items.create", json!({ "space": "s", "cwd": "a\0b" })),
             ("splits.create", json!({ "item": "i" })),

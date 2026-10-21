@@ -24,6 +24,7 @@ import { realClock } from "./real-clock";
 import { migrateLegacySettings } from "./legacy-settings";
 import type { LegacyStorageArea } from "./legacy-settings";
 import { startMods } from "./mods-store";
+import { osNameOf } from "./os-name";
 import { windowPreviewEnabled } from "./quick";
 import { notificationSettings } from "./notification-settings";
 import { perfMark } from "./perf-probe";
@@ -200,7 +201,20 @@ export async function bootWorkspace(
       ).catch(() => undefined);
       // The local API (NOR-F17-01c): the calls the server of the app validated run here, in the
       // window that owns the workspace, and are answered through `api_respond`.
-      startLocalApi({ store, backend: target, tail: apiTail, notifier, bridge: tauriBridge() });
+      // A tab it makes with no space goes where `routing.rules` of the settings say (NOR-F17-03b);
+      // the rules are read from the settings at every call.
+      const platform = osNameOf(navigator.userAgent) === "Windows" ? "windows" : "unix";
+      startLocalApi({
+        store,
+        backend: target,
+        tail: apiTail,
+        notifier,
+        routing: () => ({
+          rules: configManager.state.config.routing?.rules,
+          context: { platform, home },
+        }),
+        bridge: tauriBridge(),
+      });
       // And what the agents are doing goes out as events to the clients that subscribed (NOR-F17-01f).
       setAgentStateReporter(createAgentStateReporter(tauriBridge()));
     }

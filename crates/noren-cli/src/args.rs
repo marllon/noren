@@ -15,9 +15,11 @@ Drives a running Noren through its local API. The result of a command is the JSO
 on one line of standard output. Nothing here ever presses Enter for you.
 
 Commands:
-  new-tab --space <id or name> [--cwd <folder>] [--profile <id>]
-        Open a tab with a new shell in a space. The space is an id or a name as 'spaces.list' shows
-        them. --cwd '.' means the folder you run this in.
+  new-tab [--space <id or name>] [--cwd <folder>] [--profile <id>]
+        Open a tab with a new shell. The space is an id or a name as 'spaces.list' shows them. Left
+        out, Noren picks it: the space of the first routing rule (routing.rules in the settings
+        file) that matches the folder and the profile, else the active space. --cwd '.' means the
+        folder you run this in.
   split --item <id> --direction right|down [--cwd <folder>] [--profile <id>]
         Split the focused pane of a tab (its item id) with a new shell.
   send --terminal <id> [--text <text>] [--key <name>]...
@@ -60,7 +62,7 @@ fn usage(message: impl Into<String>) -> UsageError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     NewTab {
-        space: String,
+        space: Option<String>,
         cwd: Option<String>,
         profile: Option<String>,
     },
@@ -226,7 +228,7 @@ pub fn parse(args: &[String]) -> Result<Invocation, UsageError> {
     }
     let parsed = match command.as_str() {
         "new-tab" => Command::NewTab {
-            space: options.require("space")?,
+            space: options.take("space"),
             cwd: cwd_of(&mut options)?,
             profile: options.take("profile"),
         },
@@ -331,9 +333,25 @@ mod tests {
         assert_eq!(
             command("new-tab --space work --profile pwsh"),
             Command::NewTab {
-                space: "work".into(),
+                space: Some("work".into()),
                 cwd: None,
                 profile: Some("pwsh".into())
+            }
+        );
+        assert_eq!(
+            command("new-tab --profile pwsh"),
+            Command::NewTab {
+                space: None,
+                cwd: None,
+                profile: Some("pwsh".into())
+            }
+        );
+        assert_eq!(
+            command("new-tab"),
+            Command::NewTab {
+                space: None,
+                cwd: None,
+                profile: None
             }
         );
         assert_eq!(
@@ -444,7 +462,8 @@ mod tests {
         assert!(error("read --terminal t -x").contains("unknown option -x"));
         assert!(error("read --terminal t extra").contains("unexpected argument"));
         assert!(error("read --terminal t --text x").contains("does not take --text"));
-        assert!(error("new-tab --cwd .").contains("missing --space"));
+        assert!(error("new-tab --space").contains("needs a value"));
+        assert!(error("new-tab --space a --space b").contains("twice"));
         assert!(error("split --item i --direction left").contains("right or down"));
         assert!(error("split --item i").contains("missing --direction"));
         assert!(error("notify --body b").contains("missing --title"));

@@ -49,6 +49,8 @@ impl ApiHandler for FakeNoren {
                     { "id": "s4", "name": "Twin", "active": false, "items": [] },
                 ] })),
                 ApiCall::ItemsCreate { space, .. } => {
+                    // Without a space the app picks one: here, the one a rule would name.
+                    let space = space.unwrap_or_else(|| "s2".into());
                     Ok(json!({ "space": space, "item": "i9", "terminal": "t9", "session": "4" }))
                 }
                 ApiCall::SplitsCreate { item, .. } => {
@@ -188,7 +190,7 @@ fn new_tab_by_space_id_creates_an_item_and_prints_the_result() {
         vec![
             ApiCall::SpacesList,
             ApiCall::ItemsCreate {
-                space: "s1".into(),
+                space: Some("s1".into()),
                 cwd: None,
                 profile: Some("pwsh".into()),
             }
@@ -205,11 +207,50 @@ fn new_tab_finds_the_space_by_its_name() {
     assert_eq!(
         fixture.calls()[1],
         ApiCall::ItemsCreate {
-            space: "s2".into(),
+            space: Some("s2".into()),
             cwd: None,
             profile: None
         }
     );
+}
+
+#[test]
+fn new_tab_without_a_space_leaves_the_choice_to_noren_and_looks_nothing_up() {
+    let fixture = Fixture::start();
+    let run = fixture.run(&["new-tab", "--profile", "pwsh"]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    // The app said where the tab went (here, the fake picks s2); the CLI did not ask for the list.
+    assert_eq!(
+        run.json(),
+        json!({ "space": "s2", "item": "i9", "terminal": "t9", "session": "4" })
+    );
+    assert_eq!(
+        fixture.calls(),
+        vec![ApiCall::ItemsCreate {
+            space: None,
+            cwd: None,
+            profile: Some("pwsh".into()),
+        }]
+    );
+}
+
+#[test]
+fn new_tab_without_a_space_still_makes_a_dot_cwd_absolute() {
+    let fixture = Fixture::start();
+    let run = fixture.run(&["new-tab", "--cwd", "."]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    let calls = fixture.calls();
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    let ApiCall::ItemsCreate {
+        space: None,
+        cwd: Some(cwd),
+        ..
+    } = &calls[0]
+    else {
+        panic!("items.create without a space and with a cwd: {calls:?}");
+    };
+    assert!(Path::new(cwd).is_absolute(), "{cwd}");
+    assert!(same_folder(cwd, &fixture.dir), "{cwd}");
 }
 
 #[test]
@@ -530,7 +571,7 @@ fn a_wrong_command_line_is_exit_2_and_never_reaches_noren() {
     let lines: [&[&str]; 14] = [
         &[],
         &["fly"],
-        &["new-tab"],
+        &["new-tab", "--space", "s1", "--space", "s2"],
         &["new-tab", "--space"],
         &["new-tab", "--space", "s1", "--bogus", "1"],
         &["new-tab", "--space", "s1", "extra"],

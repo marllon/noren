@@ -1,0 +1,25 @@
+[package]
+name = "noren-cli"
+description = "The Noren command line: drives a running Noren through its local API (new-tab, split, send, read, notify)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# The binary is `noren-cli`, not `noren`: the app package already builds `noren` (and `noren.exe`)
+# in the same target folder, and the release `noren.exe` has no console (`windows_subsystem`), so a
+# command line that wrote to a terminal could not be that file. A `noren` alias for the command
+# line is the job of the packages (NOR-F20-03).
+[[bin]]
+name = "noren-cli"
+path = "src/main.rs"
+
+[dependencies]
+noren-core = { path = "../noren-core" }
+# The result of a call is JSON that the command prints as it came, in one line. 1.0, MIT OR
+# Apache-2.0 (already in the tree).
+serde_json = "1"
+# The client of the API is async; the command runs it on a small current-thread runtime. Only `rt`
+# is asked for here (`net`, `time` and `io-util` come with noren-core). 1.53.3, MIT (already in the
+# tree).
+tokio = { version = "1.53.3", features = ["rt"] }

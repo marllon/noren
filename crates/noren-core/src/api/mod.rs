@@ -10,6 +10,8 @@
 //!   of an agent) and the [`EventPublisher`] whoever owns the sessions uses.
 //! - [`ApiServer`]: listens on its own endpoint, authenticates every connection, calls the
 //!   handler.
+//! - [`client`]: the other side, for a program that reaches a running Noren ([`ApiClient`]); it
+//!   also holds the one rule for where the token file is ([`token_file_in`]).
 //!
 //! ## Who can talk to it
 //!
@@ -63,10 +65,15 @@ use crate::daemon::protocol::{MAX_FRAME_BYTES, ProtocolError};
 
 use events::{Feed, Hub};
 
+pub mod client;
 pub mod events;
 pub mod protocol;
 mod token;
 
+pub use client::{
+    API_DIR_NAME, APP_IDENTIFIER, ApiClient, ApiTarget, ClientError, TOKEN_FILE_NAME, app_data_dir,
+    default_token_file, token_file_in,
+};
 pub use events::{
     AgentState, ApiEvent, DROPPED_EVENT, EventFilter, EventKind, EventPublisher,
     MAX_OUTPUT_CHUNK_BYTES,
@@ -75,7 +82,9 @@ pub use protocol::{
     API_PROTOCOL_VERSION, ApiCall, ApiError, ApiErrorCode, ApiMethod, ClientRequest,
     SUBSCRIBE_METHOD, SplitDirection, to_frame,
 };
-pub use token::{ApiToken, TOKEN_BYTES, TOKEN_HEX_CHARS, TokenOrigin, load_or_create_token};
+pub use token::{
+    ApiToken, TOKEN_BYTES, TOKEN_HEX_CHARS, TokenOrigin, load_or_create_token, read_token,
+};
 
 /// The name of the endpoint a normal installation uses.
 pub const DEFAULT_API_NAME: &str = "default";

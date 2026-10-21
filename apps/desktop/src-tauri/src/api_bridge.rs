@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use noren_core::api::{
     ApiCall, ApiConfig, ApiError, ApiErrorCode, ApiFuture, ApiHandler, ApiServer, EventPublisher,
-    SplitDirection, api_endpoint, load_or_create_token,
+    SplitDirection, api_endpoint, load_or_create_token, token_file_in,
 };
 use noren_core::daemon::Endpoint;
 use serde_json::{Value, json};
@@ -42,10 +42,6 @@ pub const RESPOND_COMMAND: &str = "api_respond";
 /// [`CALL_EVENT`].
 #[cfg(test)]
 pub const READY_COMMAND: &str = "api_ready";
-/// The folder of the token file inside the data folder of the app.
-pub const API_DIR_NAME: &str = "api";
-/// The name of the token file.
-pub const TOKEN_FILE_NAME: &str = "token";
 /// How much sooner than the server's request limit the bridge gives up on the page.
 const MARGIN: Duration = Duration::from_secs(5);
 /// What a call gets while the page has not said it is listening. A client may try again.
@@ -392,7 +388,7 @@ impl ApiSettings {
     pub fn normal(data_dir: &Path) -> Self {
         Self {
             endpoint_name: noren_core::api::DEFAULT_API_NAME.to_owned(),
-            token_file: data_dir.join(API_DIR_NAME).join(TOKEN_FILE_NAME),
+            token_file: token_file_in(data_dir),
             sandbox: None,
         }
     }
@@ -402,7 +398,7 @@ impl ApiSettings {
     pub fn for_run(endpoint_name: String, dir: PathBuf) -> Self {
         Self {
             endpoint_name,
-            token_file: dir.join(API_DIR_NAME).join(TOKEN_FILE_NAME),
+            token_file: token_file_in(&dir),
             sandbox: Some(dir),
         }
     }

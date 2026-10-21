@@ -2526,6 +2526,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "noren-cli"
+version = "0.1.0"
+dependencies = [
+ "noren-core",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "noren-core"
 version = "0.1.0"
 dependencies = [

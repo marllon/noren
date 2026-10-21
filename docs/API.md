@@ -122,6 +122,15 @@ socket.write(frame({ id: 1, method: "spaces.list", params: {} }));
 
 `pnpm smoke` ends with `noren --smoke-api`, which starts the real app with its window hidden, on an endpoint and a token folder of its own (never the ones of a Noren you have open), and plays such a client: it reads the token file, shows that a wrong token is refused, authenticates, calls `spaces.list`, `spaces.create` and `spaces.list` again, and requires the new space in the second list. A call that is told the window is starting is tried again, and the run says how many were. It then opens a second connection, subscribes to `terminal.output`, makes a tab with `items.create`, takes the `session` of the answer (and requires `spaces.list` to give the same one to that terminal), calls `notify` and waits, with a time limit, for a `terminal.output` event of that session: the prompt the shell prints by itself. The run keeps its settings in a folder of its own with the notifications turned off, so `notify` must answer `shown: false` and no notification appears on your desktop. It sends no key and no text to any terminal (so no Enter), shows no window and exits with 0 only if every step held, the event included.
 
+## The command line
+
+`noren-cli` (NOR-F17-02b, the crate `crates/noren-cli`) is a client of this API for a terminal or a script: `new-tab`, `split`, `send`, `read` and `notify`, each one call (`new-tab` first calls `spaces.list` to turn the name of a space into its id). It prints the `result` as one line of JSON, and exits with 0 (done), 1 (Noren answered with an error), 2 (wrong command line, nothing sent) or 3 (Noren could not be reached: not running, no token file, token refused). It finds Noren by the rules in [Reaching it](#reaching-it), reads the token file at every run and adds nothing to what it is told (no Enter). How an AI agent should use it is in [AGENTS.md](AGENTS.md).
+
+The binary is `noren-cli` and not `noren`: the app package already builds `noren` in the same target folder, and the release `noren.exe` has no console. The `noren` alias is left to the packages (NOR-F20-03).
+
+For tests or a second copy of the app, `--endpoint <name>` (`NOREN_API_ENDPOINT`) picks another API (`api-<name>`) and `--token-file <path>` (`NOREN_API_TOKEN_FILE`) another token file. In Rust the same client is `noren_core::api::ApiClient` (`ApiTarget::standard()` is the endpoint and token file of a normal installation, `token_file_in` the one rule for where the token is).
+
 ## Not here yet
 
-The `noren` command line that wraps this API is NOR-F17-02b.
+- A `noren-cli` command for `spaces.list` (the API has it; the command line does not wrap it yet), and a way for a shell to know its own terminal id.
+- Routing rules for new tabs and the CLI (NOR-F17-03).

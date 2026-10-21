@@ -127,6 +127,14 @@ pub fn load_or_create_token(path: &Path) -> io::Result<(ApiToken, TokenOrigin)> 
     Ok((token, origin))
 }
 
+/// Reads the token in `path` and never writes: for a client, which must not make a token of its
+/// own (a token the server does not know opens nothing). `NotFound` when there is no file;
+/// `InvalidData` when the file does not hold a token.
+pub fn read_token(path: &Path) -> io::Result<ApiToken> {
+    read_token_file(path)?
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "the file does not hold a token"))
+}
+
 /// `Ok(None)` when the file exists and holds no token; `NotFound` when it does not exist.
 fn read_token_file(path: &Path) -> io::Result<Option<ApiToken>> {
     // Not `File::open` first: opening a pipe or a device would wait for a writer.

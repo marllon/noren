@@ -15,7 +15,7 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
-use tauri::{Emitter, Manager, Runtime, State, Window, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State, Window, WindowEvent};
 
 use crate::bridge::AppState;
 use crate::tray::{self, CloseFacts, CloseOutcome};
@@ -70,6 +70,15 @@ impl CloseGate {
 
 /// The label of the window of the workspace, the one that closing ends the app with.
 pub const MAIN_LABEL: &str = "main";
+
+/// The main window, looked up as a `Window` and not as a `WebviewWindow`. Tauri stops calling a
+/// window a webview window once a web view of a browser pane is a child of it
+/// (`get_webview_window` answers `None` then, `get_window` still finds it), and the main window is
+/// the one that has such children. Whatever has to reach the main window while a pane may be open
+/// (closing it, bringing it up, reading its focus) goes through here.
+pub fn main_window<R: Runtime>(app: &AppHandle<R>) -> Option<Window<R>> {
+    app.get_window(MAIN_LABEL)
+}
 
 /// Handles the window events of the app: a request to close the main window is held when the page
 /// asked for it, and once the main window is gone the quick window and the other windows go with it
@@ -320,6 +329,24 @@ mod tests {
         assert!(facts.keep_sessions && facts.tray_present == TRAY_IN_TESTS);
         assert!(!facts.sessions_in_daemon);
         assert_eq!(tray::close_outcome(facts), CloseOutcome::Exit);
+    }
+
+    #[test]
+    fn the_main_window_is_found_with_a_browser_pane_open_and_only_the_main_one() {
+        // `main.rs` (the show at the start) and the smoke checks look the window up the same way as
+        // the tray, the links and the focus do (finding 256).
+        let app = tauri::test::mock_app();
+        assert!(main_window(app.handle()).is_none());
+        tauri::WebviewWindowBuilder::new(&app, "other", tauri::WebviewUrl::default())
+            .build()
+            .expect("a window");
+        assert!(main_window(app.handle()).is_none());
+        tauri::WebviewWindowBuilder::new(&app, MAIN_LABEL, tauri::WebviewUrl::default())
+            .build()
+            .expect("the main window");
+        assert_eq!(main_window(app.handle()).unwrap().label(), MAIN_LABEL);
+        crate::browser_pane::open_a_pane_in_main(app.handle());
+        assert_eq!(main_window(app.handle()).unwrap().label(), MAIN_LABEL);
     }
 
     #[test]

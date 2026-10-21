@@ -23,7 +23,7 @@ use tauri::{AppHandle, Manager, Runtime};
 
 use crate::bridge::AppState;
 use crate::deeplink::focus_main_window;
-use crate::lifecycle::MAIN_LABEL;
+use crate::lifecycle::main_window;
 
 /// The id of the one tray icon of the app.
 pub const TRAY_ID: &str = "noren-tray";
@@ -105,7 +105,9 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
 fn on_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
     match event.id().as_ref() {
-        OPEN_ID => focus_main_window(app),
+        OPEN_ID => {
+            focus_main_window(app);
+        }
         QUIT_ID => quit_for_good(app),
         _ => {}
     }
@@ -137,10 +139,10 @@ pub fn quit_for_good<R: Runtime>(app: &AppHandle<R>) {
 }
 
 /// Asks the main window to close the normal way (a close request, which the page answers by
-/// saving). `false` when there is no such window or it could not be asked.
+/// saving). `false` when there is no such window or it could not be asked. Found with a browser pane
+/// open too (see [`main_window`]).
 fn ask_main_window_to_close<R: Runtime>(app: &AppHandle<R>) -> bool {
-    app.get_webview_window(MAIN_LABEL)
-        .is_some_and(|window| window.close().is_ok())
+    main_window(app).is_some_and(|window| window.close().is_ok())
 }
 
 #[cfg(test)]
@@ -148,6 +150,7 @@ mod tests {
     use tauri::{WebviewUrl, WebviewWindowBuilder};
 
     use super::*;
+    use crate::lifecycle::MAIN_LABEL;
 
     fn facts(keep: bool, daemon: bool, tray: bool, quitting: bool) -> CloseFacts {
         CloseFacts {
@@ -252,6 +255,22 @@ mod tests {
         assert!(ask_main_window_to_close(app.handle()));
         on_menu_event(app.handle(), MenuEvent { id: QUIT_ID.into() });
 
+        assert!(app.state::<AppState>().is_quitting());
+    }
+
+    #[test]
+    fn the_main_window_is_asked_to_close_with_a_browser_pane_open() {
+        // The web view of a pane is a child of the main window, which Tauri then stops calling a
+        // webview window; the quit of the tray still has to find it (finding 256).
+        let app = tauri::test::mock_app();
+        app.manage(an_app_state());
+        WebviewWindowBuilder::new(&app, MAIN_LABEL, WebviewUrl::default())
+            .build()
+            .expect("a window");
+        crate::browser_pane::open_a_pane_in_main(app.handle());
+
+        assert!(ask_main_window_to_close(app.handle()));
+        on_menu_event(app.handle(), MenuEvent { id: QUIT_ID.into() });
         assert!(app.state::<AppState>().is_quitting());
     }
 

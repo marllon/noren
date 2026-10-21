@@ -43,10 +43,9 @@ pub fn should_show_window(smoke: bool) -> bool {
     !smoke
 }
 
-/// Fails unless the `main` window exists and is hidden.
+/// Fails unless the `main` window exists and is hidden. Found while a browser pane is open too.
 pub(crate) fn check_window_hidden(app: &AppHandle) -> Result<(), String> {
-    let window = app
-        .get_webview_window("main")
+    let window = crate::lifecycle::main_window(app)
         .ok_or_else(|| "the main window does not exist".to_string())?;
     let visible = window.is_visible().map_err(|e| e.to_string())?;
     window_hidden_result(visible)
@@ -95,6 +94,8 @@ pub fn smoke_effect() -> WindowEffect {
 /// applied, or the opaque fallback with the reason. A system that cannot paint the effect is not a
 /// failure (the window stays opaque); the check fails only when the window cannot be reached.
 fn check_window_effect(app: &AppHandle) -> Result<(), String> {
+    // Looked up as a webview window on purpose: the effect needs the API of one, and this runs
+    // before the browser pane of the smoke run opens a child web view in the window.
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "the main window does not exist".to_string())?;

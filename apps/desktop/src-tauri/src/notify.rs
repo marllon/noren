@@ -4,8 +4,10 @@
 //! this side only shows it. Nothing here runs unless the interface calls `notify_show`: the smoke
 //! modes never do.
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Runtime};
 use tauri_plugin_notification::NotificationExt;
+
+use crate::lifecycle::main_window;
 
 /// Longest title and body handed to the system. The interface already keeps them short; this is
 /// the bound the system gets whatever the page sends.
@@ -44,15 +46,42 @@ pub fn notify_show(app: AppHandle, title: String, body: String) -> Result<(), St
 /// hidden, minimized or gone.
 #[tauri::command]
 pub fn window_is_focused(app: AppHandle) -> Result<bool, String> {
-    match app.get_webview_window("main") {
-        Some(window) => window.is_focused().map_err(|e| e.to_string()),
-        None => Ok(false),
-    }
+    Ok(main_window_focus(&app)?.unwrap_or(false))
+}
+
+/// The focus of the main window, found with a browser pane open too (see [`main_window`]); `None`
+/// when there is no such window.
+fn main_window_focus<R: Runtime>(app: &AppHandle<R>) -> Result<Option<bool>, String> {
+    main_window(app)
+        .map(|window| window.is_focused().map_err(|e| e.to_string()))
+        .transpose()
 }
 
 #[cfg(test)]
 mod tests {
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
+
     use super::*;
+
+    #[test]
+    fn the_focus_is_read_from_the_main_window_with_or_without_a_browser_pane_open() {
+        // The mock window never has the focus, so what tells "found" from "not found" is `Some`.
+        // The web view of a pane makes Tauri stop calling the main window a webview window; it must
+        // be found all the same, or the notification would be decided on a focus nobody read
+        // (finding 256).
+        let app = tauri::test::mock_app();
+        assert_eq!(main_window_focus(app.handle()), Ok(None));
+        WebviewWindowBuilder::new(&app, "other", WebviewUrl::default())
+            .build()
+            .expect("a window");
+        assert_eq!(main_window_focus(app.handle()), Ok(None));
+        WebviewWindowBuilder::new(&app, "main", WebviewUrl::default())
+            .build()
+            .expect("the main window");
+        assert_eq!(main_window_focus(app.handle()), Ok(Some(false)));
+        crate::browser_pane::open_a_pane_in_main(app.handle());
+        assert_eq!(main_window_focus(app.handle()), Ok(Some(false)));
+    }
 
     #[test]
     fn plain_text_drops_control_characters_and_collapses_spaces() {

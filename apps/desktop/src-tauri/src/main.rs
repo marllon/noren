@@ -308,7 +308,7 @@ fn main() {
             }
             // The window is created hidden (tauri.conf.json); only a normal start shows it.
             if smoke::should_show_window(any_smoke)
-                && let Some(window) = app.get_webview_window("main")
+                && let Some(window) = lifecycle::main_window(app.handle())
             {
                 window.show()?;
                 window.set_focus()?;

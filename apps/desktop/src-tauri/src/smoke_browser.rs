@@ -361,6 +361,11 @@ fn run(
         ipc.lines().next().unwrap_or(ipc),
     ));
 
+    // With the web view of the pane a child of it, Tauri no longer calls the main window a webview
+    // window, but the lookups of the app (the tray, the links, the focus) must still find it.
+    check_window_hidden(app)?;
+    print_line("SMOKE browser pane open, the main window still found and hidden");
+
     // The page tried to go to an address of the app; it must still be the one running.
     match server.hear(STAY_WAIT, "it stayed where it was")? {
         Heard::After(href) if href == first => {}

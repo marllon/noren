@@ -368,5 +368,21 @@ pub async fn browser_close<R: Runtime>(app: AppHandle<R>, pane_id: String) -> Re
     off_the_main_thread(move || close(&app, &pane_id)).await
 }
 
+/// For the tests of other files: opens the web view of a pane as a child of the `main` window of a
+/// mock app and checks the fact they are about, that Tauri no longer finds that window as a webview
+/// window (so a lookup of the old kind misses it).
+#[cfg(test)]
+pub(crate) fn open_a_pane_in_main<R: Runtime>(app: &AppHandle<R>) {
+    let bounds = Bounds {
+        x: 10.0,
+        y: 20.0,
+        width: 400.0,
+        height: 300.0,
+    };
+    open(app, "p1", "https://example.com/", bounds, None).expect("a pane in the main window");
+    assert!(app.get_webview_window(PARENT_WINDOW).is_none());
+    assert!(app.get_window(PARENT_WINDOW).is_some());
+}
+
 #[cfg(test)]
 mod tests;

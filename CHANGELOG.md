@@ -6,6 +6,10 @@ All notable changes to Noren are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **The main window is found while a browser pane is open**: quitting from the tray icon, "Open Noren", a `noren://` link or a second launch bringing the window up, and the focus read that decides whether a notification is shown all missed the main window while a browser pane was open, because Tauri stops calling a window a webview window once a web view is a child of it. They now look the window up as a window.
+
 ### Added
 
 - **Browser panes in a window of their own**: a tab with a browser pane (alone, or beside a terminal, a preview or a diff) can now go to a window too, by dragging it out or with "Move tab to new window" in the palette. The window draws the address bar and the page, which is a web view of that window: the main window opens it for the window, at the place the window measured, and the address bar of the window takes the pane to another page (the main window checks the address and the pane first, and the page of the window still has no command about web views). The page stays out of view while its tab is not shown, closes with its tab, and comes back to the main window with its tab (loaded again from the address the pane holds); a window the person closes leaves no page behind. A window used to refuse any tab with a browser pane, saying it stays in the main window; it does not any more.

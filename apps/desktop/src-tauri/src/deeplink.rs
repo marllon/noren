@@ -7,6 +7,8 @@ use std::sync::mpsc::Sender;
 
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
+use crate::lifecycle::main_window;
+
 /// Event the interface listens to; the payload is the raw link as a JSON string.
 pub const LINK_EVENT: &str = "deep-link-url";
 /// Flag of the hidden mode that proves a link reaches the interface.
@@ -215,13 +217,16 @@ pub fn deliver(app: &AppHandle, url: String) {
 }
 
 /// Brings the existing window to the front: shown (it may be hidden in the tray), not minimized,
-/// focused.
-pub fn focus_main_window<R: Runtime>(app: &AppHandle<R>) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
-    }
+/// focused. Found with a browser pane open too (see [`main_window`]). `false` when there is no
+/// main window to bring up.
+pub fn focus_main_window<R: Runtime>(app: &AppHandle<R>) -> bool {
+    let Some(window) = main_window(app) else {
+        return false;
+    };
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_focus();
+    true
 }
 
 /// What a second instance does: its links go to the interface and the existing window comes up.
@@ -252,6 +257,34 @@ mod tests {
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    fn a_mock_app_with_the_main_window() -> tauri::App<tauri::test::MockRuntime> {
+        let app = tauri::test::mock_app();
+        tauri::WebviewWindowBuilder::new(&app, "main", tauri::WebviewUrl::default())
+            .build()
+            .expect("the main window");
+        app
+    }
+
+    #[test]
+    fn the_main_window_is_brought_up_with_or_without_a_browser_pane_open() {
+        // A link or a second launch brings the window up; the web view of a pane makes Tauri stop
+        // calling the main window a webview window, and it must be found all the same (finding 256).
+        let app = a_mock_app_with_the_main_window();
+        assert!(focus_main_window(app.handle()));
+        crate::browser_pane::open_a_pane_in_main(app.handle());
+        assert!(focus_main_window(app.handle()));
+    }
+
+    #[test]
+    fn with_no_main_window_there_is_nothing_to_bring_up() {
+        let app = tauri::test::mock_app();
+        assert!(!focus_main_window(app.handle()));
+        tauri::WebviewWindowBuilder::new(&app, "other", tauri::WebviewUrl::default())
+            .build()
+            .expect("a window");
+        assert!(!focus_main_window(app.handle()));
     }
 
     #[test]

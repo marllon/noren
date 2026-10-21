@@ -295,6 +295,28 @@ export {
   lastLineOf,
 } from "./terminal-text";
 export type { LastLineMemory } from "./terminal-text";
+export { TAIL_MAX_LINES, TAIL_MAX_LINE_CHARS, TerminalTail } from "./terminal-tail";
+export type { TerminalTailOptions } from "./terminal-tail";
+export { keySequence, keySequences } from "./api-keys";
+export {
+  API_DEFAULT_READ_LINES,
+  API_DEFAULT_SIZE,
+  API_ERROR_CODES,
+  API_LIMITS,
+  API_MAX_READ_BYTES,
+  API_METHODS,
+  dispatchApiCall,
+  parseApiCall,
+} from "./api-dispatch";
+export type {
+  ApiCall,
+  ApiError,
+  ApiErrorCode,
+  ApiHost,
+  ApiJson,
+  ApiMethodName,
+  ApiOutcome,
+} from "./api-dispatch";
 export { AGENT_LINE_MAX, buildAgentList, firstWaitingAgent, truncateLine } from "./agent-list";
 export type { AgentInfo, AgentRow } from "./agent-list";
 export {

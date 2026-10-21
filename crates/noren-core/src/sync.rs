@@ -734,59 +734,7 @@ impl SyncRepo {
     /// and of the folders in it, filtered by [`is_syncable`] and by being plain files (a link is
     /// skipped).
     fn local_files(&self) -> Result<Vec<String>, SyncError> {
-        let mut found = Vec::new();
-        let mut scanned = 0usize;
-        let top = match fs::read_dir(&self.config_dir) {
-            Ok(top) => top,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(found),
-            Err(error) => return Err(SyncError::io(&error)),
-        };
-        for entry in top {
-            let entry = entry.map_err(|e| SyncError::io(&e))?;
-            scanned += 1;
-            if scanned > MAX_SCANNED_ENTRIES {
-                break;
-            }
-            let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
-                continue;
-            };
-            if name == SYNC_DIR_NAME || name.starts_with('.') {
-                continue;
-            }
-            let Ok(kind) = entry.file_type() else {
-                continue;
-            };
-            if kind.is_file() {
-                if is_syncable(&name) {
-                    found.push(name);
-                }
-            } else if kind.is_dir() {
-                let Ok(inner) = fs::read_dir(entry.path()) else {
-                    continue;
-                };
-                for child in inner {
-                    let Ok(child) = child else {
-                        continue;
-                    };
-                    scanned += 1;
-                    if scanned > MAX_SCANNED_ENTRIES {
-                        break;
-                    }
-                    let Some(child_name) = child.file_name().to_str().map(str::to_owned) else {
-                        continue;
-                    };
-                    let relative = format!("{name}/{child_name}");
-                    if child.file_type().is_ok_and(|t| t.is_file()) && is_syncable(&relative) {
-                        found.push(relative);
-                    }
-                }
-            }
-        }
-        found.sort();
-        if found.len() > MAX_SYNC_FILES {
-            return Err(SyncError::TooManyFiles);
-        }
-        Ok(found)
+        syncable_files_in(&self.config_dir)
     }
 
     /// Copies the files of the config folder that may travel into the clone, and commits what
@@ -1062,6 +1010,65 @@ impl SyncRepo {
             PullOutcome::Updated(names)
         })
     }
+}
+
+/// The files of `config_dir` that may travel, in path order: the entries of the folder and of the
+/// folders in it, filtered by [`is_syncable`] and by being plain files (a link is skipped). The
+/// sync through git and the one through a gist both read the folder through this.
+pub(crate) fn syncable_files_in(config_dir: &Path) -> Result<Vec<String>, SyncError> {
+    let mut found = Vec::new();
+    let mut scanned = 0usize;
+    let top = match fs::read_dir(config_dir) {
+        Ok(top) => top,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(found),
+        Err(error) => return Err(SyncError::io(&error)),
+    };
+    for entry in top {
+        let entry = entry.map_err(|e| SyncError::io(&e))?;
+        scanned += 1;
+        if scanned > MAX_SCANNED_ENTRIES {
+            break;
+        }
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if name == SYNC_DIR_NAME || name.starts_with('.') {
+            continue;
+        }
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        if kind.is_file() {
+            if is_syncable(&name) {
+                found.push(name);
+            }
+        } else if kind.is_dir() {
+            let Ok(inner) = fs::read_dir(entry.path()) else {
+                continue;
+            };
+            for child in inner {
+                let Ok(child) = child else {
+                    continue;
+                };
+                scanned += 1;
+                if scanned > MAX_SCANNED_ENTRIES {
+                    break;
+                }
+                let Some(child_name) = child.file_name().to_str().map(str::to_owned) else {
+                    continue;
+                };
+                let relative = format!("{name}/{child_name}");
+                if child.file_type().is_ok_and(|t| t.is_file()) && is_syncable(&relative) {
+                    found.push(relative);
+                }
+            }
+        }
+    }
+    found.sort();
+    if found.len() > MAX_SYNC_FILES {
+        return Err(SyncError::TooManyFiles);
+    }
+    Ok(found)
 }
 
 /// The paths in the output of a git command that ends each name with a NUL.

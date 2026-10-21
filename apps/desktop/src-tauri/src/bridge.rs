@@ -13,14 +13,14 @@ use std::time::Duration;
 use noren_core::daemon::LinkState;
 use noren_core::{
     ACTIONS_FILE_PATH, AgentEntry, BENCH_DIR_NAME, BackgroundStore, BenchFile, BenchStore,
-    CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, Gallery, GitHead, InstalledItem, MODS_DIR_NAME,
-    ModFile, ModStore, ModWatcher, PLUGINS_DIR_NAME, PluginFolder, PluginStore, ProcessSource,
-    Profile, ProfileSet, PullOutcome, PushOutcome, SCROLLBACK_DIR_NAME, ScrollbackStore,
-    SessionEvent, SessionId, SpaceFileLink, SpaceFileWrite, SpaceFolder, SpawnSpec, SshProfile,
-    StateStore, SyncRepo, SyncStatus, SystemProcesses, THEMES_DIR_NAME, ThemeStore, UserProfile,
-    WindowEffect, Worktree, check_catalog, create_worktree, detect_system_profiles,
-    list_running_containers, list_worktrees, native_path, read_head, read_project_file,
-    read_ssh_hosts, remove_worktree, run_short, scan_sessions,
+    CONFIG_FILE_NAME, ConfigStore, ConfigWatcher, Gallery, GistStatus, GistSync, GitHead,
+    InstalledItem, KeyVault, MODS_DIR_NAME, ModFile, ModStore, ModWatcher, PLUGINS_DIR_NAME,
+    PluginFolder, PluginStore, ProcessSource, Profile, ProfileSet, PullOutcome, PushOutcome,
+    SCROLLBACK_DIR_NAME, ScrollbackStore, SessionEvent, SessionId, SpaceFileLink, SpaceFileWrite,
+    SpaceFolder, SpawnSpec, SshProfile, StateStore, SyncRepo, SyncStatus, SystemProcesses,
+    THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect, Worktree, check_catalog,
+    create_worktree, detect_system_profiles, list_running_containers, list_worktrees, native_path,
+    read_head, read_project_file, read_ssh_hosts, remove_worktree, run_short, scan_sessions,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -1917,6 +1917,189 @@ pub async fn sync_spaces_link(
         .map_err(|e| e.to_string())?
 }
 
+/// Where the sync through a gist stands, as the interface sees it (see [`GistStatus`]). The token
+/// is never part of it: the status only says whether one is stored.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncGistStatusDto {
+    pub connected: bool,
+    pub gist_id: Option<String>,
+    /// Anyone can read the settings in the gist.
+    pub public: bool,
+    pub has_token: bool,
+    pub pending: Vec<SyncChangeDto>,
+}
+
+impl From<GistStatus> for SyncGistStatusDto {
+    fn from(status: GistStatus) -> Self {
+        Self {
+            connected: status.connected,
+            gist_id: status.gist_id,
+            public: status.public,
+            has_token: status.has_token,
+            pending: status
+                .pending
+                .into_iter()
+                .map(|change| SyncChangeDto {
+                    path: change.path,
+                    change: change.kind.as_str().to_owned(),
+                })
+                .collect(),
+        }
+    }
+}
+
+/// The sync of the settings through a gist: one record next to `config.jsonc`, the token in the
+/// keychain, one step at a time (the sync holds its own turn).
+pub struct GistState {
+    gist: GistSync,
+    syncing_allowed: bool,
+}
+
+impl GistState {
+    pub fn new(gist: GistSync) -> Self {
+        Self {
+            gist,
+            syncing_allowed: true,
+        }
+    }
+
+    /// The same, but storing or removing the token, connecting, pulling and pushing refuse: the
+    /// smoke run must leave the files and the keychain of the user as they are. The status is only
+    /// a read.
+    pub fn without_syncing(mut self) -> Self {
+        self.syncing_allowed = false;
+        self
+    }
+
+    fn allowed(&self) -> Result<(), String> {
+        if self.syncing_allowed {
+            Ok(())
+        } else {
+            Err("this run does not sync".to_owned())
+        }
+    }
+
+    /// Where the sync stands, with no network (see [`GistSync::status`]).
+    pub fn status(&self) -> Result<SyncGistStatusDto, String> {
+        self.gist
+            .status()
+            .map(SyncGistStatusDto::from)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Stores the token in the keychain (see [`GistSync::set_token`]).
+    pub fn set_token(&self, token: &str) -> Result<(), String> {
+        self.allowed()?;
+        self.gist.set_token(token).map_err(|e| e.to_string())
+    }
+
+    /// Removes the token from the keychain (see [`GistSync::clear_token`]).
+    pub fn clear_token(&self) -> Result<(), String> {
+        self.allowed()?;
+        self.gist.clear_token().map_err(|e| e.to_string())
+    }
+
+    /// Connects to a gist, or makes a secret one (see [`GistSync::connect`]).
+    pub async fn connect(&self, gist_id: Option<&str>) -> Result<SyncGistStatusDto, String> {
+        self.allowed()?;
+        self.gist
+            .connect(gist_id)
+            .await
+            .map(SyncGistStatusDto::from)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Pulls (see [`GistSync::pull`]).
+    pub async fn pull(&self) -> Result<SyncPullDto, String> {
+        self.allowed()?;
+        self.gist
+            .pull()
+            .await
+            .map(SyncPullDto::from)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Pushes (see [`GistSync::push`]).
+    pub async fn push(&self) -> Result<SyncPushDto, String> {
+        self.allowed()?;
+        self.gist
+            .push()
+            .await
+            .map(SyncPushDto::from)
+            .map_err(|e| e.to_string())
+    }
+}
+
+/// Builds the sync through a gist over the app config folder, with the token in `vault`. Only
+/// resolves the path: the record is made when a gist is connected.
+pub fn gist_state(app: &AppHandle, vault: Arc<dyn KeyVault>) -> Result<GistState, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("could not find the app config folder: {e}"))?;
+    GistSync::new(dir, vault)
+        .map(GistState::new)
+        .map_err(|e| e.to_string())
+}
+
+/// Where the sync through a gist stands, with no network. It says whether a token is stored, never
+/// what it is.
+#[tauri::command]
+pub async fn sync_gist_status(
+    state: State<'_, Arc<GistState>>,
+) -> Result<SyncGistStatusDto, String> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || state.status())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Stores the token of the gist sync in the keychain of the system, replacing the one there.
+#[tauri::command]
+pub async fn sync_gist_set_token(
+    state: State<'_, Arc<GistState>>,
+    token: String,
+) -> Result<(), String> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || state.set_token(&token))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Removes the token of the gist sync from the keychain.
+#[tauri::command]
+pub async fn sync_gist_clear_token(state: State<'_, Arc<GistState>>) -> Result<(), String> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || state.clear_token())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Connects to the gist `gist_id`, or (with none) makes a secret gist from the files that may travel.
+#[tauri::command(rename_all = "camelCase")]
+pub async fn sync_gist_connect(
+    state: State<'_, Arc<GistState>>,
+    gist_id: Option<String>,
+) -> Result<SyncGistStatusDto, String> {
+    let state = Arc::clone(&state);
+    state.connect(gist_id.as_deref()).await
+}
+
+/// Brings the gist into the config folder; a conflict writes nothing and lists the paths.
+#[tauri::command]
+pub async fn sync_gist_pull(state: State<'_, Arc<GistState>>) -> Result<SyncPullDto, String> {
+    let state = Arc::clone(&state);
+    state.pull().await
+}
+
+/// Sends the changed files that may travel to the gist, unless the gist changed since the last sync.
+#[tauri::command]
+pub async fn sync_gist_push(state: State<'_, Arc<GistState>>) -> Result<SyncPushDto, String> {
+    let state = Arc::clone(&state);
+    state.push().await
+}
+
 /// Longest a project command (the `stop` of an action) may run before it is killed.
 pub const PROJECT_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -3147,6 +3330,74 @@ mod tests {
         assert_eq!(smoke.pull(), Err("this run does not sync".to_owned()));
         assert_eq!(smoke.push(), Err("this run does not sync".to_owned()));
         assert!(!dir.0.join("sync").exists());
+    }
+
+    #[test]
+    fn gist_status_reaches_the_interface_in_the_wire_shape_and_never_holds_the_token() {
+        let token = "ghp_TestTokenNeverReal0123456789";
+        let dir = TempDir::new("sync-gist");
+        let vault = Arc::new(noren_core::MemoryVault::new());
+        let state = GistState::new(GistSync::new(&dir.0, vault.clone()).expect("gist sync"));
+        let fresh = serde_json::to_string(&state.status().expect("status")).expect("json");
+        assert_eq!(
+            fresh,
+            r#"{"connected":false,"gistId":null,"public":false,"hasToken":false,"pending":[]}"#
+        );
+        state.set_token(token).expect("store the token");
+        assert_eq!(
+            vault.get(noren_core::SYNC_GIST_TOKEN_ENTRY),
+            Ok(Some(token.to_owned()))
+        );
+        let stored = serde_json::to_string(&state.status().expect("status")).expect("json");
+        assert!(stored.contains(r#""hasToken":true"#), "{stored}");
+        assert!(!stored.contains(token), "{stored}");
+        let wire = serde_json::to_string(&SyncGistStatusDto::from(GistStatus {
+            connected: true,
+            gist_id: Some("abc123".to_owned()),
+            public: true,
+            has_token: true,
+            pending: vec![noren_core::PendingChange {
+                path: "themes/lagoon.json".to_owned(),
+                kind: noren_core::ChangeKind::Added,
+            }],
+        }))
+        .expect("json");
+        assert_eq!(
+            wire,
+            r#"{"connected":true,"gistId":"abc123","public":true,"hasToken":true,"pending":[{"path":"themes/lagoon.json","change":"added"}]}"#
+        );
+        // A bad token is refused with words that do not repeat it.
+        let message = state.set_token("two words").expect_err("refused");
+        assert!(!message.contains("two words"), "{message}");
+        state.clear_token().expect("clear");
+        assert_eq!(vault.get(noren_core::SYNC_GIST_TOKEN_ENTRY), Ok(None));
+        assert!(!state.status().expect("status").has_token);
+        // Nothing was written to the config folder.
+        assert_eq!(std::fs::read_dir(&dir.0).expect("dir").count(), 0);
+    }
+
+    #[test]
+    fn a_smoke_run_neither_stores_a_token_nor_syncs_through_a_gist() {
+        let dir = TempDir::new("sync-gist-smoke");
+        let vault = Arc::new(noren_core::MemoryVault::new());
+        let smoke = GistState::new(GistSync::new(&dir.0, vault.clone()).expect("gist sync"))
+            .without_syncing();
+        let refused = "this run does not sync";
+        assert_eq!(smoke.set_token("ghp_x").expect_err("refused"), refused);
+        assert_eq!(smoke.clear_token().expect_err("refused"), refused);
+        // Every refusal comes before any request, so these never reach a network.
+        let connect = tauri::async_runtime::block_on(smoke.connect(Some("abc123")));
+        assert_eq!(connect.expect_err("refused"), refused);
+        let create = tauri::async_runtime::block_on(smoke.connect(None));
+        assert_eq!(create.expect_err("refused"), refused);
+        let pull = tauri::async_runtime::block_on(smoke.pull());
+        assert_eq!(pull.expect_err("refused"), refused);
+        let push = tauri::async_runtime::block_on(smoke.push());
+        assert_eq!(push.expect_err("refused"), refused);
+        assert_eq!(vault.get(noren_core::SYNC_GIST_TOKEN_ENTRY), Ok(None));
+        // The status is only a read, and a fresh folder is not connected.
+        assert!(!smoke.status().expect("status").connected);
+        assert_eq!(std::fs::read_dir(&dir.0).expect("dir").count(), 0);
     }
 
     #[test]

@@ -58,6 +58,7 @@ import {
   type BrowserBounds,
 } from "./browser";
 import { externalLinkProblem } from "./external-link";
+import { FakeGistSync } from "./fake-sync-gist";
 import { classifyPreviewPath, previewOf } from "./file-preview";
 import type { FilePreview, PreviewEntry } from "./file-preview";
 import { FAKE_GALLERY_DOWNLOADS, FAKE_GALLERY_INDEX } from "./gallery-fixture";
@@ -72,6 +73,7 @@ import {
   syncSpaceWriteProblem,
 } from "./sync";
 import type {
+  SyncGistStatus,
   SyncPullResult,
   SyncPushResult,
   SyncSpaceFolder,
@@ -931,6 +933,14 @@ class FakeAi implements AiBackend {
  *   `syncLinkSpaceFiles`) are the `spaces/` files among those local files, so a push carries them,
  *   with the local record of which space each file stands for (the sha256 of `sha256.ts`) kept apart
  *   and never pushed
+ * - the sync through a gist (`fake-sync-gist.ts`) keeps GitHub in memory (gists by id, each with its
+ *   files by flat name) and a token that `syncGistSetToken` checks and `syncGistStatus` only reports
+ *   as `hasToken`; it works over the same local files as the sync through git. `syncGistConnect`
+ *   with no id makes a secret gist of the files that may travel, `syncGistPush` refuses ("pull
+ *   first") when any file of the gist is not as this computer last saw it, `syncGistPull` writes
+ *   the files the gist changed and returns a conflict (writing nothing) when both sides changed one.
+ *   Names in a gist off the closed list are never read. `putSyncGist` and `setSyncGistFile` are
+ *   another computer or the web page of the gist, `setSyncGistFailure` makes every call reject
  * - `listSshHosts` answers a fixture of hosts (`FAKE_SSH_HOSTS`), or what `setSshHosts` said (also a
  *   rejection); it never reads the `~/.ssh/config` of the machine
  * - `listDockerContainers` answers a fixture of containers (`FAKE_DOCKER_CONTAINERS`), or what
@@ -1073,6 +1083,9 @@ export class FakeBackend implements Backend {
   #syncBehind = 0;
   /** The files of the config folder of this computer, whatever their name. */
   #syncLocalFiles = new Map<string, string>();
+  /** GitHub in memory and the record of the sync through a gist, over the same local files. */
+  #gist = new FakeGistSync(this.#syncLocalFiles);
+  #gistFailure: Error | undefined;
   /** The local record of the space files: file name to the space it stands for and the hash then. */
   #syncSpaceLinks = new Map<string, { spaceId: string; hash: string }>();
   #syncApplied = false;
@@ -2088,6 +2101,75 @@ export class FakeBackend implements Backend {
     for (const name of [...this.#syncSpaceLinks.keys()]) {
       if (!this.#syncLocalFiles.has(`spaces/${name}`)) this.#syncSpaceLinks.delete(name);
     }
+  }
+
+  async syncGistStatus(): Promise<SyncGistStatus> {
+    this.#record("syncGistStatus");
+    if (this.#gistFailure) throw this.#gistFailure;
+    return this.#gist.status();
+  }
+
+  async syncGistSetToken(token: string): Promise<void> {
+    // The token is not recorded with the call: nothing that outlives the call holds it but the keychain.
+    this.#record("syncGistSetToken");
+    if (this.#gistFailure) throw this.#gistFailure;
+    this.#gist.setToken(token);
+  }
+
+  async syncGistClearToken(): Promise<void> {
+    this.#record("syncGistClearToken");
+    if (this.#gistFailure) throw this.#gistFailure;
+    this.#gist.clearToken();
+  }
+
+  async syncGistConnect(gistId?: string): Promise<SyncGistStatus> {
+    this.#record("syncGistConnect", ...(gistId === undefined ? [] : [gistId]));
+    if (this.#gistFailure) throw this.#gistFailure;
+    return this.#gist.connect(gistId);
+  }
+
+  async syncGistPull(): Promise<SyncPullResult> {
+    this.#record("syncGistPull");
+    if (this.#gistFailure) throw this.#gistFailure;
+    return this.#gist.pull();
+  }
+
+  async syncGistPush(): Promise<SyncPushResult> {
+    this.#record("syncGistPush");
+    if (this.#gistFailure) throw this.#gistFailure;
+    return this.#gist.push();
+  }
+
+  /**
+   * A gist on GitHub, as another computer or the web page of GitHub left it: `files` are by their
+   * flat name (`themes--lagoon.json`; see `gistFileName`), names off the closed list are kept and
+   * never read. Replaces the gist of that id. Not a `Backend` call, so it is not recorded.
+   */
+  putSyncGist(
+    id: string,
+    gist: { public?: boolean; files?: Readonly<Record<string, string>> },
+  ): void {
+    this.#gist.put(id, gist);
+  }
+
+  /** Another computer (or an edit on the web page) sets a file of a gist by its flat name; `undefined` removes it. */
+  setSyncGistFile(id: string, name: string, text: string | undefined): void {
+    this.#gist.setFile(id, name, text);
+  }
+
+  /** The files a gist holds, by flat name (a copy). Throws for a gist that is not there. */
+  syncGistFiles(id: string): Record<string, string> {
+    return this.#gist.files(id);
+  }
+
+  /** The ids of the gists GitHub holds in this fake, in order. */
+  syncGistIds(): string[] {
+    return this.#gist.ids();
+  }
+
+  /** Makes every call of the gist sync reject with `error` (the keychain or GitHub cannot be reached); `undefined` undoes it. */
+  setSyncGistFailure(error: Error | undefined): void {
+    this.#gistFailure = error;
   }
 
   /** Puts `text` in the config folder of this computer as `path`; `undefined` removes it. Not a `Backend` call. */

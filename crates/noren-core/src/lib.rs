@@ -25,6 +25,7 @@ pub mod scrollback;
 pub mod ssh_config;
 pub mod store;
 pub mod sync;
+pub mod sync_gist;
 pub mod sync_spaces;
 pub mod themes;
 pub mod vault;
@@ -101,6 +102,11 @@ pub use sync::{
     PushOutcome, SPACE_FILE_SUFFIX, SPACES_DIR_NAME, SYNC_DIR_NAME, SYNC_TIMEOUT, SyncError,
     SyncRepo, SyncStatus, is_syncable, validate_remote_url,
 };
+pub use sync_gist::{
+    GIST_API_BASE, GIST_STATE_FILE_NAME, GIST_TIMEOUT, GistError, GistStatus, GistSync,
+    MAX_GIST_PAYLOAD_BYTES, MAX_GIST_RESPONSE_BYTES, gist_file_name, is_valid_gist_id,
+    path_of_gist_file,
+};
 pub use sync_spaces::{
     SPACE_LINKS_FILE_NAME, SpaceFileInfo, SpaceFileLink, SpaceFileWrite, SpaceFiles, SpaceFolder,
     SpaceLink,
@@ -109,7 +115,8 @@ pub use themes::{THEMES_DIR_NAME, ThemeError, ThemeStore, is_valid_theme_id};
 pub use tokio_util::sync::CancellationToken;
 pub use vault::{
     KeyVault, KeyringVault, MAX_KEY_CHARS, MAX_PROVIDER_ID_LEN, MemoryVault,
-    SERVICE as KEYCHAIN_SERVICE, VaultError, is_valid_provider_id,
+    SERVICE as KEYCHAIN_SERVICE, SYNC_GIST_TOKEN_ENTRY, VaultError, is_app_entry,
+    is_valid_provider_id,
 };
 pub use window::{EffectOutcome, WindowEffect, WindowPainter, apply_effect};
 pub use worktree::{

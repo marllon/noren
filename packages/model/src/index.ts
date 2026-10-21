@@ -411,12 +411,18 @@ export type { GalleryDownload } from "./gallery-fixture";
 export {
   SYNC_CHANGES,
   SYNC_LIMITS,
+  gistFileName,
+  isSyncGistId,
   isSyncSpaceFileName,
   isSyncablePath,
+  parseSyncGistStatus,
   parseSyncPull,
   parseSyncPush,
   parseSyncSpaceFolder,
   parseSyncStatus,
+  pathOfGistFile,
+  syncGistStatusSchema,
+  syncGistTokenProblem,
   syncPullSchema,
   syncPushSchema,
   syncRemoteProblem,
@@ -427,6 +433,7 @@ export {
 } from "./sync";
 export type {
   SyncChange,
+  SyncGistStatus,
   SyncParse,
   SyncPullResult,
   SyncPushResult,

@@ -9,11 +9,13 @@ import {
   decodeGitDiff,
   fontNameList,
   parseGalleryIndex,
+  parseSyncGistStatus,
   parseSyncPull,
   parseSyncPush,
   parseSyncSpaceFolder,
   parseSyncStatus,
   sniffImageMime,
+  syncGistTokenProblem,
   syncSpaceWriteProblem,
 } from "@noren/model";
 import type {
@@ -49,6 +51,7 @@ import type {
   SessionLink,
   SessionLinkState,
   ShellProfile,
+  SyncGistStatus,
   SyncParse,
   SyncPullResult,
   SyncPushResult,
@@ -637,6 +640,41 @@ export class TauriBackend implements Backend {
 
   async syncPush(): Promise<SyncPushResult> {
     return checkedSync(parseSyncPush(await this.#bridge.invoke<unknown>("sync_push")));
+  }
+
+  async syncGistStatus(): Promise<SyncGistStatus> {
+    return checkedSync(parseSyncGistStatus(await this.#bridge.invoke<unknown>("sync_gist_status")));
+  }
+
+  async syncGistSetToken(token: string): Promise<void> {
+    // Checked here as well, so a refusal costs no round trip and the token goes nowhere else; the
+    // app checks again. The text of the problem never repeats the token.
+    const problem = syncGistTokenProblem(token);
+    if (problem !== undefined) throw new Error(`this is not a usable token: ${problem}`);
+    await this.#bridge.invoke("sync_gist_set_token", { token });
+  }
+
+  async syncGistClearToken(): Promise<void> {
+    await this.#bridge.invoke("sync_gist_clear_token");
+  }
+
+  async syncGistConnect(gistId?: string): Promise<SyncGistStatus> {
+    return checkedSync(
+      parseSyncGistStatus(
+        await this.#bridge.invoke<unknown>(
+          "sync_gist_connect",
+          gistId === undefined ? undefined : { gistId },
+        ),
+      ),
+    );
+  }
+
+  async syncGistPull(): Promise<SyncPullResult> {
+    return checkedSync(parseSyncPull(await this.#bridge.invoke<unknown>("sync_gist_pull")));
+  }
+
+  async syncGistPush(): Promise<SyncPushResult> {
+    return checkedSync(parseSyncPush(await this.#bridge.invoke<unknown>("sync_gist_push")));
   }
 
   async syncSpaceFiles(): Promise<SyncSpaceFolder> {

@@ -338,7 +338,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 /// The text of a request error with its causes, without the address.
-fn describe(error: &reqwest::Error) -> String {
+pub(crate) fn describe(error: &reqwest::Error) -> String {
     let mut parts = vec![error.to_string()];
     let mut source = std::error::Error::source(error);
     while let Some(cause) = source {

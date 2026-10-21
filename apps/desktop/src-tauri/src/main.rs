@@ -243,6 +243,12 @@ fn main() {
             bridge::sync_spaces_read,
             bridge::sync_spaces_write,
             bridge::sync_spaces_link,
+            bridge::sync_gist_status,
+            bridge::sync_gist_set_token,
+            bridge::sync_gist_clear_token,
+            bridge::sync_gist_connect,
+            bridge::sync_gist_pull,
+            bridge::sync_gist_push,
             bridge::window_effect_set,
             bridge::background_image_read,
             bridge::file_preview_read,
@@ -368,6 +374,23 @@ fn main() {
                     } else {
                         sync
                     }));
+                    // The sync through a gist keeps its token in the keychain of the system and
+                    // touches it, the config folder and the network only when the interface asks.
+                    // The smoke run gets a vault in memory and never stores a token, connects,
+                    // pulls or pushes.
+                    let gist = if smoke {
+                        bridge::gist_state(
+                            app.handle(),
+                            std::sync::Arc::new(noren_core::MemoryVault::new()),
+                        )?
+                        .without_syncing()
+                    } else {
+                        bridge::gist_state(
+                            app.handle(),
+                            std::sync::Arc::new(noren_core::KeyringVault::new()),
+                        )?
+                    };
+                    app.manage(std::sync::Arc::new(gist));
                     // The pictures of a background are only read.
                     app.manage(BackgroundState::new(bridge::background_store(
                         app.handle(),

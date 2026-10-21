@@ -585,7 +585,16 @@ export class WebBackend extends FakeBackend {
    * of the folder (the config and the mods are watched; the screen reads the themes again).
    */
   override async syncPull(): Promise<SyncPullResult> {
-    const result = await super.syncPull();
+    return this.#landed(await super.syncPull());
+  }
+
+  /** The same for the pull through a gist: what it brings lands where the real app writes it. */
+  override async syncGistPull(): Promise<SyncPullResult> {
+    return this.#landed(await super.syncGistPull());
+  }
+
+  /** Puts the files a pull delivered where the app follows them (config, themes, mods). */
+  #landed(result: SyncPullResult): SyncPullResult {
     if (result.kind !== "updated") return result;
     for (const path of result.files) {
       const text = this.syncLocalFile(path);

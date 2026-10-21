@@ -8,6 +8,11 @@
 //! One entry per provider: the service is [`SERVICE`] (`noren`) and the user name is the provider
 //! id. The id is checked before it reaches the system (see [`is_valid_provider_id`]), and no error
 //! text of this module ever contains a key.
+//!
+//! The vault also keeps the secrets of the app itself, each under a fixed name that is not shaped
+//! like a provider id ([`SYNC_GIST_TOKEN_ENTRY`]), so no provider the settings can declare has the
+//! name of one of them, and the secret of the sync can never be read as the key of a provider and
+//! sent to the address of one.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -18,6 +23,13 @@ pub const SERVICE: &str = "noren";
 
 /// Longest provider id, in bytes.
 pub const MAX_PROVIDER_ID_LEN: usize = 64;
+
+/// The entry that holds the token of the sync through a gist. A `:` is not allowed in a provider
+/// id, so this name can never be the id of a provider.
+pub const SYNC_GIST_TOKEN_ENTRY: &str = "sync:gist-token";
+
+/// The names of the secrets of the app itself (see the top of this file).
+const APP_ENTRIES: [&str; 1] = [SYNC_GIST_TOKEN_ENTRY];
 
 /// Longest key accepted, in characters. Real keys have well under 200; the Windows credential
 /// store itself refuses a secret much longer than this, so a longer text is a paste mistake and
@@ -75,9 +87,15 @@ pub trait KeyVault: Send + Sync {
     fn delete(&self, provider_id: &str) -> Result<(), VaultError>;
 }
 
-/// The checks every vault makes before it touches its store.
+/// Whether `name` is one of the fixed names of the secrets of the app itself.
+pub fn is_app_entry(name: &str) -> bool {
+    APP_ENTRIES.contains(&name)
+}
+
+/// The checks every vault makes before it touches its store: the name is a provider id or one of
+/// the fixed names of the app ([`is_app_entry`]).
 pub fn check(provider_id: &str, key: Option<&str>) -> Result<(), VaultError> {
-    if !is_valid_provider_id(provider_id) {
+    if !is_valid_provider_id(provider_id) && !is_app_entry(provider_id) {
         return Err(VaultError::InvalidProviderId);
     }
     if let Some(key) = key {
@@ -331,6 +349,36 @@ mod tests {
         let shown = format!("{vault:?}");
         assert!(!shown.contains("sk-secret"), "{shown}");
         assert!(shown.contains('1'));
+    }
+
+    #[test]
+    fn the_token_of_the_sync_has_a_name_no_provider_can_have() {
+        // A provider the settings declare must have a valid id, and this name is not one: so no
+        // provider reads the token of the sync as its key and sends it to its address.
+        assert!(!is_valid_provider_id(SYNC_GIST_TOKEN_ENTRY));
+        assert!(is_app_entry(SYNC_GIST_TOKEN_ENTRY));
+        assert!(!is_app_entry("openai"));
+        assert!(!is_app_entry("sync:other"));
+        let vault = MemoryVault::new();
+        vault.set(SYNC_GIST_TOKEN_ENTRY, "ghp_secret").expect("set");
+        assert_eq!(
+            vault.get(SYNC_GIST_TOKEN_ENTRY),
+            Ok(Some("ghp_secret".to_string()))
+        );
+        // No provider id reads it, and an id with a colon that is not a name of the app is refused.
+        assert_eq!(vault.get("sync"), Ok(None));
+        assert_eq!(vault.get("sync:other"), Err(VaultError::InvalidProviderId));
+        assert_eq!(
+            vault.set("sync:other", "k"),
+            Err(VaultError::InvalidProviderId)
+        );
+        vault.delete(SYNC_GIST_TOKEN_ENTRY).expect("delete");
+        assert_eq!(vault.get(SYNC_GIST_TOKEN_ENTRY), Ok(None));
+        // The real vault accepts the name too, but this test never asks the system anything.
+        assert_eq!(
+            KeyringVault::new().get("sync:other"),
+            Err(VaultError::InvalidProviderId)
+        );
     }
 
     #[test]

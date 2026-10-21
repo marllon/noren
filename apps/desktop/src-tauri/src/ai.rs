@@ -393,6 +393,11 @@ impl AiState {
     /// Stores the key of a provider, or removes it when `key` is empty (blanks around it are
     /// dropped, as a paste brings them). Nothing here prints the key.
     pub fn set_key(&self, provider_id: &str, key: &str) -> Result<(), String> {
+        // The vault also keeps secrets of the app under names that are not provider ids (the token
+        // of the gist sync): a key of a provider never goes to, or comes from, one of those.
+        if !is_valid_provider_id(provider_id) {
+            return Err(noren_core::VaultError::InvalidProviderId.to_string());
+        }
         let key = key.trim();
         if key.is_empty() {
             self.vault.delete(provider_id)

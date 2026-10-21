@@ -158,13 +158,16 @@ const syncPath = z
   .max(200, { error: "a path is too long" })
   .refine(isSyncablePath, { error: "a path is not one that may be synced" });
 
+/** The files a push would carry, with what it would do to each. */
+const syncPending = z
+  .array(z.strictObject({ path: syncPath, change: z.enum(SYNC_CHANGES) }))
+  .max(SYNC_LIMITS.files);
+
 export const syncStatusSchema = z.strictObject({
   connected: z.boolean({ error: "connected must be true or false" }),
   remote: z.string().max(SYNC_LIMITS.remoteChars).nullable(),
   branch: z.string().max(200).nullable(),
-  pending: z
-    .array(z.strictObject({ path: syncPath, change: z.enum(SYNC_CHANGES) }))
-    .max(SYNC_LIMITS.files),
+  pending: syncPending,
   ahead: z.number().int().min(0),
   behind: z.number().int().min(0),
 });
@@ -307,4 +310,88 @@ export function parseSyncPush(value: unknown): SyncParse<SyncPushResult> {
 /** Checks what the app answered about the space files. */
 export function parseSyncSpaceFolder(value: unknown): SyncParse<SyncSpaceFolder> {
   return parseWith(syncSpaceFolderSchema, value);
+}
+
+// The sync through a gist (NOR-F19-02a): the other way to carry the same closed list of files. A
+// gist has no folders, so a path travels as one flat file name; the token of GitHub lives in the
+// keychain of the app and never reaches the page (the status says only whether there is one). The
+// rules here are the ones of `noren-core::sync_gist` (`gist_file_name`, `path_of_gist_file`,
+// `is_valid_gist_id`), tested with the same cases. The results of a pull and a push are the ones of
+// the sync through git (`syncPullSchema`, `syncPushSchema`); for a gist `committed` and `pushed`
+// are both true when a new revision of the gist was made.
+
+/** What separates the folder from the name in the flat name of a gist file. */
+const GIST_FOLDER_SEPARATOR = "--";
+
+/** The folders of the closed list. */
+const GIST_FOLDERS = ["themes", "mods", "spaces"] as const;
+
+/**
+ * The flat name a gist holds `path` as, when `path` is on the closed list (`isSyncablePath`): the
+ * first `/` becomes `--` (`themes/x.json` is `themes--x.json`; `config.jsonc` stays). `undefined`
+ * for any other path.
+ */
+export function gistFileName(path: string): string | undefined {
+  return isSyncablePath(path) ? path.replace("/", GIST_FOLDER_SEPARATOR) : undefined;
+}
+
+/**
+ * The path of the config folder a gist file name stands for, when it stands for one: the name must
+ * map to a path of the closed list that maps back to exactly that name. `undefined` for a file
+ * someone else put in the gist and for a name made to look like a path.
+ */
+export function pathOfGistFile(name: string): string | undefined {
+  let path = name;
+  for (const folder of GIST_FOLDERS) {
+    const prefix = `${folder}${GIST_FOLDER_SEPARATOR}`;
+    if (name.startsWith(prefix)) {
+      path = `${folder}/${name.slice(prefix.length)}`;
+      break;
+    }
+  }
+  return gistFileName(path) === name ? path : undefined;
+}
+
+/** Whether `id` can be the id of a gist: 1 to 64 ASCII letters or digits. */
+export function isSyncGistId(id: string): boolean {
+  return /^[A-Za-z0-9]{1,64}$/.test(id);
+}
+
+/** The longest token the keychain takes, in characters (the same ceiling as an API key). */
+const GIST_TOKEN_CHARS = 1024;
+
+/**
+ * Why `token` cannot be the token of the gist sync, or `undefined` when it can. Blanks around it are
+ * dropped first, as a paste brings them; what is left is one run of visible ASCII. The text of the
+ * problem never repeats the token.
+ */
+export function syncGistTokenProblem(token: string): string | undefined {
+  const trimmed = token.trim();
+  if (trimmed === "") return "it is empty";
+  if ([...trimmed].length > GIST_TOKEN_CHARS) return "it is too long";
+  if (!/^[!-~]+$/.test(trimmed)) {
+    return "it has a space or a character that a token does not have";
+  }
+  return undefined;
+}
+
+export const syncGistStatusSchema = z.strictObject({
+  connected: z.boolean({ error: "connected must be true or false" }),
+  gistId: z
+    .string()
+    .refine(isSyncGistId, { error: "a gist id is letters and digits only" })
+    .nullable(),
+  /** Anyone can read the settings in the gist. */
+  public: z.boolean({ error: "public must be true or false" }),
+  /** A token is stored in the keychain. The token itself never comes to the page. */
+  hasToken: z.boolean({ error: "hasToken must be true or false" }),
+  pending: syncPending,
+});
+
+/** Where the sync through a gist stands: the gist, whether a token is stored, the files a push would carry. */
+export type SyncGistStatus = z.infer<typeof syncGistStatusSchema>;
+
+/** Checks what the app answered about the status of the sync through a gist. */
+export function parseSyncGistStatus(value: unknown): SyncParse<SyncGistStatus> {
+  return parseWith(syncGistStatusSchema, value);
 }

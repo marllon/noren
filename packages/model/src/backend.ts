@@ -14,6 +14,7 @@ import type { PluginFolder } from "./plugins-load";
 import type { FilePreview } from "./file-preview";
 import type { GalleryIndex, InstalledGalleryItem } from "./gallery";
 import type {
+  SyncGistStatus,
   SyncPullResult,
   SyncPushResult,
   SyncSpaceFolder,
@@ -420,6 +421,46 @@ export interface Backend {
    * the hash of the files as they are now, so the next pull knows it has seen them.
    */
   syncLinkSpaceFiles(links: readonly SyncSpaceLink[]): Promise<void>;
+  /**
+   * Where the sync through a gist stands (`noren-core::sync_gist`, NOR-F19-02a), with no network:
+   * the gist, whether it is public, whether a token is stored in the keychain (`hasToken`; the
+   * token itself never comes to the page) and the files of the config folder a push would carry
+   * (the closed list of `isSyncablePath`, as in the sync through git). Not connected is
+   * `connected: false`. Rejects only when the record of the sync cannot be read.
+   */
+  syncGistStatus(): Promise<SyncGistStatus>;
+  /**
+   * Stores the GitHub token (with the gist permission) of the gist sync in the keychain of the
+   * system, replacing the one there. Blanks around it are dropped. Rejects, with a sentence that
+   * does not repeat it, for a token that is empty, too long or not one run of visible ASCII
+   * (`syncGistTokenProblem`) and when the keychain says no. Nothing returns the token.
+   */
+  syncGistSetToken(token: string): Promise<void>;
+  /** Removes the token of the gist sync from the keychain. Having none is not an error. */
+  syncGistClearToken(): Promise<void>;
+  /**
+   * Connects to the gist `gistId` (letters and digits, `isSyncGistId`), or, with none, makes a
+   * secret gist from the files of this computer that may travel. Connecting to a gist copies
+   * nothing into the config folder: that is what a pull does. Rejects with a sentence for the
+   * person when no token is stored, the id is not one, the gist cannot be read, or there is no file
+   * to make a gist from.
+   */
+  syncGistConnect(gistId?: string): Promise<SyncGistStatus>;
+  /**
+   * Brings the gist into the config folder: a file the gist changed and this computer did not is
+   * written; a file changed on both sides to different bytes is a conflict, and then nothing at
+   * all is written and the paths come back (`kind: "conflict"`). Names in the gist that are not on
+   * the closed list are never written. Nothing is deleted. Rejects when no gist is connected, no
+   * token is stored or GitHub cannot be reached.
+   */
+  syncGistPull(): Promise<SyncPullResult>;
+  /**
+   * Sends the files that changed here to the gist (`committed` and `pushed` are both true when a
+   * new revision was made). Rejects with "pull first" when any file of the gist is not as this
+   * computer last saw it, and sends nothing then; also when no gist is connected, no token is
+   * stored or GitHub cannot be reached.
+   */
+  syncGistPush(): Promise<SyncPushResult>;
   /**
    * Asks the system to paint `effect` behind the window (`none` takes any effect away), and tells
    * what the window has afterwards. It never rejects because the system cannot paint the effect:

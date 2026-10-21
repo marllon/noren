@@ -317,6 +317,34 @@ fn a_key_is_stored_read_replaced_and_removed_through_the_vault() {
 }
 
 #[test]
+fn the_token_of_the_gist_sync_is_not_the_key_of_any_provider() {
+    let server = TestServer::start(|_, _, _| {});
+    let vault = Arc::new(MemoryVault::new());
+    let state = state_for(&server, vault.clone());
+    vault
+        .set(noren_core::SYNC_GIST_TOKEN_ENTRY, "ghp_secret")
+        .expect("the sync stores its token");
+    // A provider cannot take the name of the entry, so none ever reads the token as its key...
+    let entry = noren_core::SYNC_GIST_TOKEN_ENTRY;
+    let provider = |id: &str| ProviderConfigDto {
+        id: id.to_string(),
+        kind: "openai-compatible".to_string(),
+        base_url: "https://example.com/v1".to_string(),
+        model: String::new(),
+    };
+    let error = state.configure(&[provider(entry)]).expect_err("refused");
+    assert!(error.contains("not a provider id"), "{error}");
+    assert!(state.providers().iter().all(|p| !p.has_key));
+    // ...and the commands for the keys of providers can neither replace nor remove it.
+    assert!(state.set_key(entry, "sk-other").is_err());
+    assert!(state.set_key(entry, "").is_err());
+    assert_eq!(vault.get(entry), Ok(Some("ghp_secret".to_string())));
+    // A connection test or a chat to that name never reaches the vault.
+    let report = tauri::async_runtime::block_on(state.test_connection(entry));
+    assert!(report.is_err());
+}
+
+#[test]
 fn the_list_says_whether_a_key_exists_and_never_shows_it() {
     let server = TestServer::start(|_, _, _| {});
     let state = state_for(&server, Arc::new(MemoryVault::new()));

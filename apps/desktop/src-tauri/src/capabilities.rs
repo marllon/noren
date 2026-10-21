@@ -179,6 +179,8 @@ fn only_the_main_window_may_call_what_owns_or_changes_the_workspace() {
         // The answer to a call of the local API: the main window runs the call (NOR-F17-01c), so
         // only its page may say what came of it.
         "api_respond",
+        // The page of the main window tells the bridge it listens for those calls (NOR-F17-01d).
+        "api_ready",
     ];
     let main = permissions_of(&capability(MAIN_CAPABILITY));
     let quick = permissions_of(&capability(QUICK_CAPABILITY));

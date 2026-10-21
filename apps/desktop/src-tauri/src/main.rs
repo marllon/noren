@@ -26,6 +26,7 @@ mod remote_fake;
 mod route;
 mod shortcut;
 mod smoke;
+mod smoke_api;
 mod smoke_browser;
 mod smoke_persist;
 mod smoke_window;
@@ -97,10 +98,15 @@ fn main() {
     // the workspace it makes, so the run keeps the files of the app in a folder of its own too.
     let smoke_window = smoke_window::has_flag(&args);
     let window_sandbox = smoke_window.then(smoke_window::WindowSandbox::new);
+    // The API run is a client of the local API: it makes a space, which the page of the main window
+    // saves, so it keeps the files of the app in a folder of its own too.
+    let smoke_api = smoke_api::has_flag(&args);
+    let api_sandbox = smoke_api.then(smoke_api::ApiSandbox::new);
     let any_smoke = smoke
         || smoke_deeplink
         || smoke_quick
         || smoke_window
+        || smoke_api
         || perf_run.is_some()
         || persist_run.is_some();
 
@@ -169,6 +175,12 @@ fn main() {
                 tauri::webview::PageLoadEvent::Finished => "finished",
             };
             perf::mark(&format!("page-load-{event}:{}", webview.label()));
+            // A page of the main window that starts loading is not listening for API calls yet.
+            if webview.label() == lifecycle::MAIN_LABEL
+                && matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
+            {
+                api_bridge::page_loading(webview.app_handle());
+            }
         })
         .invoke_handler(tauri::generate_handler![
             ai::ai_providers,
@@ -235,6 +247,7 @@ fn main() {
             deeplink::deep_link_take_waiting,
             deeplink::deep_link_applied,
             api_bridge::api_respond,
+            api_bridge::api_ready,
         ])
         .setup(move |app| {
             perf::mark("setup-start");
@@ -245,33 +258,38 @@ fn main() {
                 &perf_run,
                 &persist_run,
                 &window_sandbox,
+                &api_sandbox,
             ) {
                 // The deep-link, quick, perf and persistence checks never touch the user's files:
                 // they run on a folder of their own.
-                (Some(target), _, _, _, _) => {
+                (Some(target), _, _, _, _, _) => {
                     smoke::manage_sandbox_stores(app, &target.state_dir);
                     app.manage(target.clone());
                 }
-                (None, Some(sandbox), _, _, _) => {
+                (None, Some(sandbox), _, _, _, _) => {
                     smoke::manage_sandbox_stores(app, &sandbox.state_dir);
                     app.manage(sandbox.clone());
                 }
-                (None, None, Some(run), _, _) => {
+                (None, None, Some(run), _, _, _) => {
                     smoke::manage_sandbox_stores(app, &run.state_dir);
                     app.manage(run.clone());
                 }
-                (None, None, None, None, Some(sandbox)) => {
+                (None, None, None, None, Some(sandbox), _) => {
                     smoke::manage_sandbox_stores(app, &sandbox.state_dir);
                     app.manage(sandbox.clone());
                 }
-                (None, None, None, Some(run), _) => {
+                (None, None, None, Some(run), _, _) => {
                     smoke::manage_sandbox_stores(app, &run.dir);
                     // Both runs of the pair keep the book of which shell is which pane's in the
                     // folder they share.
                     app.state::<AppState>()
                         .use_pane_book(PaneBook::open(run.book_file(), &run.endpoint));
                 }
-                (None, None, None, None, None) => {
+                (None, None, None, None, None, Some(sandbox)) => {
+                    smoke::manage_sandbox_stores(app, &sandbox.state_dir);
+                    app.manage(sandbox.clone());
+                }
+                (None, None, None, None, None, None) => {
                     // Which shell is which pane's is kept next to the saved state, for the daemon
                     // of the user. The plain smoke run keeps it in memory: it must not touch the
                     // book of the user.
@@ -355,7 +373,7 @@ fn main() {
             // The quick terminal: a second window, hidden, that loads its page once the main one is up
             // (see `quick::create_hidden_after_ready`), so it is ready when something shows it. The
             // plain smoke runs check the main window alone and leave it out.
-            if !smoke && !smoke_deeplink && !smoke_window && persist_run.is_none() {
+            if !smoke && !smoke_deeplink && !smoke_window && !smoke_api && persist_run.is_none() {
                 quick::create_hidden_after_ready(app);
             }
             // The global shortcut of the quick terminal: only a normal start registers one. A chord
@@ -395,6 +413,9 @@ fn main() {
             }
             if let Some(sandbox) = window_sandbox.clone() {
                 smoke_window::arm(app, sandbox);
+            }
+            if let Some(sandbox) = api_sandbox.clone() {
+                smoke_api::arm(app, sandbox);
             }
             perf::mark("setup-end");
             Ok(())
@@ -444,6 +465,9 @@ fn main() {
                 run.remove();
             }
             if let Some(sandbox) = handle.try_state::<smoke_window::WindowSandbox>() {
+                sandbox.remove();
+            }
+            if let Some(sandbox) = handle.try_state::<smoke_api::ApiSandbox>() {
                 sandbox.remove();
             }
         }

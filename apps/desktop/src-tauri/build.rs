@@ -68,6 +68,7 @@ const COMMANDS: &[&str] = &[
     "deep_link_take_waiting",
     "deep_link_applied",
     "api_respond",
+    "api_ready",
 ];
 
 fn main() {

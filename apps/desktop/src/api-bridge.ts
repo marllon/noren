@@ -13,6 +13,12 @@ import type { WorkspaceStore } from "./workspace-store";
 export const API_CALL_EVENT = "api-call";
 /** The command the page answers with: `api_respond(id, outcome)`. */
 export const API_RESPOND_COMMAND = "api_respond";
+/**
+ * The command the page says it hears calls with: `api_ready()`. Until it is called the Rust side
+ * answers a call `failed` ("Noren is still starting") instead of sending it to a page that cannot
+ * hear it (NOR-F17-01d).
+ */
+export const API_READY_COMMAND = "api_ready";
 
 export interface ApiListenerHost {
   bridge: Pick<TauriBridge, "invoke" | "listen">;
@@ -41,8 +47,9 @@ const internal = (message: string): ApiOutcome => ({ error: { code: "internal", 
  * Starts hearing calls. Each one runs on its own (calls of different clients do not wait for each
  * other) and is answered once, with whatever `run` gave: a result, an error, or an `internal` error
  * if `run` itself failed. An event that has no usable id cannot be answered and is dropped (the
- * Rust side times that call out). Returns a function that stops listening; calls already running
- * still answer.
+ * Rust side times that call out). Once the listener is registered, and not before, the page tells
+ * the Rust side with `api_ready`; a call that came earlier was already told the window is starting.
+ * Returns a function that stops listening; calls already running still answer.
  */
 export function startApiListener(host: ApiListenerHost): () => void {
   const { bridge, run } = host;
@@ -78,6 +85,12 @@ export function startApiListener(host: ApiListenerHost): () => void {
       unlisten = off;
     } catch {
       // Without the Rust side there are no calls to hear.
+      return;
+    }
+    try {
+      await bridge.invoke(API_READY_COMMAND);
+    } catch {
+      // The app is closing; there is nobody to tell.
     }
   })();
 

@@ -9,6 +9,7 @@ import type { ApiCall, ApiOutcome } from "@noren/model";
 import { describe, expect, it, vi } from "vitest";
 import {
   API_CALL_EVENT,
+  API_READY_COMMAND,
   API_RESPOND_COMMAND,
   appApiHost,
   startApiListener,
@@ -23,19 +24,26 @@ interface Invocation {
 }
 
 /** A bridge whose event is fired by the test and whose `invoke` records the answers. */
-function fakeBridge(options: { failRespond?: boolean } = {}) {
+function fakeBridge(options: { failRespond?: boolean; failListen?: boolean } = {}) {
   const invocations: Invocation[] = [];
+  /** What the page did, in order: "listen" when the listener was registered, else the command. */
+  const order: string[] = [];
   let handler: ((event: { payload: unknown }) => void) | undefined;
   let unlistened = 0;
   const bridge: Pick<TauriBridge, "invoke" | "listen"> = {
     invoke: <T>(command: string, args?: Record<string, unknown>) => {
       invocations.push({ command, args });
+      order.push(command);
       return options.failRespond === true
         ? Promise.reject(new Error("the window is closing"))
         : Promise.resolve(undefined as T);
     },
     listen: (event, next) => {
-      if (event === API_CALL_EVENT) handler = next as typeof handler;
+      if (options.failListen === true) return Promise.reject(new Error("no events"));
+      if (event === API_CALL_EVENT) {
+        handler = next as typeof handler;
+        order.push("listen");
+      }
       return Promise.resolve(() => {
         unlistened++;
       });
@@ -44,6 +52,8 @@ function fakeBridge(options: { failRespond?: boolean } = {}) {
   return {
     bridge,
     invocations,
+    order,
+    readies: () => invocations.filter((i) => i.command === API_READY_COMMAND),
     unlistened: () => unlistened,
     listening: () => handler !== undefined,
     emit: (payload: unknown) => handler?.({ payload }),
@@ -69,6 +79,39 @@ function firstPane(store: ReturnType<typeof createWorkspaceStore>) {
 const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 describe("the listener of the local API", () => {
+  it("tells the Rust side it hears calls once the listener is registered, and not before", async () => {
+    const fake = fakeBridge();
+    startApiListener({ bridge: fake.bridge, run: async () => ({ result: 1 }) });
+    await settle();
+    // First the listener, then the notice: a call sent after the notice is never lost.
+    expect(fake.order).toEqual(["listen", API_READY_COMMAND]);
+    expect(fake.readies()).toEqual([{ command: API_READY_COMMAND, args: undefined }]);
+  });
+
+  it("says nothing of being ready when it cannot listen, or was stopped before it listened", async () => {
+    const broken = fakeBridge({ failListen: true });
+    startApiListener({ bridge: broken.bridge, run: async () => ({ result: 1 }) });
+    await settle();
+    expect(broken.readies()).toEqual([]);
+
+    const early = fakeBridge();
+    const stop = startApiListener({ bridge: early.bridge, run: async () => ({ result: 1 }) });
+    stop();
+    await settle();
+    expect(early.readies()).toEqual([]);
+  });
+
+  it("keeps listening when the notice is refused", async () => {
+    const fake = fakeBridge({ failRespond: true });
+    const run = vi.fn(async (): Promise<ApiOutcome> => ({ result: 1 }));
+    startApiListener({ bridge: fake.bridge, run });
+    await settle();
+    expect(fake.readies()).toHaveLength(1);
+    fake.emit({ id: 1, method: "spaces.list", params: {} });
+    await settle();
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
   it("listens for the call event and answers each call with the outcome of its run, by id", async () => {
     const fake = fakeBridge();
     const run = vi.fn(async (call: ApiCall): Promise<ApiOutcome> => ({
@@ -148,7 +191,8 @@ describe("the listener of the local API", () => {
     }
     await settle();
     expect(run).not.toHaveBeenCalled();
-    expect(fake.invocations).toEqual([]);
+    // Nothing was answered: the only thing the page told the Rust side is that it listens.
+    expect(fake.answers()).toEqual([]);
   });
 
   it("runs calls side by side and answers each with its own id", async () => {

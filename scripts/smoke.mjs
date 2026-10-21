@@ -1,5 +1,5 @@
 // Real-app smoke test: debug build without bundle, then `noren --smoke`, `noren --smoke-deeplink`,
-// `noren --smoke-quick` and `noren --smoke-window`.
+// `noren --smoke-quick`, `noren --smoke-window` and `noren --smoke-api`.
 // Exits with the app's exit code. The first run must print "SMOKE OK" and "noren-smoke-ok" (printed
 // after a real shell session echoed it), "SMOKE window effect ..." (the line of the effect the
 // hidden window was given, Mica on Windows and vibrancy on macOS: the effect applied, or the opaque
@@ -25,6 +25,11 @@
 // opened as a child of that hidden window, on a page of the run that reaches nothing of the app and
 // stays put when it tries to go to an address of the app, and the web view goes with the window
 // when the app closes it, NOR-F15-04e).
+// the fifth must print "SMOKE API OK" (a client of the local API, with the token the app keeps in a file
+// of the run and the endpoint of the run, was refused with a wrong token, was welcomed with the right
+// one and made real calls that went through the server, the bridge, the hidden main page and back:
+// spaces.list, spaces.create and spaces.list again, which shows the new space; no call types into a
+// terminal, so none sends an Enter, NOR-F17-01d).
 // Every run must also print "SMOKE global shortcut none registered": no smoke mode registers the
 // global shortcut of the quick terminal (the run fails if the app holds one), and "SMOKE tray icon
 // none": no smoke mode shows the tray icon of a normal start (NOR-F14-02c).
@@ -241,6 +246,24 @@ runSmoke(
     "SMOKE a window closed by the person was reported as closed",
     "SMOKE window hidden",
     "SMOKE WINDOW OK",
+  ],
+);
+
+// The API run (NOR-F17-01d) keeps its files in a folder of its own, made and removed by the app. A
+// client of the local API makes real calls to the hidden window: list the spaces, make one, list again.
+runSmoke(
+  ["--smoke-api"],
+  [
+    "SMOKE API listening on",
+    "SMOKE global shortcut none registered",
+    "SMOKE tray icon none",
+    "SMOKE API a wrong token was refused (unauthorized), connection closed",
+    "SMOKE API authenticated with the token of the run, welcome version 1",
+    "SMOKE API spaces.list answered by the page:",
+    "SMOKE API spaces.create made",
+    "SMOKE API spaces.list shows the new space",
+    "SMOKE window hidden",
+    "SMOKE API OK",
   ],
 );
 

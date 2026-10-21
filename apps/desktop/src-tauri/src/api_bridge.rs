@@ -17,7 +17,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -25,6 +25,7 @@ use noren_core::api::{
     ApiCall, ApiConfig, ApiError, ApiErrorCode, ApiFuture, ApiHandler, ApiServer, SplitDirection,
     api_endpoint, load_or_create_token,
 };
+use noren_core::daemon::Endpoint;
 use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tokio::sync::oneshot;
@@ -37,12 +38,19 @@ pub const CALL_EVENT: &str = "api-call";
 /// handler list in `main.rs` and `build.rs` spell it out.
 #[cfg(test)]
 pub const RESPOND_COMMAND: &str = "api_respond";
+/// The command the page says it listens with: `api_ready()`, after it registered the listener of
+/// [`CALL_EVENT`].
+#[cfg(test)]
+pub const READY_COMMAND: &str = "api_ready";
 /// The folder of the token file inside the data folder of the app.
 pub const API_DIR_NAME: &str = "api";
 /// The name of the token file.
 pub const TOKEN_FILE_NAME: &str = "token";
 /// How much sooner than the server's request limit the bridge gives up on the page.
 const MARGIN: Duration = Duration::from_secs(5);
+/// What a call gets while the page has not said it is listening. A client may try again.
+pub const STARTING_MESSAGE: &str =
+    "Noren is still starting: its window is not ready for API calls yet, try again in a moment";
 
 /// How long the bridge waits for the page: the request limit of the server less [`MARGIN`] (never
 /// more than the limit itself, and never nothing).
@@ -223,10 +231,16 @@ impl Drop for Pending<'_> {
 }
 
 /// The [`ApiHandler`] of the app: hands each call to the page and waits for its answer.
+///
+/// The page may not be listening yet (the window is up while the page still restores its shells and
+/// its settings), and an event sent then is lost. So the bridge starts not ready: a call that comes
+/// before the page said so with `api_ready` is answered `failed` at once, with a message that says
+/// the window is starting, instead of waiting out the deadline (NOR-F17-01d).
 pub struct ApiBridge {
     sink: Arc<dyn CallSink>,
     timeout: Duration,
     next_id: AtomicU64,
+    ready: AtomicBool,
     pending: Mutex<HashMap<u64, oneshot::Sender<Value>>>,
 }
 
@@ -236,8 +250,19 @@ impl ApiBridge {
             sink,
             timeout,
             next_id: AtomicU64::new(1),
+            ready: AtomicBool::new(false),
             pending: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Whether the page said it hears calls.
+    pub fn is_ready(&self) -> bool {
+        self.ready.load(Ordering::SeqCst)
+    }
+
+    /// The page hears calls (`true`), or it is being loaded again and does not (`false`).
+    pub fn set_ready(&self, ready: bool) {
+        self.ready.store(ready, Ordering::SeqCst);
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<u64, oneshot::Sender<Value>>> {
@@ -261,6 +286,9 @@ impl ApiBridge {
     }
 
     async fn round_trip(&self, call: ApiCall) -> Result<Value, ApiError> {
+        if !self.is_ready() {
+            return Err(ApiError::failed(STARTING_MESSAGE));
+        }
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (answer_tx, answer_rx) = oneshot::channel();
         self.lock().insert(id, answer_tx);
@@ -313,6 +341,26 @@ pub fn api_respond<R: Runtime>(
     Ok(())
 }
 
+/// The page says it hears calls now (`api-call` has a listener). Only the main window may say it,
+/// and it says it once its listener is registered, after which the bridge sends it calls.
+#[tauri::command]
+pub fn api_ready<R: Runtime>(
+    window: tauri::Window<R>,
+    state: State<'_, ApiBridgeState>,
+) -> Result<(), String> {
+    crate::windows::require_owner(&window)?;
+    state.0.set_ready(true);
+    Ok(())
+}
+
+/// The main page starts loading (the first time, or again): nothing of it is listening yet, so the
+/// bridge stops sending it calls until it says `api_ready`.
+pub fn page_loading<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(state) = app.try_state::<ApiBridgeState>() {
+        state.0.set_ready(false);
+    }
+}
+
 /// Where the server listens and where it keeps its token.
 #[derive(Debug, Clone)]
 pub struct ApiSettings {
@@ -360,11 +408,26 @@ pub struct ApiState {
     server: Mutex<Option<ApiServer>>,
     status: ApiStatus,
     sandbox: Option<PathBuf>,
+    /// Where a client finds the server: the endpoint and the file with the token. `None` when the
+    /// server did not start.
+    target: Option<ClientTarget>,
+}
+
+/// What a client needs to reach the server: its endpoint and the file that holds the token.
+#[derive(Debug, Clone)]
+pub struct ClientTarget {
+    pub endpoint: Endpoint,
+    pub token_file: PathBuf,
 }
 
 impl ApiState {
     pub fn status(&self) -> &ApiStatus {
         &self.status
+    }
+
+    /// The endpoint and token file of the running server, for a client of the same user.
+    pub fn target(&self) -> Option<&ClientTarget> {
+        self.target.as_ref()
     }
 
     /// Stops the server (once; later calls do nothing) and removes the folder of a run that made one.
@@ -383,15 +446,20 @@ fn start_server(
     settings: &ApiSettings,
     bridge: Arc<ApiBridge>,
     config: ApiConfig,
-) -> Result<(ApiServer, String), String> {
+) -> Result<(ApiServer, ClientTarget), String> {
     let (token, _origin) = load_or_create_token(&settings.token_file)
         .map_err(|e| format!("the token file could not be used: {e}"))?;
     let endpoint = api_endpoint(&settings.endpoint_name)
         .map_err(|e| format!("the endpoint could not be named: {e}"))?;
-    let label = endpoint.to_string();
-    let server = ApiServer::start(endpoint, token, bridge, config)
+    let server = ApiServer::start(endpoint.clone(), token, bridge, config)
         .map_err(|e| format!("the endpoint could not be opened: {e}"))?;
-    Ok((server, label))
+    Ok((
+        server,
+        ClientTarget {
+            endpoint,
+            token_file: settings.token_file.clone(),
+        },
+    ))
 }
 
 /// Makes the bridge and starts the server. Both are kept in the state of the app: the bridge is what
@@ -405,15 +473,18 @@ pub fn install<R: Runtime>(app: &AppHandle<R>, settings: Result<ApiSettings, Str
         reply_timeout(&config),
     ));
     app.manage(ApiBridgeState(Arc::clone(&bridge)));
-    let (server, status, sandbox) = match settings {
-        Err(reason) => (None, ApiStatus::Off { reason }, None),
+    let (server, status, sandbox, target) = match settings {
+        Err(reason) => (None, ApiStatus::Off { reason }, None, None),
         Ok(settings) => match start_server(&settings, bridge, config) {
-            Ok((server, endpoint)) => (
+            Ok((server, target)) => (
                 Some(server),
-                ApiStatus::Listening { endpoint },
+                ApiStatus::Listening {
+                    endpoint: target.endpoint.to_string(),
+                },
                 settings.sandbox,
+                Some(target),
             ),
-            Err(reason) => (None, ApiStatus::Off { reason }, settings.sandbox),
+            Err(reason) => (None, ApiStatus::Off { reason }, settings.sandbox, None),
         },
     };
     if let ApiStatus::Off { reason } = &status {
@@ -423,6 +494,7 @@ pub fn install<R: Runtime>(app: &AppHandle<R>, settings: Result<ApiSettings, Str
         server: Mutex::new(server),
         status,
         sandbox,
+        target,
     });
 }
 
@@ -456,7 +528,7 @@ mod tests {
     fn bridge_with(timeout: Duration) -> (Arc<ApiBridge>, UnboundedReceiver<Value>) {
         let (sent, calls) = unbounded_channel();
         let sink = FakeSink { sent, refuse: None };
-        (Arc::new(ApiBridge::new(Arc::new(sink), timeout)), calls)
+        (ready(ApiBridge::new(Arc::new(sink), timeout)), calls)
     }
 
     fn bridge_that_refuses(refusal: Undelivered) -> Arc<ApiBridge> {
@@ -465,7 +537,13 @@ mod tests {
             sent,
             refuse: Some(refusal),
         };
-        Arc::new(ApiBridge::new(Arc::new(sink), Duration::from_secs(5)))
+        ready(ApiBridge::new(Arc::new(sink), Duration::from_secs(5)))
+    }
+
+    /// A bridge the page has said is listening (the way every test but the readiness ones starts).
+    fn ready(bridge: ApiBridge) -> Arc<ApiBridge> {
+        bridge.set_ready(true);
+        Arc::new(bridge)
     }
 
     fn read_call(terminal: &str) -> ApiCall {
@@ -657,6 +735,183 @@ mod tests {
         assert_eq!(error_code("NOT_FOUND"), None);
     }
 
+    // ---- readiness: a call waits for nobody while the page is not listening -----------------
+
+    /// A bridge the page has not said anything to yet, and the calls its sink was given.
+    fn bridge_not_ready() -> (Arc<ApiBridge>, UnboundedReceiver<Value>) {
+        let (sent, calls) = unbounded_channel();
+        let sink = FakeSink { sent, refuse: None };
+        let bridge = Arc::new(ApiBridge::new(Arc::new(sink), STEP));
+        (bridge, calls)
+    }
+
+    #[tokio::test]
+    async fn a_call_before_the_page_says_it_listens_fails_at_once_and_reaches_nobody() {
+        let (bridge, mut calls) = bridge_not_ready();
+        assert!(!bridge.is_ready(), "a bridge starts not ready");
+        let started = std::time::Instant::now();
+        // Bounded by the test, so a bridge that waits for a page that is not there fails here
+        // instead of holding the test for the whole deadline.
+        let error = tokio::time::timeout(Duration::from_secs(2), bridge.handle(read_call("p1")))
+            .await
+            .expect("the call was answered at once, not left waiting")
+            .expect_err("the page is not listening");
+        assert_eq!(error.code, ApiErrorCode::Failed);
+        assert_eq!(error.message, STARTING_MESSAGE);
+        assert!(error.message.contains("starting"), "{}", error.message);
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert!(
+            calls.try_recv().is_err(),
+            "an event went to a page that does not listen"
+        );
+        assert_eq!(bridge.waiting(), 0);
+    }
+
+    #[tokio::test]
+    async fn every_method_fails_the_same_way_while_the_page_is_not_listening() {
+        let (bridge, mut calls) = bridge_not_ready();
+        for call in every_shape_of_call() {
+            let error = tokio::time::timeout(Duration::from_secs(2), bridge.handle(call))
+                .await
+                .expect("answered at once")
+                .expect_err("the page is not listening");
+            assert_eq!(error.code, ApiErrorCode::Failed);
+            assert_eq!(error.message, STARTING_MESSAGE);
+        }
+        assert!(calls.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn after_the_page_says_it_listens_the_call_goes_through_the_page() {
+        let (bridge, mut calls) = bridge_not_ready();
+        // Before: refused. After: sent to the page and answered by it.
+        let early = tokio::time::timeout(Duration::from_secs(2), bridge.handle(read_call("p1")))
+            .await
+            .expect("answered at once");
+        assert_eq!(early.expect_err("not ready").code, ApiErrorCode::Failed);
+
+        bridge.set_ready(true);
+        assert!(bridge.is_ready());
+        let waiting = {
+            let bridge = Arc::clone(&bridge);
+            tokio::spawn(async move { bridge.handle(read_call("p1")).await })
+        };
+        let sent = next_call(&mut calls).await;
+        assert_eq!(sent["method"], "terminal.read");
+        assert!(bridge.respond(id_of(&sent), json!({ "result": { "lines": [] } })));
+        let result = tokio::time::timeout(STEP, waiting)
+            .await
+            .expect("the call finished")
+            .expect("the task ran")
+            .expect("the page answered");
+        assert_eq!(result, json!({ "lines": [] }));
+    }
+
+    #[tokio::test]
+    async fn a_page_that_stops_listening_is_failed_again_and_a_pending_call_is_not_lost() {
+        let (bridge, mut calls) = bridge_not_ready();
+        bridge.set_ready(true);
+        let waiting = {
+            let bridge = Arc::clone(&bridge);
+            tokio::spawn(async move { bridge.handle(read_call("p1")).await })
+        };
+        let sent = next_call(&mut calls).await;
+        // The page is loaded again: new calls fail at once, the one in flight can still be answered.
+        bridge.set_ready(false);
+        let error = tokio::time::timeout(Duration::from_secs(2), bridge.handle(read_call("p2")))
+            .await
+            .expect("answered at once")
+            .expect_err("not ready again");
+        assert_eq!(error.message, STARTING_MESSAGE);
+        assert!(bridge.respond(id_of(&sent), json!({ "result": 1 })));
+        let result = tokio::time::timeout(STEP, waiting)
+            .await
+            .expect("finished")
+            .expect("ran")
+            .expect("answered");
+        assert_eq!(result, json!(1));
+    }
+
+    /// Calls the command `cmd` from the window `label` in the mock runtime.
+    fn command_from(label: &str, cmd: &str, bridge: &Arc<ApiBridge>) -> Result<(), Value> {
+        let app = mock_builder()
+            .manage(ApiBridgeState(Arc::clone(bridge)))
+            .invoke_handler(tauri::generate_handler![api_ready])
+            .build(mock_context(tauri::test::noop_assets()))
+            .expect("build the mock app");
+        let webview = tauri::WebviewWindowBuilder::new(&app, label, Default::default())
+            .build()
+            .expect("build the mock window");
+        let url = if cfg!(windows) {
+            "http://tauri.localhost"
+        } else {
+            "tauri://localhost"
+        };
+        get_ipc_response(
+            &webview,
+            InvokeRequest {
+                cmd: cmd.into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: url.parse().expect("url"),
+                body: tauri::ipc::InvokeBody::Json(json!({})),
+                headers: Default::default(),
+                invoke_key: INVOKE_KEY.to_string(),
+            },
+        )
+        .map(|_| ())
+    }
+
+    #[test]
+    fn the_main_window_says_the_page_is_ready_through_the_command() {
+        let (bridge, _calls) = bridge_not_ready();
+        assert_eq!(command_from("main", READY_COMMAND, &bridge), Ok(()));
+        assert!(bridge.is_ready());
+        // Saying it again changes nothing.
+        assert_eq!(command_from("main", READY_COMMAND, &bridge), Ok(()));
+        assert!(bridge.is_ready());
+    }
+
+    #[test]
+    fn a_window_besides_the_main_one_cannot_say_the_page_is_ready() {
+        for label in ["window-1", "quick", "browser-p1"] {
+            let (bridge, _calls) = bridge_not_ready();
+            assert!(
+                command_from(label, READY_COMMAND, &bridge).is_err(),
+                "{label} was allowed to say the main page is ready"
+            );
+            assert!(!bridge.is_ready(), "{label} made the bridge ready");
+        }
+    }
+
+    #[test]
+    fn loading_the_main_page_again_makes_the_bridge_not_ready_until_it_says_so() {
+        let (bridge, _calls) = bridge_not_ready();
+        bridge.set_ready(true);
+        let app = mock_builder()
+            .manage(ApiBridgeState(Arc::clone(&bridge)))
+            .build(mock_context(tauri::test::noop_assets()))
+            .expect("build the mock app");
+        page_loading(app.handle());
+        assert!(!bridge.is_ready());
+        // An app that has no bridge (it did not get to install the API) is left alone.
+        let bare = mock_builder()
+            .build(mock_context(tauri::test::noop_assets()))
+            .expect("build the mock app");
+        page_loading(bare.handle());
+    }
+
+    #[test]
+    fn the_command_is_spelled_as_the_page_and_the_lists_spell_it() {
+        assert_eq!(READY_COMMAND, "api_ready");
+        let build = include_str!("../build.rs");
+        let capability = include_str!("../capabilities/default.json");
+        assert!(build.contains("\"api_ready\""), "build.rs");
+        assert!(capability.contains("allow-api-ready"), "default.json");
+        let window = include_str!("../capabilities/window.json");
+        assert!(!window.contains("allow-api-ready"), "window.json");
+    }
+
     #[tokio::test]
     async fn a_page_that_does_not_answer_in_time_is_a_timeout_and_a_late_answer_is_ignored() {
         let (bridge, mut calls) = bridge_with(Duration::from_millis(60));
@@ -823,7 +1078,7 @@ mod tests {
         wait_for: u64,
     ) -> (Result<(), Value>, Option<Value>) {
         let (sent, _calls) = unbounded_channel();
-        let bridge = Arc::new(ApiBridge::new(
+        let bridge = ready(ApiBridge::new(
             Arc::new(FakeSink { sent, refuse: None }),
             Duration::from_secs(5),
         ));
@@ -1089,7 +1344,7 @@ mod tests {
             request_timeout: Duration::from_secs(2),
             ..ApiConfig::default()
         };
-        let bridge = Arc::new(ApiBridge::new(
+        let bridge = ready(ApiBridge::new(
             Arc::new(FakeSink { sent, refuse: None }),
             Duration::from_millis(400),
         ));

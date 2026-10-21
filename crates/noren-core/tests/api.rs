@@ -450,6 +450,11 @@ async fn an_unknown_method_an_extra_field_or_wrong_params_are_errors_with_the_id
             ),
             ("terminal.read", json!({ "terminal": "t", "lines": 0 })),
             ("terminal.read", json!([])),
+            ("notify", json!({})),
+            ("notify", json!({ "title": "" })),
+            ("notify", json!({ "title": "x".repeat(129) })),
+            ("notify", json!({ "title": "ok", "body": "x".repeat(1025) })),
+            ("notify", json!({ "title": "ok", "extra": 1 })),
         ];
         for (n, (method, params)) in (10u64..).zip(wrong) {
             let answer = client.call(n, method, params.clone()).await;
@@ -463,6 +468,43 @@ async fn an_unknown_method_an_extra_field_or_wrong_params_are_errors_with_the_id
         let answer = client.call(99, "spaces.list", json!({})).await;
         assert_eq!(answer["id"], 99);
         assert_eq!(running.handler.calls(), vec![ApiCall::SpacesList]);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn notify_reaches_the_handler_with_its_checked_fields() {
+    within(async {
+        let running = start();
+        let mut client = Client::open(&running).await;
+        let answer = client
+            .call(
+                1,
+                "notify",
+                json!({ "title": "Build done", "body": "all green", "terminal": "p1" }),
+            )
+            .await;
+        assert_eq!(answer["id"], 1);
+        assert!(answer.get("result").is_some(), "{answer}");
+        let answer = client
+            .call(2, "notify", json!({ "title": "Only a title" }))
+            .await;
+        assert!(answer.get("result").is_some(), "{answer}");
+        assert_eq!(
+            running.handler.calls(),
+            vec![
+                ApiCall::Notify {
+                    title: "Build done".into(),
+                    body: Some("all green".into()),
+                    terminal: Some("p1".into()),
+                },
+                ApiCall::Notify {
+                    title: "Only a title".into(),
+                    body: None,
+                    terminal: None,
+                },
+            ]
+        );
     })
     .await;
 }

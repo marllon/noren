@@ -145,6 +145,20 @@ pub fn call_event(id: u64, call: &ApiCall) -> Value {
             }
             params
         }
+        ApiCall::Notify {
+            title,
+            body,
+            terminal,
+        } => {
+            let mut params = json!({ "title": title });
+            if let Some(body) = body {
+                params["body"] = json!(body);
+            }
+            if let Some(terminal) = terminal {
+                params["terminal"] = json!(terminal);
+            }
+            params
+        }
     };
     json!({ "id": id, "method": call.method().name(), "params": params })
 }
@@ -626,6 +640,16 @@ mod tests {
             ApiCall::TerminalRead {
                 terminal: "p1".into(),
                 lines: Some(10_000),
+            },
+            ApiCall::Notify {
+                title: "Done".into(),
+                body: None,
+                terminal: None,
+            },
+            ApiCall::Notify {
+                title: "Done".into(),
+                body: Some("all green".into()),
+                terminal: Some("p1".into()),
             },
         ]
     }

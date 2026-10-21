@@ -31,7 +31,8 @@
 // spaces.list, spaces.create and spaces.list again, which shows the new space; no call types into a
 // terminal, so none sends an Enter, NOR-F17-01d; a second connection subscribed to terminal.output,
 // made a tab with items.create and heard the prompt of its own shell as an event of that session,
-// NOR-F17-01f).
+// NOR-F17-01f; that tab's session came in the answer of items.create and in spaces.list, and a notify
+// under settings that turn the notifications off answered shown=false, NOR-F17-02a).
 // Every run must also print "SMOKE global shortcut none registered": no smoke mode registers the
 // global shortcut of the quick terminal (the run fails if the app holds one), and "SMOKE tray icon
 // none": no smoke mode shows the tray icon of a normal start (NOR-F14-02c).
@@ -264,6 +265,9 @@ runSmoke(
     "SMOKE API spaces.list answered by the page:",
     "SMOKE API spaces.create made",
     "SMOKE API spaces.list shows the new space",
+    "SMOKE API items.create answered terminal",
+    "SMOKE API spaces.list gives session",
+    "SMOKE API notify answered shown=false",
     "SMOKE API terminal.output received for session",
     "SMOKE window hidden",
     "SMOKE API OK",

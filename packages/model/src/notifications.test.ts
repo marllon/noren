@@ -221,4 +221,64 @@ describe("SystemNotifier", () => {
     expect(await notifier.report(bell, source())).toBe(false);
     expect(errors).toHaveLength(1);
   });
+
+  describe("send (a notification asked for on purpose, as by the local API)", () => {
+    it("sends it with the window in focus, since it was asked for", async () => {
+      const { backend, notifier } = setup();
+      expect(backend.callsTo("isWindowFocused")).toHaveLength(0);
+      expect(await notifier.send({ title: "Build done", body: "all green" }, "p1")).toBe(true);
+      expect(backend.callsTo("notify")).toEqual([
+        { method: "notify", args: ["Build done", "all green"] },
+      ]);
+      // It did not even ask for the focus.
+      expect(backend.callsTo("isWindowFocused")).toHaveLength(0);
+    });
+
+    it("sends nothing and does not touch the backend when the user turned notifications off", async () => {
+      const { backend, notifier } = setup({ enabled: false, longCommandMs: 30_000 });
+      expect(await notifier.send({ title: "Build done", body: "" }, "p1")).toBe(false);
+      expect(backend.calls).toEqual([]);
+    });
+
+    it("reads the settings at every call, so turning them off takes effect at once", async () => {
+      const backend = new FakeBackend();
+      let enabled = true;
+      const notifier = new SystemNotifier({
+        backend,
+        settings: () => ({ enabled, longCommandMs: 30_000 }),
+      });
+      expect(await notifier.send({ title: "One", body: "" }, "p1")).toBe(true);
+      enabled = false;
+      expect(await notifier.send({ title: "Two", body: "" }, "p1")).toBe(false);
+      expect(backend.notifications).toHaveLength(1);
+    });
+
+    it("cuts the words like the other notifications", async () => {
+      const { backend, notifier } = setup();
+      await notifier.send({ title: "t".repeat(300), body: `${"b ".repeat(400)}` }, "p1");
+      const [title, body] = backend.callsTo("notify")[0]?.args as [string, string];
+      expect(title.length).toBeLessThanOrEqual(80);
+      expect(body.length).toBeLessThanOrEqual(200);
+      expect(title.endsWith("…")).toBe(true);
+    });
+
+    it("holds the same words of the same pane back, like a report", async () => {
+      const { backend, clock, notifier } = setup();
+      expect(await notifier.send({ title: "Same", body: "" }, "p1")).toBe(true);
+      expect(await notifier.send({ title: "Same", body: "" }, "p1")).toBe(false);
+      expect(await notifier.send({ title: "Same", body: "" }, "p2")).toBe(true);
+      clock.advance(3000);
+      expect(await notifier.send({ title: "Same", body: "" }, "p1")).toBe(true);
+      expect(backend.notifications).toHaveLength(3);
+    });
+
+    it("never rejects: a refusal goes to the error hook and is not held against the next try", async () => {
+      const { backend, errors, notifier } = setup();
+      backend.setNotifyFailure(new Error("refused"));
+      expect(await notifier.send({ title: "Refused", body: "" }, "p1")).toBe(false);
+      expect(errors).toHaveLength(1);
+      backend.setNotifyFailure(undefined);
+      expect(await notifier.send({ title: "Refused", body: "" }, "p1")).toBe(true);
+    });
+  });
 });

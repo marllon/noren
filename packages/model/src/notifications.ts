@@ -164,20 +164,45 @@ export class SystemNotifier {
         settings,
       });
       if (notification === undefined) return false;
-      const key = this.#hold(source.paneId, notification);
-      if (key === undefined) return false;
-      try {
-        await this.#backend.notify(notification.title, notification.body);
-      } catch (error) {
-        // The system did not take it, so nothing went out: the next try is not held back.
-        this.#sent.delete(key);
-        throw error;
-      }
-      return true;
+      return await this.#deliver(source.paneId, notification);
     } catch (error) {
       this.#onError(error);
       return false;
     }
+  }
+
+  /**
+   * Shows what a program asked for on purpose (the local API): the words are cut like the others
+   * and the focus of the window does not matter, since nobody is to be spared a notification that
+   * was asked for, but the user's settings do (off means nothing is sent) and so does the repeat
+   * guard. Resolves with whether a notification was sent. Never rejects.
+   */
+  async send(notification: SystemNotification, paneId: Id): Promise<boolean> {
+    try {
+      if (!this.#settings().enabled) return false;
+      const title = clip(notification.title, MAX_TITLE);
+      return await this.#deliver(paneId, {
+        title: title === "" ? APP_NAME : title,
+        body: clip(notification.body, MAX_BODY),
+      });
+    } catch (error) {
+      this.#onError(error);
+      return false;
+    }
+  }
+
+  /** Sends it unless the same words went out for the pane a moment ago. */
+  async #deliver(paneId: Id, notification: SystemNotification): Promise<boolean> {
+    const key = this.#hold(paneId, notification);
+    if (key === undefined) return false;
+    try {
+      await this.#backend.notify(notification.title, notification.body);
+    } catch (error) {
+      // The system did not take it, so nothing went out: the next try is not held back.
+      this.#sent.delete(key);
+      throw error;
+    }
+    return true;
   }
 
   /**

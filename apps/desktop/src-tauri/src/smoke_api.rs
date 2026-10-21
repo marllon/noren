@@ -15,9 +15,14 @@
 //!    behave and what the run counts);
 //! 4. `spaces.create` makes a space, and a second `spaces.list` shows it, with its name;
 //! 5. a second connection subscribes to `terminal.output`, a tab with a new shell is made with
-//!    `items.create`, and the event of that shell's own session (the id the app publishes, the number
-//!    of the session as text) arrives with what the shell printed by itself, its prompt (NOR-F17-01f);
-//! 6. nothing was shown (the main window is hidden, no global shortcut, no tray icon) and the daemon
+//!    `items.create`, which answers the `session` of that shell (the id the app publishes, the number
+//!    of the session as text; `spaces.list` gives the same one for the terminal), and the event of
+//!    that session arrives with what the shell printed by itself, its prompt (NOR-F17-01f, 02a);
+//! 6. `notify` answers a result (NOR-F17-02a). The folder of the run holds a settings file that turns
+//!    the notifications off, so the answer must be `shown: false` and no notification of the system
+//!    appears on the desktop of whoever runs the checks (D19); that a notification is shown when the
+//!    settings allow it is covered by the unit tests, not by this run;
+//! 7. nothing was shown (the main window is hidden, no global shortcut, no tray icon) and the daemon
 //!    of the run stops.
 //!
 //! No call types into a terminal, so no Enter is sent (D8), and no window is shown or clicked (D19).
@@ -32,6 +37,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use noren_core::api::{API_PROTOCOL_VERSION, TokenOrigin, load_or_create_token, to_frame};
+use noren_core::config::CONFIG_FILE_NAME;
 use noren_core::daemon::ipc::{self, ClientStream};
 use noren_core::daemon::{Endpoint, read_frame, write_frame};
 use serde_json::{Value, json};
@@ -66,11 +72,18 @@ pub struct ApiSandbox {
     pub state_dir: PathBuf,
 }
 
+/// The settings file of the run: the notifications are off, so `notify` shows nothing on the desktop
+/// of whoever runs the checks and answers that it did not.
+const SETTINGS: &str = "{ \"notifications\": { \"enabled\": false } }\n";
+
 impl ApiSandbox {
     pub fn new() -> Self {
-        Self {
-            state_dir: fresh_dir("noren-smoke-api-state"),
-        }
+        let state_dir = fresh_dir("noren-smoke-api-state");
+        // A file that cannot be written is not hidden here: the run requires the answer of a
+        // `notify` under these settings, and fails if the notifications were not off.
+        let _ = std::fs::create_dir_all(&state_dir)
+            .and_then(|()| std::fs::write(state_dir.join(CONFIG_FILE_NAME), SETTINGS));
+        Self { state_dir }
     }
 
     /// Deletes the folder this run made (only that one).
@@ -320,13 +333,41 @@ async fn check_calls(endpoint: &Endpoint, token: &str, deadline: Instant) -> Res
     Ok(())
 }
 
-/// The ids of the sessions the daemon of the run holds.
-fn session_ids(app_state: &AppState) -> Result<Vec<u64>, String> {
-    app_state
-        .sessions
-        .list()
-        .map(|list| list.into_iter().map(|entry| entry.session.0).collect())
-        .map_err(|e| format!("the daemon of the run could not list its sessions: {e}"))
+/// What `items.create` answered: the terminal (pane id) and the session of its shell (as text).
+fn tab_of(answer: &Value) -> Result<(String, String), String> {
+    let made = result_of("items.create", answer)?;
+    match (made["terminal"].as_str(), made["session"].as_str()) {
+        (Some(terminal), Some(session)) if !terminal.is_empty() && !session.is_empty() => {
+            Ok((terminal.to_owned(), session.to_owned()))
+        }
+        _ => Err(format!(
+            "items.create answered without a terminal and a session: {answer}"
+        )),
+    }
+}
+
+/// The session `spaces.list` gives for the terminal `terminal`: `Some(None)` when the terminal is
+/// listed with no session, `None` when it is not listed.
+fn listed_session(answer: &Value, terminal: &str) -> Result<Option<Option<String>>, String> {
+    let list = result_of("spaces.list", answer)?["spaces"]
+        .as_array()
+        .ok_or_else(|| format!("spaces.list answered without a list of spaces: {answer}"))?;
+    for pane in list
+        .iter()
+        .flat_map(|space| space["items"].as_array().into_iter().flatten())
+        .flat_map(|item| item["panes"].as_array().into_iter().flatten())
+    {
+        if pane["id"] == terminal {
+            return match &pane["session"] {
+                Value::Null => Ok(Some(None)),
+                Value::String(session) => Ok(Some(Some(session.clone()))),
+                other => Err(format!(
+                    "spaces.list gives the session {other} to {terminal}, not text or null"
+                )),
+            };
+        }
+    }
+    Ok(None)
 }
 
 /// A connection subscribes to `terminal.output`, a tab with a new shell is made, and the event of
@@ -334,7 +375,6 @@ fn session_ids(app_state: &AppState) -> Result<Vec<u64>, String> {
 async fn check_output_events(
     endpoint: &Endpoint,
     token: &str,
-    app_state: &AppState,
     deadline: Instant,
 ) -> Result<(), String> {
     let mut client = Client::connect(endpoint).await?;
@@ -359,23 +399,49 @@ async fn check_output_events(
         .next()
         .map(|(id, _)| id)
         .ok_or_else(|| "spaces.list shows no space to make a tab in".to_owned())?;
-    let before = session_ids(app_state)?;
     let answer = client
         .call("items.create", json!({ "space": space }), deadline)
         .await?;
-    result_of("items.create", &answer)?;
+    // The shell the call started is the session it answers with.
+    let (terminal, session) = tab_of(&answer)?;
+    print_line(&format!(
+        "SMOKE API items.create answered terminal {terminal} with session {session}"
+    ));
 
-    // The shell the call started is the session the daemon did not hold before.
-    let session = loop {
-        let now = session_ids(app_state)?;
-        if let Some(new) = now.into_iter().find(|id| !before.contains(id)) {
-            break new.to_string();
+    // The list gives the same session to that terminal.
+    let answer = client.call("spaces.list", json!({}), deadline).await?;
+    match listed_session(&answer, &terminal)? {
+        Some(Some(listed)) if listed == session => print_line(&format!(
+            "SMOKE API spaces.list gives session {session} to terminal {terminal}"
+        )),
+        Some(listed) => {
+            return Err(format!(
+                "spaces.list gives {listed:?} to terminal {terminal}, items.create answered session {session}"
+            ));
         }
-        if Instant::now() >= deadline {
-            return Err("items.create started no new shell in the daemon of the run".to_owned());
-        }
-        tokio::time::sleep(RETRY_PAUSE).await;
-    };
+        None => return Err(format!("spaces.list does not show terminal {terminal}")),
+    }
+
+    // A notification under the settings of the run (the notifications are off).
+    let answer = client
+        .call(
+            "notify",
+            json!({ "title": "Noren smoke", "body": "the local API", "terminal": terminal }),
+            deadline,
+        )
+        .await?;
+    let shown = result_of("notify", &answer)?["shown"]
+        .as_bool()
+        .ok_or_else(|| format!("notify answered without shown: {answer}"))?;
+    if shown {
+        return Err(
+            "notify showed a notification of the system though the settings of the run turn them off"
+                .to_owned(),
+        );
+    }
+    print_line(
+        "SMOKE API notify answered shown=false (the notifications are off in the settings of the run)",
+    );
 
     // Its own output, not typed for: the prompt. Events of other sessions are not it.
     let mut seen = 0usize;
@@ -432,12 +498,7 @@ fn run(app: &AppHandle, inbox: &mut Inbox, deadline: Instant) -> Result<(), Stri
     })?;
 
     let app_state = app.state::<AppState>();
-    tauri::async_runtime::block_on(check_output_events(
-        &target.endpoint,
-        &token,
-        &app_state,
-        deadline,
-    ))?;
+    tauri::async_runtime::block_on(check_output_events(&target.endpoint, &token, deadline))?;
     check_no_global_shortcut(app)?;
     check_window_hidden(app)?;
     // The page started the shell of its first pane in the daemon of the run; it ends with it.
@@ -572,6 +633,55 @@ mod tests {
         ] {
             assert!(spaces_of(&bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn the_terminal_and_session_of_a_new_tab_are_read_and_anything_else_is_an_error() {
+        let ok = json!({ "id": 1, "result": { "space": "s", "item": "i", "terminal": "p1", "session": "7" } });
+        assert_eq!(tab_of(&ok).unwrap(), ("p1".to_owned(), "7".to_owned()));
+        for bad in [
+            json!({ "id": 1, "error": { "code": "failed", "message": "x" } }),
+            json!({ "id": 1, "result": { "terminal": "p1" } }),
+            json!({ "id": 1, "result": { "session": "7" } }),
+            json!({ "id": 1, "result": { "terminal": "p1", "session": 7 } }),
+            json!({ "id": 1, "result": { "terminal": "", "session": "7" } }),
+            json!({ "id": 1, "result": { "terminal": "p1", "session": "" } }),
+        ] {
+            assert!(tab_of(&bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_session_of_a_listed_terminal_is_text_null_or_the_terminal_is_not_listed() {
+        let list = json!({ "id": 1, "result": { "spaces": [
+            { "id": "s1", "name": "Home", "active": true, "items": [
+                { "id": "i1", "panes": [
+                    { "id": "p1", "session": "7" },
+                    { "id": "p2", "session": null },
+                    { "id": "p3", "session": true },
+                ] },
+            ] },
+        ] } });
+        assert_eq!(
+            listed_session(&list, "p1").unwrap(),
+            Some(Some("7".to_owned()))
+        );
+        assert_eq!(listed_session(&list, "p2").unwrap(), Some(None));
+        assert_eq!(listed_session(&list, "p9").unwrap(), None);
+        // The old answer, a yes or no, is not a session.
+        assert!(listed_session(&list, "p3").is_err());
+        assert!(listed_session(&json!({ "id": 1, "result": {} }), "p1").is_err());
+    }
+
+    #[test]
+    fn the_settings_of_the_run_turn_the_notifications_off() {
+        let sandbox = ApiSandbox::new();
+        let text = std::fs::read_to_string(sandbox.state_dir.join(CONFIG_FILE_NAME))
+            .expect("the settings file of the run");
+        let settings: Value = serde_json::from_str(&text).expect("JSON");
+        assert_eq!(settings, json!({ "notifications": { "enabled": false } }));
+        sandbox.remove();
+        assert!(!sandbox.state_dir.exists());
     }
 
     #[test]

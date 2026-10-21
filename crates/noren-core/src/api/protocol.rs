@@ -41,6 +41,10 @@ pub const MAX_SEND_KEYS: usize = 64;
 pub const MAX_KEY_CHARS: usize = 32;
 /// Most lines one `terminal.read` asks for.
 pub const MAX_READ_LINES: u32 = 10_000;
+/// Longest title of a `notify`, in characters.
+pub const MAX_NOTIFY_TITLE_CHARS: usize = 128;
+/// Longest body of a `notify`, in characters.
+pub const MAX_NOTIFY_BODY_CHARS: usize = 1024;
 /// Most entries `types` of `events.subscribe` may hold (there are fewer kinds; this bounds the
 /// work on a hostile list).
 pub const MAX_EVENT_TYPES: usize = 16;
@@ -54,16 +58,18 @@ pub enum ApiMethod {
     SplitsCreate,
     TerminalSend,
     TerminalRead,
+    Notify,
 }
 
 impl ApiMethod {
-    pub const ALL: [ApiMethod; 6] = [
+    pub const ALL: [ApiMethod; 7] = [
         Self::SpacesList,
         Self::SpacesCreate,
         Self::ItemsCreate,
         Self::SplitsCreate,
         Self::TerminalSend,
         Self::TerminalRead,
+        Self::Notify,
     ];
 
     pub fn name(self) -> &'static str {
@@ -74,6 +80,7 @@ impl ApiMethod {
             Self::SplitsCreate => "splits.create",
             Self::TerminalSend => "terminal.send",
             Self::TerminalRead => "terminal.read",
+            Self::Notify => "notify",
         }
     }
 
@@ -123,6 +130,13 @@ pub enum ApiCall {
         terminal: String,
         lines: Option<u32>,
     },
+    /// `notify`: `{ title, body?, terminal? }`. Asks the app to show a notification of the system
+    /// (when the user's settings allow it); `terminal` names the pane it is about.
+    Notify {
+        title: String,
+        body: Option<String>,
+        terminal: Option<String>,
+    },
 }
 
 impl ApiCall {
@@ -134,6 +148,7 @@ impl ApiCall {
             Self::SplitsCreate { .. } => ApiMethod::SplitsCreate,
             Self::TerminalSend { .. } => ApiMethod::TerminalSend,
             Self::TerminalRead { .. } => ApiMethod::TerminalRead,
+            Self::Notify { .. } => ApiMethod::Notify,
         }
     }
 }
@@ -495,6 +510,17 @@ pub fn parse_call(method: ApiMethod, params: Option<Value>) -> Result<ApiCall, A
             terminal: fields.required_text("terminal", MAX_ID_CHARS, TextRule::Line)?,
             lines: fields.optional_count("lines", 1, MAX_READ_LINES)?,
         },
+        ApiMethod::Notify => {
+            let title = fields.required_text("title", MAX_NOTIFY_TITLE_CHARS, TextRule::Line)?;
+            if title.trim().is_empty() {
+                return Err(ApiError::params("\"title\" must not be blank"));
+            }
+            ApiCall::Notify {
+                title,
+                body: fields.optional_text("body", MAX_NOTIFY_BODY_CHARS, TextRule::Line)?,
+                terminal: fields.optional_text("terminal", MAX_ID_CHARS, TextRule::Line)?,
+            }
+        }
     };
     fields.finish()?;
     Ok(call)
@@ -700,6 +726,22 @@ mod tests {
                     lines: Some(50),
                 },
             ),
+            (
+                r#"{"id":8,"method":"notify","params":{"title":"Build done"}}"#,
+                ApiCall::Notify {
+                    title: "Build done".into(),
+                    body: None,
+                    terminal: None,
+                },
+            ),
+            (
+                r#"{"id":9,"method":"notify","params":{"title":"Build done","body":"all green","terminal":"p1"}}"#,
+                ApiCall::Notify {
+                    title: "Build done".into(),
+                    body: Some("all green".into()),
+                    terminal: Some("p1".into()),
+                },
+            ),
         ];
         for (text, expected) in cases {
             let (_, call) = request(text).unwrap_or_else(|e| panic!("{text}: {e:?}"));
@@ -808,6 +850,30 @@ mod tests {
             ("terminal.read", json!({ "terminal": "t", "lines": 1.5 })),
             ("terminal.read", json!({ "terminal": "t", "lines": "5" })),
             ("terminal.read", json!({ "terminal": "t", "to": 5 })),
+            ("notify", json!({})),
+            ("notify", json!({ "body": "no title" })),
+            ("notify", json!({ "title": "" })),
+            ("notify", json!({ "title": "   " })),
+            ("notify", json!({ "title": 5 })),
+            ("notify", json!({ "title": "a\nb" })),
+            (
+                "notify",
+                json!({ "title": "x".repeat(MAX_NOTIFY_TITLE_CHARS + 1) }),
+            ),
+            ("notify", json!({ "title": "ok", "body": "" })),
+            ("notify", json!({ "title": "ok", "body": 1 })),
+            ("notify", json!({ "title": "ok", "body": "a\u{7}b" })),
+            (
+                "notify",
+                json!({ "title": "ok", "body": "x".repeat(MAX_NOTIFY_BODY_CHARS + 1) }),
+            ),
+            ("notify", json!({ "title": "ok", "terminal": "" })),
+            (
+                "notify",
+                json!({ "title": "ok", "terminal": "x".repeat(MAX_ID_CHARS + 1) }),
+            ),
+            ("notify", json!({ "title": "ok", "sound": true })),
+            ("notify", json!(["ok"])),
         ];
         for (method, params) in bad {
             let text = json!({ "id": 1, "method": method, "params": params }).to_string();
@@ -846,6 +912,38 @@ mod tests {
                 Some(json!({ "terminal": "t", "lines": MAX_READ_LINES }))
             )
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn the_limits_of_a_notification_are_inclusive_and_count_characters() {
+        // 128 and 1024 characters, each of two bytes: the limit is in characters, not bytes.
+        let title = "\u{e9}".repeat(MAX_NOTIFY_TITLE_CHARS);
+        let body = "\u{e9}".repeat(MAX_NOTIFY_BODY_CHARS);
+        let call = parse_call(
+            ApiMethod::Notify,
+            Some(json!({ "title": title, "body": body, "terminal": "x".repeat(MAX_ID_CHARS) })),
+        )
+        .unwrap();
+        assert!(matches!(
+            call,
+            ApiCall::Notify { title: t, body: Some(b), terminal: Some(_) }
+                if t.chars().count() == MAX_NOTIFY_TITLE_CHARS
+                    && b.chars().count() == MAX_NOTIFY_BODY_CHARS
+        ));
+        // A null stands for an absent optional field, as for every other method.
+        let call = parse_call(
+            ApiMethod::Notify,
+            Some(json!({ "title": "t", "body": null, "terminal": null })),
+        )
+        .unwrap();
+        assert_eq!(
+            call,
+            ApiCall::Notify {
+                title: "t".into(),
+                body: None,
+                terminal: None
+            }
         );
     }
 

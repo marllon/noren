@@ -5,7 +5,14 @@
 // `main` runs this: it owns the workspace. In a plain browser (web mode, e2e) nothing starts it.
 
 import { dispatchApiCall } from "@noren/model";
-import type { ApiCall, ApiHost, ApiOutcome, Backend, TerminalTail } from "@noren/model";
+import type {
+  ApiCall,
+  ApiHost,
+  ApiOutcome,
+  Backend,
+  SystemNotifier,
+  TerminalTail,
+} from "@noren/model";
 import type { TauriBridge } from "./tauri-backend";
 import type { WorkspaceStore } from "./workspace-store";
 
@@ -106,17 +113,28 @@ export interface AppApiHostOptions {
   backend: Pick<Backend, "createSession" | "write" | "kill">;
   /** Fed with the output of every session by the backend (`TauriBackend` option `tail`). */
   tail: Pick<TerminalTail, "read">;
+  /** Shows the notifications of `notify`, under the user's settings; without it none is shown. */
+  notifier?: Pick<SystemNotifier, "send">;
 }
+
+/** The pane a `notify` that names no terminal counts as coming from (for the repeat guard). */
+const API_NOTIFY_SOURCE = "api";
 
 /** The host of the dispatcher over the real workspace store, backend and terminal tail. */
 export function appApiHost(options: AppApiHostOptions): ApiHost {
-  const { store, backend, tail } = options;
+  const { store, backend, tail, notifier } = options;
   return {
     workspace: () => store.getState().workspace,
     dispatch: (action) => store.getState().dispatch(action),
     attachSession: (paneId, sessionId) => store.getState().attachSession(paneId, sessionId),
     backend,
     readLines: (sessionId, count) => tail.read(sessionId, count),
+    ...(notifier !== undefined
+      ? {
+          notify: ({ title, body, paneId }) =>
+            notifier.send({ title, body: body ?? "" }, paneId ?? API_NOTIFY_SOURCE),
+        }
+      : {}),
   };
 }
 

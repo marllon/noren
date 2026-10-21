@@ -1,11 +1,12 @@
 import {
   FakeBackend,
+  SystemNotifier,
   TerminalTail,
   createSequentialIds,
   layoutPanes,
   restoreWorkspace,
 } from "@noren/model";
-import type { ApiCall, ApiOutcome } from "@noren/model";
+import type { ApiCall, ApiOutcome, NotificationSettings } from "@noren/model";
 import { describe, expect, it, vi } from "vitest";
 import {
   API_CALL_EVENT,
@@ -268,7 +269,7 @@ describe("the listener of the local API", () => {
 
 // ---- the page's host: the real workspace store and the fake shells -------------------------------
 
-async function openApp() {
+async function openApp(options: { settings?: NotificationSettings; noNotifier?: boolean } = {}) {
   const backend = new FakeBackend();
   const newId = createSequentialIds("n");
   const clock = { now: () => 1000 };
@@ -276,7 +277,17 @@ async function openApp() {
   const store = createWorkspaceStore({ backend, workspace: restored.workspace, newId, clock });
   const tail = new TerminalTail();
   const fake = fakeBridge();
-  startLocalApi({ store, backend, tail, bridge: fake.bridge });
+  const notifier = new SystemNotifier({
+    backend,
+    settings: () => options.settings ?? { enabled: true, longCommandMs: 30_000 },
+  });
+  startLocalApi({
+    store,
+    backend,
+    tail,
+    bridge: fake.bridge,
+    ...(options.noNotifier === true ? {} : { notifier }),
+  });
   await settle();
   let next = 100;
   /** Fires a call as the Rust side does and returns what the page answered. */
@@ -323,6 +334,64 @@ describe("the local API over the app's workspace", () => {
       layoutPanes(item.layout).some((pane) => pane.sessionId !== undefined),
     );
     expect(withApiShell.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("answers the session of the shell it started, the one the app publishes for the terminal", async () => {
+    const { store, call } = await openApp();
+    const spaceId = store.getState().workspace.activeSpaceId;
+    const made = (await call("items.create", { space: spaceId }))["result"] as {
+      item: string;
+      terminal: string;
+      session: string;
+    };
+    const item = store
+      .getState()
+      .workspace.spaces.flatMap((space) => Object.values(space.items))
+      .find((candidate) => candidate.id === made.item);
+    const pane = item && layoutPanes(item.layout)[0];
+    expect(made.terminal).toBe(pane?.id);
+    expect(made.session).toBe(pane?.sessionId);
+    const split = (await call("splits.create", { item: made.item, direction: "right" }))[
+      "result"
+    ] as { terminal: string; session: string };
+    expect(split.session).not.toBe(made.session);
+    const listed = (await call("spaces.list", {}))["result"] as {
+      spaces: { items: { panes: { id: string; session: string | null }[] }[] }[];
+    };
+    const sessions = Object.fromEntries(
+      listed.spaces.flatMap((s) => s.items.flatMap((i) => i.panes.map((p) => [p.id, p.session]))),
+    );
+    expect(sessions[made.terminal]).toBe(made.session);
+    expect(sessions[split.terminal]).toBe(split.session);
+  });
+
+  it("shows a notification through the system under the settings of the user", async () => {
+    const { backend, store, call } = await openApp();
+    const { pane } = firstPane(store);
+    const outcome = await call("notify", {
+      title: "Build done",
+      body: "all green",
+      terminal: pane.id,
+    });
+    expect(outcome).toEqual({ result: { shown: true, terminal: pane.id } });
+    expect(backend.notifications).toEqual([{ title: "Build done", body: "all green" }]);
+    // Nothing is typed into the terminal by it (D8).
+    expect(backend.callsTo("write")).toHaveLength(0);
+  });
+
+  it("shows nothing and says so when the user turned notifications off", async () => {
+    const { backend, call } = await openApp({ settings: { enabled: false, longCommandMs: 1 } });
+    expect(await call("notify", { title: "Quiet" })).toEqual({ result: { shown: false } });
+    expect(backend.notifications).toEqual([]);
+  });
+
+  it("says shown: false when the app has no notifier, and not_found for a terminal it does not have", async () => {
+    const { backend, call } = await openApp({ noNotifier: true });
+    expect(await call("notify", { title: "Nobody" })).toEqual({ result: { shown: false } });
+    expect(await call("notify", { title: "Lost", terminal: "ghost" })).toMatchObject({
+      error: { code: "not_found" },
+    });
+    expect(backend.notifications).toEqual([]);
   });
 
   it("answers not_found for an id that is not in the workspace and starts no shell", async () => {

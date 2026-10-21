@@ -137,6 +137,7 @@ export async function bootWorkspace(
     withoutReattachedSnapshots(snapshots?.texts, restored.reattachedPaneIds);
     setRestoredScrollback(snapshots?.texts ?? new Map());
     const home = await loadHome();
+    const notifier = new SystemNotifier({ backend: target, settings: notificationSettings });
     const store = createWorkspaceStore({
       backend: target,
       ...(home !== undefined ? { home } : {}),
@@ -145,7 +146,7 @@ export async function bootWorkspace(
       newId,
       clock,
       // A failed notification (the system refused) is not worth an error on screen.
-      notifier: new SystemNotifier({ backend: target, settings: notificationSettings }),
+      notifier,
     });
     // The snapshots of the scrollback: every minute for the panes with activity, and when the window
     // closes. This listens to the closing before the state is flushed below, so the notes it makes on
@@ -199,7 +200,7 @@ export async function bootWorkspace(
       ).catch(() => undefined);
       // The local API (NOR-F17-01c): the calls the server of the app validated run here, in the
       // window that owns the workspace, and are answered through `api_respond`.
-      startLocalApi({ store, backend: target, tail: apiTail, bridge: tauriBridge() });
+      startLocalApi({ store, backend: target, tail: apiTail, notifier, bridge: tauriBridge() });
       // And what the agents are doing goes out as events to the clients that subscribed (NOR-F17-01f).
       setAgentStateReporter(createAgentStateReporter(tauriBridge()));
     }

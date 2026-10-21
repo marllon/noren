@@ -40,6 +40,10 @@ export const API_LIMITS = {
   keyChars: 32,
   /** Most lines one `terminal.read` asks for. */
   readLines: 10_000,
+  /** Longest title of a `notify`, in characters. */
+  notifyTitleChars: 128,
+  /** Longest body of a `notify`, in characters. */
+  notifyBodyChars: 1024,
 } as const;
 
 /** Lines `terminal.read` answers with when `lines` is left out. */
@@ -57,6 +61,7 @@ export const API_METHODS = [
   "splits.create",
   "terminal.send",
   "terminal.read",
+  "notify",
 ] as const;
 export type ApiMethodName = (typeof API_METHODS)[number];
 
@@ -100,7 +105,16 @@ export type ApiCall =
       params: { item: string; direction: "right" | "down"; cwd?: string; profile?: string };
     }
   | { method: "terminal.send"; params: { terminal: string; text?: string; keys?: string[] } }
-  | { method: "terminal.read"; params: { terminal: string; lines?: number } };
+  | { method: "terminal.read"; params: { terminal: string; lines?: number } }
+  | { method: "notify"; params: { title: string; body?: string; terminal?: string } };
+
+/** What a `notify` asks the host to show. */
+export interface ApiNotification {
+  title: string;
+  body?: string;
+  /** The pane the notification is about, when the call named one (it exists and is a terminal). */
+  paneId?: Id;
+}
 
 /** What the dispatcher needs from the app. */
 export interface ApiHost {
@@ -127,6 +141,11 @@ export interface ApiHost {
   readonly size?: { cols: number; rows: number };
   /** Most panes one tab may hold; `DEFAULT_MAX_PANES` when left out. */
   readonly maxPanes?: number;
+  /**
+   * Shows a notification of the system, if the user's settings allow it, and tells whether one was
+   * shown (the app's `SystemNotifier`). Never rejects. Without it, `notify` answers `shown: false`.
+   */
+  notify?(notification: ApiNotification): boolean | Promise<boolean>;
 }
 
 type Parsed = { ok: true; call: ApiCall } | { ok: false; error: ApiError };
@@ -266,7 +285,15 @@ const some = <T extends object>(object: T): Compact<T> =>
   Object.fromEntries(Object.entries(object).filter(([, v]) => v !== undefined)) as Compact<T>;
 
 function readParams(method: ApiMethodName, fields: Fields): ApiCall {
-  const { idChars, nameChars, pathChars, sendTextBytes, readLines } = API_LIMITS;
+  const {
+    idChars,
+    nameChars,
+    pathChars,
+    sendTextBytes,
+    readLines,
+    notifyTitleChars,
+    notifyBodyChars,
+  } = API_LIMITS;
   switch (method) {
     case "spaces.list":
       return { method, params: {} };
@@ -318,6 +345,18 @@ function readParams(method: ApiMethodName, fields: Fields): ApiCall {
           lines: fields.count("lines", 1, readLines),
         }),
       };
+    case "notify": {
+      const title = fields.text("title", notifyTitleChars, "line", true);
+      if (title.trim() === "") throw new ParamsProblem('"title" must not be blank');
+      return {
+        method,
+        params: some({
+          title,
+          body: fields.text("body", notifyBodyChars, "line", false),
+          terminal: fields.text("terminal", idChars, "line", false),
+        }),
+      };
+    }
   }
 }
 
@@ -387,7 +426,7 @@ function listSpaces(ws: Workspace): ApiOutcome {
                 status: pane.status,
                 profile: pane.profileId,
                 ...(pane.cwd !== undefined ? { cwd: pane.cwd } : {}),
-                session: pane.sessionId !== undefined,
+                session: pane.sessionId ?? null,
               })),
             },
           ];
@@ -488,7 +527,9 @@ async function placeItem(
     await dropShell(host, shellId);
     return failure("failed", "the tab was not made");
   }
-  return { result: { space: spaceId, item: item.id, terminal: pane.id } };
+  return {
+    result: { space: spaceId, item: item.id, terminal: pane.id, session: String(shellId) },
+  };
 }
 
 async function createSplit(
@@ -547,7 +588,7 @@ async function placeSplit(
   }
   // Right after the split, in the same tick: the view of the pane finds its shell already there.
   host.attachSession(made.id, String(shellId));
-  return { result: { item: itemId, terminal: made.id } };
+  return { result: { item: itemId, terminal: made.id, session: String(shellId) } };
 }
 
 /** The shell behind a terminal id, or the error that says why there is none. */
@@ -632,6 +673,35 @@ async function readTerminal(
   };
 }
 
+async function notifyHost(
+  host: ApiHost,
+  params: { title: string; body?: string; terminal?: string },
+): Promise<ApiOutcome> {
+  let paneId: Id | undefined;
+  if (params.terminal !== undefined) {
+    const found = findPane(host.workspace(), params.terminal);
+    if (found === undefined) {
+      return failure("not_found", `no terminal has the id ${shorten(params.terminal)}`);
+    }
+    if (found.pane.type !== "terminal") {
+      return failure("failed", `${shorten(params.terminal)} is not a terminal`);
+    }
+    paneId = found.pane.id;
+  }
+  let shown = false;
+  try {
+    shown =
+      (await host.notify?.({
+        title: params.title,
+        ...(params.body !== undefined ? { body: params.body } : {}),
+        ...(paneId !== undefined ? { paneId } : {}),
+      })) === true;
+  } catch {
+    // The system did not take it: the notification was not shown.
+  }
+  return { result: { shown, ...(paneId !== undefined ? { terminal: paneId } : {}) } };
+}
+
 /**
  * Does what the call says to the workspace and the shells and answers `{ result }` or
  * `{ error: { code, message } }`. Never throws and never rejects: a call that does not fit its
@@ -641,7 +711,10 @@ async function readTerminal(
  * Methods: `spaces.list` (every space with its tabs and panes; a terminal is named by its pane
  * id), `spaces.create` (the space is made but not shown), `items.create` (a tab with a new shell),
  * `splits.create` (a new pane with a new shell beside the pane in focus), `terminal.send` (text
- * as given, then the keys), `terminal.read` (the last lines of the output).
+ * as given, then the keys), `terminal.read` (the last lines of the output), `notify` (a notification of
+ * the system, when the user's settings allow it; the answer says whether it was shown). A terminal
+ * is named by its pane id, and `items.create` and `splits.create` also answer `session`, the number
+ * of its shell as text, which `spaces.list` gives for every terminal (`null` when it has none).
  */
 export async function dispatchApiCall(call: ApiCall, host: ApiHost): Promise<ApiOutcome> {
   try {
@@ -661,6 +734,8 @@ export async function dispatchApiCall(call: ApiCall, host: ApiHost): Promise<Api
         return await sendToTerminal(host, checked.params);
       case "terminal.read":
         return await readTerminal(host, checked.params);
+      case "notify":
+        return await notifyHost(host, checked.params);
     }
   } catch (e) {
     return failure("internal", `the call broke: ${reasonOf(e)}`);

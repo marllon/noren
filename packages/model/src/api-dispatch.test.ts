@@ -12,7 +12,7 @@ import {
   dispatchApiCall,
   parseApiCall,
 } from "./api-dispatch";
-import type { ApiCall, ApiHost, ApiOutcome } from "./api-dispatch";
+import type { ApiCall, ApiHost, ApiNotification, ApiOutcome } from "./api-dispatch";
 import type { Backend } from "./backend";
 import { createDefaultWorkspace } from "./default-workspace";
 import { createBrowserPane } from "./factories";
@@ -24,7 +24,7 @@ import { TerminalTail } from "./terminal-tail";
 import { applyChecked, testContext } from "./test-helpers";
 import type { Id, LayoutNode, Space, Workspace } from "./types";
 
-// The dispatcher of the local API (NOR-F17-01b): each of the six methods against a workspace that
+// The dispatcher of the local API (NOR-F17-01b; `notify` and the session ids NOR-F17-02a): each method against a workspace that
 // goes through the real reducer (with the invariants checked at every step) and a `FakeBackend`.
 
 interface Rig {
@@ -36,6 +36,8 @@ interface Rig {
   apply(action: Action): void;
   /** The pane ids `attachSession` was told about, with their sessions. */
   attached: [Id, Id][];
+  /** What the host was asked to show with `notify`. */
+  notified: ApiNotification[];
 }
 
 interface RigOptions {
@@ -44,6 +46,8 @@ interface RigOptions {
   profiles?: { id: string; name: string; default: boolean }[];
   /** Runs inside `createSession`, after the shell exists and before it is handed back. */
   whileStarting?: (rig: Rig) => void;
+  /** What the notifier of the host answers; `true` (shown) when left out. */
+  shows?: boolean | Promise<boolean> | (() => never);
 }
 
 function rig(options: RigOptions = {}): Rig {
@@ -57,10 +61,12 @@ function rig(options: RigOptions = {}): Rig {
   });
   const tail = new TerminalTail();
   const attached: [Id, Id][] = [];
+  const notified: ApiNotification[] = [];
   const self: Rig = {
     backend,
     tail,
     attached,
+    notified,
     workspace: () => ws,
     set: (next) => {
       ws = next;
@@ -88,6 +94,11 @@ function rig(options: RigOptions = {}): Rig {
         kill: (id) => backend.kill(id),
       },
       readLines: (id, count) => tail.read(id, count),
+      notify: (notification) => {
+        notified.push(notification);
+        const shows = options.shows ?? true;
+        return typeof shows === "function" ? shows() : shows;
+      },
       ...(options.maxPanes !== undefined ? { maxPanes: options.maxPanes } : {}),
     },
   };
@@ -135,7 +146,7 @@ function errorOf(outcome: ApiOutcome): { code: string; message: string } {
 /** Makes a tab through the API and gives its ids. */
 async function newTab(r: Rig, space: Id, extra: object = {}) {
   const result = resultOf(await run(r, "items.create", { space, ...extra }));
-  return result as { space: Id; item: Id; terminal: Id };
+  return result as { space: Id; item: Id; terminal: Id; session: string };
 }
 
 const writes = (r: Rig): unknown[] => r.backend.callsTo("write").map((c) => c.args[1]);
@@ -169,7 +180,7 @@ describe("spaces.list", () => {
                   type: "terminal",
                   status: "idle",
                   profile: "default",
-                  session: false,
+                  session: null,
                 },
               ],
             },
@@ -196,7 +207,7 @@ describe("spaces.list", () => {
         status: "idle",
         profile: "default",
         cwd: "/work",
-        session: true,
+        session: "1",
       },
     ]);
   });
@@ -266,6 +277,7 @@ describe("items.create", () => {
   it("starts a shell and puts it in a new tab of the space, which becomes the tab it shows", async () => {
     const r = rig();
     const tab = await newTab(r, "w1");
+    expect(tab).toEqual({ space: "w1", item: tab.item, terminal: tab.terminal, session: "1" });
     expect(created(r)).toEqual([{ cols: 80, rows: 24 }]);
     const space = mainSpace(r);
     expect(space.activeItemId).toBe(tab.item);
@@ -375,6 +387,8 @@ describe("splits.create", () => {
     const tab = await newTab(r, "w1", { cwd: "/work" });
     const result = resultOf(await run(r, "splits.create", { item: tab.item, direction: "right" }));
     expect(result.item).toBe(tab.item);
+    // The session is the number of the shell of the new pane, as the app publishes it.
+    expect(result.session).toBe("2");
     const item = mainSpace(r).items[tab.item];
     expect(item?.layout).toMatchObject({ kind: "split", dir: "row" });
     expect(item?.focusedPaneId).toBe(result.terminal);
@@ -815,6 +829,120 @@ describe("terminal.read", () => {
   });
 });
 
+describe("notify", () => {
+  it("asks the host to show the notification and says whether it was shown", async () => {
+    const r = rig();
+    expect(resultOf(await run(r, "notify", { title: "Build done" }))).toEqual({ shown: true });
+    expect(r.notified).toEqual([{ title: "Build done" }]);
+  });
+
+  it("hands over the body and the pane of the terminal it is about, and names the terminal in the answer", async () => {
+    const r = rig();
+    const tab = await newTab(r, "w1");
+    const result = resultOf(
+      await run(r, "notify", { title: "Tests", body: "all green", terminal: tab.terminal }),
+    );
+    expect(result).toEqual({ shown: true, terminal: tab.terminal });
+    expect(r.notified).toEqual([{ title: "Tests", body: "all green", paneId: tab.terminal }]);
+  });
+
+  it("answers shown: false when the host did not show it (settings off, held back, refused)", async () => {
+    for (const shows of [false, Promise.resolve(false)]) {
+      const r = rig({ shows });
+      expect(resultOf(await run(r, "notify", { title: "Quiet" }))).toEqual({ shown: false });
+      expect(r.notified).toHaveLength(1);
+    }
+    // A notifier that throws or rejects is no error of the call: the system did not show it.
+    const throwing = rig({
+      shows: () => {
+        throw new Error("the system refused");
+      },
+    });
+    expect(resultOf(await run(throwing, "notify", { title: "Refused" }))).toEqual({
+      shown: false,
+    });
+    const rejecting = rig({ shows: Promise.reject(new Error("the system refused")) });
+    expect(resultOf(await run(rejecting, "notify", { title: "Refused" }))).toEqual({
+      shown: false,
+    });
+  });
+
+  it("answers shown: false when the host has no notifier", async () => {
+    const r = rig();
+    const bare: ApiHost = { ...r.host };
+    delete bare.notify;
+    const outcome = await dispatchApiCall(call("notify", { title: "Nobody" }), bare);
+    expect(resultOf(outcome)).toEqual({ shown: false });
+  });
+
+  it("answers not_found for a terminal that is not there, and shows nothing", async () => {
+    const r = rig();
+    const tab = await newTab(r, "w1");
+    for (const terminal of ["ghost", tab.item, "w1", "constructor", "__proto__"]) {
+      const error = errorOf(await run(r, "notify", { title: "Lost", terminal }));
+      expect(error.code, terminal).toBe("not_found");
+    }
+    expect(r.notified).toEqual([]);
+  });
+
+  it("answers failed for a pane that is no terminal, and shows nothing", async () => {
+    const r = rig();
+    const ws = r.workspace();
+    const space = ws.spaces[0] as Space;
+    const item = Object.values(space.items)[0];
+    if (!item) throw new Error("no item");
+    r.set({
+      ...ws,
+      spaces: [
+        {
+          ...space,
+          items: {
+            ...space.items,
+            [item.id]: {
+              ...item,
+              layout: { kind: "pane", pane: createBrowserPane("web", "https://example.com") },
+            },
+          },
+        },
+      ],
+    });
+    expect(errorOf(await run(r, "notify", { title: "Page", terminal: "web" }))).toMatchObject({
+      code: "failed",
+      message: expect.stringContaining("not a terminal"),
+    });
+    expect(r.notified).toEqual([]);
+  });
+
+  it("refuses an empty, blank, too long or multi-line title, a body that is too long, and anything extra", async () => {
+    const r = rig();
+    const bad: object[] = [
+      {},
+      { title: "" },
+      { title: "   " },
+      { title: 5 },
+      { title: "a\nb" },
+      { title: "x".repeat(API_LIMITS.notifyTitleChars + 1) },
+      { title: "ok", body: "" },
+      { title: "ok", body: 7 },
+      { title: "ok", body: "x".repeat(API_LIMITS.notifyBodyChars + 1) },
+      { title: "ok", terminal: "" },
+      { title: "ok", sound: true },
+    ];
+    for (const params of bad) {
+      expect(errorOf(await run(r, "notify", params)).code, JSON.stringify(params)).toBe(
+        "invalid_params",
+      );
+    }
+    expect(r.notified).toEqual([]);
+    // The limits themselves are good.
+    const edge = {
+      title: "t".repeat(API_LIMITS.notifyTitleChars),
+      body: "b".repeat(API_LIMITS.notifyBodyChars),
+    };
+    expect(resultOf(await run(r, "notify", edge))).toEqual({ shown: true });
+  });
+});
+
 describe("a call that does not fit", () => {
   it("is an error answer and never a throw", async () => {
     const r = rig();
@@ -876,6 +1004,7 @@ describe("a host that breaks", () => {
       call("splits.create", { item: tab.item, direction: "right" }),
       call("terminal.send", { terminal: tab.terminal, text: "x" }),
       call("terminal.read", { terminal: tab.terminal }),
+      call("notify", { title: "x", terminal: tab.terminal }),
     ];
     for (const c of calls) {
       const outcome = await dispatchApiCall(c, { ...r.host, workspace: boom });
@@ -949,6 +1078,10 @@ describe("a long run of calls", () => {
             "splits.create": { item: pickFrom(items), direction: i.down ? "down" : "right" },
             "terminal.send": { terminal: pickFrom(panes), text: i.text || "x" },
             "terminal.read": { terminal: pickFrom(panes), lines: 1 + (i.pick % 5) },
+            notify: {
+              title: i.text.trim() === "" ? "T" : i.text.replace(/\p{Cc}/gu, "") || "T",
+              ...(i.pick % 2 === 0 ? { terminal: pickFrom(panes) } : {}),
+            },
           } as const;
           const outcome = await dispatchApiCall(call(i.kind, byMethod[i.kind]), r.host);
           const keys = Object.keys(outcome);
@@ -996,6 +1129,8 @@ describe("parseApiCall", () => {
         params: { terminal: "t1", text: "ls\r", keys: ["Ctrl+C", "Enter"] },
       },
       { method: "terminal.read", params: { terminal: "t1", lines: 50 } },
+      { method: "notify", params: { title: "Done" } },
+      { method: "notify", params: { title: "Done", body: "all green", terminal: "t1" } },
     ];
     for (const c of cases) expect(parseApiCall(c)).toEqual({ ok: true, call: c });
   });
@@ -1060,6 +1195,8 @@ describe("the format of the Rust side", () => {
       sendKeys: limit("MAX_SEND_KEYS"),
       keyChars: limit("MAX_KEY_CHARS"),
       readLines: limit("MAX_READ_LINES"),
+      notifyTitleChars: limit("MAX_NOTIFY_TITLE_CHARS"),
+      notifyBodyChars: limit("MAX_NOTIFY_BODY_CHARS"),
     });
   });
 
@@ -1076,5 +1213,6 @@ describe("the format of the Rust side", () => {
     expect(fieldsOf("SplitsCreate")).toEqual(["cwd", "direction", "item", "profile"]);
     expect(fieldsOf("TerminalSend")).toEqual(["keys", "terminal", "text"]);
     expect(fieldsOf("TerminalRead")).toEqual(["lines", "terminal"]);
+    expect(fieldsOf("Notify")).toEqual(["body", "terminal", "title"]);
   });
 });

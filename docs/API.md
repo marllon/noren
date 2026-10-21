@@ -1,6 +1,6 @@
 # The local API
 
-A program on your computer, running as you, can ask a running Noren to do what a person does in its window: list and create spaces, open tabs and splits, type into a terminal and read what a terminal printed. This page is the contract. How it is built is in [ARCHITECTURE.md](ARCHITECTURE.md#the-local-api).
+A program on your computer, running as you, can ask a running Noren to do what a person does in its window: list and create spaces, open tabs and splits, type into a terminal, read what a terminal printed and show a notification. This page is the contract. How it is built is in [ARCHITECTURE.md](ARCHITECTURE.md#the-local-api).
 
 The API only exists while Noren runs, and only for the user that runs it. It sends nothing over the network.
 
@@ -75,7 +75,7 @@ server  {"event":"events.dropped","data":{"count":12}}
 ### What the app publishes
 
 - **`terminal.output`** for every session, as it is shown in the terminal: the app copies each chunk of output after it has handed the chunk to the terminal, so a client never slows the terminal down, and with nobody subscribed nothing is copied. The `text` is UTF-8: a character that arrives cut between two chunks is held back until its last byte comes and then goes out whole, and a byte that cannot be part of any character becomes U+FFFD. A shell that prints before Noren knows its number has that text published first, once the number is known. Shells on another machine are published the same way. A session taken over after the app restarted publishes what it had printed meanwhile.
-- **`sessionId`** is the number of the shell session, as text (`"7"`), the same one the page keeps for the terminal. The API does not yet tell you which session a terminal id belongs to (`spaces.list` only says whether a terminal has a session), so subscribe to every session and tell them apart as they start.
+- **`sessionId`** is the number of the shell session, as text (`"7"`), the same one the page keeps for the terminal. The API tells you which session a terminal belongs to: `items.create` and `splits.create` answer with the `session` of the shell they started, and `spaces.list` gives the `session` of every terminal (`null` when it has none). Subscribe with that `sessionId`, and do it before the call if you want the prompt the new shell prints by itself.
 - **`agent.state`** when the agent in a session changes state: `waiting`, `working` or `idle`, the words the list of agents shows. The page tells the app only when the state changes, so a state is never repeated; an agent that stops being shown (its command ended, the pane went away) is `idle`. A session that never had an agent publishes nothing.
 
 ## Methods
@@ -86,10 +86,15 @@ Names of things are the ids that `spaces.list` shows. A terminal is named by the
 | --------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `spaces.list`   | none                                                           | `{ spaces: [{ id, name, active, items: [{ id, title?, pinned, active, focused, panes: [{ id, type, status, profile, cwd?, session }] }] }] }` |
 | `spaces.create` | `{ name }`                                                     | `{ space, name }`; the space is made, not shown                                                                                               |
-| `items.create`  | `{ space, cwd?, profile? }`                                    | `{ space, item, terminal }`; a tab with a new shell                                                                                           |
-| `splits.create` | `{ item, direction: "right" \| "down", cwd?, profile? }`       | `{ item, terminal }`; a new pane with a new shell beside the pane in focus                                                                    |
+| `items.create`  | `{ space, cwd?, profile? }`                                    | `{ space, item, terminal, session }`; a tab with a new shell                                                                                  |
+| `splits.create` | `{ item, direction: "right" \| "down", cwd?, profile? }`       | `{ item, terminal, session }`; a new pane with a new shell beside the pane in focus                                                           |
 | `terminal.send` | `{ terminal, text?, keys?: [name] }` (at least one of the two) | `{ terminal, bytes }`                                                                                                                         |
 | `terminal.read` | `{ terminal, lines? }` (1 to 10000)                            | `{ terminal, lines: [text], truncated }`; the newest lines, within 1 MiB                                                                      |
+| `notify`        | `{ title, body?, terminal? }`                                  | `{ shown, terminal? }`; a notification of the system                                                                                          |
+
+`session` is the number of the shell session as text (`"7"`): the id that `terminal.output` and `agent.state` events carry as `sessionId`. In `spaces.list` it is `session: null` for a pane with no shell (a browser pane, or a terminal whose shell did not start).
+
+`notify` asks Noren to show a notification of the system. `title` is 1 to 128 characters and not blank, `body` is 1 to 1024 characters, both on one line (no control character), `terminal` is the id of a terminal pane the notification is about (`not_found` if there is no such terminal). Nothing else is accepted. **It honors the notification settings of the user**: with the notifications turned off in the settings, nothing is shown and the answer is `{ "shown": false }`. `shown` is also `false` when the same words for the same terminal were shown less than 3 s ago, or when the system refused the notification; it is `true` only when Noren handed a notification to the system. The call is answered either way, so `shown: false` is not an error. A notification you asked for is shown even when the window of Noren has the focus. The system shows the title cut at 80 characters and the body at 200. It never types anything anywhere.
 
 `terminal.send` writes `text` exactly as given, then the keys by name (`Enter`, `Tab`, `Esc`, `Backspace`, `Space`, the cursor keys, `Home`, `End`, `PageUp`, `PageDown`, `Insert`, `Delete`, `F1` to `F12`, a letter or digit, and `Ctrl+`, `Alt+` and `Shift+` before them: `Ctrl+C`, `Alt+Up`). An unknown key name sends nothing at all. **Noren never adds an Enter**: a command runs only if you send the `Enter` key (or a line break in `text`) yourself. Never send what a model suggested without a person agreeing to it.
 
@@ -115,8 +120,8 @@ socket.write(frame({ id: 1, method: "spaces.list", params: {} }));
 
 ## The smoke run
 
-`pnpm smoke` ends with `noren --smoke-api`, which starts the real app with its window hidden, on an endpoint and a token folder of its own (never the ones of a Noren you have open), and plays such a client: it reads the token file, shows that a wrong token is refused, authenticates, calls `spaces.list`, `spaces.create` and `spaces.list` again, and requires the new space in the second list. A call that is told the window is starting is tried again, and the run says how many were. It then opens a second connection, subscribes to `terminal.output`, makes a tab with `items.create` and waits, with a time limit, for a `terminal.output` event of the session of that new shell: the prompt the shell prints by itself. It sends no key and no text to any terminal (so no Enter), shows no window and exits with 0 only if every step held, the event included.
+`pnpm smoke` ends with `noren --smoke-api`, which starts the real app with its window hidden, on an endpoint and a token folder of its own (never the ones of a Noren you have open), and plays such a client: it reads the token file, shows that a wrong token is refused, authenticates, calls `spaces.list`, `spaces.create` and `spaces.list` again, and requires the new space in the second list. A call that is told the window is starting is tried again, and the run says how many were. It then opens a second connection, subscribes to `terminal.output`, makes a tab with `items.create`, takes the `session` of the answer (and requires `spaces.list` to give the same one to that terminal), calls `notify` and waits, with a time limit, for a `terminal.output` event of that session: the prompt the shell prints by itself. The run keeps its settings in a folder of its own with the notifications turned off, so `notify` must answer `shown: false` and no notification appears on your desktop. It sends no key and no text to any terminal (so no Enter), shows no window and exits with 0 only if every step held, the event included.
 
 ## Not here yet
 
-The `noren` command line that wraps this API is NOR-F17-02.
+The `noren` command line that wraps this API is NOR-F17-02b.

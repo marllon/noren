@@ -314,6 +314,7 @@ export type {
   ApiErrorCode,
   ApiHost,
   ApiJson,
+  ApiNotification,
   ApiMethodName,
   ApiOutcome,
 } from "./api-dispatch";

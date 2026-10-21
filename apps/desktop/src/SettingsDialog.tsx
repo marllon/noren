@@ -612,6 +612,13 @@ export function SettingsDialog({ backend, spaceSync, onInsert, onClose }: Settin
                   options={bellOptions()}
                   onChange={(bell) => changeTerminal({ bell })}
                 />
+                <Toggle
+                  label={t("settings.screenReader")}
+                  field="terminal.screenReaderMode"
+                  checked={shown.terminal.screenReaderMode}
+                  onChange={(screenReaderMode) => changeTerminal({ screenReaderMode })}
+                />
+                <p className="settings-hint">{t("settings.screenReaderHint")}</p>
               </section>
               <section
                 className="settings-section"

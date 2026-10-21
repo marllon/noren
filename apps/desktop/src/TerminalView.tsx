@@ -157,6 +157,8 @@ interface TerminalViewProps {
    * first chunks are the ones the session printed before the view subscribed.
    */
   onOutput?(bytes: Uint8Array): void;
+  /** Called with the exit code when the shell of this view ends (the "Process exited" line is drawn as well). */
+  onExit?(code: number): void;
   /**
    * Called when the person presses a key in the terminal (not for what the terminal itself sends
    * back to the program, such as a reply to a query, and not for a paste).
@@ -238,6 +240,7 @@ export function TerminalView({
   onCwd,
   onExplain,
   onOutput,
+  onExit,
   onInput,
   onOpenLink,
   onOpenPath,
@@ -251,6 +254,7 @@ export function TerminalView({
   const onCwdRef = useRef(onCwd);
   const onExplainRef = useRef(onExplain);
   const onOutputRef = useRef(onOutput);
+  const onExitRef = useRef(onExit);
   const onInputRef = useRef(onInput);
   const onOpenLinkRef = useRef(onOpenLink);
   const onOpenPathRef = useRef(onOpenPath);
@@ -271,6 +275,7 @@ export function TerminalView({
     onCwdRef.current = onCwd;
     onExplainRef.current = onExplain;
     onOutputRef.current = onOutput;
+    onExitRef.current = onExit;
     onInputRef.current = onInput;
     onOpenLinkRef.current = onOpenLink;
     onOpenPathRef.current = onOpenPath;
@@ -309,6 +314,8 @@ export function TerminalView({
     term.options.cursorStyle = options.cursorStyle;
     term.options.cursorBlink = options.cursorBlink;
     term.options.scrollback = options.scrollback;
+    // Switched on or off in the running terminal: xterm builds or removes its accessibility tree.
+    term.options.screenReaderMode = options.screenReaderMode;
     refitRef.current?.();
   }, [options]);
 
@@ -342,6 +349,7 @@ export function TerminalView({
       fontSize: optionsRef.current.fontSize,
       lineHeight: optionsRef.current.lineHeight,
       scrollback: optionsRef.current.scrollback,
+      screenReaderMode: optionsRef.current.screenReaderMode,
       // The ruler beside the scrollbar shows the commands that failed. 14 is the scrollbar width
       // xterm.js uses without a ruler, so the terminal keeps the columns it had.
       overviewRuler: { width: 14 },
@@ -554,7 +562,9 @@ export function TerminalView({
       );
       cleanups.push(
         backend.onExit((exit) => {
-          if (exit.id === id) term.write(`\r\n[Process exited with code ${exit.code}]\r\n`);
+          if (exit.id !== id) return;
+          term.write(`\r\n[Process exited with code ${exit.code}]\r\n`);
+          onExitRef.current?.(exit.code);
         }),
       );
       // The view may have been resized while the session was starting. A session taken over (a shell

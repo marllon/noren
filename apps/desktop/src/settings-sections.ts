@@ -10,6 +10,7 @@ import {
   DEFAULT_FONT_SIZE,
   DEFAULT_LIGATURES,
   DEFAULT_LINE_HEIGHT,
+  DEFAULT_SCREEN_READER_MODE,
   DEFAULT_SCROLLBACK,
   MAX_FONT_SIZE,
   MAX_LINE_HEIGHT,
@@ -64,6 +65,7 @@ export interface TerminalValues {
   cursorBlink: boolean;
   scrollback: number;
   bell: BellStyle;
+  screenReaderMode: boolean;
 }
 
 export type TerminalKey = keyof TerminalValues;
@@ -78,6 +80,7 @@ export const TERMINAL_PATHS: Readonly<Record<TerminalKey, readonly string[]>> = 
   cursorBlink: ["terminal", "cursor", "blink"],
   scrollback: ["terminal", "scrollback"],
   bell: ["terminal", "bell"],
+  screenReaderMode: ["terminal", "screenReaderMode"],
 };
 
 const TERMINAL_KEYS = Object.keys(TERMINAL_PATHS) as TerminalKey[];
@@ -91,11 +94,12 @@ export const DEFAULT_TERMINAL_VALUES: TerminalValues = {
   cursorBlink: DEFAULT_CURSOR_BLINK,
   scrollback: DEFAULT_SCROLLBACK,
   bell: DEFAULT_BELL_STYLE,
+  screenReaderMode: DEFAULT_SCREEN_READER_MODE,
 };
 
 /** The terminal settings in force: what the file says, and the default for what it does not say. */
 export function terminalValuesOf(config: Config): TerminalValues {
-  const { font, cursor, scrollback, bell } = config.terminal ?? {};
+  const { font, cursor, scrollback, bell, screenReaderMode } = config.terminal ?? {};
   return {
     fontFamily: font?.family ?? DEFAULT_TERMINAL_VALUES.fontFamily,
     fontSize: font?.size ?? DEFAULT_TERMINAL_VALUES.fontSize,
@@ -105,6 +109,7 @@ export function terminalValuesOf(config: Config): TerminalValues {
     cursorBlink: cursor?.blink ?? DEFAULT_TERMINAL_VALUES.cursorBlink,
     scrollback: scrollback ?? DEFAULT_TERMINAL_VALUES.scrollback,
     bell: bell ?? DEFAULT_TERMINAL_VALUES.bell,
+    screenReaderMode: screenReaderMode ?? DEFAULT_TERMINAL_VALUES.screenReaderMode,
   };
 }
 

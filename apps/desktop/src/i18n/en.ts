@@ -341,6 +341,7 @@ export const en = {
   "action.terminal.font-larger": "Increase font size",
   "action.terminal.font-smaller": "Decrease font size",
   "action.terminal.font-reset": "Reset font size",
+  "action.terminal.screen-reader": "Toggle screen reader mode",
   "action.pane.close": "Close pane",
   "action.pane.split-right": "Split right",
   "action.pane.split-below": "Split below",
@@ -427,6 +428,19 @@ export const en = {
   "settings.lineHeight": "Line height (1 to 3)",
   "settings.ligatures": "Font ligatures",
   "settings.ligaturesHint": "Ligatures are accepted, but the terminal does not draw them yet.",
+  "settings.screenReader": "Screen reader mode",
+  "settings.screenReaderHint":
+    "Gives a screen reader the text of the terminal and reads new output as it arrives. It makes the terminal slower.",
+  "screenReader.on": "Screen reader mode is on.",
+  "screenReader.off": "Screen reader mode is off.",
+  "announce.tab": "Tab {name}",
+  "announce.space": "Space {space}, tab {name}",
+  "announce.command.exit": "Command finished with exit code {code}",
+  "announce.command.exitNamed": "Command finished with exit code {code}: {text}",
+  "announce.command.done": "Command finished",
+  "announce.command.doneNamed": "Command finished: {text}",
+  "announce.bell": "Bell in {name}",
+  "announce.sessionEnded": "Session ended in {name} with exit code {code}",
   "settings.cursorShape": "Cursor shape",
   "settings.cursor.block": "Block",
   "settings.cursor.bar": "Bar",
@@ -1081,7 +1095,7 @@ export const en = {
     "Where the tabs are: the tree in the sidebar, or a bar above the terminal.",
   "field.appearance.paneHeaders":
     "Shows a header with the title and the buttons on every pane of a tab.",
-  "field.terminal": "The terminal: its font, cursor, scrollback and bell.",
+  "field.terminal": "The terminal: its font, cursor, scrollback, bell and screen reader support.",
   "field.terminal.font": "The text of the terminal.",
   "field.terminal.font.family":
     'The fonts of the terminal, by name, separated by commas: the first one found on this computer is used, such as "Cascadia Code, Consolas, monospace". Only names of font families are accepted (a web address, a semicolon or a brace is an error).',
@@ -1100,6 +1114,8 @@ export const en = {
     'What the terminal does when a program rings the bell: "none", "visual" (the pane flashes), "sound" (a short beep) or "both". The tab is marked as unread whichever it is.',
   "field.terminal.saveScrollback":
     "Keeps the last 2,000 lines of every pane when Noren closes and every minute while the pane is in use, and shows them again, dimmed, when the pane opens. false never saves any scrollback, in any space, and removes the files already saved. A space can turn it off for itself too.",
+  "field.terminal.screenReaderMode":
+    "Turns on the screen reader support of the terminal: it keeps a hidden copy of the text on screen that a screen reader (NVDA, VoiceOver, Narrator) can read, and reads new output as it arrives. It makes the terminal slower, so it is off by default. A change reaches the terminals that are open at once.",
   "field.mods":
     'The CSS files of the mods folder (next to this file) that are turned on for every space, as file names such as "compact-tabs.css", in the order they are applied: the last one wins. A file that is not in the folder is ignored.',
   "field.profiles":

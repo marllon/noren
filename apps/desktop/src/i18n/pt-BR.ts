@@ -346,6 +346,7 @@ export const ptBR: Dictionary = {
   "action.terminal.font-larger": "Aumentar a fonte",
   "action.terminal.font-smaller": "Diminuir a fonte",
   "action.terminal.font-reset": "Restaurar o tamanho da fonte",
+  "action.terminal.screen-reader": "Alternar o modo leitor de tela",
   "action.pane.close": "Fechar painel",
   "action.pane.split-right": "Dividir à direita",
   "action.pane.split-below": "Dividir abaixo",
@@ -431,6 +432,19 @@ export const ptBR: Dictionary = {
   "settings.lineHeight": "Altura da linha (1 a 3)",
   "settings.ligatures": "Ligaduras da fonte",
   "settings.ligaturesHint": "As ligaduras são aceitas, mas o terminal ainda não as desenha.",
+  "settings.screenReader": "Modo leitor de tela",
+  "settings.screenReaderHint":
+    "Dá a um leitor de tela o texto do terminal e lê a saída nova conforme ela chega. Deixa o terminal mais lento.",
+  "screenReader.on": "O modo leitor de tela está ligado.",
+  "screenReader.off": "O modo leitor de tela está desligado.",
+  "announce.tab": "Aba {name}",
+  "announce.space": "Espaço {space}, aba {name}",
+  "announce.command.exit": "Comando terminou com código de saída {code}",
+  "announce.command.exitNamed": "Comando terminou com código de saída {code}: {text}",
+  "announce.command.done": "Comando terminou",
+  "announce.command.doneNamed": "Comando terminou: {text}",
+  "announce.bell": "Sino em {name}",
+  "announce.sessionEnded": "Sessão encerrada em {name} com código de saída {code}",
   "settings.cursorShape": "Forma do cursor",
   "settings.cursor.block": "Bloco",
   "settings.cursor.bar": "Barra",
@@ -1094,7 +1108,8 @@ export const ptBR: Dictionary = {
     "Onde ficam as abas: a árvore na barra lateral ou uma barra acima do terminal.",
   "field.appearance.paneHeaders":
     "Mostra um cabeçalho com o título e os botões em cada painel de uma aba.",
-  "field.terminal": "O terminal: a fonte, o cursor, o histórico de rolagem e o sino.",
+  "field.terminal":
+    "O terminal: a fonte, o cursor, o histórico de rolagem, o sino e o suporte a leitor de tela.",
   "field.terminal.font": "O texto do terminal.",
   "field.terminal.font.family":
     'As fontes do terminal, por nome, separadas por vírgulas: a primeira encontrada neste computador é usada, como "Cascadia Code, Consolas, monospace". Só nomes de famílias de fonte são aceitos (um endereço da web, um ponto e vírgula ou uma chave é erro).',
@@ -1113,6 +1128,8 @@ export const ptBR: Dictionary = {
     'O que o terminal faz quando um programa toca o sino: "none", "visual" (o painel pisca), "sound" (um bipe curto) ou "both". A aba é marcada como não lida em qualquer caso.',
   "field.terminal.saveScrollback":
     "Guarda as últimas 2.000 linhas de cada painel quando o Noren fecha e a cada minuto enquanto o painel está em uso, e as mostra de novo, esmaecidas, quando o painel abre. false nunca guarda histórico, em nenhum espaço, e remove os arquivos já guardados. Um espaço também pode desligar isso só para ele.",
+  "field.terminal.screenReaderMode":
+    "Liga o suporte a leitor de tela do terminal: ele mantém uma cópia oculta do texto da tela que um leitor de tela (NVDA, VoiceOver, Narrador) consegue ler, e lê a saída nova conforme ela chega. Deixa o terminal mais lento, por isso vem desligado. Uma mudança chega aos terminais abertos na hora.",
   "field.mods":
     'Os arquivos CSS da pasta de mods (ao lado deste arquivo) ligados para todos os espaços, como nomes de arquivo, tipo "compact-tabs.css", na ordem em que são aplicados: o último vence. Um arquivo que não está na pasta é ignorado.',
   "field.profiles":

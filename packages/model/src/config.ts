@@ -36,6 +36,7 @@ import {
   DEFAULT_FONT_SIZE,
   DEFAULT_LIGATURES,
   DEFAULT_LINE_HEIGHT,
+  DEFAULT_SCREEN_READER_MODE,
   DEFAULT_SCROLLBACK,
   MAX_FONT_SIZE,
   MAX_LINE_HEIGHT,
@@ -227,8 +228,15 @@ const terminalSchema = z
       `Keeps the last ${SCROLLBACK_SAVE_LINES.toLocaleString("en-US")} lines of every pane when Noren closes and every minute while the pane is in use, and shows them again, dimmed, when the pane opens. false never saves any scrollback, in any space, and removes the files already saved. A space can turn it off for itself too.`,
       DEFAULT_SAVE_SCROLLBACK,
     ),
+    screenReaderMode: setting(
+      z.boolean(),
+      "Turns on the screen reader support of the terminal: it keeps a hidden copy of the text on screen that a screen reader (NVDA, VoiceOver, Narrator) can read, and reads new output as it arrives. It makes the terminal slower, so it is off by default. A change reaches the terminals that are open at once.",
+      DEFAULT_SCREEN_READER_MODE,
+    ),
   })
-  .meta({ description: "The terminal: its font, cursor, scrollback and bell." });
+  .meta({
+    description: "The terminal: its font, cursor, scrollback, bell and screen reader support.",
+  });
 
 const sessionsSchema = z
   .strictObject({

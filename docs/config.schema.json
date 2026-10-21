@@ -224,10 +224,15 @@
           "description": "Keeps the last 2,000 lines of every pane when Noren closes and every minute while the pane is in use, and shows them again, dimmed, when the pane opens. false never saves any scrollback, in any space, and removes the files already saved. A space can turn it off for itself too.",
           "default": true,
           "type": "boolean"
+        },
+        "screenReaderMode": {
+          "description": "Turns on the screen reader support of the terminal: it keeps a hidden copy of the text on screen that a screen reader (NVDA, VoiceOver, Narrator) can read, and reads new output as it arrives. It makes the terminal slower, so it is off by default. A change reaches the terminals that are open at once.",
+          "default": false,
+          "type": "boolean"
         }
       },
       "additionalProperties": false,
-      "description": "The terminal: its font, cursor, scrollback and bell."
+      "description": "The terminal: its font, cursor, scrollback, bell and screen reader support."
     },
     "mods": {
       "maxItems": 100,

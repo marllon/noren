@@ -68,7 +68,8 @@ export type ActionCommand =
   | { kind: "prompt"; direction: "previous" | "next" }
   | { kind: "select-output" }
   | { kind: "copy-output" }
-  | { kind: "font-zoom"; change: FontZoom };
+  | { kind: "font-zoom"; change: FontZoom }
+  | { kind: "screen-reader" };
 
 export interface ActionDef {
   id: string;
@@ -390,6 +391,14 @@ export const ACTIONS: readonly ActionDef[] = [
     chords: { safe: undefined, browser: undefined },
   },
   ...LAYOUT_ACTIONS,
+  {
+    id: "terminal.screen-reader",
+    title: "Toggle screen reader mode",
+    category: "Terminal",
+    command: { kind: "screen-reader" },
+    repeat: false,
+    chords: NO_CHORD,
+  },
   {
     id: "terminal.prompt-previous",
     title: "Previous prompt",

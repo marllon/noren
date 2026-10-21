@@ -57,6 +57,7 @@ describe("the values in force", () => {
       cursorBlink: true,
       scrollback: 10_000,
       bell: "none",
+      screenReaderMode: false,
     });
     expect(DEFAULT_ARCHIVE_VALUES).toEqual({ enabled: true, afterHours: 12 });
   });
@@ -68,6 +69,7 @@ describe("the values in force", () => {
         cursor: { style: "underline", blink: false },
         scrollback: 0,
         bell: "both",
+        screenReaderMode: true,
       },
       archive: { enabled: false, afterHours: 0.5 },
     };
@@ -80,6 +82,7 @@ describe("the values in force", () => {
       cursorBlink: false,
       scrollback: 0,
       bell: "both",
+      screenReaderMode: true,
     });
     expect(archiveValuesOf(config)).toEqual({ enabled: false, afterHours: 0.5 });
   });
@@ -104,6 +107,7 @@ describe("the values in force", () => {
       "terminal.cursor.blink",
       "terminal.scrollback",
       "terminal.bell",
+      "terminal.screenReaderMode",
     ]);
     expect(ARCHIVE_PATHS.afterHours.join(".")).toBe("archive.afterHours");
   });

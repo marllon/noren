@@ -40,6 +40,9 @@ export const BELL_STYLES = ["none", "visual", "sound", "both"] as const;
 export type BellStyle = (typeof BELL_STYLES)[number];
 export const DEFAULT_BELL_STYLE: BellStyle = "none";
 
+/** Screen reader mode of the terminal (xterm's accessibility tree) is off until the person turns it on. */
+export const DEFAULT_SCREEN_READER_MODE = false;
+
 /** Font names, comma separated, the first one found on the machine wins. */
 export const DEFAULT_FONT_FAMILY = "Cascadia Mono, Consolas, DejaVu Sans Mono, monospace";
 
@@ -250,6 +253,8 @@ export interface TerminalSettings {
   bell?: BellStyle | undefined;
   /** Whether a snapshot of the scrollback of every pane is kept (see `scrollback.ts`). Default true. */
   saveScrollback?: boolean | undefined;
+  /** Whether xterm exposes its screen reader support (see `DEFAULT_SCREEN_READER_MODE`). */
+  screenReaderMode?: boolean | undefined;
 }
 
 /** What the terminal is given: every option has a value. */
@@ -263,6 +268,7 @@ export interface TerminalOptions {
   cursorBlink: boolean;
   scrollback: number;
   bell: BellStyle;
+  screenReaderMode: boolean;
 }
 
 export const DEFAULT_TERMINAL_OPTIONS: Readonly<TerminalOptions> = {
@@ -274,6 +280,7 @@ export const DEFAULT_TERMINAL_OPTIONS: Readonly<TerminalOptions> = {
   cursorBlink: DEFAULT_CURSOR_BLINK,
   scrollback: DEFAULT_SCROLLBACK,
   bell: DEFAULT_BELL_STYLE,
+  screenReaderMode: DEFAULT_SCREEN_READER_MODE,
 };
 
 /**
@@ -302,5 +309,6 @@ export function terminalOptionsOf(settings: TerminalSettings | undefined): Termi
         ? Math.min(MAX_SCROLLBACK, Math.max(MIN_SCROLLBACK, Math.round(scrollback)))
         : defaults.scrollback,
     bell: settings?.bell ?? defaults.bell,
+    screenReaderMode: settings?.screenReaderMode ?? defaults.screenReaderMode,
   };
 }

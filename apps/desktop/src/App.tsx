@@ -102,6 +102,17 @@ import { refreshLiveGroups, worktreesGroupName } from "./live-groups-service";
 import { agentStateLabel, nothingUnreadNotice, shortCwd, summarizeItem } from "./pane-info";
 import { peekLinesOfItem } from "./peek-source";
 import { configManager, useConfigState } from "./config-store";
+import { AnnouncerRegion } from "./AnnouncerRegion";
+import {
+  announcer,
+  bellAnnouncement,
+  commandAnnouncement,
+  navigationAnnouncement,
+  sessionEndedAnnouncement,
+  syncAnnouncement,
+  tabNameOfPane,
+} from "./announcer";
+import type { NavigationPoint } from "./announcer";
 import { runLayoutCommand } from "./layout-actions";
 import type { LayoutCommand } from "./layout-actions";
 import { previewSidebarWidth, saveSidebarWidth, useLayout } from "./layout-store";
@@ -175,6 +186,7 @@ import { useModFiles } from "./mods-store";
 import { importSchemeFile } from "./scheme-import";
 import { downloadText } from "./download-text";
 import { appSpaceSyncPort } from "./space-sync";
+import { runScreenReaderToggle } from "./screen-reader-action";
 import { runSyncCommand } from "./sync-run";
 import {
   commitSpaceImport,
@@ -495,10 +507,17 @@ function PaneTerminal({
         onCommand: (event) => {
           store.getState().setPaneCommand(pane.id, event);
           // A command that ended takes the agent it started with it, and what it was doing.
-          if (event.kind === "end") forgetAgentState(pane.id);
+          if (event.kind === "end") {
+            forgetAgentState(pane.id);
+            announcer.announce(commandAnnouncement(event.text, event.exitCode));
+          }
         },
         onAttention: (event) => {
           store.getState().notifyPane(pane.id, event);
+          if (event.kind === "bell") {
+            const name = tabNameOfPane(store.getState().workspace, pane.id);
+            if (name !== undefined) announcer.announce(bellAnnouncement(name));
+          }
           // A notification from an agent (OSC 9, OSC 777) means it wants you.
           if (event.kind === "notification") noteAgentNotification(paneRef.current);
         },
@@ -525,6 +544,10 @@ function PaneTerminal({
       onReady={(handle) => onReady(pane.id, handle)}
       onOpenLink={onOpenLink}
       onOpenPath={onOpenPath}
+      onExit={(code) => {
+        const name = tabNameOfPane(store.getState().workspace, pane.id);
+        if (name !== undefined) announcer.announce(sessionEndedAnnouncement(name, code));
+      }}
       currentCwd={() => paneRef.current.cwd}
       onCwd={recordFolder}
       {...(onExplain !== undefined ? { onExplain } : {})}
@@ -845,6 +868,19 @@ function Shell({ store }: { store: WorkspaceStore }) {
       ? editing
       : null;
 
+  // Switching tab or space is said to a screen reader (`announcer.ts`); renaming a tab is not a switch.
+  const tabName = activeId === undefined ? "" : itemTitle(space, activeId);
+  const navPoint = useMemo<NavigationPoint>(
+    () => ({ spaceId: space.id, spaceName: space.name, itemId: activeId, tabName }),
+    [space.id, space.name, activeId, tabName],
+  );
+  const lastNavPoint = useRef<NavigationPoint | undefined>(undefined);
+  useEffect(() => {
+    const said = navigationAnnouncement(lastNavPoint.current, navPoint);
+    lastNavPoint.current = navPoint;
+    if (said !== undefined) announcer.announce(said);
+  }, [navPoint]);
+
   const clearSelection = () => setSelection({ spaceId: space.id, ids: [] });
 
   const onItemClick = (itemId: Id, modifiers: ClickModifiers) => {
@@ -919,9 +955,13 @@ function Shell({ store }: { store: WorkspaceStore }) {
   // The notice about a refused shortcut (a split past the pane limit), shown for a few seconds.
   const [notice, setNotice] = useState("");
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const showNotice = useCallback((text: string) => {
+  // A notice is said by the line itself (it is a status). A `silent` one is drawn out of the reach of
+  // a screen reader because the announcer says it, with its own urgency (the result of Pull and Push).
+  const [noticeSilent, setNoticeSilent] = useState(false);
+  const showNotice = useCallback((text: string, silent = false) => {
     clearTimeout(noticeTimer.current);
     setNotice(text);
+    setNoticeSilent(silent);
     noticeTimer.current = setTimeout(() => setNotice(""), NOTICE_MS);
   }, []);
   /**
@@ -953,6 +993,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
     },
     [showNotice],
   );
+  /** "Toggle screen reader mode": flips the setting of the file; the notice says what it is now. */
+  const toggleScreenReader = useCallback(() => {
+    void runScreenReaderToggle(configManager).then(showNotice);
+  }, [showNotice]);
   // "Import color scheme...": the palette (or a recorded key) clicks this hidden file input, the
   // person picks a file, and the importers read it by what is in it (an extension is not needed,
   // so the input has no `accept`). The answer is a notice; a file that is not a scheme writes nothing.
@@ -999,7 +1043,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         spaceSync,
         syncMethodOf(configManager.state.config.sync),
       )
-        .then((message) => showNotice(message.text))
+        .then((message) => {
+          showNotice(message.text, true);
+          announcer.announce(syncAnnouncement(message));
+        })
         .finally(() => {
           syncRunning.current = false;
         });
@@ -1731,6 +1778,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
         if (!modalOpen.current) runLayout(action.command);
         return;
       }
+      if (action.command.kind === "screen-reader") {
+        if (!modalOpen.current) toggleScreenReader();
+        return;
+      }
       if (action.command.kind === "mru") {
         if (!modalOpen.current || switcher.active()) switcher.step(action.command.delta, event);
         return;
@@ -1752,6 +1803,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     focusedHandle,
     terminalAction,
     runLayout,
+    toggleScreenReader,
     reopenTab,
     openLibrary,
     openAgents,
@@ -2220,6 +2272,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
       entry.action.command.kind === "layout-width"
     ) {
       runLayout(entry.action.command);
+    } else if (entry.action.command.kind === "screen-reader") {
+      toggleScreenReader();
     } else if (entry.action.command.kind === "diff-open") {
       // The diff opens beside the pane in use, which keeps the keyboard.
       openDiffBeside();
@@ -2613,13 +2667,14 @@ function Shell({ store }: { store: WorkspaceStore }) {
                     </div>
                   );
                 })}
+              <AnnouncerRegion />
               <div
                 className="pane-notice"
                 role="status"
                 data-nr-part="pane-notice"
                 data-nr-state={notice !== "" ? "shown" : "empty"}
               >
-                {notice}
+                {noticeSilent ? <span aria-hidden="true">{notice}</span> : notice}
               </div>
             </section>
           </div>

@@ -26,7 +26,8 @@ function same(a: TerminalOptions, b: TerminalOptions): boolean {
     a.cursorStyle === b.cursorStyle &&
     a.cursorBlink === b.cursorBlink &&
     a.scrollback === b.scrollback &&
-    a.bell === b.bell
+    a.bell === b.bell &&
+    a.screenReaderMode === b.screenReaderMode
   );
 }
 

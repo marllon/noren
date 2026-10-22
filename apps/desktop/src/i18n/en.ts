@@ -249,6 +249,8 @@ export const en = {
   "menu.maximizePane": "Maximize pane",
   "menu.restorePane": "Restore pane",
   "menu.favorite": "Favorite options",
+  "menu.profile": "Profile options",
+  "menu.action": "Action options",
   "menu.group": "Group options",
   "menu.run": "Run {name}",
   "menu.stop": "Stop {name}",
@@ -765,7 +767,15 @@ export const en = {
 
   // The favorites of the sidebar
   "favorites.label": "Favorites",
-  "favorites.hint": "Drag a tab here, or right-click a tab and choose Add to favorites.",
+  "favorites.hint":
+    "Drag a tab here, or right-click a tab, an action, or a profile in the palette, and choose Add to favorites.",
+  "favorites.showAction": "Show {name}",
+  "favorites.profileGone": 'The profile "{name}" is not available any more.',
+  "favorites.actionGone": '"{name}" is no longer in the .noren/actions.json of {space}.',
+  "favorites.actionNoFile": "There is no .noren/actions.json in {space}.",
+  "favorites.actionInvalid": "The .noren/actions.json of {space} is not valid.",
+  "favorites.actionUnreadable": "The .noren/actions.json of {space} cannot be read.",
+  "favorites.actionNoFolder": "{space} has no folder, so its actions cannot be read.",
 
   // The search over the output of every tab
   "tabSearch.dialog": "Search all tabs",

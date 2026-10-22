@@ -73,7 +73,7 @@ export type {
 export type { Action, ActionType, Placement, ReducerContext, SpaceItemsFate } from "./actions";
 export { ACTIONS_FILE_PATH, parseActionsFile } from "./actions-file";
 export type { ParseActionsResult, ProjectAction } from "./actions-file";
-export { ACTIONS_POLL_MS, watchActionsFile } from "./actions-watcher";
+export { ACTIONS_POLL_MS, readActionsFileState, watchActionsFile } from "./actions-watcher";
 export type {
   ActionsFileState,
   ActionsFileWatcher,
@@ -623,11 +623,22 @@ export {
   windowShowing,
   workspaceWindows,
 } from "./windows";
+export {
+  addFavoriteLink,
+  favoriteLinkKey,
+  favoriteLinkProblem,
+  favoriteLinkRef,
+  favoriteLinksOf,
+  removeFavoriteLink,
+  settleFavoriteLinks,
+} from "./favorite-links";
 export type {
   AppWindow,
   ArchivedItem,
   ClosedItem,
   ClosedPlace,
+  FavoriteLink,
+  FavoriteLinkRef,
   GroupNode,
   Id,
   Item,

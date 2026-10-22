@@ -11,6 +11,7 @@ import {
   type EmptySpaceOptions,
 } from "./factories";
 import { validEnv } from "./env";
+import { addFavoriteLink, removeFavoriteLink, settleFavoriteLinks } from "./favorite-links";
 import { previewPathProblem } from "./file-preview";
 import { neighborPane } from "./geometry";
 import {
@@ -98,12 +99,15 @@ export function reduce(ws: Workspace, action: Action, ctx: ReducerContext): Work
 /**
  * `reduce` without the safety net: tests use it so a bug cannot hide behind a no-op. Every space
  * the action changed ends with a valid active item (see `settleActive`), the panes on screen are
- * not unread (see `clearViewed`), and no window is left on a space that is gone or that the main
- * window shows (see `settleWindows`).
+ * not unread (see `clearViewed`), no window is left on a space that is gone or that the main
+ * window shows (see `settleWindows`), and the bar keeps no action of a space that is gone (see
+ * `settleFavoriteLinks`).
  */
 export function reduceStrict(ws: Workspace, action: Action, ctx: ReducerContext): Workspace {
   const next = applyAction(ws, action, ctx);
-  return next === ws ? ws : settleWindows(clearViewed(settleActive(ws, next, action)));
+  return next === ws
+    ? ws
+    : settleFavoriteLinks(settleWindows(clearViewed(settleActive(ws, next, action))));
 }
 
 function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Workspace {
@@ -255,6 +259,10 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
     case "item/unfavorite":
       if (!ws.favorites.includes(action.itemId)) return ws;
       return { ...ws, favorites: ws.favorites.filter((id) => id !== action.itemId) };
+    case "favorite/add-link":
+      return addFavoriteLink(ws, action.link);
+    case "favorite/remove-link":
+      return removeFavoriteLink(ws, action.link);
     case "group/create":
       return createGroup(ws, action, ctx);
     case "group/create-from-selection":

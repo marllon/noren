@@ -227,6 +227,10 @@ function checkShape(data: Obj): Workspace {
   str(data["activeSpaceId"], "activeSpaceId");
   list(data["spaces"], "spaces", checkSpace);
   list(data["favorites"], "favorites", str);
+  // A state saved before the bar took profiles and actions has none (`favoriteLinks` is not a
+  // version of its own: a file of version 2 reads as it is); whether the space of an action is one
+  // is for the invariants to say.
+  if ("favoriteLinks" in data) list(data["favoriteLinks"], "favoriteLinks", checkFavoriteLink);
   // A state saved before windows existed has none; whether the space of a window exists, and
   // whether the name is one, is for the invariants to say.
   if ("windows" in data) {
@@ -246,6 +250,19 @@ function checkShape(data: Obj): Workspace {
     checkPlace(v as Obj, p);
   });
   return data as unknown as Workspace;
+}
+
+function checkFavoriteLink(value: unknown, path: string): void {
+  const link = obj(value, path);
+  str(link["label"], `${path}.label`);
+  if (link["kind"] === "profile") {
+    str(link["profileId"], `${path}.profileId`);
+  } else if (link["kind"] === "action") {
+    str(link["spaceId"], `${path}.spaceId`);
+    str(link["actionId"], `${path}.actionId`);
+  } else {
+    throw new ShapeError(`${path}.kind`, '"profile" or "action"');
+  }
 }
 
 function checkSpace(value: unknown, path: string): void {

@@ -5,6 +5,7 @@ import {
   FakeBackend,
   ManualClock,
   createRunStop,
+  readActionsFileState,
   watchActionsFile,
 } from "./index";
 
@@ -241,5 +242,31 @@ describe("watchActionsFile", () => {
     await settle();
     expect(states).toEqual([]);
     expect(clock.pending).toBe(0);
+  });
+});
+
+describe("readActionsFileState", () => {
+  it("says what the file of a folder is right now, once, in the states the watcher uses", async () => {
+    const backend = new FakeBackend({
+      actionsFiles: { "/ok": one("a"), "/bad": "{ not json", "/empty": "" },
+    });
+    await expect(readActionsFileState(backend, "/ok")).resolves.toMatchObject({
+      status: "ok",
+      actions: [{ id: "a" }],
+    });
+    await expect(readActionsFileState(backend, "/none")).resolves.toEqual({ status: "missing" });
+    await expect(readActionsFileState(backend, "/bad")).resolves.toMatchObject({
+      status: "invalid",
+    });
+  });
+
+  it("reports a read that fails as unreadable and never rejects", async () => {
+    const failing = {
+      readActionsFile: () => Promise.reject(new Error("a folder is in its place")),
+    };
+    await expect(readActionsFileState(failing, "/x")).resolves.toEqual({
+      status: "unreadable",
+      reason: "a folder is in its place",
+    });
   });
 });

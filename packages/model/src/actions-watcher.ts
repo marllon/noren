@@ -46,6 +46,18 @@ const keyOf = (reading: Reading): string =>
       ? `error:${reading.reason}`
       : "missing";
 
+const readOnce = async (
+  backend: Pick<Backend, "readActionsFile">,
+  cwd: string,
+): Promise<Reading> => {
+  try {
+    const text = await backend.readActionsFile(cwd);
+    return text === null ? { kind: "missing" } : { kind: "text", text };
+  } catch (error) {
+    return { kind: "error", reason: error instanceof Error ? error.message : String(error) };
+  }
+};
+
 const toState = (reading: Reading): ActionsFileState => {
   if (reading.kind === "missing") return { status: "missing" };
   if (reading.kind === "error") return { status: "unreadable", reason: reading.reason };
@@ -54,6 +66,18 @@ const toState = (reading: Reading): ActionsFileState => {
     ? { status: "ok", actions: parsed.actions }
     : { status: "invalid", reason: parsed.reason };
 };
+
+/**
+ * What the `.noren/actions.json` of a folder is right now, read once: the same states the watcher
+ * reports, for a caller that cannot wait for its first reading (a Favorites tile clicked at once).
+ * Never rejects.
+ */
+export async function readActionsFileState(
+  backend: Pick<Backend, "readActionsFile">,
+  cwd: string,
+): Promise<ActionsFileState> {
+  return toState(await readOnce(backend, cwd));
+}
 
 /**
  * Keeps up with the `.noren/actions.json` of a folder: reads it now, then again every interval,
@@ -71,18 +95,9 @@ export function watchActionsFile(options: WatchActionsFileOptions): ActionsFileW
   let cancelTimer: (() => void) | undefined;
   let lastKey: string | undefined;
 
-  const read = async (): Promise<Reading> => {
-    try {
-      const text = await backend.readActionsFile(cwd);
-      return text === null ? { kind: "missing" } : { kind: "text", text };
-    } catch (error) {
-      return { kind: "error", reason: error instanceof Error ? error.message : String(error) };
-    }
-  };
-
   const poll = async (): Promise<void> => {
     cancelTimer = undefined;
-    const reading = await read();
+    const reading = await readOnce(backend, cwd);
     if (disposed) return;
     try {
       const key = keyOf(reading);

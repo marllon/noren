@@ -7,6 +7,7 @@ import { createSequentialIds } from "./ids";
 import { SIZE_SUM_TOLERANCE, checkInvariants, type ViolationCode } from "./invariants";
 import {
   MAX_CLOSED,
+  type FavoriteLink,
   type GroupNode,
   type Item,
   type LayoutNode,
@@ -445,6 +446,46 @@ describe("checkInvariants", () => {
         ws.favorites.push("i1");
       }),
     ).toContain("favorite-duplicate");
+  });
+
+  it("accepts the profiles and actions of the bar when each is well formed and once", () => {
+    expect(
+      codesAfter((ws) => {
+        ws.favoriteLinks = [
+          { kind: "profile", profileId: "pwsh", label: "PowerShell" },
+          { kind: "action", spaceId: "s1", actionId: "build", label: "Build" },
+          { kind: "action", spaceId: "s1", actionId: "test", label: "Test" },
+        ];
+      }),
+    ).toEqual([]);
+  });
+
+  it("favorite-link-invalid: a link with no name, no id, or an action of a space that is not there", () => {
+    const codes = (link: FavoriteLink) =>
+      codesAfter((ws) => {
+        ws.favoriteLinks = [link];
+      });
+    expect(codes({ kind: "profile", profileId: "pwsh", label: "" })).toContain(
+      "favorite-link-invalid",
+    );
+    expect(codes({ kind: "profile", profileId: " ", label: "x" })).toContain(
+      "favorite-link-invalid",
+    );
+    expect(codes({ kind: "action", spaceId: "s1", actionId: "", label: "x" })).toContain(
+      "favorite-link-invalid",
+    );
+    expect(codes({ kind: "action", spaceId: "ghost", actionId: "a", label: "x" })).toContain(
+      "favorite-link-invalid",
+    );
+  });
+
+  it("favorite-link-duplicate: the same profile, or the same action of a space, listed twice", () => {
+    const profile: FavoriteLink = { kind: "profile", profileId: "pwsh", label: "PowerShell" };
+    expect(
+      codesAfter((ws) => {
+        ws.favoriteLinks = [profile, { ...profile, label: "Another name" }];
+      }),
+    ).toContain("favorite-link-duplicate");
   });
 
   it("closed-overflow: 51 closed items", () => {

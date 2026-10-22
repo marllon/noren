@@ -1109,8 +1109,19 @@ body {
   background: color-mix(in srgb, var(--nr-favorite-color) 32%, var(--nr-surface));
 }
 
-.favorite-button[data-nr-state="active"] {
+.favorite-button[data-nr-state="active"],
+.favorite-button[data-nr-state="running"] {
   border-color: var(--nr-favorite-color);
+}
+
+/* A profile the computer lost or an action the file no longer declares: kept in place, dimmed, and a click says why. */
+.favorite-button[data-nr-state="unavailable"] {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.favorite-button[data-nr-state="unavailable"]:hover {
+  background: color-mix(in srgb, var(--nr-favorite-color) 18%, var(--nr-surface));
 }
 
 .favorites[data-nr-state="over"],

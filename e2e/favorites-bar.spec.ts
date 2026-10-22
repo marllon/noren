@@ -24,16 +24,16 @@ const WORDS: Record<Words["lang"], Words> = {
   en: {
     lang: "en",
     region: "Favorites",
-    hint: "Drag a tab here, or right-click a tab and choose Add to favorites.",
+    hint: "Drag a tab here, or right-click a tab, an action, or a profile in the palette, and choose Add to favorites.",
     add: "Add to favorites",
     remove: "Remove from favorites",
   },
   "pt-BR": {
     lang: "pt-BR",
     region: "Favoritos",
-    hint: "Arraste uma aba até aqui, ou clique numa aba com o botão direito e escolha Adicionar às favoritas.",
-    add: "Adicionar às favoritas",
-    remove: "Remover das favoritas",
+    hint: "Arraste uma aba até aqui, ou clique com o botão direito numa aba, numa ação ou num perfil da paleta e escolha Adicionar aos favoritos.",
+    add: "Adicionar aos favoritos",
+    remove: "Remover dos favoritos",
   },
 };
 

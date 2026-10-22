@@ -156,6 +156,81 @@ describe("migrations", () => {
   });
 });
 
+describe("the profiles and actions of the Favorites bar in the saved state (NOR-F20-11b)", () => {
+  const LINKS = [
+    { kind: "profile", profileId: "pwsh", label: "PowerShell" },
+    { kind: "action", spaceId: "s2", actionId: "build", label: "Build" },
+  ];
+
+  it("reads a version 2 file that has no favoriteLinks as it is, with no migration", () => {
+    const v2 = plain();
+    expect(v2.version).toBe(2);
+    expect("favoriteLinks" in v2).toBe(false);
+    const result = expectOk(JSON.stringify(v2));
+    expect(result.migratedFrom).toBeUndefined();
+    expect(result.workspace.favoriteLinks).toBeUndefined();
+    expect(result.workspace.favorites).toEqual(["i1"]);
+  });
+
+  it("does not write favoriteLinks until the bar has a profile or an action", () => {
+    expect(serializeWorkspace(richWorkspace())).not.toContain("favoriteLinks");
+  });
+
+  it("round-trips the links in their order, next to the favorite tabs, still version 2", () => {
+    const ws: Workspace = { ...richWorkspace(), favoriteLinks: LINKS as never };
+    const text = serializeWorkspace(ws);
+    expect(JSON.parse(text).version).toBe(2);
+    const result = expectOk(text);
+    expect(result.workspace.favoriteLinks).toEqual(LINKS);
+    expect(result.workspace.favorites).toEqual(["i1"]);
+    expect(serializeWorkspace(result.workspace)).toBe(text);
+  });
+
+  it("keeps an empty list as an empty list", () => {
+    const state = { ...plain(), favoriteLinks: [] };
+    expect(expectOk(JSON.stringify(state)).workspace.favoriteLinks).toEqual([]);
+  });
+
+  it("rejects links that are not a list, not objects, of an unknown kind or without their parts", () => {
+    expect(expectRejected(JSON.stringify({ ...plain(), favoriteLinks: {} }))).toContain(
+      "favoriteLinks: expected an array",
+    );
+    expect(expectRejected(JSON.stringify({ ...plain(), favoriteLinks: ["pwsh"] }))).toContain(
+      "favoriteLinks[0]: expected an object",
+    );
+    expect(
+      expectRejected(JSON.stringify({ ...plain(), favoriteLinks: [{ kind: "tab", label: "x" }] })),
+    ).toContain("favoriteLinks[0].kind");
+    expect(
+      expectRejected(
+        JSON.stringify({ ...plain(), favoriteLinks: [{ kind: "profile", label: "x" }] }),
+      ),
+    ).toContain("favoriteLinks[0].profileId: expected a string");
+    expect(
+      expectRejected(
+        JSON.stringify({
+          ...plain(),
+          favoriteLinks: [{ kind: "action", spaceId: "s1", label: "x" }],
+        }),
+      ),
+    ).toContain("favoriteLinks[0].actionId: expected a string");
+    expect(
+      expectRejected(
+        JSON.stringify({ ...plain(), favoriteLinks: [{ kind: "profile", profileId: "a" }] }),
+      ),
+    ).toContain("favoriteLinks[0].label: expected a string");
+  });
+
+  it("rejects a link listed twice, a link with no name and an action of a space the file lacks", () => {
+    const twice = { ...plain(), favoriteLinks: [LINKS[0], LINKS[0]] };
+    expect(expectRejected(JSON.stringify(twice))).toContain("favorite-link-duplicate");
+    const blank = { ...plain(), favoriteLinks: [{ ...LINKS[0], label: "  " }] };
+    expect(expectRejected(JSON.stringify(blank))).toContain("favorite-link-invalid");
+    const ghost = { ...plain(), favoriteLinks: [{ ...LINKS[1], spaceId: "ghost" }] };
+    expect(expectRejected(JSON.stringify(ghost))).toContain("favorite-link-invalid");
+  });
+});
+
 describe("rejected content", () => {
   it("rejects text that is not JSON", () => {
     expect(expectRejected("{ nope")).toContain("not valid JSON");

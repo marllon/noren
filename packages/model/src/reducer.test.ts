@@ -3,6 +3,7 @@ import type { Action, ReducerContext } from "./actions";
 import { checkInvariants } from "./invariants";
 import { reduce, reduceStrict } from "./reducer";
 import { layoutPanes, liveSessionIds } from "./sessions";
+import { exportSpace } from "./space-file";
 import { applyChecked, deepFreeze, pane, testContext } from "./test-helpers";
 import {
   MAX_CLOSED,
@@ -1182,6 +1183,82 @@ describe("item/favorite and item/unfavorite", () => {
     expect(applyChecked(ws, { type: "item/favorite", itemId: "nope" })).toBe(ws);
     expect(applyChecked(ws, { type: "item/favorite", itemId: "i7" })).toBe(ws);
     expect(applyChecked(ws, { type: "item/unfavorite", itemId: "i4" })).toBe(ws);
+  });
+});
+
+describe("favorite/add-link and favorite/remove-link", () => {
+  const profile = { kind: "profile", profileId: "pwsh", label: "PowerShell" } as const;
+  const build = { kind: "action", spaceId: "s2", actionId: "build", label: "Build" } as const;
+  const ref = (
+    link:
+      | { kind: "profile"; profileId: string }
+      | { kind: "action"; spaceId: string; actionId: string },
+  ) =>
+    link.kind === "profile"
+      ? ({ kind: "profile", profileId: link.profileId } as const)
+      : ({ kind: "action", spaceId: link.spaceId, actionId: link.actionId } as const);
+
+  it("adds a profile and an action after the favorite tabs, in the order they came, once each", () => {
+    const first = applyChecked(fixture(), { type: "favorite/add-link", link: profile });
+    const both = applyChecked(first, { type: "favorite/add-link", link: build });
+    expect(both.favoriteLinks).toEqual([profile, build]);
+    expect(both.favorites).toEqual(["i1", "i6"]);
+    expect(applyChecked(both, { type: "favorite/add-link", link: profile })).toBe(both);
+    expect(applyChecked(both, { type: "favorite/add-link", link: build })).toBe(both);
+  });
+
+  it("removes one and leaves the other, and the favorite tabs", () => {
+    const both = [profile, build].reduce<Workspace>(
+      (ws, link) => applyChecked(ws, { type: "favorite/add-link", link }),
+      fixture(),
+    );
+    const next = applyChecked(both, { type: "favorite/remove-link", link: ref(profile) });
+    expect(next.favoriteLinks).toEqual([build]);
+    expect(next.favorites).toEqual(["i1", "i6"]);
+    const none = applyChecked(next, { type: "favorite/remove-link", link: ref(build) });
+    expect(none.favoriteLinks).toEqual([]);
+  });
+
+  it("returns the same workspace for a link the bar refuses or does not have", () => {
+    const ws = fixture();
+    expect(applyChecked(ws, { type: "favorite/add-link", link: { ...profile, label: " " } })).toBe(
+      ws,
+    );
+    expect(
+      applyChecked(ws, { type: "favorite/add-link", link: { ...build, spaceId: "ghost" } }),
+    ).toBe(ws);
+    expect(applyChecked(ws, { type: "favorite/remove-link", link: ref(profile) })).toBe(ws);
+  });
+
+  it("takes the actions of a space along when the space is deleted, and keeps the profiles", () => {
+    const withLinks = [
+      profile,
+      build,
+      { ...build, spaceId: "s1", label: "Build" },
+    ].reduce<Workspace>(
+      (ws, link) => applyChecked(ws, { type: "favorite/add-link", link }),
+      fixture(),
+    );
+    const closed = applyChecked(withLinks, {
+      type: "space/delete",
+      spaceId: "s2",
+      items: { mode: "close" },
+    });
+    expect(closed.favoriteLinks).toEqual([profile, { ...build, spaceId: "s1" }]);
+    const moved = applyChecked(withLinks, {
+      type: "space/delete",
+      spaceId: "s1",
+      items: { mode: "move", targetSpaceId: "s2" },
+    });
+    expect(moved.favoriteLinks).toEqual([profile, build]);
+  });
+
+  it("keeps the actions of a space that is reimported from a file (the space keeps its id)", () => {
+    const ws = applyChecked(fixture(), { type: "favorite/add-link", link: build });
+    const made = exportSpace(spaceOf(ws, "s2"));
+    if (!made.ok) throw new Error("the space could not be exported");
+    const next = applyChecked(ws, { type: "space/reimport", spaceId: "s2", file: made.file });
+    expect(next.favoriteLinks).toEqual([build]);
   });
 });
 

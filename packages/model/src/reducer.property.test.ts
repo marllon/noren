@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { arbAction } from "./action-arbitraries";
 import type { Action, ActionType } from "./actions";
 import { arbWorkspace } from "./arbitraries";
+import { favoriteLinkKey, favoriteLinkProblem, favoriteLinksOf } from "./favorite-links";
 import { checkInvariants } from "./invariants";
 import { exportSpace, validateSpaceFile } from "./space-file";
 import { reduce, reduceStrict } from "./reducer";
@@ -14,6 +15,7 @@ import {
   DEFAULT_MAX_PANES,
   MAX_CLOSED,
   MAX_EXTRA_WINDOWS,
+  type FavoriteLinkRef,
   type Id,
   type Item,
   type Workspace,
@@ -55,6 +57,8 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "item/reset": true,
   "item/favorite": true,
   "item/unfavorite": true,
+  "favorite/add-link": true,
+  "favorite/remove-link": true,
   "group/create": true,
   "group/create-from-selection": true,
   "group/ungroup": true,
@@ -217,6 +221,13 @@ function missingTarget(ws: Workspace, action: Action): boolean {
       return !ws.closed.some((entry) => entry.item.id === action.itemId);
     case "item/unfavorite":
       return !ws.favorites.includes(action.itemId);
+    case "favorite/add-link":
+      return (
+        favoriteLinkProblem(action.link, ws.spaces) !== undefined ||
+        hasFavoriteLink(ws, action.link)
+      );
+    case "favorite/remove-link":
+      return !hasFavoriteLink(ws, action.link);
     case "group/ungroup":
     case "group/move":
     case "group/set-collapsed":
@@ -257,6 +268,55 @@ function missingTarget(ws: Workspace, action: Action): boolean {
       );
     default:
       return false;
+  }
+}
+
+function hasFavoriteLink(ws: Workspace, ref: FavoriteLinkRef): boolean {
+  const key = favoriteLinkKey(ref);
+  return favoriteLinksOf(ws).some((link) => favoriteLinkKey(link) === key);
+}
+
+/**
+ * The bar takes a link at the end, once, with the name trimmed; a removal takes out that link and
+ * keeps the others in their order; any other action leaves them alone, except that the actions of a
+ * space that is gone go with it (and the profiles stay).
+ */
+function checkFavoriteLinks(
+  ws: Workspace,
+  next: Workspace,
+  action: Action,
+  where: () => string,
+): void {
+  const fail = (what: string): never => {
+    throw new Error(`${where()}: ${what}`);
+  };
+  const before = favoriteLinksOf(ws);
+  const after = favoriteLinksOf(next);
+  if (action.type === "favorite/add-link") {
+    if (after.length !== before.length + 1) fail("an added link did not make the list one longer");
+    if (!before.every((link, index) => after[index] === link)) fail("an add moved a link");
+    const added = after.at(-1);
+    if (added === undefined || favoriteLinkKey(added) !== favoriteLinkKey(action.link)) {
+      fail("the added link is not at the end");
+    } else if (added.label !== action.link.label.trim()) {
+      fail("the name of the added link was not trimmed");
+    }
+  } else if (action.type === "favorite/remove-link") {
+    const key = favoriteLinkKey(action.link);
+    if (after.some((link) => favoriteLinkKey(link) === key)) fail("a removed link is still there");
+    if (
+      JSON.stringify(after) !== JSON.stringify(before.filter((l) => favoriteLinkKey(l) !== key))
+    ) {
+      fail("a removal changed other links");
+    }
+  } else {
+    // What leaves with a space (a deleted one, or the one of a window that closed) is its actions.
+    const kept = before.filter(
+      (link) => link.kind === "profile" || next.spaces.some((space) => space.id === link.spaceId),
+    );
+    if (JSON.stringify(after) !== JSON.stringify(kept)) {
+      fail(`${action.type} changed the profiles and actions of the bar beyond a space that left`);
+    }
   }
 }
 
@@ -755,6 +815,7 @@ function playSequences(
           checkReimport(ws, next, action, limit, where);
           if (next !== ws) checkPaneDelta(ws, next, action, where);
           if (next !== ws) checkOrigin(ws, next, action, where);
+          if (next !== ws) checkFavoriteLinks(ws, next, action, where);
           if (next !== ws) checkActiveItems(ws, next, action, where);
           if (next !== ws) checkNothingUnreadOnScreen(next, where);
           if (next !== ws) checkWindows(ws, next, action, where);

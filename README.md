@@ -25,7 +25,7 @@ A space is a workspace: its own tabs, icon, color, theme, background image and g
 
 ### Groups, pinned tabs and a tree you can drive from the keyboard
 
-The sidebar is a tree of groups and tabs with a second line of live information: folder, git branch, last command and its exit code, unread marks and a bell. Pinned tabs stay put, favorites sit in a bar at the top (drag a tab onto it, or right-click a tab), and the tree is an ARIA tree that works with the arrow keys. Prefer a classic layout? Put the tabs on top or hide the sidebar.
+The sidebar is a tree of groups and tabs with a second line of live information: folder, git branch, last command and its exit code, unread marks and a bell. Pinned tabs stay put, favorites sit in a bar at the top (drag a tab onto it, or right-click a tab, a project action or a profile in the palette), and the tree is an ARIA tree that works with the arrow keys. Prefer a classic layout? Put the tabs on top or hide the sidebar.
 
 ### Splits by dragging
 

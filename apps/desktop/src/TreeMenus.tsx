@@ -1,4 +1,5 @@
-import type { GroupNode, Id, Workspace } from "@noren/model";
+import { favoriteLinkRef } from "@noren/model";
+import type { FavoriteLink, FavoriteLinkRef, GroupNode, Id, Workspace } from "@noren/model";
 import { ContextMenu } from "./ContextMenu";
 import { useT } from "./i18n";
 import type { MenuEntry } from "./ContextMenu";
@@ -261,27 +262,77 @@ export function TerminalContextMenu({
   );
 }
 
+/** What a tile of the Favorites bar stands for: a favorite tab, or a profile or a project action. */
+export type FavoriteTarget = { kind: "tab"; itemId: Id } | FavoriteLinkRef;
+
 interface FavoriteContextMenuProps {
   store: WorkspaceStore;
-  itemId: Id;
+  target: FavoriteTarget;
   point: MenuPoint;
   onClose(): void;
 }
 
-/** What a right click on a tile of the Favorites grid offers. */
-export function FavoriteContextMenu({ store, itemId, point, onClose }: FavoriteContextMenuProps) {
+/** What a right click on a tile of the Favorites bar offers: to take it out of the bar. */
+export function FavoriteContextMenu({ store, target, point, onClose }: FavoriteContextMenuProps) {
   const t = useT();
   const entries: MenuEntry[] = [
     {
       label: t("menu.removeFavorite"),
       onSelect: () => {
         onClose();
-        store.getState().dispatch({ type: "item/unfavorite", itemId });
+        store
+          .getState()
+          .dispatch(
+            target.kind === "tab"
+              ? { type: "item/unfavorite", itemId: target.itemId }
+              : { type: "favorite/remove-link", link: target },
+          );
       },
     },
   ];
   return (
     <ContextMenu label={t("menu.favorite")} point={point} entries={entries} onClose={onClose} />
+  );
+}
+
+interface FavoriteLinkMenuProps {
+  store: WorkspaceStore;
+  /** The profile or action the menu is on, with the name the tile will carry. */
+  link: FavoriteLink;
+  /** It is in the bar already, so the menu offers to take it out. */
+  inBar: boolean;
+  point: MenuPoint;
+  onClose(): void;
+}
+
+/**
+ * What a right click on a profile (a row of the palette) or on a project action (a row of the header
+ * of the space) offers: to put it in the Favorites bar, or, when it is there, to take it out.
+ */
+export function FavoriteLinkMenu({ store, link, inBar, point, onClose }: FavoriteLinkMenuProps) {
+  const t = useT();
+  const entries: MenuEntry[] = [
+    {
+      label: inBar ? t("menu.removeFavorite") : t("menu.addFavorite"),
+      onSelect: () => {
+        onClose();
+        store
+          .getState()
+          .dispatch(
+            inBar
+              ? { type: "favorite/remove-link", link: favoriteLinkRef(link) }
+              : { type: "favorite/add-link", link },
+          );
+      },
+    },
+  ];
+  return (
+    <ContextMenu
+      label={link.kind === "profile" ? t("menu.profile") : t("menu.action")}
+      point={point}
+      entries={entries}
+      onClose={onClose}
+    />
   );
 }
 

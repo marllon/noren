@@ -1,4 +1,5 @@
 import { browserUrlProblem } from "./browser";
+import { favoriteLinkKey, favoriteLinkProblem, favoriteLinksOf } from "./favorite-links";
 import { previewPathProblem } from "./file-preview";
 import { liveSourceProblem } from "./live-groups";
 import { isWindowId } from "./windows";
@@ -55,6 +56,8 @@ export type ViolationCode =
   | "zoomed-pane-missing"
   | "favorite-missing"
   | "favorite-duplicate"
+  | "favorite-link-invalid"
+  | "favorite-link-duplicate"
   | "closed-overflow";
 
 export interface Violation {
@@ -365,6 +368,16 @@ function run(ws: Workspace, maxPanes: number, out: Violation[]): void {
       add("favorite-duplicate", path, `favorite ${id} is listed twice`);
     }
     seenFavorites.add(id);
+  });
+
+  const seenLinks = new Set<string>();
+  favoriteLinksOf(ws).forEach((link, index) => {
+    const path = `favoriteLinks[${index}]`;
+    const problem = favoriteLinkProblem(link, ws.spaces);
+    if (problem !== undefined) add("favorite-link-invalid", path, `a favorite link: ${problem}`);
+    const key = favoriteLinkKey(link);
+    if (seenLinks.has(key)) add("favorite-link-duplicate", path, `${key} is listed twice`);
+    seenLinks.add(key);
   });
 
   if (ws.closed.length > MAX_CLOSED) {

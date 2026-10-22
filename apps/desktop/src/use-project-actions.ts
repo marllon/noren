@@ -16,6 +16,8 @@ export interface ProjectActionsUi {
   /** The actions of the active space's file; empty without a folder, a file or a valid one. */
   actions: readonly ProjectAction[];
   statusOf(action: ProjectAction): ActionStatus;
+  /** The same, for the action of any space (the Favorites bar holds actions of spaces that are not on screen). */
+  statusIn(spaceId: Id, action: ProjectAction): ActionStatus;
   /** True while a run or a stop of the action is still going on. */
   isBusy(action: ProjectAction): boolean;
   /** The action the tab belongs to, if the tab is one an action runs in. */
@@ -147,6 +149,7 @@ export function useProjectActions(
   return {
     actions,
     statusOf: (action) => executor?.status(spaceId, action) ?? "idle",
+    statusIn: (id, action) => executor?.status(id, action) ?? "idle",
     isBusy: (action) => busy.has(busyKey(spaceId, action)),
     actionOfTab: (itemId) => actions.find((action) => executor?.tabOf(spaceId, action) === itemId),
     run: (action) => runIn(spaceId, action),

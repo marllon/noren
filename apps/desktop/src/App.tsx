@@ -6,10 +6,14 @@ import {
   aiIsOn,
   browserUrlProblem,
   exportSpace,
+  favoriteLinkKey,
+  favoriteLinkRef,
+  favoriteLinksOf,
   layoutPanes,
   mainWindowSpaces,
   paneLimitOf,
   previewPathProblem,
+  readActionsFileState,
   resolveOutputPath,
   scrollbackAllowed,
   syncMethodOf,
@@ -21,6 +25,7 @@ import type {
   AgentRow,
   BrowserBounds,
   FakeSshTarget,
+  FavoriteLink,
   GitDiffRefusal,
   GroupNode,
   Id,
@@ -77,6 +82,7 @@ import { askOffNotice, shellNameOf } from "./ask-panel";
 import type { AskSources, ExplainRequest } from "./ask-panel";
 import { CommandAskDialog } from "./CommandAskDialog";
 import { CommandPalette } from "./CommandPalette";
+import type { EntryMenu } from "./CommandPalette";
 import { osNameOf } from "./os-name";
 import { ConfigErrorNotice } from "./ConfigErrorNotice";
 import { MruSwitcherView } from "./MruSwitcher";
@@ -86,8 +92,9 @@ import type { SearchHit, SearchTab, TabHits } from "./tab-search";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { LinkPrompt } from "./LinkPrompt";
 import { FavoritesGrid } from "./FavoritesGrid";
-import { itemTitle, resolveFavorites } from "./favorites";
-import type { ResolvedFavorite } from "./favorites";
+import { actionToRun, itemTitle, resolveBar } from "./favorites";
+import type { BarTile } from "./favorites";
+import { useFavoriteActionFiles } from "./use-favorite-actions";
 import {
   clickSelection,
   menuTargets,
@@ -162,12 +169,13 @@ import { DemoBanner } from "./demo/DemoBanner";
 import { TitleBar } from "./TitleBar";
 import {
   FavoriteContextMenu,
+  FavoriteLinkMenu,
   GroupContextMenu,
   ItemContextMenu,
   PaneContextMenu,
   TerminalContextMenu,
 } from "./TreeMenus";
-import type { OutputActions, SplitDir } from "./TreeMenus";
+import type { FavoriteTarget, OutputActions, SplitDir } from "./TreeMenus";
 import {
   chooseTheme,
   clearThemePreview,
@@ -855,7 +863,8 @@ function runCommand(store: WorkspaceStore, command: ActionCommand): string | und
 type Overlay =
   | { kind: "item-menu"; targets: Id[]; point: MenuPoint }
   | { kind: "group-menu"; groupId: Id; point: MenuPoint }
-  | { kind: "favorite-menu"; itemId: Id; point: MenuPoint }
+  | { kind: "favorite-menu"; target: FavoriteTarget; point: MenuPoint }
+  | { kind: "link-menu"; link: FavoriteLink; point: MenuPoint }
   | { kind: "pane-menu"; paneId: Id; point: MenuPoint }
   | { kind: "terminal-menu"; itemId: Id; paneId: Id; request: TerminalMenuRequest }
   | { kind: "menu"; spaceId: Id; point: MenuPoint }
@@ -948,7 +957,6 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const spaceColor = space.color;
   const itemIds = spaceItemIds(space);
   const rows = visibleRows(space);
-  const favorites = resolveFavorites(workspace.spaces, workspace.favorites);
   const order = visibleItemIds(rows);
   // A selection belongs to the space it was made in and only counts tabs that are on screen.
   const selected = selection.spaceId === space.id ? visibleSelection(selection, order) : [];
@@ -1184,6 +1192,23 @@ function Shell({ store }: { store: WorkspaceStore }) {
     }
   }, [profilesProblem, showNotice]);
   const projectActions = useProjectActions(store, backend, space, showNotice);
+  // The Favorites bar: the favorite tabs, then the profiles and project actions kept next to them.
+  // The actions file of every space that has an action in it is watched, not only the active one.
+  const favoriteLinks = favoriteLinksOf(workspace);
+  const favoriteActionFiles = useFavoriteActionFiles(backend, workspace.spaces, favoriteLinks);
+  /** The tile a menu is open on is still in the bar (it can go while the menu is up). */
+  const targetInBar = (target: FavoriteTarget): boolean =>
+    target.kind === "tab"
+      ? workspace.favorites.includes(target.itemId)
+      : favoriteLinks.some((link) => favoriteLinkKey(link) === favoriteLinkKey(target));
+  const barTiles = resolveBar({
+    spaces: workspace.spaces,
+    favorites: workspace.favorites,
+    links: favoriteLinks,
+    profiles,
+    actionFiles: favoriteActionFiles,
+    isRunning: (spaceId, action) => projectActions.statusIn(spaceId, action) === "running",
+  });
   // A `noren://` link: the entry point stays the same while the run function (and so the hook's
   // state) changes on every render, so the handler reads it through a ref.
   const runActionIn = useRef(projectActions.runIn);
@@ -2282,7 +2307,34 @@ function Shell({ store }: { store: WorkspaceStore }) {
     registerTerminalSnapshot(paneId, (lines) => handle.snapshot(lines));
   };
 
-  const onOpenFavorite = (favorite: ResolvedFavorite) => showTab(favorite.spaceId, favorite.id);
+  /**
+   * A click on a tile of the Favorites bar. A tab is shown. A profile opens a new tab with it, and an
+   * action runs through the same first-run confirmation as its Start button. A tile that is
+   * unavailable says why and does nothing: the action is the one its file declares under the id, never
+   * another, and a profile the computer lost never falls back to the default shell.
+   */
+  const onOpenTile = (tile: BarTile) => {
+    if (tile.kind === "tab") {
+      showTab(tile.favorite.spaceId, tile.favorite.id);
+      return;
+    }
+    if (tile.unavailable !== undefined) {
+      showNotice(tile.unavailable);
+      return;
+    }
+    if (tile.kind === "profile") {
+      newTab({ profileId: tile.ref.profileId });
+      return;
+    }
+    const { spaceId } = tile.ref;
+    const owner = workspace.spaces.find((candidate) => candidate.id === spaceId);
+    void actionToRun(tile, owner, (folder) => readActionsFileState(backend, folder)).then(
+      ({ action, problem }) => {
+        if (action !== undefined) projectActions.runIn(spaceId, action);
+        else if (problem !== undefined) showNotice(problem);
+      },
+    );
+  };
 
   /** Closes the palette and gives the keyboard back to the terminal of the tab on screen. */
   const closePalette = useCallback(() => {
@@ -2352,6 +2404,35 @@ function Shell({ store }: { store: WorkspaceStore }) {
       language,
     ],
   );
+
+  /**
+   * The right click of a row of the palette: a profile is put in the Favorites bar, or taken out when
+   * it is there. The other rows have no menu.
+   */
+  const paletteEntryMenu = (entry: PaletteEntry): EntryMenu | undefined => {
+    if (entry.kind !== "profile") return undefined;
+    const profile = profiles.find((candidate) => candidate.id === entry.profileId);
+    const link: FavoriteLink = {
+      kind: "profile",
+      profileId: entry.profileId,
+      label: profile?.name ?? entry.profileId,
+    };
+    const inBar = favoriteLinks.some((other) => favoriteLinkKey(other) === favoriteLinkKey(link));
+    return {
+      label: t("menu.profile"),
+      entries: [
+        {
+          label: inBar ? t("menu.removeFavorite") : t("menu.addFavorite"),
+          onSelect: () =>
+            dispatch(
+              inBar
+                ? { type: "favorite/remove-link", link: favoriteLinkRef(link) }
+                : { type: "favorite/add-link", link },
+            ),
+        },
+      ],
+    };
+  };
 
   /** An entry of the palette: the same calls a click or a shortcut makes. */
   const runPaletteEntry = (entry: PaletteEntry) => {
@@ -2622,14 +2703,22 @@ function Shell({ store }: { store: WorkspaceStore }) {
         }}
       />
     );
-  } else if (
-    overlay?.kind === "favorite-menu" &&
-    favorites.some((favorite) => favorite.id === overlay.itemId)
-  ) {
+  } else if (overlay?.kind === "favorite-menu" && targetInBar(overlay.target)) {
     overlayNode = (
       <FavoriteContextMenu
         store={store}
-        itemId={overlay.itemId}
+        target={overlay.target}
+        point={overlay.point}
+        onClose={close}
+      />
+    );
+  } else if (overlay?.kind === "link-menu") {
+    const { link } = overlay;
+    overlayNode = (
+      <FavoriteLinkMenu
+        store={store}
+        link={link}
+        inBar={favoriteLinks.some((other) => favoriteLinkKey(other) === favoriteLinkKey(link))}
         point={overlay.point}
         onClose={close}
       />
@@ -2823,14 +2912,34 @@ function Shell({ store }: { store: WorkspaceStore }) {
               disabled={settingsFileBroken}
             />
             <FavoritesGrid
-              favorites={favorites}
+              tiles={barTiles}
               active={{ spaceId: space.id, itemId: activeId }}
-              onOpen={onOpenFavorite}
-              onMenu={(favorite, point) =>
-                setOverlay({ kind: "favorite-menu", itemId: favorite.id, point })
+              onOpen={onOpenTile}
+              onMenu={(tile, point) =>
+                setOverlay({
+                  kind: "favorite-menu",
+                  target:
+                    tile.kind === "tab" ? { kind: "tab", itemId: tile.favorite.id } : tile.ref,
+                  point,
+                })
               }
             />
-            <ActionsHeader spaceName={space.name} ui={projectActions} />
+            <ActionsHeader
+              spaceName={space.name}
+              ui={projectActions}
+              onMenu={(action, point) =>
+                setOverlay({
+                  kind: "link-menu",
+                  link: {
+                    kind: "action",
+                    spaceId: space.id,
+                    actionId: action.id,
+                    label: action.label,
+                  },
+                  point,
+                })
+              }
+            />
             {!tabsOnTop && (
               <SidebarTree
                 {...treeProps}
@@ -2971,6 +3080,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
             onRun={runPaletteEntry}
             onClose={closePalette}
             onHighlight={onPaletteHighlight}
+            entryMenu={paletteEntryMenu}
             {...(aiOn && paletteMode === "all" ? { onAskCommand: askForCommand } : {})}
           />
         )}

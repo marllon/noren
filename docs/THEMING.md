@@ -320,7 +320,7 @@ Set on the root element of the page by the active theme (and the active space, f
 | `pinned-list`        | The list of pinned tabs.                                       | `over` while a tab is dragged over it             |
 | `favorites`          | The bar of favorites, always on screen.                        | `over` while a tab is dragged over it             |
 | `favorites-hint`     | The line that says how to add a favorite, only while none is.  |                                                   |
-| `favorite`           | One favorite.                                                  | `active`                                          |
+| `favorite`           | One tile of the bar: a favorite tab, a profile or an action.   | `active`, `running` or `unavailable`              |
 | `tabbar`             | The bar of tabs on top, when the tabs are on top.              |                                                   |
 | `pane`               | One terminal pane.                                             |                                                   |
 | `pane-header`        | The header of a pane, when pane headers are on.                |                                                   |
@@ -340,6 +340,7 @@ Set on the root element of the page by the active theme (and the active space, f
 | `data-nr-focused`       | `pane`                                          | `true` or `false`, only in a tab that is split into panes          |
 | `data-nr-selected`      | `item`                                          | `true` while the tab is part of a selection                        |
 | `data-nr-pinned`        | `item`                                          | `true` for a pinned tab                                            |
+| `data-nr-kind`          | `favorite`                                      | `tab`, `profile` or `action`: what the tile stands for             |
 | `data-nr-indicator`     | the marks on a tab                              | `running`, `failed`, `unread` or `bell`                            |
 | `data-nr-side`          | the area that holds the sidebar and the content | `left` or `right`: the side of the sidebar                         |
 | `data-nr-density`       | the area that holds the sidebar and the content | `comfortable` or `compact`                                         |

@@ -1,18 +1,23 @@
+import type { ProjectAction } from "@noren/model";
 import { Play, Square } from "lucide-react";
+import { menuPoint } from "./ContextMenu";
 import { useT } from "./i18n";
+import type { MenuPoint } from "./SpaceMenu";
 import type { ProjectActionsUi } from "./use-project-actions";
 
 interface ActionsHeaderProps {
   /** Name of the active space, shown as the title. */
   spaceName: string;
   ui: ProjectActionsUi;
+  /** Right click (or the menu key) on the row of an action: the page offers to put it in the Favorites bar. */
+  onMenu?(action: ProjectAction, point: MenuPoint): void;
 }
 
 /**
  * The header of the active space in the sidebar: one row per action of its `.noren/actions.json`,
  * with a running indicator and Start or Stop. Nothing renders when the space has no actions.
  */
-export function ActionsHeader({ spaceName, ui }: ActionsHeaderProps) {
+export function ActionsHeader({ spaceName, ui, onMenu }: ActionsHeaderProps) {
   const t = useT();
   if (ui.actions.length === 0) return null;
   return (
@@ -30,6 +35,11 @@ export function ActionsHeader({ spaceName, ui }: ActionsHeaderProps) {
               key={action.id}
               className="space-action"
               data-nr-state={running ? "running" : "idle"}
+              onContextMenu={(event) => {
+                if (onMenu === undefined) return;
+                event.preventDefault();
+                onMenu(action, menuPoint(event));
+              }}
             >
               <span
                 className="action-dot"

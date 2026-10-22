@@ -1,7 +1,7 @@
 import type { Clock } from "./clock";
 import type { IdGenerator } from "./ids";
 import type { SpaceFile } from "./space-file";
-import type { Id, LiveSource, Pane, SpaceBackground } from "./types";
+import type { FavoriteLink, FavoriteLinkRef, Id, LiveSource, Pane, SpaceBackground } from "./types";
 
 /**
  * Where an item lands in a space. `index` is the final position in the target list (after the item
@@ -222,6 +222,14 @@ export type Action =
   | { type: "item/reset"; itemId: Id }
   | { type: "item/favorite"; itemId: Id }
   | { type: "item/unfavorite"; itemId: Id }
+  /**
+   * Puts a shell profile or a project action in the Favorites bar, after what is there. Nothing
+   * changes for a link that is already in it, one with no name or no id, or an action of a space
+   * that does not exist (`favoriteLinkProblem`).
+   */
+  | { type: "favorite/add-link"; link: FavoriteLink }
+  /** Takes a profile or an action out of the bar; nothing changes when it is not in it. */
+  | { type: "favorite/remove-link"; link: FavoriteLinkRef }
   // Groups
   | {
       type: "group/create";

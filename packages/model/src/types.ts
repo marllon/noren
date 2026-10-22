@@ -8,6 +8,12 @@ export interface Workspace {
   activeSpaceId: Id;
   /** Item ids, global (an item of any space). */
   favorites: Id[];
+  /**
+   * The profiles and project actions in the Favorites bar, after the favorite tabs, in the order they
+   * were added (`FavoriteLink`). Absent in a state saved before the bar took them, which is the same
+   * as none: kept next to `favorites` and not inside it so that a file of version 2 reads as it is.
+   */
+  favoriteLinks?: FavoriteLink[];
   /** Recently closed items, newest last, at most `MAX_CLOSED`. */
   closed: ClosedItem[];
   archive: ArchivedItem[];
@@ -18,6 +24,21 @@ export interface Workspace {
    */
   windows?: AppWindow[];
 }
+
+/**
+ * What names a shortcut of the Favorites bar that is not a tab: a shell profile (a click opens a new
+ * tab with it) or an action of the `.noren/actions.json` of a space (a click runs it, through the
+ * same first-run confirmation as its Start button). An action is the one the space's file declares
+ * under `actionId`, and nothing else: when the file no longer has it the tile is unavailable.
+ */
+export type FavoriteLinkRef =
+  { kind: "profile"; profileId: string } | { kind: "action"; spaceId: Id; actionId: string };
+
+/**
+ * A `FavoriteLinkRef` with the name it had when it was added, so a tile can still say what it was
+ * once its profile or action is gone.
+ */
+export type FavoriteLink = FavoriteLinkRef & { label: string };
 
 /**
  * A window of the app besides the main one. It shows one space, and no other window shows that

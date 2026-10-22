@@ -1,10 +1,11 @@
 import * as fc from "fast-check";
 import type { Action, Placement } from "./actions";
+import { favoriteLinkRef, favoriteLinksOf } from "./favorite-links";
 import { splitAt, splitPaths } from "./layout";
 import { layoutPanes } from "./sessions";
 import { exportSpace, type SpaceFile } from "./space-file";
 import { treeGroups, treeItemIds } from "./tree";
-import type { Id, Item, Workspace } from "./types";
+import type { FavoriteLink, FavoriteLinkRef, Id, Item, Workspace } from "./types";
 import { windowCanShowTab, workspaceWindows } from "./windows";
 
 const tag = <T extends string>(type: T): fc.Arbitrary<T> => fc.constant(type);
@@ -223,6 +224,30 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
       : fc.oneof(
           { weight: 8, arbitrary: arbIdOf(windowItemIds) },
           { weight: 1, arbitrary: itemId },
+        );
+
+  // The profiles and actions of the bar: mostly well formed links of a real space, now and then a
+  // blank name or id, or an action of a space that is not there; a removal mostly names a link that
+  // is in the bar.
+  const linkLabel = fc.oneof(
+    { weight: 6, arbitrary: fc.constantFrom("PowerShell", "Dev server", "Run tests") },
+    { weight: 1, arbitrary: fc.constantFrom("", "   ") },
+  );
+  const linkId = fc.oneof(
+    { weight: 6, arbitrary: fc.constantFrom("dev", "tests", "wsl:Ubuntu") },
+    { weight: 1, arbitrary: fc.constantFrom("", "  ") },
+  );
+  const favoriteLink: fc.Arbitrary<FavoriteLink> = fc.oneof(
+    fc.record({ kind: tag("profile"), profileId: linkId, label: linkLabel }),
+    fc.record({ kind: tag("action"), spaceId, actionId: linkId, label: linkLabel }),
+  );
+  const barLinks = favoriteLinksOf(ws).map(favoriteLinkRef);
+  const favoriteLinkToRemove: fc.Arbitrary<FavoriteLinkRef> =
+    barLinks.length === 0
+      ? fc.record({ kind: tag("profile"), profileId: linkId })
+      : fc.oneof(
+          { weight: 6, arbitrary: fc.constantFrom(...barLinks) },
+          { weight: 1, arbitrary: fc.record({ kind: tag("profile"), profileId: linkId }) },
         );
 
   const placement: fc.Arbitrary<Placement> = fc.oneof(
@@ -493,6 +518,8 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
     weighted(2, fc.record({ type: tag("item/reset"), itemId })),
     weighted(2, fc.record({ type: tag("item/favorite"), itemId })),
     weighted(1, fc.record({ type: tag("item/unfavorite"), itemId })),
+    weighted(2, fc.record({ type: tag("favorite/add-link"), link: favoriteLink })),
+    weighted(1, fc.record({ type: tag("favorite/remove-link"), link: favoriteLinkToRemove })),
     // Groups
     weighted(
       2,

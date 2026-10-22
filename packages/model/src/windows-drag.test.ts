@@ -230,6 +230,24 @@ describe("a tab with a preview or a diff pane (NOR-F15-04d)", () => {
     expect(spaceOf(back, "sA")?.items["im"]).toEqual(ws.spaces[0]?.items["im"]);
     expect(liveSessionIds(back)).toEqual(liveSessionIds(ws));
   });
+
+  it("closing the window takes the actions of its space out of the Favorites bar, and keeps the profiles", () => {
+    const out = applyChecked(withPanes(), { type: "window/open-with-item", itemId: "im" });
+    const windowSpace = out.windows?.[0]?.spaceId ?? "";
+    const windowId = out.windows?.[0]?.id ?? "";
+    expect(spaceOf(out, windowSpace)).toBeDefined();
+    const marked = [
+      { kind: "profile", profileId: "pwsh", label: "PowerShell" } as const,
+      { kind: "action", spaceId: windowSpace, actionId: "dev", label: "Dev" } as const,
+      { kind: "action", spaceId: "sA", actionId: "dev", label: "Dev" } as const,
+    ].reduce((ws, link) => applyChecked(ws, { type: "favorite/add-link", link }), out);
+    expect(marked.favoriteLinks).toHaveLength(3);
+    const back = applyChecked(marked, { type: "window/return", windowId });
+    // The space made for the window goes away with it, and so does the tile of its action.
+    expect(spaceOf(back, windowSpace)).toBeUndefined();
+    expect(back.favoriteLinks?.map((link) => link.kind)).toEqual(["profile", "action"]);
+    expect(back.favoriteLinks?.[1]).toMatchObject({ spaceId: "sA" });
+  });
 });
 
 /** The tabs with a browser pane, in space A: alone, beside a terminal, and beside a terminal and a preview. */

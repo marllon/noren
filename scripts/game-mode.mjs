@@ -15,15 +15,34 @@ export const MAX_AGE_MS = 60_000;
 /** The lighter limits that apply while game mode is on. */
 export const LIMITS = { vitestWorkers: 8, playwrightWorkers: 4, cargoJobs: 8 };
 
+/** The file the signal is: the one `NOREN_MODO_JOGO_ARQUIVO` names, else the real one. */
+export function signalPath(env = process.env) {
+  const custom = env[SIGNAL_ENV];
+  return custom !== undefined && custom !== "" ? custom : SIGNAL_PATH;
+}
+
 /** Whether the signal is valid at `now` (ms since the epoch): it exists and is under 60 s old. */
 export function gameModeActive(env = process.env, now = Date.now()) {
-  const custom = env[SIGNAL_ENV];
-  const path = custom !== undefined && custom !== "" ? custom : SIGNAL_PATH;
   try {
-    const age = now - statSync(path).mtimeMs;
+    const age = now - statSync(signalPath(env)).mtimeMs;
     return age < MAX_AGE_MS;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Whether the signal file exists, of any age. The mode that draws the real window out of sight
+ * (`pnpm shot`, NOR-F20-05, D22) refuses to run while it does, even when the watcher left it behind
+ * long ago: a window that draws costs a game a frame, so only a clear "not playing" lets it go. A
+ * file that cannot be looked at for another reason than being absent counts as there.
+ */
+export function gameModeSignalPresent(env = process.env) {
+  try {
+    statSync(signalPath(env));
+    return true;
+  } catch (error) {
+    return error?.code !== "ENOENT" && error?.code !== "ENOTDIR";
   }
 }
 

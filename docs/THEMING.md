@@ -157,7 +157,15 @@ The picture is read by the app (the page is never given a path or an address to 
 
 ### Not verified in a real window
 
-How Mica, Acrylic and vibrancy look, that the window with no effect looks the same now that it is created see-through (its corners, its shadow and the first frame before the page paints), and that the picture and the see-through terminals look right in the webview of the app, have not been seen in a window: they were checked by tests of the pure parts, by the computed styles in a browser, and by reading the code. What was run on the real app is `pnpm smoke`, which gives the hidden window its effect and prints what the system answered.
+How Mica, Acrylic and vibrancy look, and that the window with no effect looks the same now that it is created see-through (its corners, its shadow and the first frame before the page paints), have not been seen in a window: the Mica of the system and the desktop behind a see-through window are not part of the picture that the web view gives (see below). What was run on the real app is `pnpm smoke`, which gives the hidden window its effect and prints what the system answered.
+
+#### What the pictures of the real app showed
+
+`pnpm shot` (see [DEV.md](DEV.md#pictures-of-the-real-app)) takes the picture of the main window from its own web view, with the window out of sight. It holds what the page paints, so it shows the interface, the terminal and the picture behind them, and does not show the Mica or Acrylic behind the window or what the desktop would show through a see-through window. The first pictures (a settings file with `appearance.background` at 0.6, `appearance.window.opacity` 0.7 and the Dusk theme) showed, in the real app and for the first time:
+
+- **The picture and the see-through interface work in the sidebar and the title bar:** the picture shows through both, at the opacity of the interface, and the text stays readable.
+- **The terminal is not see-through.** Its area is a solid black block that hides the picture, though the text above says the terminals have no background of their own while a picture shows. Only the margins around the terminal let the picture through. The cause was not looked for here; the settings give the terminal `allowTransparency`, so the opaque black is what the WebGL renderer draws.
+- **A picture named in the settings file the app starts with does not show.** The page asks for the picture before the store that reads it has been given its backend, is answered "No backend is available to read the image.", and takes the path as already asked for, so it never asks again. The same settings written while the app runs (what the settings screen does) show the picture, which is how the picture above was taken.
 
 ## Mods: your own CSS
 

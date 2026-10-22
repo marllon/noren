@@ -222,6 +222,67 @@ build, which the e2e tests run on, drops that code. `pnpm e2e:demo` builds the d
 has no trigger but `workflow_dispatch`, so it never runs by itself, and GitHub Pages must be turned
 on by hand in the repository settings before the first run.
 
+## Pictures of the real app
+
+Everything visual used to be checked in a browser or by reading code: the interface was never looked
+at in the web view of the real app. `pnpm shot` takes a picture of the real main window, without the
+window ever being on your screen.
+
+```sh
+pnpm shot                                   # target/shots/default.png and target/shots/background.png
+pnpm shot --out some/dir --prefix after-    # some/dir/after-default.png, some/dir/after-background.png
+pnpm shot --no-build                        # reuse target/debug/noren.exe (it embeds the interface of the last build)
+pnpm shot --live-settings s.jsonc --image sky.png --name sky   # one picture of a window of your own
+```
+
+It builds the debug app like `pnpm smoke` does and runs `noren --smoke-shot <png>` once per picture,
+which prints a `SMOKE SHOT ...` line for each thing it checked. Windows only (the picture comes from
+WebView2). The two pictures made by default are the window as it starts and one with a picture behind
+the terminals and an interface that lets it through (`appearance.window.opacity` 0.7, a picture at 0.6).
+
+- **The window never shows on a monitor, and never has the focus.** The window of the run is created
+  without asking for the focus and not focusable (`smoke_shot::quiet_windows`; the configuration of a
+  normal start is untouched), off the taskbar and out of Alt+Tab (`WS_EX_TOOLWINDOW`,
+  `WS_EX_NOACTIVATE`), and disabled, so nothing (not even the web view asking for the focus of its
+  page) can make it the foreground window. It is moved to the right of the union of every monitor, and
+  only when its rectangle is proved to touch none of them it is shown with `SW_SHOWNOACTIVATE`.
+  `set_focus` is never called. The run fails, and says why, if the window was not outside every monitor,
+  if a look at the foreground window of the system (`GetForegroundWindow`, read only, every 20 ms from
+  the first instruction of the program to the end) ever found a window of this program, or if the
+  foreground window just before the window was shown is not the one after the picture. If you switch
+  windows yourself in those few seconds the last check fails too: run it again. A window that is
+  hidden can still become the foreground window of the system while the app starts (see "The hidden
+  window" below), which is why the run does not use the window as `tauri.conf.json` makes it.
+- **The picture comes from the web view, never from the screen.** `Page.captureScreenshot` is called
+  through `ICoreWebView2::CallDevToolsProtocolMethod`, a call inside the process: no debugging port is
+  opened and no screen or window is captured, nor any key or mouse input sent. The PNG holds what the
+  page paints. It does not hold what is behind the window: the Mica or Acrylic effect of the system and
+  the desktop that shows through a see-through window are not in it (where the page is see-through the
+  PNG is too).
+- **Settings and pictures of its own.** The run keeps the files of the app in a folder of its own,
+  removed when it ends (the state, settings and token of your Noren are never read or written).
+  `--settings <file>` is the settings file the app starts with (`config.jsonc`), `--live-settings
+<file>` is written once the app is up, as the settings screen writes it and the app applies it at once,
+  and `--image <file>` goes to `backgrounds/<name>` of that folder, so a settings file can name
+  `backgrounds/<name>`. The built-in `background` picture uses `--live-settings`: a picture named in
+  the settings the app _starts_ with does not show yet (the page asks for it before the store that reads
+  it has its backend), and asking for it with `--settings --image` fails the run with what the page says,
+  after writing the PNG. A picture asked for and not on screen is always a failure.
+- **It refuses while you are playing.** If `D:/Projetos/.modo-jogo` (the signal of
+  [game mode](#game-mode)) exists, whatever its age, `pnpm shot` prints why and exits with 3 before it
+  builds anything, and `noren --smoke-shot` does the same before it reads an argument. `NOREN_MODO_JOGO_ARQUIVO`
+  points both at another file (the tests do).
+- **It ends by itself**: 60 s for the whole run, and the daemon of the run is stopped and checked like
+  in every smoke run.
+
+### The hidden window
+
+A window made hidden (`"visible": false`) is not enough to keep a program from taking the focus: in
+runs of `--smoke-shot` the hidden main window was the foreground window of the system about 100 ms after
+the program started in roughly one run in five, before any code of the mode touched it. The other
+smoke runs create the same window and only check that it is not visible, so they may do the same;
+`quiet_windows` would apply to them, but it has not been tried there.
+
 ## Security audits
 
 Run them before a release and whenever a dependency changes; the results of the last review are in [SECURITY_REVIEW.md](SECURITY_REVIEW.md).
@@ -242,3 +303,8 @@ configs) and cargo gets `CARGO_BUILD_JOBS=8` (`rust:check`, `licenses:check`, `d
 builds of `pnpm smoke`, through `scripts/game-run.mjs`, which starts the command without a shell). A
 line such as `game mode: CARGO_BUILD_JOBS=8` goes to stderr. Without the signal nothing changes, and
 CI never has the file.
+
+`pnpm shot` (see [Pictures of the real app](#pictures-of-the-real-app)) is the one command that reads
+the signal differently: it refuses to run while the file exists, of any age, because it draws the real
+window (out of sight) and that costs a game a frame. `gameModeSignalPresent` in `scripts/game-mode.mjs`
+answers that; `gameModeActive` (under 60 s old) is still what the other commands use.

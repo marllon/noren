@@ -77,6 +77,19 @@ tauri-plugin-updater = { version = "2.14", default-features = false, features = 
 # 5.4.4, MIT.
 open = "5"
 
+[target.'cfg(windows)'.dependencies]
+# The picture of the real window (`smoke_shot.rs`, `noren --smoke-shot`) is taken by the web view
+# itself: `ICoreWebView2::CallDevToolsProtocolMethod` with `Page.captureScreenshot`, a call inside
+# the process (no debugging port, no capture of the desktop). `Webview::with_webview` hands over the
+# WebView2 controller as a type of this crate, and the completion handler of that call is built from
+# it. Already in the lockfile through Tauri and wry, same version they use; 0.39.1, MIT.
+webview2-com = "0.39"
+# The same mode asks the system (the window in front of the others, read only; the style, the place
+# and the show of the window of the run, never its focus) with the types WebView2 and Tauri use.
+# Already in the lockfile through Tauri, wry and webview2-com, same version; the three features are
+# already switched on by Tauri and tao, so nothing new is compiled. 0.62.2, MIT OR Apache-2.0.
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+
 [dev-dependencies]
 # The mock runtime of `tauri::test`, so the tests can call a command through the same path the
 # page uses (the name of the command and of its arguments, the raw answer). A feature of the crate

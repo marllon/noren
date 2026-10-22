@@ -30,6 +30,7 @@ mod smoke;
 mod smoke_api;
 mod smoke_browser;
 mod smoke_persist;
+mod smoke_shot;
 mod smoke_window;
 mod tray;
 mod update;
@@ -48,6 +49,21 @@ use pane_sessions::PaneBook;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    // The shot run draws the real window out of sight and writes a picture of it (NOR-F20-05). It
+    // is looked at first of all: while the signal of game mode exists the run is refused before it
+    // reads an argument, makes a folder or starts anything, and the window in front of the others is
+    // noted before the program has had any chance to change it.
+    let shot_run = if smoke_shot::has_flag(&args) {
+        match smoke_shot::start(&args) {
+            Ok(run) => Some(run),
+            Err(error) => {
+                eprintln!("{}", error.line());
+                std::process::exit(error.exit_code());
+            }
+        }
+    } else {
+        None
+    };
     // The first thing, so the zero of the marks is the start of the program (NOR-F11-01d).
     if perf::has_perf_flag(&args) {
         perf::enable();
@@ -110,8 +126,15 @@ fn main() {
         || smoke_window
         || smoke_api
         || perf_run.is_some()
-        || persist_run.is_some();
+        || persist_run.is_some()
+        || shot_run.is_some();
 
+    // The configuration of the windows, as it was built in. The shot run asks for windows that never
+    // ask for the focus (see `smoke_shot::quiet_windows`); every other start keeps it as it is.
+    let mut context = tauri::generate_context!();
+    if shot_run.is_some() {
+        smoke_shot::quiet_windows(context.config_mut());
+    }
     let mut builder = tauri::Builder::default();
     // First of all, so a second instance is detected before the rest of the setup runs. Not in a
     // smoke mode: there it would hand the link to a Noren the user has open and focus its window.
@@ -283,6 +306,7 @@ fn main() {
             perf::mark("setup-start");
             windows::install(app.handle());
             match (
+                &shot_run,
                 &smoke_link,
                 &quick_sandbox,
                 &perf_run,
@@ -290,36 +314,42 @@ fn main() {
                 &window_sandbox,
                 &api_sandbox,
             ) {
-                // The deep-link, quick, perf and persistence checks never touch the user's files:
-                // they run on a folder of their own.
-                (Some(target), _, _, _, _, _) => {
-                    smoke::manage_sandbox_stores(app, &target.state_dir);
-                    app.manage(target.clone());
-                }
-                (None, Some(sandbox), _, _, _, _) => {
-                    smoke::manage_sandbox_stores(app, &sandbox.state_dir);
-                    app.manage(sandbox.clone());
-                }
-                (None, None, Some(run), _, _, _) => {
+                // The shot run keeps the files of the app, the settings it was given among them, in
+                // a folder of its own.
+                (Some(run), _, _, _, _, _, _) => {
                     smoke::manage_sandbox_stores(app, &run.state_dir);
                     app.manage(run.clone());
                 }
-                (None, None, None, None, Some(sandbox), _) => {
+                // The deep-link, quick, perf and persistence checks never touch the user's files:
+                // they run on a folder of their own.
+                (None, Some(target), _, _, _, _, _) => {
+                    smoke::manage_sandbox_stores(app, &target.state_dir);
+                    app.manage(target.clone());
+                }
+                (None, None, Some(sandbox), _, _, _, _) => {
                     smoke::manage_sandbox_stores(app, &sandbox.state_dir);
                     app.manage(sandbox.clone());
                 }
-                (None, None, None, Some(run), _, _) => {
+                (None, None, None, Some(run), _, _, _) => {
+                    smoke::manage_sandbox_stores(app, &run.state_dir);
+                    app.manage(run.clone());
+                }
+                (None, None, None, None, None, Some(sandbox), _) => {
+                    smoke::manage_sandbox_stores(app, &sandbox.state_dir);
+                    app.manage(sandbox.clone());
+                }
+                (None, None, None, None, Some(run), _, _) => {
                     smoke::manage_sandbox_stores(app, &run.dir);
                     // Both runs of the pair keep the book of which shell is which pane's in the
                     // folder they share.
                     app.state::<AppState>()
                         .use_pane_book(PaneBook::open(run.book_file(), &run.endpoint));
                 }
-                (None, None, None, None, None, Some(sandbox)) => {
+                (None, None, None, None, None, None, Some(sandbox)) => {
                     smoke::manage_sandbox_stores(app, &sandbox.state_dir);
                     app.manage(sandbox.clone());
                 }
-                (None, None, None, None, None, None) => {
+                (None, None, None, None, None, None, None) => {
                     // Which shell is which pane's is kept next to the saved state, for the daemon
                     // of the user. The plain smoke run keeps it in memory: it must not touch the
                     // book of the user.
@@ -446,7 +476,13 @@ fn main() {
             // The quick terminal: a second window, hidden, that loads its page once the main one is up
             // (see `quick::create_hidden_after_ready`), so it is ready when something shows it. The
             // plain smoke runs check the main window alone and leave it out.
-            if !smoke && !smoke_deeplink && !smoke_window && !smoke_api && persist_run.is_none() {
+            if !smoke
+                && !smoke_deeplink
+                && !smoke_window
+                && !smoke_api
+                && persist_run.is_none()
+                && shot_run.is_none()
+            {
                 quick::create_hidden_after_ready(app);
             }
             // The global shortcut of the quick terminal: only a normal start registers one. A chord
@@ -490,10 +526,13 @@ fn main() {
             if let Some(sandbox) = api_sandbox.clone() {
                 smoke_api::arm(app, sandbox);
             }
+            if let Some(run) = shot_run.clone() {
+                smoke_shot::arm(app, run);
+            }
             perf::mark("setup-end");
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building Noren");
     perf::mark("built");
     // The shell of the pane on screen starts now, in the time the web view takes to start (see
@@ -542,6 +581,9 @@ fn main() {
             }
             if let Some(sandbox) = handle.try_state::<smoke_api::ApiSandbox>() {
                 sandbox.remove();
+            }
+            if let Some(run) = handle.try_state::<smoke_shot::ShotRun>() {
+                run.remove();
             }
         }
     });

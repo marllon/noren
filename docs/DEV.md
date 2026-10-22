@@ -234,6 +234,7 @@ pnpm shot --out some/dir --prefix after-    # some/dir/after-default.png, after-
 pnpm shot --no-build                        # reuse target/debug/noren.exe (it embeds the interface of the last build)
 pnpm shot --live-settings s.jsonc --image sky.png --name sky   # one picture of a window of your own
 pnpm shot --split-keys --name split3        # one picture of a tab the two split shortcuts made
+pnpm shot --state state.json --name sidebar # the app starts with the workspace in state.json (tabs, favorites)
 pnpm shot --open-settings themes            # the settings screen at its Themes section (--name settings)
 pnpm shot --theme-editor noren-paper --editor-group terminal --editor-set ui.accent=#22d3ee   # the theme editor
 ```
@@ -296,7 +297,9 @@ theme editor of Noren Dusk with two boxes typed into (see the next list).
   `--settings <file>` is the settings file the app starts with (`config.jsonc`), `--live-settings
 <file>` is written once the app is up, as the settings screen writes it and the app applies it at once,
   and `--image <file>` goes to `backgrounds/<name>` of that folder, so a settings file can name
-  `backgrounds/<name>`. The built-in `background` picture uses `--live-settings`: a picture named in
+  `backgrounds/<name>`. `--state <file>` is copied there as `state.json` before the app starts
+  (NOR-F20-11a), so a picture can show a workspace with tabs and favorites in it instead of the one
+  tab a fresh folder has; it is the same file the web tests seed. The built-in `background` picture uses `--live-settings`: a picture named in
   the settings the app _starts_ with does not show yet (the page asks for it before the store that reads
   it has its backend), and asking for it with `--settings --image` fails the run with what the page says,
   after writing the PNG. A picture asked for and not on screen is always a failure.

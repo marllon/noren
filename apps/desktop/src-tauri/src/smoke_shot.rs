@@ -11,7 +11,8 @@
 //!    before the app starts, `--live-settings <file>` is written there once the page is up (the way
 //!    the settings screen writes it: the app watches the file and applies it at once) and
 //!    `--image <file>` goes to `backgrounds/<name>`, so a picture and a see-through window can be
-//!    asked for;
+//!    asked for, and `--state <file>` is copied there as `state.json`, so the window can start with
+//!    tabs and favorites in it;
 //! 2. before anything starts, the mode refuses to run while the signal of game mode exists
 //!    (`D:/Projetos/.modo-jogo`; `NOREN_MODO_JOGO_ARQUIVO` points it elsewhere for the tests),
 //!    whatever its age: the person is playing, and even a window out of sight costs a game a frame;
@@ -82,6 +83,7 @@ pub const SMOKE_SHOT_FLAG: &str = "--smoke-shot";
 const SETTINGS_FLAG: &str = "--settings";
 const LIVE_SETTINGS_FLAG: &str = "--live-settings";
 const IMAGE_FLAG: &str = "--image";
+const STATE_FLAG: &str = "--state";
 const SPLIT_KEYS_FLAG: &str = "--split-keys";
 const OPEN_SETTINGS_FLAG: &str = "--open-settings";
 const THEME_EDITOR_FLAG: &str = "--theme-editor";
@@ -136,6 +138,9 @@ pub struct ShotArgs {
     pub settings: Option<PathBuf>,
     pub live_settings: Option<PathBuf>,
     pub image: Option<PathBuf>,
+    /// `--state <file>`: the `state.json` the app starts with (tabs, favorites...), copied into the
+    /// folder of the run, so a print can show a workspace that has something in it.
+    pub state: Option<PathBuf>,
     /// `--split-keys`: the page is sent Ctrl+Shift+D and Ctrl+Shift+E as key events, and the run
     /// checks that each one added a pane to the tab (see [`split_verdict`]).
     pub split_keys: bool,
@@ -211,7 +216,7 @@ fn is_value(text: &str) -> bool {
 }
 
 /// Reads `--smoke-shot <png> [--settings <file>] [--live-settings <file>] [--image <file>]
-/// [--split-keys] [--open-settings <section>] [--theme-editor <theme id>] [--editor-group <group>]
+/// [--state <file>] [--split-keys] [--open-settings <section>] [--theme-editor <theme id>] [--editor-group <group>]
 /// [--editor-set <field>=<value>]...`.
 pub fn parse_args(args: &[String]) -> Result<ShotArgs, String> {
     let at = args
@@ -233,6 +238,7 @@ pub fn parse_args(args: &[String]) -> Result<ShotArgs, String> {
         settings: None,
         live_settings: None,
         image: None,
+        state: None,
         split_keys: false,
         steps: PageSteps::default(),
     };
@@ -289,6 +295,7 @@ pub fn parse_args(args: &[String]) -> Result<ShotArgs, String> {
             SETTINGS_FLAG => &mut parsed.settings,
             LIVE_SETTINGS_FLAG => &mut parsed.live_settings,
             IMAGE_FLAG => &mut parsed.image,
+            STATE_FLAG => &mut parsed.state,
             other => {
                 return Err(format!(
                     "unknown argument {other:?} after {SMOKE_SHOT_FLAG}"
@@ -447,6 +454,10 @@ impl ShotRun {
         if let Some(settings) = &self.args.settings {
             std::fs::copy(settings, self.state_dir.join(CONFIG_FILE_NAME))
                 .map_err(|e| format!("could not read the settings {}: {e}", settings.display()))?;
+        }
+        if let Some(state) = &self.args.state {
+            std::fs::copy(state, self.state_dir.join(crate::bridge::STATE_FILE_NAME))
+                .map_err(|e| format!("could not read the state {}: {e}", state.display()))?;
         }
         if let Some(image) = &self.args.image {
             let name = image
@@ -1723,6 +1734,30 @@ mod tests {
         assert!(mixed.split_keys);
         assert_eq!(mixed.image, Some(PathBuf::from("sky.png")));
         assert_eq!(mixed.settings, Some(PathBuf::from("s.jsonc")));
+        // The workspace the app starts with is one more file, and none is the default.
+        assert_eq!(plain.state, None);
+        let seeded = parse_args(&args(&[
+            "noren",
+            "--smoke-shot",
+            "a.png",
+            "--state",
+            "state.json",
+        ]))
+        .unwrap();
+        assert_eq!(seeded.state, Some(PathBuf::from("state.json")));
+        let twice = parse_args(&args(&[
+            "noren",
+            "--smoke-shot",
+            "a.png",
+            "--state",
+            "a.json",
+            "--state",
+            "b.json",
+        ]))
+        .unwrap_err();
+        assert!(twice.contains("given twice"), "{twice}");
+        let none = parse_args(&args(&["noren", "--smoke-shot", "a.png", "--state"])).unwrap_err();
+        assert!(none.contains("needs a file"), "{none}");
     }
 
     #[test]
@@ -2195,6 +2230,7 @@ mod tests {
             settings: None,
             live_settings: None,
             image: None,
+            state: None,
             split_keys: false,
             steps: PageSteps::default(),
         })
@@ -2209,6 +2245,42 @@ mod tests {
     }
 
     #[test]
+    fn a_state_file_becomes_the_state_json_of_the_folder_of_the_run() {
+        let given = fresh_dir("noren-shot-test-state");
+        std::fs::create_dir_all(&given).unwrap();
+        let state = given.join("seed.json");
+        std::fs::write(&state, "{ \"version\": 2, \"favorites\": [\"i1\"] }").unwrap();
+        let run = ShotRun::prepare(ShotArgs {
+            out: given.join("o.png"),
+            settings: None,
+            live_settings: None,
+            image: None,
+            state: Some(state),
+            split_keys: false,
+            steps: PageSteps::default(),
+        })
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(run.state_dir.join(crate::bridge::STATE_FILE_NAME)).unwrap(),
+            "{ \"version\": 2, \"favorites\": [\"i1\"] }"
+        );
+        run.remove();
+        // A file that is not there stops the run and leaves no folder behind.
+        let error = ShotRun::prepare(ShotArgs {
+            out: given.join("o.png"),
+            settings: None,
+            live_settings: None,
+            image: None,
+            state: Some(given.join("nothing.json")),
+            split_keys: false,
+            steps: PageSteps::default(),
+        })
+        .unwrap_err();
+        assert!(error.contains("could not read the state"), "{error}");
+        let _ = std::fs::remove_dir_all(&given);
+    }
+
+    #[test]
     fn a_settings_file_that_is_missing_stops_the_run_and_leaves_no_folder_behind() {
         let given = fresh_dir("noren-shot-test-missing");
         std::fs::create_dir_all(&given).unwrap();
@@ -2217,6 +2289,7 @@ mod tests {
             settings: Some(given.join("nothing.jsonc")),
             live_settings: None,
             image: None,
+            state: None,
             split_keys: false,
             steps: PageSteps::default(),
         })
@@ -2240,6 +2313,7 @@ mod tests {
             settings: None,
             live_settings: Some(live.clone()),
             image: None,
+            state: None,
             split_keys: false,
             steps: PageSteps::default(),
         })
@@ -2257,6 +2331,7 @@ mod tests {
             settings: None,
             live_settings: None,
             image: None,
+            state: None,
             split_keys: false,
             steps: PageSteps::default(),
         })
@@ -2269,6 +2344,7 @@ mod tests {
             settings: None,
             live_settings: Some(given.join("nothing.jsonc")),
             image: None,
+            state: None,
             split_keys: false,
             steps: PageSteps::default(),
         })

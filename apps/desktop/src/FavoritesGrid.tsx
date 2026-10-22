@@ -7,7 +7,7 @@ import type { MenuPoint } from "./SpaceMenu";
 import { useOutsideDrop } from "./TreeDnd";
 
 interface FavoritesGridProps {
-  /** The favorites to show; the grid is not rendered at all when there are none. */
+  /** The favorites to show; with none, the bar is still there and says how to add one. */
   favorites: readonly ResolvedFavorite[];
   /** The tab on screen, as `spaceId` and `itemId`, which lights its tile. */
   active: { spaceId: Id; itemId: Id | undefined };
@@ -18,8 +18,10 @@ interface FavoritesGridProps {
 }
 
 /**
- * The global favorites as a grid of tiles at the top of the sidebar, shown in every space. It is
- * also where a tab dragged from the tree becomes a favorite. It must sit inside the `TreeDnd`.
+ * The global favorites as a bar of tiles at the top of the sidebar, shown in every space and always
+ * on screen: with no favorite it holds a line that says how to add one, so the place is there to
+ * be found. It is also where a tab dragged from the tree becomes a favorite, empty or not. It must
+ * sit inside the `TreeDnd`.
  */
 export function FavoritesGrid({ favorites, active, onOpen, onMenu }: FavoritesGridProps) {
   const t = useT();
@@ -32,35 +34,41 @@ export function FavoritesGrid({ favorites, active, onOpen, onMenu }: FavoritesGr
       data-nr-state={drop.over ? "over" : undefined}
       aria-label={t("favorites.label")}
     >
-      <ul className="favorites-grid">
-        {favorites.map((favorite) => {
-          const isActive = favorite.spaceId === active.spaceId && favorite.id === active.itemId;
-          return (
-            <li key={favorite.id}>
-              <button
-                type="button"
-                className="favorite-button"
-                data-nr-part="favorite"
-                data-nr-state={isActive ? "active" : undefined}
-                data-nr-space={favorite.spaceId}
-                aria-label={favorite.title}
-                aria-current={isActive ? "true" : undefined}
-                title={favorite.title}
-                style={{ "--nr-favorite-color": favorite.spaceColor } as CSSProperties}
-                onClick={() => onOpen(favorite)}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  onMenu(favorite, menuPoint(event));
-                }}
-              >
-                <span className="favorite-initial" aria-hidden="true">
-                  {favorite.initial}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      {favorites.length === 0 ? (
+        <p className="favorites-hint" data-nr-part="favorites-hint">
+          {t("favorites.hint")}
+        </p>
+      ) : (
+        <ul className="favorites-grid">
+          {favorites.map((favorite) => {
+            const isActive = favorite.spaceId === active.spaceId && favorite.id === active.itemId;
+            return (
+              <li key={favorite.id}>
+                <button
+                  type="button"
+                  className="favorite-button"
+                  data-nr-part="favorite"
+                  data-nr-state={isActive ? "active" : undefined}
+                  data-nr-space={favorite.spaceId}
+                  aria-label={favorite.title}
+                  aria-current={isActive ? "true" : undefined}
+                  title={favorite.title}
+                  style={{ "--nr-favorite-color": favorite.spaceColor } as CSSProperties}
+                  onClick={() => onOpen(favorite)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    onMenu(favorite, menuPoint(event));
+                  }}
+                >
+                  <span className="favorite-initial" aria-hidden="true">
+                    {favorite.initial}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }

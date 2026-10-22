@@ -1026,7 +1026,7 @@ body {
   border-radius: calc(var(--nr-radius) * 0.6);
 }
 
-/* The Pinned and Favorites zones cover the "New tab" button, and only while a tab is being dragged. */
+/* The Pinned zone (shown when nothing is pinned) covers the "New tab" button, and only while a tab is being dragged. */
 .sidebar-foot {
   position: relative;
 }
@@ -1075,6 +1075,17 @@ body {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* The bar with no favorite: a dashed place, like the zone a tab is dropped on, that says how to fill it. */
+.favorites-hint {
+  margin: 0;
+  padding: 8px;
+  border: 1px dashed var(--nr-border);
+  border-radius: calc(var(--nr-radius) * 0.6);
+  color: var(--nr-muted);
+  font-size: 12px;
+  line-height: 16px;
 }
 
 .favorite-button {

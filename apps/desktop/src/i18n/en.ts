@@ -78,7 +78,6 @@ export const en = {
   // The tabs of the sidebar and of the top bar
   "tree.tabs": "Tabs",
   "tree.pinned": "Pinned",
-  "tree.favorites": "Favorites",
   "tree.tabDefault": "Tab {n}",
   "tree.groupName": "Group name",
   "tree.tabName": "Tab name",
@@ -766,6 +765,7 @@ export const en = {
 
   // The favorites of the sidebar
   "favorites.label": "Favorites",
+  "favorites.hint": "Drag a tab here, or right-click a tab and choose Add to favorites.",
 
   // The search over the output of every tab
   "tabSearch.dialog": "Search all tabs",

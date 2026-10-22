@@ -80,7 +80,6 @@ export const ptBR: Dictionary = {
   // The tabs of the sidebar and of the top bar
   "tree.tabs": "Abas",
   "tree.pinned": "Fixadas",
-  "tree.favorites": "Favoritas",
   "tree.tabDefault": "Aba {n}",
   "tree.groupName": "Nome do grupo",
   "tree.tabName": "Nome da aba",
@@ -781,6 +780,8 @@ export const ptBR: Dictionary = {
 
   // Os favoritos da barra lateral
   "favorites.label": "Favoritos",
+  "favorites.hint":
+    "Arraste uma aba até aqui, ou clique numa aba com o botão direito e escolha Adicionar às favoritas.",
 
   // A busca na saída de todas as abas
   "tabSearch.dialog": "Buscar em todas as abas",

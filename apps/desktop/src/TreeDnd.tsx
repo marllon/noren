@@ -612,13 +612,13 @@ export function usePaneDrag(paneId: Id, title: string, enabled: boolean): PaneDr
   };
 }
 
-function DropZone({ drop, label }: { drop: OutsideDrop; label: string }) {
-  const zone = useOutsideDrop(drop);
+function PinnedDropZone({ label }: { label: string }) {
+  const zone = useOutsideDrop({ kind: "pinned" });
   return (
     <div
       ref={zone.ref}
       className="drop-zone"
-      data-nr-part={drop.kind === "pinned" ? "drop-pinned" : "drop-favorites"}
+      data-nr-part="drop-pinned"
       data-nr-state={zone.over ? "over" : undefined}
     >
       {label}
@@ -634,20 +634,19 @@ export function useDragging(): boolean {
 interface DropZonesProps {
   /** The Pinned list is empty, so it has no drop place of its own: offer a zone instead. */
   pinned: boolean;
-  /** The Favorites grid is empty (and so not on screen): offer a zone instead. */
-  favorites: boolean;
 }
 
 /**
- * Stand-ins for the Pinned list and the Favorites grid while they are empty. Those two are real
- * drop places only when they hold something, because an empty one takes no room, and making room
- * at the start of a drag would move every row under the pointer. The zones cover the "New tab"
- * button and only show while a drag is under way, so the sidebar at rest looks the same.
+ * The stand-in for the Pinned list while it is empty. The list is a real drop place only when it
+ * holds something, because an empty one takes no room, and making room at the start of a drag
+ * would move every row under the pointer. The zone covers the "New tab" button and only shows
+ * while a drag is under way, so the sidebar at rest looks the same. The Favorites bar needs no
+ * stand-in: it is always on screen (NOR-F20-11a), so it is a drop place whether it holds a tab or not.
  */
-export function DropZones({ pinned, favorites }: DropZonesProps) {
+export function DropZones({ pinned }: DropZonesProps) {
   const t = useT();
   const dragging = useDragging();
-  if (!pinned && !favorites) return null;
+  if (!pinned) return null;
   return (
     <div
       className="drop-zones"
@@ -655,8 +654,7 @@ export function DropZones({ pinned, favorites }: DropZonesProps) {
       data-nr-state={dragging ? "dragging" : undefined}
       aria-hidden="true"
     >
-      {pinned && <DropZone drop={{ kind: "pinned" }} label={t("tree.pinned")} />}
-      {favorites && <DropZone drop={{ kind: "favorites" }} label={t("tree.favorites")} />}
+      <PinnedDropZone label={t("tree.pinned")} />
     </div>
   );
 }

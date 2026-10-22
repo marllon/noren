@@ -8,7 +8,7 @@
 // opened. See docs/DEV.md ("Pictures of the real app").
 //
 //   pnpm shot [--out <dir>] [--prefix <text>] [--no-build]
-//   pnpm shot [--settings <file>] [--live-settings <file>] [--image <file>] [--split-keys]
+//   pnpm shot [--settings <file>] [--live-settings <file>] [--image <file>] [--state <file>] [--split-keys]
 //             [--open-settings <section>] [--theme-editor <theme id>] [--editor-group <group>]
 //             [--editor-set <field>=<value>]... [--name <name>] [--out <dir>] [--prefix <text>]
 //
@@ -22,7 +22,8 @@
 // `<prefix>split.png` (the app sends Ctrl+Shift+D and Ctrl+Shift+E to its own page as key events, in
 // the page, never to the keyboard of the system, reads the pane count back from the page and fails if
 // either did not add one). With `--settings` (the file the app starts with), `--live-settings`
-// (written once it is up), `--image`, `--split-keys`, `--open-settings` or `--theme-editor`, one picture of
+// (written once it is up), `--image`, `--state` (the `state.json` the app starts with: tabs,
+// favorites), `--split-keys`, `--open-settings` or `--theme-editor`, one picture of
 // that window, `<prefix><name>.png` (`custom`, or `split`, `settings` or `editor` for `--split-keys`,
 // `--open-settings` or `--theme-editor` alone, by default); `--open-settings <section>` clicks the settings
 // button and then the section in the column of sections, `--theme-editor <theme id>` opens the editor of that theme
@@ -139,7 +140,10 @@ function scenarios() {
   if (isCustom(args)) {
     const path = (file) => (file === undefined ? undefined : resolve(file));
     const hasWindow =
-      args.settings !== undefined || args.liveSettings !== undefined || args.image !== undefined;
+      args.settings !== undefined ||
+      args.liveSettings !== undefined ||
+      args.image !== undefined ||
+      args.state !== undefined;
     const steps = {
       openSettings: args.openSettings,
       themeEditor: args.themeEditor,
@@ -158,6 +162,7 @@ function scenarios() {
         settings: path(args.settings),
         liveSettings: path(args.liveSettings),
         image: path(args.image),
+        state: path(args.state),
         picture: args.image !== undefined,
         splitKeys: args.splitKeys,
         steps,
@@ -217,6 +222,7 @@ function shoot(scenario) {
       scenario.image,
       scenario.splitKeys,
       scenario.steps,
+      scenario.state,
     ),
     {
       cwd: root,

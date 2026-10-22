@@ -35,6 +35,7 @@ export function isCustom(parsed) {
     parsed.settings !== undefined ||
     parsed.liveSettings !== undefined ||
     parsed.image !== undefined ||
+    parsed.state !== undefined ||
     parsed.splitKeys ||
     parsed.openSettings !== undefined ||
     parsed.themeEditor !== undefined
@@ -59,9 +60,9 @@ export const isValue = (text) => text.length <= 64 && VALUE.test(text);
 
 /**
  * Reads `pnpm shot [--out <dir>] [--prefix <text>] [--name <name>] [--settings <file>]
- * [--live-settings <file>] [--image <file>] [--split-keys] [--open-settings <section>]
+ * [--live-settings <file>] [--image <file>] [--state <file>] [--split-keys] [--open-settings <section>]
  * [--theme-editor <theme id>] [--editor-group <group>] [--editor-set <field>=<value>]... [--no-build]`.
- * With `--settings`, `--live-settings`, `--image`, `--split-keys`, `--open-settings` or `--theme-editor`
+ * With `--settings`, `--live-settings`, `--image`, `--state`, `--split-keys`, `--open-settings` or `--theme-editor`
  * one print is made, of that window, called `--name` (`editor` for `--theme-editor` alone, `settings` for
  * `--open-settings` alone, `split` for `--split-keys` alone, `custom` otherwise); without them the five
  * built-in ones are made. `--split-keys` makes the app send Ctrl+Shift+D and Ctrl+Shift+E to its own
@@ -71,7 +72,8 @@ export const isValue = (text) => text.length <= 64 && VALUE.test(text);
  * scrolls the editor to a group (`terminal`, `font`, `picture`...) and `--editor-set` types a value into
  * a box of the editor (`ui.accent=#22d3ee`; the app checks that the preview followed). `--settings` is
  * the settings file the app starts with; `--live-settings` is written once the app is up, as the
- * settings screen writes it. Throws an Error with a sentence for anything else.
+ * settings screen writes it; `--state` is the `state.json` the app starts with (tabs, favorites), for
+ * a print of a workspace that has something in it. Throws an Error with a sentence for anything else.
  */
 export function parseArgs(argv) {
   const parsed = {
@@ -81,6 +83,7 @@ export function parseArgs(argv) {
     settings: undefined,
     liveSettings: undefined,
     image: undefined,
+    state: undefined,
     splitKeys: false,
     openSettings: undefined,
     themeEditor: undefined,
@@ -95,6 +98,7 @@ export function parseArgs(argv) {
     "--settings": "settings",
     "--live-settings": "liveSettings",
     "--image": "image",
+    "--state": "state",
     "--open-settings": "openSettings",
     "--theme-editor": "themeEditor",
     "--editor-group": "editorGroup",
@@ -174,7 +178,7 @@ export function parseArgs(argv) {
     }
     if (!isCustom(parsed)) {
       throw new Error(
-        "--name names the print of --settings, --live-settings, --image, --split-keys, --open-settings or --theme-editor, and none was given",
+        "--name names the print of --settings, --live-settings, --image, --state, --split-keys, --open-settings or --theme-editor, and none was given",
       );
     }
   }
@@ -226,16 +230,25 @@ export function outputName(prefix, name) {
 }
 
 /**
- * The arguments of `noren` for one print. `settings`, `liveSettings` and `image` are paths, or
- * `undefined`; `splitKeys` asks the app to send the split shortcuts to its page; `steps` is what the
- * app does in its page besides that (`openSettings`, `themeEditor`, `editorGroup` and `editorSet`, a
- * list of `<field>=<value>` texts or of `[field, value]` pairs), all optional.
+ * The arguments of `noren` for one print. `settings`, `liveSettings`, `image` and `state` are paths,
+ * or `undefined`; `splitKeys` asks the app to send the split shortcuts to its page; `steps` is what
+ * the app does in its page besides that (`openSettings`, `themeEditor`, `editorGroup` and
+ * `editorSet`, a list of `<field>=<value>` texts or of `[field, value]` pairs), all optional.
  */
-export function appArgs(out, settings, liveSettings, image, splitKeys = false, steps = {}) {
+export function appArgs(
+  out,
+  settings,
+  liveSettings,
+  image,
+  splitKeys = false,
+  steps = {},
+  state = undefined,
+) {
   const args = ["--smoke-shot", out];
   if (settings !== undefined) args.push("--settings", settings);
   if (liveSettings !== undefined) args.push("--live-settings", liveSettings);
   if (image !== undefined) args.push("--image", image);
+  if (state !== undefined) args.push("--state", state);
   if (splitKeys) args.push("--split-keys");
   if (steps.openSettings !== undefined) args.push("--open-settings", steps.openSettings);
   if (steps.themeEditor !== undefined) args.push("--theme-editor", steps.themeEditor);

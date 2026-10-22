@@ -2822,16 +2822,14 @@ function Shell({ store }: { store: WorkspaceStore }) {
               onCommit={(width) => void saveSidebarWidth(width)}
               disabled={settingsFileBroken}
             />
-            {favorites.length > 0 && (
-              <FavoritesGrid
-                favorites={favorites}
-                active={{ spaceId: space.id, itemId: activeId }}
-                onOpen={onOpenFavorite}
-                onMenu={(favorite, point) =>
-                  setOverlay({ kind: "favorite-menu", itemId: favorite.id, point })
-                }
-              />
-            )}
+            <FavoritesGrid
+              favorites={favorites}
+              active={{ spaceId: space.id, itemId: activeId }}
+              onOpen={onOpenFavorite}
+              onMenu={(favorite, point) =>
+                setOverlay({ kind: "favorite-menu", itemId: favorite.id, point })
+              }
+            />
             <ActionsHeader spaceName={space.name} ui={projectActions} />
             {!tabsOnTop && (
               <SidebarTree
@@ -2853,7 +2851,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
               <button type="button" className="new-tab" onClick={() => newTab()}>
                 {t("window.newTab")}
               </button>
-              <DropZones pinned={space.pinned.length === 0} favorites={favorites.length === 0} />
+              <DropZones pinned={space.pinned.length === 0} />
             </div>
             <SpaceSwitcher
               spaces={listedSpaces}

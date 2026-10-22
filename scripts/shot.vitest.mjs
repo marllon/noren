@@ -140,6 +140,7 @@ describe("the arguments of pnpm shot", () => {
       settings: undefined,
       liveSettings: undefined,
       image: undefined,
+      state: undefined,
       splitKeys: false,
       openSettings: undefined,
       themeEditor: undefined,
@@ -165,6 +166,8 @@ describe("the arguments of pnpm shot", () => {
       "b.jsonc",
       "--image",
       "c.png",
+      "--state",
+      "d.json",
       "--split-keys",
       "--open-settings",
       "themes",
@@ -185,6 +188,7 @@ describe("the arguments of pnpm shot", () => {
       settings: "a.jsonc",
       liveSettings: "b.jsonc",
       image: "c.png",
+      state: "d.json",
       splitKeys: true,
       openSettings: "themes",
       themeEditor: "noren-dusk",
@@ -196,7 +200,7 @@ describe("the arguments of pnpm shot", () => {
       build: false,
     });
     expect(isCustom(parsed)).toBe(true);
-    for (const only of ["--settings", "--live-settings", "--image"]) {
+    for (const only of ["--settings", "--live-settings", "--image", "--state"]) {
       expect(isCustom(parseArgs([only, "x"])), only).toBe(true);
     }
     // The shortcuts alone are a window of their own too, and do not need a value.
@@ -238,6 +242,8 @@ describe("the arguments of pnpm shot", () => {
       ],
       [["--theme-editor", "a", "--open-settings", "terminal"], "not from"],
       [["--name", "ok", "--out", "x"], "--name names the print"],
+      [["--state"], "--state needs a value"],
+      [["--state", "a.json", "--state", "b.json"], "--state was given twice"],
     ];
     for (const [argv, sentence] of cases) {
       expect(() => parseArgs(argv), argv.join(" ")).toThrow(sentence);
@@ -265,6 +271,14 @@ describe("what the app is given and must say", () => {
       "--split-keys",
     ]);
     expect(appArgs("o.png", "s.jsonc", undefined, undefined, false)).not.toContain("--split-keys");
+    // The state.json the app starts with is one more file, given only when asked for (NOR-F20-11a).
+    expect(appArgs("o.png", undefined, undefined, undefined, false, {}, "st.json")).toEqual([
+      "--smoke-shot",
+      "o.png",
+      "--state",
+      "st.json",
+    ]);
+    expect(appArgs("o.png", "s.jsonc", undefined, undefined)).not.toContain("--state");
   });
 
   it("builds the arguments of the settings screen and the theme editor, in the order the app does them", () => {

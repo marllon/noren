@@ -3,7 +3,8 @@ import type { Locator, Page } from "@playwright/test";
 import { clicksReachThePage, seedSidebarState } from "./sidebar-fixture";
 
 // Dropping a tab outside the tree: on the icon of another space, on the Pinned list and on the
-// Favorites grid (an empty grid is not on screen, so the zone over "New tab" stands in for it).
+// Favorites bar (always on screen since NOR-F20-11a, so it takes the drop empty or not; only an
+// empty Pinned list needs the zone over "New tab" to stand in for it).
 // The seeded sidebar: pinned "notes", the group "Work" (api, build, logs), "deploy", "scratch", and
 // the space "Other" with the tab "elsewhere".
 
@@ -17,7 +18,6 @@ const spaceButton = (page: Page, name: string) =>
     exact: true,
   });
 const pinnedList = (page: Page) => page.locator('[data-nr-part="pinned-list"]');
-const favoritesZone = (page: Page) => page.locator('[data-nr-part="drop-favorites"]');
 const favoritesGrid = (page: Page) => page.locator('[data-nr-part="favorites"]');
 
 /** The rows top to bottom as `name@depth`, groups included. */
@@ -71,18 +71,21 @@ test.beforeEach(async ({ page }) => {
 
 const START = ["notes@0", "Work@0", "api@1", "build@1", "logs@1", "deploy@0", "scratch@0"];
 
-test("the zone for the empty Favorites grid only shows while a tab is dragged", async ({
+test("the empty Favorites bar is on screen all the time and needs no zone to stand in for it", async ({
   page,
 }) => {
   // Pinned holds "notes", so its list is a drop place of its own and needs no zone.
   await expect(pinnedList(page)).toBeVisible();
   await expect(page.locator('[data-nr-part="drop-pinned"]')).toHaveCount(0);
-  await expect(favoritesGrid(page)).toHaveCount(0);
-  await expect(favoritesZone(page)).toBeHidden();
+  // The bar is there with no favorite, before, during and after a drag, and nothing stands in for it.
+  await expect(favoritesGrid(page)).toBeVisible();
+  await expect(page.locator('[data-nr-part="drop-favorites"]')).toHaveCount(0);
   await dragTo(page, row(page, "scratch"), row(page, "deploy"));
-  await expect(favoritesZone(page)).toBeVisible();
+  await expect(favoritesGrid(page)).toBeVisible();
+  await expect(page.locator('[data-nr-part="drop-favorites"]')).toHaveCount(0);
   await page.mouse.up();
-  await expect(favoritesZone(page)).toBeHidden();
+  await expect(favoritesGrid(page)).toBeVisible();
+  await expect(page.locator('[data-nr-part="drop-favorites"]')).toHaveCount(0);
 });
 
 test("dropping a tab on the icon of another space moves it there and keeps the active space", async ({
@@ -143,8 +146,8 @@ test("dropping a tab on Pinned pins it, and it stays pinned after a reload", asy
 test("dropping a tab on Favorites makes it a favorite, and it stays one after a reload", async ({
   page,
 }) => {
-  await dragTo(page, row(page, "scratch"), favoritesZone(page));
-  await expect(favoritesZone(page)).toHaveAttribute("data-nr-state", "over");
+  await dragTo(page, row(page, "scratch"), favoritesGrid(page));
+  await expect(favoritesGrid(page)).toHaveAttribute("data-nr-state", "over");
   await page.mouse.up();
   await expect.poll(async () => (await saved(page)).favorites).toEqual(["i6"]);
   // A favorite stays where it is in the tree, and now the grid shows it.
@@ -174,11 +177,11 @@ test("the keyboard reaches Pinned, Favorites and the other space after the last 
   await expect(pinnedList(page)).toHaveAttribute("data-nr-state", "over");
   await page.keyboard.press("ArrowDown");
   await expect(status).toHaveText("Add this tab to the favorites.");
-  await expect(favoritesZone(page)).toHaveAttribute("data-nr-state", "over");
+  await expect(favoritesGrid(page)).toHaveAttribute("data-nr-state", "over");
   await page.keyboard.press("ArrowDown");
   await expect(status).toHaveText("Move to space Other.");
   await expect(spaceButton(page, "Other")).toHaveAttribute("data-nr-state", "drop-target");
-  // Up again goes back to the favorites zone, and Escape drops nothing.
+  // Up again goes back to the favorites bar, and Escape drops nothing.
   await page.keyboard.press("ArrowUp");
   await expect(status).toHaveText("Add this tab to the favorites.");
   await page.keyboard.press("Escape");

@@ -318,7 +318,8 @@ Set on the root element of the page by the active theme (and the active space, f
 | `item-title`         | The title inside a tab.                                        |                                                   |
 | `group`              | A group of tabs.                                               | `expanded` or `collapsed`                         |
 | `pinned-list`        | The list of pinned tabs.                                       | `over` while a tab is dragged over it             |
-| `favorites`          | The grid of favorites.                                         | `over` while a tab is dragged over it             |
+| `favorites`          | The bar of favorites, always on screen.                        | `over` while a tab is dragged over it             |
+| `favorites-hint`     | The line that says how to add a favorite, only while none is.  |                                                   |
 | `favorite`           | One favorite.                                                  | `active`                                          |
 | `tabbar`             | The bar of tabs on top, when the tabs are on top.              |                                                   |
 | `pane`               | One terminal pane.                                             |                                                   |

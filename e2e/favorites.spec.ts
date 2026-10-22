@@ -3,8 +3,8 @@ import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { seedSidebarState } from "./sidebar-fixture";
 
-// The Favorites grid (global, at the top of the sidebar) and the Pinned list (per space, above the
-// tree). The seeded sidebar: Main with pinned "notes", the group "Work" (api, build, logs),
+// The Favorites bar (global, at the top of the sidebar, always on screen: `favorites-bar.spec.ts`
+// holds what it shows when it is empty) and the Pinned list (per space, above the tree). The seeded sidebar: Main with pinned "notes", the group "Work" (api, build, logs),
 // "deploy" and "scratch"; the space "Other" with the tab "elsewhere".
 
 const WEB_STATE_KEY = "noren.web.state";
@@ -53,8 +53,9 @@ test.beforeEach(async ({ page }) => {
 test("a favorite made in one space shows in the grid of the others, and a click opens its tab", async ({
   page,
 }) => {
-  // Nothing is a favorite yet: the grid is not on screen.
-  await expect(grid(page)).toHaveCount(0);
+  // Nothing is a favorite yet: the bar is on screen all the same, with no tile in it.
+  await expect(grid(page)).toBeVisible();
+  await expect(grid(page).getByRole("button")).toHaveCount(0);
 
   await row(page, "scratch").click({ button: "right" });
   await menuItem(page, "Add to favorites").click();
@@ -96,15 +97,14 @@ test("a favorite from another space opens that space and its tab", async ({ page
   await expect(row(page, "elsewhere")).toHaveAttribute("aria-current", "true");
 });
 
-test("dragging a tab onto the grid adds it, and onto the zone of an empty grid too", async ({
-  page,
-}) => {
-  // Empty grid: the zone over "New tab" takes the drop, then the grid appears.
-  await dragTo(page, row(page, "scratch"), page.locator('[data-nr-part="drop-favorites"]'));
+test("dragging a tab onto the bar adds it, whether the bar is empty or not", async ({ page }) => {
+  // Empty bar: it is the drop place itself, and its tile appears.
+  await dragTo(page, row(page, "scratch"), grid(page));
+  await expect(grid(page)).toHaveAttribute("data-nr-state", "over");
   await page.mouse.up();
   await expect(favorite(page, "scratch")).toBeVisible();
 
-  // A grid with something in it is the drop place itself and lights up while a tab is over it.
+  // A bar with something in it is the drop place too and lights up while a tab is over it.
   await dragTo(page, row(page, "deploy"), grid(page));
   await expect(grid(page)).toHaveAttribute("data-nr-state", "over");
   await page.mouse.up();
@@ -116,7 +116,7 @@ test("dragging a tab onto the grid adds it, and onto the zone of an empty grid t
   await expect(row(page, "scratch")).toBeVisible();
 });
 
-test("removing a favorite from its menu takes it off the grid, and the grid goes when empty", async ({
+test("removing a favorite from its menu takes it off the bar, and the bar stays when empty", async ({
   page,
 }) => {
   for (const name of ["scratch", "deploy"]) {
@@ -133,20 +133,22 @@ test("removing a favorite from its menu takes it off the grid, and the grid goes
 
   await favorite(page, "deploy").click({ button: "right" });
   await menuItem(page, "Remove from favorites").click();
-  await expect(grid(page)).toHaveCount(0);
+  await expect(grid(page).getByRole("button")).toHaveCount(0);
+  await expect(grid(page)).toBeVisible();
   await expect.poll(async () => (await saved(page)).favorites).toEqual([]);
   // The tab itself is untouched.
   await expect(row(page, "scratch")).toBeVisible();
 });
 
-test("closing a favorite tab takes it off the grid", async ({ page }) => {
+test("closing a favorite tab takes it off the bar, which stays", async ({ page }) => {
   await row(page, "scratch").click({ button: "right" });
   await menuItem(page, "Add to favorites").click();
   await expect(favorite(page, "scratch")).toBeVisible();
 
   await row(page, "scratch").click({ button: "right" });
   await menuItem(page, "Close").click();
-  await expect(grid(page)).toHaveCount(0);
+  await expect(grid(page).getByRole("button")).toHaveCount(0);
+  await expect(grid(page)).toBeVisible();
 });
 
 test("the Pinned list is a list of its own above the tree and holds the pinned tabs", async ({

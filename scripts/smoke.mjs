@@ -42,6 +42,10 @@
 // (the session of the run was a child of that process, not of the app) and "SMOKE DAEMON stopped
 // norend pid <n> ..." (the run asked it to stop and it ended with code 0). After each run the pid
 // is checked here too, and a daemon of the run that is still alive is ended and fails the smoke.
+// The runs `--smoke` and `--smoke-deeplink`, which open the first shell of the default profile with no
+// folder, must also print "SMOKE first shell cwd: <folder>" before their OK line (NOR-F20-06): the
+// folder that shell opened in, which has to be the folder of the user (read here from the system,
+// not from the app) and never the folder of the process, which is where the app was started.
 // Every run, of every mode, must also print "SMOKE focus never taken: <n> look(s) ..." before its OK
 // line (NOR-F1-08-b): a thread looks at the foreground window of the system from the first
 // instruction of the program and the run fails if a window of the program was ever in front, so a
@@ -62,7 +66,7 @@ import {
   readFileSync,
   rmSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cargoEnv } from "./game-mode.mjs";
@@ -167,8 +171,40 @@ function requireFocusLine(stdout, mode) {
   }
 }
 
+const FIRST_SHELL_LINE = "SMOKE first shell cwd:";
+
+/** The same folder, whatever the separator, a trailing one or (on Windows) the case. */
+function sameFolder(a, b) {
+  const key = (path) => {
+    const text = path.replaceAll("\\", "/").replace(/\/+$/, "");
+    return isWindows ? text.toLowerCase() : text;
+  };
+  return key(a) === key(b);
+}
+
+/**
+ * Requires the line with the folder the first shell opened in, before the OK line of the run, and
+ * that folder to be the folder of the user as this script sees it. The run itself already fails when
+ * the shell is in the folder of the process; this is the check from the outside.
+ */
+function requireFirstShellFolder(stdout, mode) {
+  const line = new RegExp(`^${FIRST_SHELL_LINE} (.+)$`, "m").exec(stdout);
+  if (line === null) fail(`${FIRST_SHELL_LINE} not found in the output of noren ${mode}`);
+  const ok = /^SMOKE (?:[A-Z]+ )?OK\b/m.exec(stdout);
+  if (ok !== null && ok.index < line.index) {
+    fail(`${FIRST_SHELL_LINE} came after the OK line in the output of noren ${mode}`);
+  }
+  const folder = line[1].trim();
+  const user = homedir();
+  if (!sameFolder(folder, user)) {
+    fail(
+      `the first shell of noren ${mode} opened in ${folder}, not in the folder of the user ${user}`,
+    );
+  }
+}
+
 /** Runs the binary in a hidden smoke mode and requires every text in `required` on stdout. */
-function runSmoke(args, required) {
+function runSmoke(args, required, { firstShell = false } = {}) {
   const run = spawnSync(binary, args, {
     cwd: root,
     encoding: "utf8",
@@ -189,6 +225,7 @@ function runSmoke(args, required) {
     if (!stdout.includes(text)) fail(`${text} not found in the output of noren ${args[0]}`);
   }
   requireFocusLine(stdout, args[0]);
+  if (firstShell) requireFirstShellFolder(stdout, args[0]);
 }
 
 // The effect asked for is the one of the system the run is on (see smoke_effect in smoke.rs).
@@ -209,6 +246,7 @@ runSmoke(
     "SMOKE browser pane refused file, javascript, data, noren and app addresses",
     "SMOKE browser pane closed",
   ],
+  { firstShell: true },
 );
 
 // The deep-link run: a folder made here (its name has a space) goes in a noren://open link, and the
@@ -224,6 +262,7 @@ try {
       "SMOKE tray icon none",
       "SMOKE DEEPLINK OK",
     ],
+    { firstShell: true },
   );
 } finally {
   rmSync(folder, { recursive: true, force: true });

@@ -29,7 +29,8 @@ pub struct Profile {
     pub program: String,
     pub args: Vec<String>,
     /// Folder a session of this profile starts in when the call that opens it names none. `None`
-    /// for a detected profile (the shell starts where the process does).
+    /// for a detected profile (the shell starts in the folder of the user, see
+    /// [`crate::default_start_dir`]).
     pub cwd: Option<String>,
     /// Whether Noren loads its shell integration script into this shell (see
     /// [`Profile::spawn_spec_with_integration`]). `true` for every detected profile.

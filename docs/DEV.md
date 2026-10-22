@@ -301,6 +301,27 @@ foreground window of the system (...)`. `scripts/smoke.mjs` requires the line in
 - **It does not measure by taking the focus.** The numbers above were measured with the shot mode
   before the fix; the check now is the 0 violations in a series of `pnpm smoke` runs, and the watch.
 
+## Where a new tab opens
+
+A session with no folder (a new tab, a profile without a start folder) opens in the folder of the
+user: `USERPROFILE` on Windows, `HOME` elsewhere. It used to open in the folder of the app process,
+which for an installed app is the install folder (`%LOCALAPPDATA%\Noren`): the app sent its own
+current folder to `norend` with every session that had none (`prepare_spec` in `daemon_link.rs`).
+Now the app sends no folder, and `SessionManager::spawn` is the one place that decides
+(`noren_core::default_start_dir`; `start_dir_with` takes the environment and the test for "is a
+folder" as arguments, for a test with its own). A folder that was given (a profile, a project
+action, a `noren://` link) and the last folder of a restored tab are given folders and win. A user
+folder that is missing or cannot be read falls back to the folder of the process, without an error.
+
+- `cargo test -p noren-core --test start_dir` opens real shells (`cmd /c cd`, `sh -c pwd -P`) with the
+  process in another folder than the folder of the "user", a folder the test makes in the temp folder
+  and removes.
+- `daemon_link.rs` has the same through a daemon (`a_tab_without_a_folder_opens_in_the_folder_of_the_user_and_not_where_the_app_is`).
+- `pnpm smoke` (the `--smoke` and `--smoke-deeplink` runs) types a command that prints the folder of
+  the first shell, prints `SMOKE first shell cwd: <folder>` before the OK line and fails when that is
+  not the folder of the user (or is the folder of the process). `scripts/smoke.mjs` requires the line
+  and compares the folder with `os.homedir()`, read outside the app.
+
 ## Security audits
 
 Run them before a release and whenever a dependency changes; the results of the last review are in [SECURITY_REVIEW.md](SECURITY_REVIEW.md).

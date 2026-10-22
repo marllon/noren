@@ -14,7 +14,7 @@ use noren_core::{
     BENCH_DIR_NAME, BackgroundStore, BenchStore, CONFIG_FILE_NAME, ConfigStore, MODS_DIR_NAME,
     ModStore, PLUGINS_DIR_NAME, PluginStore, ProcessSource, SCROLLBACK_DIR_NAME, ScrollbackStore,
     SessionId, StateStore, SystemProcesses, THEMES_DIR_NAME, ThemeStore, UpdateError, WindowEffect,
-    is_powershell,
+    default_start_dir, is_powershell,
 };
 use serde_json::{Value, json};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -476,14 +476,31 @@ fn check_session(app: &AppHandle, deadline: Instant) -> Result<(), String> {
     print_line(&format!(
         "SMOKE session {id} started with profile {profile}"
     ));
+    let profile_found = state.find_profile(Some(&profile));
+    let program = profile_found
+        .as_ref()
+        .map_or_else(|_| String::new(), |p| p.program.clone());
 
     // While the shell is alive: it runs in the daemon of the run, not in the app.
     let in_daemon = check_runs_in_daemon(&state, id);
-    let result = in_daemon.and_then(|()| wait_for_marker(&state, SessionId(id), &rx, deadline));
+    let command = first_shell_command(&program);
+    let result =
+        in_daemon.and_then(|()| wait_for_marker(&state, SessionId(id), &rx, deadline, &command));
     let _ = state.sessions.kill(SessionId(id));
     let seen = result?;
-    let integrated = state
-        .find_profile(Some(&profile))
+    // The first shell opened in the folder of the user, not where the app was started.
+    if let Ok(found) = &profile_found {
+        let user_folder_applies =
+            found.remote.is_none() && found.cwd.is_none() && !is_wsl(&program);
+        check_first_shell_folder(
+            &seen,
+            user_folder_applies,
+            default_start_dir().as_deref(),
+            std::env::current_dir().ok().as_deref(),
+        )?;
+    }
+    let integrated = profile_found
+        .as_ref()
         .is_ok_and(|p| p.inject_integration && is_powershell(&p.program));
     if integrated && !contains_bytes(&seen, PROMPT_START_MARK) {
         return Err(format!(
@@ -529,15 +546,94 @@ pub(crate) fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
         .any(|window| window == needle)
 }
 
+/// What the first shell of a run is told: print the folder it is in on a line that starts with
+/// [`FOLDER_PREFIX`], then the marker. One line, so the marker still comes after the folder in the
+/// output; no quotes, so no shell has anything to match; `%CD%` for cmd and `$PWD` for the rest
+/// (PowerShell and the POSIX shells both have it).
+fn first_shell_command(program: &str) -> String {
+    let folder = if is_cmd(program) { "%CD%&" } else { "$PWD;" };
+    format!("echo {FOLDER_PREFIX}{folder} echo {SMOKE_MARKER}")
+}
+
+/// Start of the line on which the first shell of a run prints its folder.
+const FOLDER_PREFIX: &str = "NOREN-CWD:";
+
+fn program_stem(program: &str) -> String {
+    let name = program.rsplit(['/', '\\']).next().unwrap_or(program);
+    let name = name.to_ascii_lowercase();
+    name.strip_suffix(".exe").unwrap_or(&name).to_owned()
+}
+
+fn is_cmd(program: &str) -> bool {
+    program_stem(program) == "cmd"
+}
+
+/// WSL starts in the folder of Windows it was started from, seen from Linux, so the folder of the
+/// user does not apply to it as a path.
+fn is_wsl(program: &str) -> bool {
+    program_stem(program) == "wsl"
+}
+
+/// The folder the shell printed: the last line that starts with [`FOLDER_PREFIX`] and is not the
+/// typed command echoed back (that one still holds the `%CD%` or the `$PWD`).
+fn printed_folder(output: &[u8]) -> Option<String> {
+    let text = strip_ansi(&String::from_utf8_lossy(output));
+    text.split(['\n', '\r'])
+        .filter_map(|line| line.trim().strip_prefix(FOLDER_PREFIX))
+        .map(str::trim)
+        .rfind(|folder| !folder.is_empty() && !folder.contains(['%', '$']))
+        .map(str::to_owned)
+}
+
+/// Prints `SMOKE first shell cwd: <folder>` for the folder the first shell opened in and fails when
+/// that is not the folder of the user. When `user_folder_applies` is false (a profile with a folder
+/// of its own, a shell on another machine, WSL) the folder is only reported. When the folder of the
+/// user is unknown the run cannot tell, so it only fails if the shell is in the folder of the
+/// process and that folder was not asked for.
+fn check_first_shell_folder(
+    output: &[u8],
+    user_folder_applies: bool,
+    user: Option<&Path>,
+    process: Option<&Path>,
+) -> Result<(), String> {
+    let folder = printed_folder(output).ok_or_else(|| {
+        format!(
+            "the first shell printed no {FOLDER_PREFIX} line; output ended with {:?}",
+            visible_tail(output)
+        )
+    })?;
+    print_line(&format!("SMOKE first shell cwd: {folder}"));
+    if !user_folder_applies {
+        return Ok(());
+    }
+    let same = |a: &str, b: &Path| deeplink::same_folder(a, &b.to_string_lossy());
+    match (user, process) {
+        (Some(user), _) if same(&folder, user) => Ok(()),
+        (Some(user), Some(process)) if same(&folder, process) => Err(format!(
+            "the first shell opened in the folder of the process ({folder}), not in the folder of the user ({})",
+            user.display()
+        )),
+        (Some(user), _) => Err(format!(
+            "the first shell opened in {folder}, not in the folder of the user ({})",
+            user.display()
+        )),
+        (None, Some(process)) if same(&folder, process) => Err(format!(
+            "the first shell opened in the folder of the process ({folder}) and the folder of the user is unknown"
+        )),
+        (None, _) => Ok(()),
+    }
+}
+
 fn wait_for_marker(
     state: &AppState,
     id: SessionId,
     rx: &mpsc::Receiver<Vec<u8>>,
     deadline: Instant,
+    command: &str,
 ) -> Result<Vec<u8>, String> {
     state
         .sessions
-        .write(id, format!("echo {SMOKE_MARKER}\r").as_bytes())
+        .write(id, format!("{command}\r").as_bytes())
         .map_err(|e| e.to_string())?;
 
     let mut seen: Vec<u8> = Vec::new();
@@ -1120,6 +1216,57 @@ mod tests {
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    #[test]
+    fn the_first_shell_is_told_to_print_its_folder_before_the_marker() {
+        let powershell = first_shell_command("C:\\Program Files\\PowerShell\\7\\pwsh.exe");
+        assert_eq!(powershell, "echo NOREN-CWD:$PWD; echo noren-smoke-ok");
+        assert_eq!(first_shell_command("/bin/zsh"), powershell);
+        assert_eq!(
+            first_shell_command("C:\\Windows\\System32\\cmd.exe"),
+            "echo NOREN-CWD:%CD%& echo noren-smoke-ok"
+        );
+    }
+
+    #[test]
+    fn the_printed_folder_is_the_line_the_shell_printed_not_the_command_echoed() {
+        let output = b"\x1b[32mPS C:\\x>\x1b[0m echo NOREN-CWD:$PWD; echo noren-smoke-ok\r\n\
+            NOREN-CWD:C:\\Users\\me\r\nnoren-smoke-ok\r\n";
+        assert_eq!(printed_folder(output).as_deref(), Some("C:\\Users\\me"));
+        let cmd = b"C:\\x>echo NOREN-CWD:%CD%& echo noren-smoke-ok\r\nNOREN-CWD:C:\\Users\\me\r\n";
+        assert_eq!(printed_folder(cmd).as_deref(), Some("C:\\Users\\me"));
+        assert_eq!(printed_folder(b"echo NOREN-CWD:$PWD\r\n"), None);
+        assert_eq!(printed_folder(b"nothing\r\n"), None);
+    }
+
+    fn first_shell_output(folder: &str) -> Vec<u8> {
+        format!("echo NOREN-CWD:$PWD\r\nNOREN-CWD:{folder}\r\nnoren-smoke-ok\r\n").into_bytes()
+    }
+
+    #[test]
+    fn the_first_shell_must_be_in_the_folder_of_the_user_and_not_in_the_folder_of_the_process() {
+        let user = Path::new("C:\\Users\\me");
+        let process = Path::new("C:\\Users\\me\\AppData\\Local\\Noren");
+        let check = |folder: &str, applies: bool, user: Option<&Path>| {
+            check_first_shell_folder(&first_shell_output(folder), applies, user, Some(process))
+        };
+        // Same folder, however it is written.
+        assert!(check("C:\\Users\\me", true, Some(user)).is_ok());
+        assert!(check("c:/users/me/", true, Some(user)).is_ok());
+        // The folder of the process, which is the bug this check exists for.
+        let error = check("C:\\Users\\me\\AppData\\Local\\Noren", true, Some(user)).unwrap_err();
+        assert!(error.contains("folder of the process"), "{error}");
+        // Any other folder is wrong too.
+        let error = check("D:\\work", true, Some(user)).unwrap_err();
+        assert!(error.contains("not in the folder of the user"), "{error}");
+        // A profile with a folder of its own, WSL or another machine: reported, not compared.
+        assert!(check("D:\\work", false, Some(user)).is_ok());
+        // The folder of the user is unknown: only the folder of the process is refused.
+        assert!(check("D:\\work", true, None).is_ok());
+        assert!(check("C:\\Users\\me\\AppData\\Local\\Noren", true, None).is_err());
+        // A shell that printed no folder is a failure, not a pass.
+        assert!(check_first_shell_folder(b"noren-smoke-ok\r\n", true, Some(user), None).is_err());
     }
 
     #[test]

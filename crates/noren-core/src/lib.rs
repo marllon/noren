@@ -89,7 +89,10 @@ pub use profiles::{
     expand_env_vars,
 };
 pub use project::{ACTIONS_FILE_PATH, ShortRunError, read_project_file, run_short};
-pub use pty::{ExitInfo, PtyError, SessionEvent, SessionId, SessionManager, SpawnSpec};
+pub use pty::{
+    ExitInfo, PtyError, SessionEvent, SessionId, SessionManager, SpawnSpec, default_start_dir,
+    start_dir_with,
+};
 pub use scrollback::{
     MAX_SCROLLBACK_BYTES, SCROLLBACK_DIR_NAME, ScrollbackError, ScrollbackStore, is_valid_pane_id,
 };

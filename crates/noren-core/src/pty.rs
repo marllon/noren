@@ -12,9 +12,10 @@
 //! The exit event is therefore always the last event of a session, after every output batch.
 
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::fmt;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -48,12 +49,64 @@ impl fmt::Display for SessionId {
     }
 }
 
+/// The folder a shell opens in when its spec names none: the folder of the user (`USERPROFILE` on
+/// Windows, `HOME` elsewhere), read through `env` and accepted only when `is_dir` says it is an
+/// existing folder and the path is absolute.
+///
+/// `None` when the variable is unset, empty, relative or names something that is not a folder (a
+/// stale profile, a drive that is gone, a folder that cannot be read). The caller then starts the
+/// process without a folder, so it inherits the current directory of the process: a shell that
+/// opens somewhere unexpected is better than a tab that does not open at all.
+pub fn start_dir_with(
+    windows: bool,
+    env: impl Fn(&str) -> Option<OsString>,
+    is_dir: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    let name = if windows { "USERPROFILE" } else { "HOME" };
+    let value = env(name).filter(|value| !value.is_empty())?;
+    let path = PathBuf::from(value);
+    (path.is_absolute() && is_dir(&path)).then_some(path)
+}
+
+/// [`start_dir_with`] for this machine and the environment of this process.
+pub fn default_start_dir() -> Option<PathBuf> {
+    start_dir_of(&[])
+}
+
+/// [`default_start_dir`] where the variables of `spec_env` win over the environment of the
+/// process, as they do for the child. A session made by the daemon for the app depends on this:
+/// the environment of `norend` may be days old, and the app sends its own along with the spec.
+fn start_dir_of(spec_env: &[(String, String)]) -> Option<PathBuf> {
+    start_dir_with(
+        cfg!(windows),
+        |name| {
+            spec_env
+                .iter()
+                .rev()
+                .find(|(key, _)| key_matches(key, name))
+                .map(|(_, value)| OsString::from(value))
+                .or_else(|| std::env::var_os(name))
+        },
+        Path::is_dir,
+    )
+}
+
+/// Windows variable names do not care about case.
+fn key_matches(key: &str, name: &str) -> bool {
+    if cfg!(windows) {
+        key.eq_ignore_ascii_case(name)
+    } else {
+        key == name
+    }
+}
+
 /// What to run and how to size its terminal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpawnSpec {
     pub program: String,
     pub args: Vec<String>,
-    /// Working directory; the current directory of the process when `None`.
+    /// Working directory; the folder of the user (see [`default_start_dir`]) when `None`, and the
+    /// current directory of the process only when that folder cannot be found.
     pub cwd: Option<PathBuf>,
     /// Extra environment variables, applied on top of the inherited environment.
     pub env: Vec<(String, String)>,
@@ -210,7 +263,10 @@ impl SessionManager {
 
         let mut cmd = CommandBuilder::new(&spec.program);
         cmd.args(&spec.args);
-        if let Some(cwd) = &spec.cwd {
+        // The one place where a session without a folder gets one: the process of the app or of
+        // `norend` sits in the install folder (or wherever it was launched from), which is not a
+        // place for a new shell to open.
+        if let Some(cwd) = spec.cwd.clone().or_else(|| start_dir_of(&spec.env)) {
             cmd.cwd(cwd);
         }
         cmd.env("TERM", "xterm-256color");
@@ -565,6 +621,62 @@ mod tests {
         assert_eq!(chunk, b"a\x1b[?1004hb\x1b[6n");
         let mut other = b"plain".to_vec();
         assert!(!strip_cursor_query(&mut other));
+    }
+
+    /// An environment of the given pairs, for [`start_dir_with`].
+    fn env_of(pairs: Vec<(&'static str, PathBuf)>) -> impl Fn(&str) -> Option<OsString> {
+        move |name| {
+            pairs
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| value.clone().into_os_string())
+        }
+    }
+
+    #[test]
+    fn the_start_folder_is_userprofile_on_windows_and_home_elsewhere() {
+        let (win, unix) = (
+            std::env::temp_dir().join("win"),
+            std::env::temp_dir().join("unix"),
+        );
+        let both = || vec![("USERPROFILE", win.clone()), ("HOME", unix.clone())];
+        assert_eq!(
+            start_dir_with(true, env_of(both()), |_| true),
+            Some(win.clone())
+        );
+        assert_eq!(start_dir_with(false, env_of(both()), |_| true), Some(unix));
+    }
+
+    #[test]
+    fn a_start_folder_that_cannot_be_used_is_none() {
+        let folder = std::env::temp_dir();
+        // Unset, empty, relative, or not a folder (gone, unreadable): the caller falls back to
+        // the current directory of the process instead of failing.
+        assert_eq!(start_dir_with(false, env_of(vec![]), |_| true), None);
+        let with = |value: PathBuf| env_of(vec![("HOME", value)]);
+        assert_eq!(start_dir_with(false, with(PathBuf::new()), |_| true), None);
+        assert_eq!(
+            start_dir_with(false, with(PathBuf::from("relative/folder")), |_| true),
+            None
+        );
+        assert_eq!(start_dir_with(false, with(folder.clone()), |_| false), None);
+        // The variable of the other platform is not a stand-in.
+        assert_eq!(
+            start_dir_with(false, env_of(vec![("USERPROFILE", folder)]), |_| true),
+            None
+        );
+    }
+
+    #[test]
+    fn the_variables_of_the_spec_win_over_the_process_for_the_start_folder() {
+        let folder = std::env::temp_dir();
+        let name = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+        // The last entry wins, as it does for the child.
+        let spec_env = vec![
+            (name.to_owned(), "does-not-exist-and-is-relative".to_owned()),
+            (name.to_owned(), folder.display().to_string()),
+        ];
+        assert_eq!(start_dir_of(&spec_env), Some(folder));
     }
 
     #[test]

@@ -22,9 +22,11 @@
 //! does not know which one it has. The callback is always called from a thread of this module, never
 //! from the thread that called `spawn`: the caller may hold a lock the callback needs.
 //!
-//! What a session of the daemon inherits is the environment of `norend`, not of the app, and its
-//! folder is the folder of `norend`, so the app sends its own environment and its current folder with
-//! every `Create` (`prepare_spec`): a shell opens the way it would have inside the app.
+//! What a session of the daemon inherits is the environment of `norend`, not of the app, so the app
+//! sends its own environment with every `Create` (`prepare_spec`): a shell opens the way it would
+//! have inside the app. The folder is not sent when the tab has none: the session manager of the
+//! daemon opens such a shell in the folder of the user, read from that environment (never in the
+//! folder of `norend` or of the app, which is the install folder).
 //!
 //! When the connection to the daemon ends (it was stopped, it died) every session of the app is
 //! reported as ended, the calls on them fail, and the next `spawn` looks for the daemon again
@@ -816,7 +818,7 @@ impl Link {
 
     fn spawn(&self, spec: SpawnSpec, sink: Sink) -> Result<SessionId, SessionError> {
         let conn = self.connection()?;
-        let spec = prepare_spec(spec, std::env::vars_os(), std::env::current_dir().ok());
+        let spec = prepare_spec(spec, std::env::vars_os());
         let session = self.call(async move {
             let created = conn.client.create(&spec).await?;
             let (done, attached) = oneshot::channel();
@@ -1329,16 +1331,13 @@ fn call_sink(sink: &mut Sink, event: SessionEvent<'_>) -> bool {
 
 /// The spec sent to the daemon. A process of the daemon starts with the environment and the folder
 /// of `norend`, which may be days older than this run, so the environment of the app goes along
-/// (the entries of the spec itself last, so they win) and the folder of the app stands in for a
-/// spec without one.
+/// (the entries of the spec itself last, so they win). A spec without a folder stays without one:
+/// the folder of the app is the install folder, not a place for a shell to open, and the session
+/// manager of the daemon gives such a spec the folder of the user, read from this environment.
 fn prepare_spec(
     mut spec: SpawnSpec,
     app_env: impl Iterator<Item = (OsString, OsString)>,
-    app_cwd: Option<PathBuf>,
 ) -> SpawnSpec {
-    if spec.cwd.is_none() {
-        spec.cwd = app_cwd;
-    }
     let mut env: Vec<(String, String)> = app_env
         .filter_map(|(name, value)| {
             let (name, value) = (name.into_string().ok()?, value.into_string().ok()?);
@@ -1668,6 +1667,19 @@ mod tests {
             }
         }
 
+        /// Waits until the output contains `needle`.
+        fn wait_for_text(&self, needle: &str) {
+            let deadline = Instant::now() + Duration::from_secs(40);
+            while !self.text().contains(needle) {
+                assert!(
+                    Instant::now() < deadline,
+                    "no {needle:?} in the output; it printed {:?}",
+                    self.text()
+                );
+                thread::sleep(Duration::from_millis(30));
+            }
+        }
+
         /// Waits for any output at all (the first one: see `ONE_AT_A_TIME`).
         fn wait_for_output(&self) {
             let deadline = Instant::now() + Duration::from_secs(40);
@@ -1744,6 +1756,56 @@ mod tests {
         (id, recorder)
     }
 
+    /// A folder of its own in the temp folder that stands for the folder of the user, removed when
+    /// the value is dropped. It is never the folder of the process or of the daemon.
+    struct UserFolder(PathBuf);
+
+    impl UserFolder {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "noren-user-folder-{}-{}",
+                std::process::id(),
+                COUNTER.fetch_add(1, Ordering::SeqCst)
+            ));
+            std::fs::create_dir_all(&path).expect("create the folder");
+            Self(path)
+        }
+
+        /// The last part of the path, which is what the shell prints and the test looks for.
+        fn printed(&self) -> String {
+            self.0.file_name().unwrap().to_string_lossy().into_owned()
+        }
+    }
+
+    impl Drop for UserFolder {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// The shell of the tests with `user` as the folder of the user in its environment (the entries
+    /// of the spec go last, so they win over what the app sends) and `cwd` as its own folder.
+    fn shell_spec_for(user: &UserFolder, cwd: Option<&Path>) -> SpawnSpec {
+        let folder = user.0.display().to_string();
+        SpawnSpec {
+            cwd: cwd.map(Path::to_owned),
+            env: vec![
+                ("USERPROFILE".to_owned(), folder.clone()),
+                ("HOME".to_owned(), folder),
+            ],
+            ..shell_spec()
+        }
+    }
+
+    fn start_shell_for(sessions: &Sessions, spec: SpawnSpec) -> (SessionId, Recorder) {
+        let recorder = Recorder::default();
+        let id = sessions
+            .spawn(spec, recorder.sink())
+            .expect("start a shell");
+        recorder.wait_for_output();
+        (id, recorder)
+    }
+
     fn process_exists(pid: u32) -> bool {
         SystemProcesses::new()
             .snapshot()
@@ -1786,11 +1848,7 @@ mod tests {
     fn the_environment_of_the_app_goes_first_and_the_spec_has_the_last_word() {
         let mut spec = shell_spec();
         spec.env = vec![("PATH".to_owned(), "from-the-spec".to_owned())];
-        let sent = prepare_spec(
-            spec,
-            os(&[("PATH", "from-the-app"), ("HOME", "/home/me")]),
-            None,
-        );
+        let sent = prepare_spec(spec, os(&[("PATH", "from-the-app"), ("HOME", "/home/me")]));
         assert_eq!(
             sent.env,
             vec![
@@ -1813,21 +1871,18 @@ mod tests {
                 ("OK", "fine"),
                 ("NUL", "a\0b"),
             ]),
-            None,
         );
         assert_eq!(sent.env, vec![("OK".to_owned(), "fine".to_owned())]);
     }
 
     #[test]
-    fn the_folder_of_the_app_stands_in_for_a_missing_one_and_never_replaces_one() {
-        let app = Some(PathBuf::from("app-folder"));
-        let without = prepare_spec(shell_spec(), os(&[]), app.clone());
-        assert_eq!(without.cwd, app);
+    fn a_spec_without_a_folder_stays_without_one_and_a_given_folder_is_kept() {
+        // The folder of the app is the install folder: it must never stand in for a missing one.
+        assert_eq!(prepare_spec(shell_spec(), os(&[])).cwd, None);
         let mut with = shell_spec();
         with.cwd = Some(PathBuf::from("tab-folder"));
-        let kept = prepare_spec(with, os(&[]), app);
+        let kept = prepare_spec(with, os(&[]));
         assert_eq!(kept.cwd, Some(PathBuf::from("tab-folder")));
-        assert_eq!(prepare_spec(shell_spec(), os(&[]), None).cwd, None);
     }
 
     #[test]
@@ -2932,6 +2987,59 @@ mod tests {
         sessions(settings(endpoint, Some(missing_program())))
     }
 
+    // ---- where a shell opens (NOR-F20-06) ----
+
+    /// The shell of a daemon opens in the folder of the user when its tab names none, and never in
+    /// the folder of the process of the app, which is the install folder. The process of the test
+    /// is in the folder of the crate, which stands for the install folder here.
+    #[test]
+    fn a_tab_without_a_folder_opens_in_the_folder_of_the_user_and_not_where_the_app_is() {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let endpoint = unique_endpoint();
+        let _daemon = start_daemon(&endpoint);
+        let sessions = sessions_for(&endpoint);
+        let user = UserFolder::new();
+        let app_folder = std::env::current_dir().unwrap();
+        let app_name = app_folder
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        assert_ne!(user.printed(), app_name);
+
+        let (id, shell) = start_shell_for(&sessions, shell_spec_for(&user, None));
+        sessions.write(id, CWD_COMMAND).expect("write");
+        shell.wait_for_text(&user.printed());
+        assert!(
+            !shell.text().contains(&app_name),
+            "the shell opened where the app is: {:?}",
+            shell.text()
+        );
+        sessions.kill(id).expect("release it");
+    }
+
+    /// A folder a tab was given (profile, project action, link) or the last one a restored tab
+    /// reported is the same thing for the daemon: it wins over the folder of the user.
+    #[test]
+    fn a_given_folder_and_a_restored_one_still_win_over_the_folder_of_the_user() {
+        let _turn = lock(&ONE_AT_A_TIME);
+        let endpoint = unique_endpoint();
+        let _daemon = start_daemon(&endpoint);
+        let sessions = sessions_for(&endpoint);
+        let user = UserFolder::new();
+        let given = UserFolder::new();
+
+        let (id, shell) = start_shell_for(&sessions, shell_spec_for(&user, Some(&given.0)));
+        sessions.write(id, CWD_COMMAND).expect("write");
+        shell.wait_for_text(&given.printed());
+        assert!(
+            !shell.text().contains(&user.printed()),
+            "{:?}",
+            shell.text()
+        );
+        sessions.kill(id).expect("release it");
+    }
+
     // ---- a daemon that has to be started ----
 
     #[test]
@@ -2969,20 +3077,13 @@ mod tests {
             "the shell is a child of norend, not of the app"
         );
 
-        // It starts where the app is, not where norend is (the temporary folder).
-        sessions.write(id, CWD_COMMAND).expect("write");
-        let here = std::env::current_dir().unwrap();
-        let name = here.file_name().unwrap().to_string_lossy().into_owned();
-        let deadline = Instant::now() + Duration::from_secs(40);
-        while !shell.text().contains(&name) {
-            assert!(
-                Instant::now() < deadline,
-                "the shell is not in {}: {:?}",
-                here.display(),
-                shell.text()
-            );
-            thread::sleep(Duration::from_millis(30));
-        }
+        // It starts in the folder of the user, which the app sends along with its environment:
+        // not where the app is (the install folder) and not where norend is (the temporary one).
+        let user = UserFolder::new();
+        let (second, second_shell) = start_shell_for(&sessions, shell_spec_for(&user, None));
+        sessions.write(second, CWD_COMMAND).expect("write");
+        second_shell.wait_for_text(&user.printed());
+        sessions.kill(second).expect("release it");
 
         let stopped = sessions.stop_daemon().expect("stop");
         assert_eq!(

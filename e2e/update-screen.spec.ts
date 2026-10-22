@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
-import { cancelSettings, openSettings, seedConfig, settingsScreen } from "./settings-fixture";
+import { closeSettings, openSettings, seedConfig, settingsScreen } from "./settings-fixture";
 
 // The screen of the update of the app (NOR-F20-02b), in the web build with the `FakeBackend` and
 // the release seeded under `noren.web.update`: the Updates section of the settings, the palette
@@ -165,7 +165,7 @@ test.describe("the Updates section", () => {
     expect(await installed(page)).toEqual([]);
     expect(await calls(page)).toEqual(["updateCheck"]);
     // The found update is kept while the settings are closed; opening them shows it again.
-    await cancelSettings(page);
+    await closeSettings(page);
     await page.waitForTimeout(300);
     const again = await openUpdates(page);
     await expect(statusLine(again)).toHaveText("Noren 0.2.0 is available. You have 0.1.0.");
@@ -328,7 +328,7 @@ test.describe("the palette command", () => {
     await start(page, { release: { version: "0.1.0" } });
     await runCommand(page, "check for updates", "Check for updates");
     await expect(statusLine(updates(page))).toHaveText("Noren 0.1.0 is the latest version.");
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("a build with no key says so from the palette too", async ({ page }) => {

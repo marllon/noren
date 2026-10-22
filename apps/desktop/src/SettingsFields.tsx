@@ -78,6 +78,26 @@ export function Slider({
   );
 }
 
+/**
+ * The text of a box while the person is in it. The settings are written as they are typed, and what
+ * the file takes may be written differently from what was typed (`0.80` is the `0.8` of the file, a
+ * name loses its trailing blank), so the box keeps the typed text until the person leaves it; the
+ * text then follows `value` again, which is what the file has.
+ */
+function useTyped(value: string) {
+  const [typed, setTyped] = useState<string>();
+  return {
+    shown: typed ?? value,
+    /** Keeps `text` in the box and gives it back, for the handler that reports it. */
+    type: (text: string): string => {
+      setTyped(text);
+      return text;
+    },
+    /** The box is left, or something else (a slider, a chooser) sets the value. */
+    leave: (): void => setTyped(undefined),
+  };
+}
+
 export interface NumberBoxProps {
   label: string;
   /** The path of the field in the schema, whose description is the tooltip of the box. */
@@ -114,6 +134,7 @@ export function NumberBox({
 }: NumberBoxProps) {
   const hintId = useId();
   const explainId = useId();
+  const typed = useTyped(value);
   return (
     <div className={wide ? "settings-number settings-wide" : "settings-number"}>
       <label className="settings-option" title={describe(field)}>
@@ -125,13 +146,14 @@ export function NumberBox({
           autoComplete={text || secret ? "off" : undefined}
           // An empty box beside a slider (a setting that is not set) shows the number the handle is at.
           placeholder={slider !== undefined && value === "" ? sliderText(slider.value) : undefined}
-          value={value}
+          value={typed.shown}
           aria-invalid={problem !== undefined ? true : undefined}
           aria-describedby={describedBy(
             problem !== undefined ? hintId : undefined,
             hint !== undefined ? explainId : undefined,
           )}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => onChange(typed.type(event.target.value))}
+          onBlur={typed.leave}
         />
       </label>
       {hint !== undefined && (
@@ -140,7 +162,13 @@ export function NumberBox({
         </p>
       )}
       {slider !== undefined && (
-        <Slider {...slider} onChange={(chosen) => onChange(sliderText(chosen))} />
+        <Slider
+          {...slider}
+          onChange={(chosen) => {
+            typed.leave();
+            onChange(sliderText(chosen));
+          }}
+        />
       )}
       {extra}
       {problem !== undefined && (
@@ -160,6 +188,8 @@ export interface PathBoxProps extends Omit<
   kind: PathKind;
   /** The chooser of the system (the Rust side only; the tests answer a fake one). */
   backend: Pick<Backend, "pickPath">;
+  /** What a path the chooser gave does (a choice, so it is not text on its way); `onChange` by default. */
+  onPick?(path: string): void;
 }
 
 /**
@@ -168,7 +198,7 @@ export interface PathBoxProps extends Omit<
  * other text). Closing the chooser without a choice changes nothing; a chooser that cannot be opened
  * says why under the row.
  */
-export function PathBox({ kind, backend, onChange, ...box }: PathBoxProps) {
+export function PathBox({ kind, backend, onChange, onPick, ...box }: PathBoxProps) {
   const t = useT();
   const [opening, setOpening] = useState(false);
   const [failure, setFailure] = useState<string>();
@@ -183,7 +213,7 @@ export function PathBox({ kind, backend, onChange, ...box }: PathBoxProps) {
       .then(
         (chosen) => {
           setOpening(false);
-          if (chosen !== null) onChange(chosen);
+          if (chosen !== null) (onPick ?? onChange)(chosen);
         },
         (error: unknown) => {
           setOpening(false);
@@ -427,6 +457,7 @@ export interface TextAreaProps {
 export function TextArea({ label, field, hint, value, problem, onChange }: TextAreaProps) {
   const hintId = useId();
   const explainId = useId();
+  const typed = useTyped(value);
   return (
     <div className="settings-number settings-wide">
       <label className="settings-option" title={describe(field)}>
@@ -435,13 +466,14 @@ export function TextArea({ label, field, hint, value, problem, onChange }: TextA
           rows={2}
           spellCheck={false}
           autoComplete="off"
-          value={value}
+          value={typed.shown}
           aria-invalid={problem !== undefined ? true : undefined}
           aria-describedby={describedBy(
             problem !== undefined ? hintId : undefined,
             hint !== undefined ? explainId : undefined,
           )}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => onChange(typed.type(event.target.value))}
+          onBlur={typed.leave}
         />
       </label>
       {hint !== undefined && (

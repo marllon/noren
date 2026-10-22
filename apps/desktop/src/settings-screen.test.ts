@@ -21,9 +21,11 @@ import {
   previewOf,
   settingsOf,
   settingsSetBy,
+  settledDraft,
   shownSettings,
 } from "./settings-screen";
 import type { SettingKey } from "./settings-screen";
+import { profileRowsOf, withNewProfile, withProfileEdited } from "./settings-profiles";
 
 /** What a plan says about the sections with their own boxes when none has a problem. */
 const NO_SECTION_PROBLEMS = {
@@ -31,6 +33,8 @@ const NO_SECTION_PROBLEMS = {
   archiveProblems: {},
   aiProblems: {},
   profileProblems: {},
+  profileIds: {},
+  pictureWaits: false,
 };
 
 const EVERYTHING: Config = {
@@ -446,5 +450,108 @@ describe("the window and the background in the settings screen", () => {
       backgroundOpacity: undefined,
       backgroundBlur: undefined,
     });
+  });
+});
+
+describe("settledDraft (NOR-F20-10c)", () => {
+  const FILE_AFTER: Config = {
+    appearance: { sidebar: { position: "right", width: 300 }, background: { opacity: 0.8 } },
+    terminal: { font: { size: 18 }, cursor: { blink: false } },
+    archive: { afterHours: 6 },
+    ai: { enabled: true },
+    mods: ["a.css"],
+  };
+
+  it("drops what the file has now, whatever the text of its box looks like", () => {
+    expect(
+      settledDraft(FILE_AFTER, {
+        side: "right",
+        width: "300",
+        backgroundOpacity: "0.80",
+        mods: ["a.css"],
+        terminal: { fontSize: "18", cursorBlink: false },
+        archive: { afterHours: "6.0" },
+        ai: { enabled: true },
+      }),
+    ).toEqual({});
+  });
+
+  it("keeps what the file does not have, and what has a reason under its box", () => {
+    expect(
+      settledDraft(FILE_AFTER, {
+        side: "left",
+        width: "9999",
+        mods: ["b.css"],
+        terminal: { fontSize: "99", cursorBlink: false, bell: "sound" },
+        archive: { afterHours: "0" },
+      }),
+    ).toEqual({
+      side: "left",
+      width: "9999",
+      mods: ["b.css"],
+      terminal: { fontSize: "99", bell: "sound" },
+      archive: { afterHours: "0" },
+    });
+  });
+
+  it("keeps a target of the AI that has a provider and no model, and drops one the file has", () => {
+    const withTarget: Config = {
+      ai: { providers: [], defaults: { ask: { provider: "ollama", model: "llama3" } } },
+    };
+    expect(
+      settledDraft(withTarget, {
+        ai: { ask: { provider: "ollama", model: "llama3" }, explain: { provider: "ollama" } },
+      }),
+    ).toEqual({ ai: { explain: { provider: "ollama" } } });
+  });
+
+  it("keeps the list of profiles while a row is not in the file yet, and drops it when the file is the list", () => {
+    const inFile: Config = {
+      profiles: [{ id: "dev", name: "Dev", program: "pwsh.exe" }],
+    };
+    const saved = profileRowsOf(inFile);
+    expect(settledDraft(inFile, { profiles: saved })).toEqual({});
+    const waiting = withNewProfile(saved);
+    expect(settledDraft(inFile, { profiles: waiting })).toEqual({ profiles: waiting });
+    const edited = withProfileEdited(saved, "dev", { program: "cmd.exe" });
+    expect(settledDraft(inFile, { profiles: edited })).toEqual({ profiles: edited });
+  });
+});
+
+describe("the path of the picture waits for its read (NOR-F20-10c)", () => {
+  const draft = { backgroundImage: "backgrounds/sky.png" };
+
+  it("is written once the window could read it, and not while it is being read or could not be", () => {
+    expect(planSave({}, draft, { picture: "ready" }).changes).toEqual([
+      { path: ["appearance", "background", "image"], value: "backgrounds/sky.png" },
+    ]);
+    for (const picture of ["loading", "failed", "none"] as const) {
+      const plan = planSave({}, draft, { picture });
+      expect(plan.changes, picture).toEqual([]);
+      expect(plan.pictureWaits, picture).toBe(true);
+    }
+  });
+
+  it("is written whatever the read says when the plan is not told about it (the other callers)", () => {
+    expect(planSave({}, draft).changes).toHaveLength(1);
+    expect(planSave({}, draft).pictureWaits).toBe(false);
+  });
+
+  it("does not hold back taking the picture away, or a path the file already has", () => {
+    const withPicture: Config = { appearance: { background: { image: "backgrounds/sky.png" } } };
+    expect(planSave(withPicture, { backgroundImage: "" }, { picture: "none" }).changes).toEqual([
+      { path: ["appearance", "background", "image"], value: null },
+    ]);
+    expect(planSave(withPicture, draft, { picture: "failed" })).toMatchObject({
+      changes: [],
+      pictureWaits: false,
+    });
+  });
+
+  it("is kept in the draft while it waits, and settled once the file has it", () => {
+    expect(settledDraft({}, draft, { picture: "loading" })).toEqual(draft);
+    expect(settledDraft({}, draft, { picture: "failed" })).toEqual(draft);
+    const written: Config = { appearance: { background: { image: "backgrounds/sky.png" } } };
+    expect(settledDraft(written, draft, { picture: "ready" })).toEqual({});
   });
 });

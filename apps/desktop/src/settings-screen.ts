@@ -1,4 +1,5 @@
 import {
+  AI_FUNCTIONS,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_WINDOW_EFFECT,
   MAX_BACKGROUND_BLUR,
@@ -388,10 +389,14 @@ function optionalFromText(
   }
 }
 
-/** What Save would do: the settings to write, and the boxes whose text is not a usable value. */
+/** What the screen writes for a draft: the settings to write, and the boxes whose text is not a usable value. */
 export interface SavePlan {
   changes: ConfigEdit[];
   problems: Partial<Record<NumberKey | OptionalKey, string>>;
+  /** The id each new profile row gets when `changes` are written, by the key of the row. */
+  profileIds: Record<string, string>;
+  /** The path of the picture in the draft is waiting to be read, so it is not written yet. */
+  pictureWaits: boolean;
   /** The problems of the Terminal section, by setting. */
   terminalProblems: TerminalProblems;
   /** The problems of the Auto-archive section, by setting. */
@@ -417,12 +422,21 @@ export function hasProblems(plan: SavePlan): boolean {
 export interface PlanContext {
   /** The ids of the shells of the machine, which a new profile cannot take. */
   takenProfileIds?: Iterable<string>;
+  /**
+   * How the read of the picture in the draft is going. A path is written only once the window could
+   * read it (a path typed on the way, or one that is not there, is not a picture the file should
+   * name; the thumbnail tells why). Left out, every path the schema takes is written.
+   */
+  picture?: PictureReading;
+  /** The new profile rows the person is still filling in: reported, but not added until they leave. */
+  heldProfileRows?: ReadonlySet<string>;
 }
 
 /**
  * The changes to write for a draft: only the settings whose value is not the one in force, in the
  * order of the file, so a setting put back where it was is not written. A box with a value that
- * cannot be used is a problem and writes nothing.
+ * cannot be used is a problem and writes nothing; the settings of the other boxes are still written,
+ * so one wrong box never holds the rest back.
  */
 export function planSave(
   config: Config,
@@ -448,6 +462,7 @@ export function planSave(
     }
   }
   const changes: ConfigEdit[] = [];
+  let pictureWaits = false;
   for (const key of KEYS) {
     const value = wanted[key];
     if (value === undefined || value === now[key]) continue;
@@ -461,7 +476,16 @@ export function planSave(
     if (typeof wanted === "object" && wanted !== null) {
       problems[key] = wanted.problem;
     } else if (wanted !== optionalValueOf(config, key)) {
-      changes.push({ path: OPTIONAL_PATHS[key], value: wanted });
+      if (
+        key === "backgroundImage" &&
+        wanted !== null &&
+        context.picture !== undefined &&
+        context.picture !== "ready"
+      ) {
+        pictureWaits = true;
+      } else {
+        changes.push({ path: OPTIONAL_PATHS[key], value: wanted });
+      }
     }
   }
   // The list of mods is written whole, and only when it is not the one in force.
@@ -470,16 +494,79 @@ export function planSave(
   }
   // The sections with their own plans, in the order of the file: terminal, profiles, archive, AI.
   const terminal = planTerminal(config, draft.terminal);
-  const profiles = planProfiles(config, draft.profiles, context.takenProfileIds);
+  const profiles = planProfiles(
+    config,
+    draft.profiles,
+    context.takenProfileIds,
+    context.heldProfileRows,
+  );
   const archive = planArchive(config, draft.archive);
   const ai = planAi(config, draft.ai);
   changes.push(...terminal.changes, ...profiles.changes, ...archive.changes, ...ai.changes);
   return {
     changes,
     problems,
+    pictureWaits,
+    profileIds: profiles.ids,
     terminalProblems: terminal.problems,
     archiveProblems: archive.problems,
     aiProblems: ai.problems,
     profileProblems: profiles.problems,
   };
+}
+
+/**
+ * What is left of a draft once the file has taken what was written: the parts of it that the file
+ * does not have yet or that are not a value it can take (a box with a reason under it, a new profile
+ * still being filled in, an empty row waiting for its text). What the file has is no draft anymore,
+ * so the boxes show the file again and a change another program makes to it shows through.
+ *
+ * Each part is judged on its own, against the file as it is now: a part with nothing left to write
+ * and no problem is settled, whatever the text in its box looks like (`0.80` is the `0.8` of the file).
+ */
+export function settledDraft(
+  config: Config,
+  draft: SettingsDraft,
+  context: PlanContext = {},
+): SettingsDraft {
+  const left = (part: SettingsDraft): boolean => {
+    const plan = planSave(config, part, context);
+    return plan.changes.length > 0 || hasProblems(plan) || plan.pictureWaits;
+  };
+  const kept: Record<string, unknown> = {};
+  for (const key of [...KEYS, ...OPTIONAL_KEYS, "mods"] as const) {
+    const value = draft[key];
+    if (value !== undefined && left({ [key]: value } as SettingsDraft)) kept[key] = value;
+  }
+  const keepParts = (section: "terminal" | "archive", parts: object | undefined) => {
+    const stay: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(parts ?? {})) {
+      if (value !== undefined && left({ [section]: { [key]: value } } as SettingsDraft)) {
+        stay[key] = value;
+      }
+    }
+    if (Object.keys(stay).length > 0) kept[section] = stay;
+  };
+  keepParts("terminal", draft.terminal);
+  keepParts("archive", draft.archive);
+  if (draft.ai !== undefined) {
+    const stay: Record<string, unknown> = {};
+    if (draft.ai.enabled !== undefined && left({ ai: { enabled: draft.ai.enabled } })) {
+      stay["enabled"] = draft.ai.enabled;
+    }
+    for (const fn of AI_FUNCTIONS) {
+      const target = draft.ai[fn];
+      if (target !== undefined && left({ ai: { [fn]: target } })) stay[fn] = target;
+    }
+    if (Object.keys(stay).length > 0) kept["ai"] = stay;
+  }
+  // The list of profiles is one part: a row that is not in the file yet (or a blank one the person
+  // added to fill in) keeps all of it.
+  if (
+    draft.profiles !== undefined &&
+    (draft.profiles.some((row) => !row.saved) || left({ profiles: draft.profiles }))
+  ) {
+    kept["profiles"] = draft.profiles;
+  }
+  return kept as SettingsDraft;
 }

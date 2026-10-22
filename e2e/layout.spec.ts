@@ -5,7 +5,7 @@ import {
   changeSettings,
   configText,
   openSettings,
-  saveSettings,
+  closeSettings,
   settingsScreen,
 } from "./settings-fixture";
 
@@ -103,26 +103,27 @@ test("moving the sidebar to the right puts it right of the terminal, and it stay
   await expect(radio(screen, "Right")).toBeChecked();
 
   await radio(screen, "Left").check();
-  await saveSettings(page);
+  await closeSettings(page);
   await settled(page);
   expect((await box(sidebar(page))).x).toBe(0);
 });
 
-test("a change in the settings screen is a draft until Save: the window shows it as a preview, and Cancel drops it", async ({
+test("a change in the settings screen shows in the window and is written at once, and it stays when the screen closes", async ({
   page,
 }) => {
   const screen = await openSettings(page);
   await radio(screen, "Right").check();
-  // The window already shows the draft (a preview; the file is not written), so the sidebar is on the right.
+  // The sidebar moves and the file has the side, with no Save to press.
   await expect.poll(async () => (await box(sidebar(page))).x).toBeGreaterThan(500);
-  expect((await configText(page)) ?? "").not.toContain('"position"');
-  await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect.poll(async () => (await configText(page)) ?? "").toContain('"position": "right"');
+  await closeSettings(page);
   await expect(settingsScreen(page)).toHaveCount(0);
-  expect((await box(sidebar(page))).x).toBe(0);
+  expect((await box(sidebar(page))).x).toBeGreaterThan(500);
 
   const again = await openSettings(page);
-  await expect(radio(again, "Left")).toBeChecked();
-  await expect(again.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  await expect(radio(again, "Right")).toBeChecked();
+  await expect(again.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
+  await expect(again.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
 });
 
 test("dragging the handle changes the width within 180 to 480 and it stays after a reload", async ({

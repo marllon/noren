@@ -435,7 +435,7 @@ export const ptBR: Dictionary = {
   "settings.windowOpacity": "Opacidade da interface (0,3 a 1)",
   "settings.windowOpacitySlider": "Opacidade da interface",
   "settings.windowOpacityHint":
-    "Vazio: sólida; com efeito, a opacidade do tema; com imagem, meio transparente. O controle age na hora; Salvar o mantém.",
+    "Vazio: sólida; com efeito, a opacidade do tema; com imagem, meio transparente. O controle age na hora.",
   "settings.background": "Fundo",
   "settings.backgroundImage": "Imagem de fundo (arquivo)",
   "settings.backgroundOpacity": "Opacidade da imagem (0 a 1)",
@@ -496,6 +496,9 @@ export const ptBR: Dictionary = {
   "settings.profileArgs": "Argumentos (um por linha)",
   "settings.profileCwd": "Pasta inicial",
   "settings.profileRemove": "Remover perfil",
+  "settings.profileRemoveTitle": "Remover este perfil?",
+  "settings.profileRemoveMessage": "“{name}” sai do config.jsonc. Isso não pode ser desfeito.",
+  "settings.autoSaved": "Cada mudança é salva na hora.",
   "settings.profileAdd": "Adicionar perfil",
   "settings.profileAddSsh": "Adicionar perfil SSH",
   "settings.profileHost": "Máquina",
@@ -513,7 +516,8 @@ export const ptBR: Dictionary = {
   "settings.profileRemoteCwd": "Pasta inicial nessa máquina (opcional)",
   "settings.profilesSshHint":
     "Abre um shell em outra máquina pelo ssh deste computador. Nenhuma senha ou frase-senha é guardada: use um agente ssh para uma chave protegida.",
-  "settings.profilesHint": "A pasta inicial é opcional. Salvar um perfil não inicia nada.",
+  "settings.profilesHint":
+    "A pasta inicial é opcional. Um perfil é salvo conforme você o preenche e não inicia nada.",
   "settings.shortcuts": "Atalhos",
   "settings.preset": "Preset de atalhos",
   "settings.preset.safe": "Seguro",
@@ -908,10 +912,11 @@ export const ptBR: Dictionary = {
   // The themes section of the settings screen: the gallery and what is done with a theme
   "themes.title": "Temas",
   "themes.hint":
-    "Clique num tema para usá-lo. Personalize ou duplique um para fazê-lo seu. Tudo aqui vale na hora, fora do Salvar.",
+    "Clique num tema para usá-lo. Personalize ou duplique um para fazê-lo seu. Tudo aqui vale na hora.",
   "themes.scope": "Usar o tema em",
   "themes.scopeApp": "O app todo",
-  "themes.scopeSpace": "Só o espaço “{name}”",
+  "themes.scopeSpace": "Só este espaço",
+  "themes.scopeHint": "O espaço é “{name}”: um tema escolhido para ele só aparece nele.",
   "themes.spaceOverride":
     "O espaço “{name}” tem um tema próprio, então o tema do app aparece nos outros espaços.",
   "themes.list": "Galeria de temas",
@@ -1131,7 +1136,7 @@ export const ptBR: Dictionary = {
   "ask.step.provider":
     "Ou abra as Configurações, depois IA, e adicione um provedor seu: o tipo, o endereço da API dele e um modelo. A chave vai para o cofre de chaves do sistema, nunca para o config.jsonc.",
   "ask.step.choose":
-    "No mesmo lugar, escolha o provedor e o modelo para {function} e pressione Salvar.",
+    "No mesmo lugar, escolha o provedor e o modelo para {function}: eles são salvos conforme você escolhe.",
   "ask.review": "Prévia do que será enviado",
   "ask.sendsTo": "Isto vai para {target}. Nada é enviado até você pressionar Enviar.",
   "ask.theProvider": "o provedor",
@@ -1189,7 +1194,7 @@ export const ptBR: Dictionary = {
   "providers.step.own":
     "Ou adicione abaixo um provedor seu: tipo, endereço da API e modelo. A chave de API vai no campo da chave, para o cofre do sistema, nunca para o config.jsonc.",
   "providers.step.turnOn":
-    "Ligue a IA acima, escolha um provedor e um modelo para cada função e pressione Salvar.",
+    "Ligue a IA acima e escolha um provedor e um modelo para cada função: eles são salvos conforme você escolhe.",
   "providers.ollamaModels": "Modelos do Ollama",
   "providers.checkAgain": "Verificar o Ollama de novo",
   "providers.testOllama": "Testar conexão com o Ollama",
@@ -1213,7 +1218,7 @@ export const ptBR: Dictionary = {
   "providers.newKey": "Chave de API do provedor (opcional)",
   "providers.add": "Adicionar provedor",
   "providers.footnote":
-    "Adicionar ou remover um provedor grava o config.jsonc na hora; o resto, por Salvar. As chaves vão para o cofre do sistema, nunca para o config.jsonc.",
+    "Adicionar ou remover um provedor grava o config.jsonc na hora, como todo outro ajuste. As chaves vão para o cofre do sistema, nunca para o config.jsonc.",
   "providers.added": "{id} adicionado.",
   "providers.addedKey": "{id} adicionado, e a chave dele foi guardada no cofre de chaves.",
   "providers.addedNoKey": "{id} adicionado, mas a chave dele não foi guardada: {reason}",

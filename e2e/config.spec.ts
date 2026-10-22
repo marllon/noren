@@ -1,13 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { sidebarState } from "./sidebar-fixture";
-import {
-  cancelSettings,
-  changeSettings,
-  configText,
-  openSettings,
-  saveSettings,
-} from "./settings-fixture";
+import { closeSettings, changeSettings, configText, openSettings } from "./settings-fixture";
 
 // The settings file `config.jsonc`. The web build has no file system: its backend keeps the text
 // of the file under `noren.web.config` in the browser storage, and the test hook `setConfig`
@@ -289,7 +283,7 @@ test.describe("what the file decides", () => {
     await expect(screen.getByRole("textbox", { name: "Sidebar width (px)" })).toHaveValue("240");
     // Density is not in the file: the screen shows the default.
     await expect(radio(screen, "Comfortable")).toBeChecked();
-    await cancelSettings(page);
+    await closeSettings(page);
 
     // Nothing in the file is out of reach of the handle now: it saves the width where it is.
     await expect(handle(page)).not.toHaveAttribute("aria-disabled", "true");
@@ -304,22 +298,28 @@ test.describe("what the file decides", () => {
     expect(await configText(page)).toContain('"position": "right"');
   });
 
-  test("the screen follows the file for what was not touched, and keeps what was", async ({
+  test("the screen follows the file, and keeps only what is still being typed", async ({
     page,
   }) => {
     await open(page, RIGHT);
     const screen = await openSettings(page);
     await expect(radio(screen, "Right")).toBeChecked();
+    // A choice is written at once, so it is the file's, not a draft.
     await radio(screen, "Compact").check();
+    await expect.poll(() => configText(page)).toContain('"density": "compact"');
+    // A number the file would refuse is the one thing the screen holds that the file does not have.
+    const width = screen.getByRole("textbox", { name: "Sidebar width (px)" });
+    await width.fill("9999");
 
     // Another program edits the file while the screen is open.
     await setConfig(page, '{ "appearance": { "sidebar": { "position": "left" } } }');
     await expectSide(page, "left");
     await expect(radio(screen, "Left")).toBeChecked();
-    // The draft is still the person's.
-    await expect(radio(screen, "Compact")).toBeChecked();
-    await saveSettings(page);
-    await expect(body(page)).toHaveAttribute("data-nr-density", "compact");
+    // What the person chose was written, and the other program wrote over it: the file is the truth.
+    await expect(radio(screen, "Comfortable")).toBeChecked();
+    await expect(width).toHaveValue("9999");
+    await closeSettings(page);
+    await expect(body(page)).toHaveAttribute("data-nr-density", "comfortable");
     expect(await configText(page)).toContain('"position": "left"');
   });
 
@@ -333,7 +333,7 @@ test.describe("what the file decides", () => {
     await expect(body(page)).toHaveAttribute("data-nr-density", "comfortable");
   });
 
-  test("the handle waits while the file has a mistake, and the screen will not save over it", async ({
+  test("the handle waits while the file has a mistake, and the screen will not write over it", async ({
     page,
   }) => {
     await open(page, MISTAKE);
@@ -341,8 +341,14 @@ test.describe("what the file decides", () => {
     const screen = await openSettings(page);
     await expect(screen.locator('[data-nr-part="settings-file-problem"]')).toContainText("line 3");
     await radio(screen, "Right").check();
-    await expect(screen.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
-    await cancelSettings(page);
+    await page.waitForTimeout(700);
+    expect(await configText(page)).toBe(MISTAKE);
+    // The change is kept by the screen, so closing it does not lose it without a word: the first
+    // close stays with the notice, the second lets go.
+    await screen.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(screen).toBeVisible();
+    await closeSettings(page);
+    expect(await configText(page)).toBe(MISTAKE);
     // Fixed from outside, everything answers again.
     await setConfig(page, "{}");
     await expect(handle(page)).not.toHaveAttribute("aria-disabled", "true");

@@ -455,7 +455,7 @@ test.describe("the web view follows its pane", () => {
     // The settings screen.
     await openSettings(page);
     await expectOutOfSight(page);
-    await settingsScreen(page).getByRole("button", { name: "Cancel", exact: true }).click();
+    await settingsScreen(page).getByRole("button", { name: "Close", exact: true }).click();
     await expectInSight(page);
 
     // A menu.

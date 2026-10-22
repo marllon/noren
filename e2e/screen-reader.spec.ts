@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
-import { cancelSettings, changeSettings, openSettings, seedConfig } from "./settings-fixture";
+import { closeSettings, changeSettings, openSettings, seedConfig } from "./settings-fixture";
 import { seedSidebarState } from "./sidebar-fixture";
 
 // Screen reader support (NOR-F20-01a). The option `terminal.screenReaderMode` turns on the
@@ -123,7 +123,7 @@ test.describe("the screen reader mode of the terminal", () => {
       screen.getByRole("switch", { name: "Screen reader mode", exact: true }),
     ).toBeChecked();
     await expect(screen).toContainText("Gives a screen reader the text of the terminal");
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("the palette command turns it on and off, and says so", async ({ page }) => {
@@ -243,7 +243,7 @@ test.describe("the announcements", () => {
     await sync.getByRole("textbox", { name: "Remote address", exact: true }).fill(REMOTE);
     await sync.getByRole("button", { name: "Connect", exact: true }).click();
     await expect(sync.locator('[data-nr-part="settings-sync-status"]')).toBeVisible();
-    await cancelSettings(page);
+    await closeSettings(page);
 
     await runCommand(page, "pull settings", "Pull settings");
     await expect(notice(page)).toHaveText("Pulled 1 file: mods/rounded.css.");

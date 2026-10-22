@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { configText, openSettings, saveSettings, seedConfig } from "./settings-fixture";
+import { configText, openSettings, closeSettings, seedConfig } from "./settings-fixture";
 import { seedSidebarState } from "./sidebar-fixture";
 
 // The languages of the interface: English and Brazilian Portuguese, with no library. With
@@ -74,8 +74,11 @@ async function expectPortuguese(page: Page): Promise<void> {
     screen.getByRole("textbox", { name: "Largura da barra lateral (px)" }),
   ).toBeVisible();
   await expect(screen.getByRole("switch", { name: "Modo compacto", exact: true })).toBeVisible();
-  await expect(screen.getByRole("button", { name: "Salvar", exact: true })).toBeVisible();
-  await expect(screen.getByRole("button", { name: "Cancelar", exact: true })).toBeVisible();
+  // No Save and no Cancel: the screen closes with its X, and every change is already written.
+  await expect(screen.getByRole("button", { name: "Salvar", exact: true })).toHaveCount(0);
+  await expect(screen.getByRole("button", { name: "Cancelar", exact: true })).toHaveCount(0);
+  await expect(screen.getByRole("button", { name: "Fechar", exact: true })).toBeVisible();
+  await expect(screen.getByText("Cada mudança é salva na hora.", { exact: true })).toBeVisible();
 
   // The shortcuts screen: opened from the settings, in Portuguese too.
   await screen.getByRole("button", { name: "Atalhos de teclado", exact: true }).click();
@@ -85,7 +88,7 @@ async function expectPortuguese(page: Page): Promise<void> {
   await expect(shortcuts.getByText("Nova aba", { exact: true }).first()).toBeVisible();
   await expect(shortcuts.getByRole("button", { name: "Fechar", exact: true })).toBeVisible();
   await shortcuts.getByRole("button", { name: "Fechar", exact: true }).click();
-  await screen.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await screen.getByRole("button", { name: "Fechar", exact: true }).click();
   await expect(screen).toHaveCount(0);
 }
 
@@ -105,9 +108,15 @@ test("changing the language to Portuguese in the settings translates the interfa
     language.getByRole("option", { name: "Same as the system", exact: true }),
   ).toBeAttached();
   await language.selectOption({ label: "Português (Brasil)" });
-  await saveSettings(page);
 
-  // No reload: the same page now speaks Portuguese.
+  // No reload, and no wait for a Save: the same page, the open screen too, speaks Portuguese now.
+  const portuguese = page.getByRole("dialog", { name: "Configurações", exact: true });
+  await expect(portuguese).toBeVisible();
+  await expect(portuguese.getByRole("combobox", { name: "Idioma", exact: true })).toHaveValue(
+    "pt-BR",
+  );
+  await portuguese.getByRole("button", { name: "Fechar", exact: true }).click();
+  await expect(portuguese).toHaveCount(0);
   await expectPortuguese(page);
 
   // The file has the language, and the comments of the person are where they were.
@@ -125,8 +134,11 @@ test("the language chosen stays after a reload, and can go back to English", asy
   await screen
     .getByRole("combobox", { name: "Language", exact: true })
     .selectOption({ label: "Português (Brasil)" });
-  await saveSettings(page);
   await expect(page.getByRole("tree", { name: "Abas", exact: true })).toBeVisible();
+  await page
+    .getByRole("dialog", { name: "Configurações", exact: true })
+    .getByRole("button", { name: "Fechar", exact: true })
+    .click();
 
   await page.reload();
   await expect(page.getByRole("tree", { name: "Abas", exact: true })).toBeVisible();
@@ -137,8 +149,9 @@ test("the language chosen stays after a reload, and can go back to English", asy
   const idioma = portuguese.getByRole("combobox", { name: "Idioma", exact: true });
   await expect(idioma).toHaveValue("pt-BR");
   await idioma.selectOption({ label: "English" });
-  await portuguese.getByRole("button", { name: "Salvar", exact: true }).click();
+  // Back to English at once, the open screen included.
   await expect(portuguese).toHaveCount(0);
+  await closeSettings(page);
 
   await expect(page.getByRole("tree", { name: "Tabs", exact: true })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");

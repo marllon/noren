@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { NOREN_DUSK } from "../packages/model/src/builtin-themes";
-import { configText, openSettings, saveSettings, seedConfig } from "./settings-fixture";
+import { configText, openSettings, closeSettings, seedConfig } from "./settings-fixture";
 
 // The picture behind the terminals. It is a file on this computer: the web build keeps the files a
 // path can name under `noren.web.images` in the browser storage (a fixture picture is seeded
@@ -296,7 +296,7 @@ test.describe("on a dark system", () => {
       .fill(PICTURE);
     await screen.getByRole("textbox", { name: "Image opacity (0 to 1)", exact: true }).fill("0.5");
     await screen.getByRole("textbox", { name: "Image blur (px)", exact: true }).fill("10");
-    await saveSettings(page);
+    await closeSettings(page);
 
     const text = (await configText(page)) ?? "";
     expect(text).toContain("// my picture");
@@ -313,7 +313,7 @@ test.describe("on a dark system", () => {
     await again.getByRole("textbox", { name: "Background image (file)", exact: true }).fill("");
     await again.getByRole("textbox", { name: "Image opacity (0 to 1)", exact: true }).fill("");
     await again.getByRole("textbox", { name: "Image blur (px)", exact: true }).fill("");
-    await saveSettings(page);
+    await closeSettings(page);
     const after = (await configText(page)) ?? "";
     expect(after).toContain("// my picture");
     expect(after).toContain('"image": null');
@@ -328,7 +328,9 @@ test.describe("on a dark system", () => {
       .getByRole("textbox", { name: "Background image (file)", exact: true })
       .fill("https://example.com/sky.png");
     await expect(screen.getByRole("alert").filter({ hasText: "web addresses" })).toBeVisible();
-    await expect(screen.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+    // A web address is not a picture the file takes: nothing is written for it.
+    await page.waitForTimeout(700);
+    expect(await configText(page)).toBeNull();
   });
 
   test("a space can have a picture of its own, that shows only while it is the active space", async ({

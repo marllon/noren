@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
-import { cancelSettings, configText, openSettings, seedConfig } from "./settings-fixture";
+import { closeSettings, configText, openSettings, seedConfig } from "./settings-fixture";
 
 // The AI providers in the settings screen (Ollama and its models, the providers of the file with
 // their key and a connection test, the form that adds one, the steps when nothing can answer yet),
@@ -117,7 +117,7 @@ test.describe("Ollama and the steps to a first provider", () => {
 
     await button(ollama, "Test connection to Ollama").click();
     await expect(note(ollama)).toHaveText("The connection works.");
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("shows the steps when the file lists no provider and Ollama is not there", async ({
@@ -136,7 +136,7 @@ test.describe("Ollama and the steps to a first provider", () => {
     // Ollama is still listed, and a test of it says why it fails.
     await button(ollama, "Test connection to Ollama").click();
     await expect(note(ollama)).toContainText("The connection failed");
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("shows the steps when Ollama has no model, and drops them once a provider is listed", async ({
@@ -153,7 +153,7 @@ test.describe("Ollama and the steps to a first provider", () => {
     await page.evaluate((text) => (window as HookWindow).__norenTest?.setConfig(text), FILE);
     await expect(group(ai, "work")).toBeVisible();
     await expect(steps(ai)).toHaveCount(0);
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 });
 
@@ -221,7 +221,7 @@ test.describe("the providers of the file", () => {
     await expect(note(spare)).toHaveText("The key is removed from the keychain.");
     await expect(spare).toContainText("No API key is stored.");
     expect(await storedKey(page, "spare")).toBeUndefined();
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("asks for the key before storing one", async ({ page }) => {
@@ -231,7 +231,7 @@ test.describe("the providers of the file", () => {
     await button(work, "Store key of work").click();
     await expect(note(work)).toHaveText("Paste the key in the box first.");
     expect(await keyCalls(page)).toEqual([]);
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("Enter in the key box stores the key and does not save the rest of the screen", async ({
@@ -247,7 +247,7 @@ test.describe("the providers of the file", () => {
     await expect(screen).toBeVisible();
     expect(await configSaves(page)).toBe(0);
     expect(await storedKey(page, "work")).toBe(KEY);
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 });
 
@@ -307,7 +307,7 @@ test.describe("adding and removing a provider", () => {
       "spare",
       "my-openai",
     ]);
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("adds one with no key, and the first one makes the list when the file has none", async ({
@@ -329,7 +329,7 @@ test.describe("adding and removing a provider", () => {
     expect(text).toContain('"id": "local-vllm"');
     expect(await keyCalls(page)).toEqual([]);
     await expect.poll(() => configures(page)).toEqual([[], ["local-vllm"]]);
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("refuses a repeated id, ollama and a bad address where they are typed, and writes nothing", async ({
@@ -361,7 +361,7 @@ test.describe("adding and removing a provider", () => {
 
     expect(await configSaves(page)).toBe(0);
     expect(await keyCalls(page)).toEqual([]);
-    await cancelSettings(page);
+    await closeSettings(page);
     expect(await configText(page)).toBe(FILE);
   });
 
@@ -385,7 +385,7 @@ test.describe("adding and removing a provider", () => {
     expect(text).toContain("// The AI stays off until I say so.");
     await expect.poll(() => storedKey(page, "spare")).toBeUndefined();
     await expect.poll(() => configures(page)).toEqual([["work", "spare"], ["work"]]);
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("refuses to remove a provider that a function uses, and says which", async ({ page }) => {
@@ -397,7 +397,7 @@ test.describe("adding and removing a provider", () => {
     await expect(note(work)).toContainText("Choose another provider for it (or none) and save");
     await expect(work).toBeVisible();
     expect(await configSaves(page)).toBe(0);
-    await cancelSettings(page);
+    await closeSettings(page);
     expect(await configText(page)).toBe(FILE_WITH_DEFAULT);
   });
 });

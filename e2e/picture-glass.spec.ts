@@ -3,18 +3,12 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { readPixels } from "./png-pixels";
-import {
-  cancelSettings,
-  configText,
-  openSettings,
-  saveSettings,
-  seedConfig,
-} from "./settings-fixture";
+import { closeSettings, configText, openSettings, seedConfig } from "./settings-fixture";
 
 // A picture that shows (NOR-F20-08b): with one behind the window the sidebar and the terminals are
 // see-through by default (the sidebar frosted), the picture shows at a stronger default under a veil
 // of the color of the theme, and three sliders (the opacity of the interface, the opacity of the
-// picture and its blur) show their effect in the window at once, before Save. The terminal being
+// picture and its blur) show their effect in the window at once, before the file has them. The terminal being
 // see-through is checked in pixels, not only in styles: black behind it was the bug (xterm.css gives
 // its scrolling box a solid black background). The files a path can name are the ones the web build
 // holds under `noren.web.images`; the fixture picture is seeded there.
@@ -280,7 +274,7 @@ test.describe("on a dark system", () => {
       await expect(panels).toHaveAttribute("aria-valuetext", "55%");
     });
 
-    test("the opacity of the picture shows in the window at once, before Save", async ({
+    test("the opacity of the picture shows in the window at once, and the file has it a moment later", async ({
       page,
     }) => {
       await start(page, withPicture("noren-dusk"));
@@ -295,8 +289,9 @@ test.describe("on a dark system", () => {
           exact: true,
         }),
       ).toHaveValue("0.2");
-      // Nothing was written.
-      expect(await configText(page)).not.toContain('"opacity"');
+      // A moment later the file has it, and the window keeps it.
+      await expect.poll(async () => (await configText(page)) ?? "").toContain('"opacity": 0.2');
+      expect(await rootVar(page, "--nr-background-opacity")).toBe("0.2");
     });
 
     test("the blur of the picture shows in the window at once", async ({ page }) => {
@@ -324,21 +319,24 @@ test.describe("on a dark system", () => {
       expect(alphaOf(await sidebarColor(page))).toBeCloseTo(0.3, 2);
     });
 
-    test("Cancel puts the window back as the file has it", async ({ page }) => {
+    test("closing the screen keeps what the sliders chose: it is in the file and in the window", async ({
+      page,
+    }) => {
       await start(page, withPicture("noren-dusk"));
       const screen = await openSettings(page);
       await drag(sliderOf(backgroundSection(screen), "Image opacity"), 1);
       await drag(sliderOf(backgroundSection(screen), "Image blur"), 30);
       await drag(sliderOf(windowSection(screen), "Interface opacity"), 1);
       await expect.poll(() => rootVar(page, "--nr-opacity")).toBe("1");
-      await cancelSettings(page);
-      await expect.poll(() => rootVar(page, "--nr-opacity")).toBe("0.55");
-      expect(await rootVar(page, "--nr-background-opacity")).toBe("0.6");
-      expect(await rootVar(page, "--nr-background-blur")).toBe("0px");
-      expect(await configText(page)).not.toContain('"blur"');
+      // No pause: the screen closes while the numbers still wait for their moment, and writes them.
+      await closeSettings(page);
+      expect(await rootVar(page, "--nr-opacity")).toBe("1");
+      expect(await rootVar(page, "--nr-background-opacity")).toBe("1");
+      expect(await rootVar(page, "--nr-background-blur")).toBe("30px");
+      expect(await configText(page)).toContain('"blur": 30');
     });
 
-    test("Save writes the numbers, keeps them in the window and the screen opens on them", async ({
+    test("the numbers of the sliders are written, kept in the window, and the screen opens on them", async ({
       page,
     }) => {
       await start(page, withPicture("noren-dusk"));
@@ -346,7 +344,7 @@ test.describe("on a dark system", () => {
       await drag(sliderOf(backgroundSection(screen), "Image opacity"), 0.35);
       await drag(sliderOf(backgroundSection(screen), "Image blur"), 9);
       await drag(sliderOf(windowSection(screen), "Interface opacity"), 0.7);
-      await saveSettings(page);
+      await closeSettings(page);
       const text = (await configText(page)) ?? "";
       expect(text).toContain('"opacity": 0.35');
       expect(text).toContain('"blur": 9');

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
-import { cancelSettings, configText, openSettings, seedConfig } from "./settings-fixture";
+import { closeSettings, configText, openSettings, seedConfig } from "./settings-fixture";
 
 // The sync through a secret GitHub gist in the Sync section of the settings screen, in the palette
 // commands "Pull settings" and "Push settings" and in the push when the app closes (NOR-F19-02b).
@@ -158,7 +158,7 @@ test("git stays the method until the list says gist, and the choice is kept in c
   const text = (await configText(page)) ?? "";
   expect(text).toContain("// my settings");
   expect(text).toContain('"language": "en"');
-  await cancelSettings(page);
+  await closeSettings(page);
 
   // And it holds: a reload shows the gist, and going back to git writes it too.
   await page.reload();
@@ -411,7 +411,7 @@ test("a gist that anyone can read gets a warning, and a secret one does not", as
   await expect(publicWarning(sync)).toContainText("anyone can find and read your config.jsonc");
   await expect(note(sync)).toContainText("This gist is public");
   // The warning stays as long as the gist connected is public: it is there when the screen opens again.
-  await cancelSettings(page);
+  await closeSettings(page);
   const again = await openSync(page);
   await expect(publicWarning(again.sync)).toContainText("This gist is public");
 
@@ -434,7 +434,7 @@ test("a status that cannot be read says why and leaves the rest of the section w
   );
   const first = await openSync(page);
   await connectToGist(first.sync);
-  await cancelSettings(page);
+  await closeSettings(page);
   // A file of the config folder grows past what a sync carries (1 MiB): the status cannot list it.
   await page.evaluate(
     (text) => (window as HookWindow).__norenTest?.setSyncLocalFile("mods/big.css", text),
@@ -463,7 +463,7 @@ test("a status that cannot be read says why and leaves the rest of the section w
   await page.evaluate(() =>
     (window as HookWindow).__norenTest?.setSyncLocalFile("mods/big.css", null),
   );
-  await cancelSettings(page);
+  await closeSettings(page);
   const again = await openSync(page);
   await expect(status(again.sync)).toContainText(`Connected to the gist ${GIST}.`);
 });
@@ -506,7 +506,7 @@ test.describe("Pull settings and Push settings in the palette", () => {
     );
     const { sync } = await openSync(page);
     await saveToken(sync);
-    await cancelSettings(page);
+    await closeSettings(page);
     // A token and no gist.
     await runCommand(page, "push settings", "Push settings");
     await expect(notice(page)).toHaveText(
@@ -518,7 +518,7 @@ test.describe("Pull settings and Push settings in the palette", () => {
     await idBox(again.sync).fill(GIST);
     await button(again.sync, "Connect").click();
     await expect(status(again.sync)).toContainText(`Connected to the gist ${GIST}.`);
-    await cancelSettings(page);
+    await closeSettings(page);
 
     await runCommand(page, "pull settings", "Pull settings");
     await expect(notice(page)).toHaveText("Pulled 1 file: mods/rounded.css.");
@@ -550,7 +550,7 @@ test.describe("Pull settings and Push settings in the palette", () => {
     );
     const { sync } = await openSync(page);
     await connectToGist(sync);
-    await cancelSettings(page);
+    await closeSettings(page);
     await runCommand(page, "pull settings", "Pull settings");
     await expect(notice(page)).toContainText(
       "Pull stopped: config.jsonc changed here and in the gist",
@@ -574,7 +574,7 @@ test.describe("Pull settings and Push settings in the palette", () => {
     await connectToGist(sync);
     await sync.getByRole("combobox", { name: "Sync through", exact: true }).selectOption("git");
     await expect.poll(() => configText(page)).toContain('"method": "git"');
-    await cancelSettings(page);
+    await closeSettings(page);
     await runCommand(page, "push settings", "Push settings");
     // The remote of git is not connected: the notice is the git one and the gist got no push.
     await expect(notice(page)).toHaveText(
@@ -596,7 +596,7 @@ test.describe("the push when Noren closes", () => {
     );
     const { sync } = await openSync(page);
     await connectToGist(sync);
-    await cancelSettings(page);
+    await closeSettings(page);
     const { outcome, log } = await close(page);
     expect(outcome).toEqual({ kind: "pushed", files: 2 });
     expect(log).toEqual([]);
@@ -621,7 +621,7 @@ test.describe("the push when Noren closes", () => {
     await connectToGist(sync);
     await sync.getByRole("switch", { name: "Push when Noren closes", exact: true }).uncheck();
     await expect.poll(() => configText(page)).toContain('"pushOnClose": false');
-    await cancelSettings(page);
+    await closeSettings(page);
     expect((await close(page)).outcome).toEqual({ kind: "skipped", reason: "off" });
     expect(await gistFiles(page)).toEqual({});
   });
@@ -634,7 +634,7 @@ test.describe("the push when Noren closes", () => {
     );
     const { sync } = await openSync(page);
     await connectToGist(sync);
-    await cancelSettings(page);
+    await closeSettings(page);
     await page.evaluate(() =>
       (window as HookWindow).__norenTest?.failSyncGist("GitHub cannot be reached"),
     );
@@ -660,7 +660,7 @@ test("removing the token stops Pull and Push of the palette from reaching the gi
   await connectToGist(sync);
   await button(sync, "Remove token").click();
   await expect(tokenState(sync)).toHaveText("No token is stored.");
-  await cancelSettings(page);
+  await closeSettings(page);
   await runCommand(page, "push settings", "Push settings");
   await expect(notice(page)).toHaveText(
     "No GitHub token is stored. Save one in Settings, in the Sync section.",

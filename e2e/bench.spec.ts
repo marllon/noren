@@ -5,7 +5,7 @@ import { BENCH_CSV_HEADER } from "../packages/model/src/bench-scoreboard";
 import { parseConfigText } from "../packages/model/src/config";
 import { BIG, GONE, LLAMA, PHI_CANCELLED, QWEN, seedBench } from "./bench-fixture";
 import { expectNoAxeViolations } from "./axe-fixture";
-import { cancelSettings, configText, openSettings, seedConfig } from "./settings-fixture";
+import { closeSettings, configText, openSettings, seedConfig } from "./settings-fixture";
 
 // The bench scoreboard in the AI section of the settings screen: the saved results (seeded as files
 // of the web build), the rows in the order of the board, the model recommended as the default, the
@@ -85,7 +85,7 @@ test.describe("the scoreboard", () => {
     await expect(part.getByRole("table")).toHaveCount(0);
     await expect(button(part, "Use the recommended model")).toHaveCount(0);
     await expect(button(part, "Copy scoreboard as CSV")).toHaveCount(0);
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("lists the models in the order of the board and marks the recommended one", async ({
@@ -131,7 +131,7 @@ test.describe("the scoreboard", () => {
     await expect(rows.nth(1).locator("td").nth(7)).toHaveText("133.3 (estimated)");
     await expect(rows.nth(1).locator("td").nth(8)).toHaveText("—");
     await expect(rows.nth(2).locator("td").nth(1)).toHaveText("50%");
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("lists a cancelled run and never recommends it", async ({ page }) => {
@@ -149,7 +149,7 @@ test.describe("the scoreboard", () => {
       "Recommended as the default: qwen2 (ollama).",
     );
     await expect(part.locator('[data-nr-part="settings-bench-badge"]')).toHaveCount(1);
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("recommends nothing when only a cancelled run is saved", async ({ page }) => {
@@ -163,7 +163,7 @@ test.describe("the scoreboard", () => {
     await expect(button(part, "Use the recommended model")).toHaveCount(0);
     // The row can still be used by hand.
     await expect(button(part, "Use phi3 (ollama) as the default")).toBeVisible();
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 });
 
@@ -196,7 +196,7 @@ test.describe("making a model the default", () => {
     expect(text).not.toContain('"enabled": true,\n    "providers"');
     const parsed = parseConfigText(text);
     expect(parsed.ok && parsed.config.ai?.enabled).toBeFalsy();
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("a row's own button makes that row the default, with a provider of the settings file", async ({
@@ -222,7 +222,7 @@ test.describe("making a model the default", () => {
       command: target("ollama", "llama3"),
     });
     expect((await configText(page)) ?? "").toContain("// my work server");
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("refuses a provider the settings do not list, and writes nothing", async ({ page }) => {
@@ -247,7 +247,7 @@ test.describe("making a model the default", () => {
     await button(part, "Use llama3 (ollama) as the default").click();
     await expect(note).toHaveAttribute("role", "status");
     await expect(note).toContainText("llama3 (ollama) is now the default");
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("says why when config.jsonc cannot be edited, and writes nothing", async ({ page }) => {
@@ -261,7 +261,7 @@ test.describe("making a model the default", () => {
     await expect(note).toContainText("The default was not changed: ");
     expect(await configText(page)).toBe(broken);
     expect(await configSaves(page)).toBe(before);
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 });
 
@@ -296,7 +296,7 @@ test.describe("exporting", () => {
     expect(lines[1]).toContain(",cancelled,");
     // Copying changes nothing in the settings.
     expect(await configText(page)).toBe(FILE);
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 });
 

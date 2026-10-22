@@ -879,7 +879,7 @@ test.describe("saving", () => {
     await box(page, "Name").fill("Space paper");
     await box(page, "Accent").fill("#0000ff");
     await editor(page).getByRole("button", { name: "Save as my theme", exact: true }).click();
-    await screen.getByRole("radio", { name: "Only the space “Main”", exact: true }).check();
+    await screen.getByRole("radio", { name: "This space", exact: true }).check();
     await screen.getByRole("button", { name: "Space paper", exact: true }).click();
     await expect(status(screen)).toContainText("Using “Space paper” only in the space “Main”.");
     await expect.poll(() => rootVar(page, "--nr-accent")).toBe("#0000ff");

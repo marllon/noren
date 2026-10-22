@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
-import { WEB_CONFIG_KEY, saveSettings, seedConfig } from "./settings-fixture";
+import { WEB_CONFIG_KEY, closeSettings, seedConfig } from "./settings-fixture";
 
 // The settings screen of NOR-F20-10a: a column of sections on the left, a search on top that keeps
 // the sections and the rows that have its words, and one column of rows (label and explanation on
@@ -320,9 +320,13 @@ test.describe("the search", () => {
     await expect(none).toHaveAttribute("role", "status");
     expect(await columnNames(screen)).toEqual([]);
     expect(await shownSections(screen)).toEqual([]);
-    // Save and Cancel are still there.
-    await expect(screen.getByRole("button", { name: "Save", exact: true })).toBeVisible();
-    await expect(screen.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
+    // The X and the line that says every change is saved are still there; there is no Save or Cancel.
+    await expect(screen.getByRole("button", { name: "Close", exact: true })).toBeVisible();
+    await expect(screen.locator('[data-nr-part="settings-autosave"]')).toHaveText(
+      "Every change is saved as you make it.",
+    );
+    await expect(screen.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
+    await expect(screen.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
     // Emptying the box brings everything back.
     await searchBox(screen).fill("");
     await expect(none).toHaveCount(0);
@@ -363,18 +367,21 @@ test.describe("the search", () => {
     await expect(screen).toHaveCount(0);
   });
 
-  test("Enter in the box does not save the screen", async ({ page }) => {
+  test("Enter in the box only searches: the screen stays open and nothing else is written", async ({
+    page,
+  }) => {
     const screen = await start(page);
-    await screen.getByRole("textbox", { name: "Sidebar width (px)", exact: true }).fill("240");
     await searchBox(screen).fill("width");
     await searchBox(screen).press("Enter");
     await expect(screen).toBeVisible();
+    await expect(searchBox(screen)).toHaveValue("width");
+    await page.waitForTimeout(700);
     expect(
       await page.evaluate((key) => window.localStorage.getItem(key), WEB_CONFIG_KEY),
-    ).not.toContain("240");
+    ).not.toContain('"width"');
   });
 
-  test("a row hidden by the search keeps what was typed in it, and Save writes it", async ({
+  test("a row hidden by the search keeps what was typed in it, and it is written all the same", async ({
     page,
   }) => {
     const screen = await start(page);
@@ -385,7 +392,7 @@ test.describe("the search", () => {
     await screen.getByRole("textbox", { name: "Scrollback (lines)", exact: true }).fill("5000");
     await searchBox(screen).fill("");
     await expect(width).toHaveValue("240");
-    await saveSettings(page);
+    await closeSettings(page);
     const text =
       (await page.evaluate((key) => window.localStorage.getItem(key), WEB_CONFIG_KEY)) ?? "";
     expect(text).toMatch(/"width":\s*240/);
@@ -396,7 +403,7 @@ test.describe("the search", () => {
     const screen = await start(page);
     await searchBox(screen).fill("pane headers");
     await screen.getByRole("switch", { name: "Pane headers", exact: true }).check();
-    await saveSettings(page);
+    await closeSettings(page);
     const text =
       (await page.evaluate((key) => window.localStorage.getItem(key), WEB_CONFIG_KEY)) ?? "";
     expect(text).toMatch(/"paneHeaders":\s*true/);
@@ -685,7 +692,7 @@ test.describe("no sideways scroll (finding 329)", () => {
     expect(fits.right).toBeGreaterThanOrEqual(0);
   });
 
-  test("Save and Cancel stay in view and nothing covers the search while the file has a problem", async ({
+  test("the X stays in view and nothing covers the search while the file has a problem", async ({
     page,
   }) => {
     const screen = await start(page, {
@@ -695,7 +702,7 @@ test.describe("no sideways scroll (finding 329)", () => {
     // The notice of the window sits under the screen, so the buttons and the search can be used.
     await searchBox(screen).fill("width");
     await expect(searchBox(screen)).toHaveValue("width");
-    await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+    await screen.getByRole("button", { name: "Close", exact: true }).click();
     await expect(screen).toHaveCount(0);
   });
 });
@@ -760,7 +767,7 @@ test("a screen that was opened with its controls working still saves from any se
   await screen.getByRole("switch", { name: "System notifications", exact: true }).uncheck();
   await navItem(screen, "Terminal").click();
   await screen.getByRole("radio", { name: "Bar", exact: true }).check();
-  await saveSettings(page);
+  await closeSettings(page);
   const text =
     (await page.evaluate((key) => window.localStorage.getItem(key), WEB_CONFIG_KEY)) ?? "";
   expect(text).toMatch(/"enabled":\s*false/);

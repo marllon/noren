@@ -3,7 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { BENCH_MODEL_CATALOG, recommendedBenchModels } from "../packages/model/src/bench-models";
 import type { BenchHardware } from "../packages/model/src/bench-models";
 import { expectNoAxeViolations } from "./axe-fixture";
-import { cancelSettings, openSettings, seedConfig } from "./settings-fixture";
+import { closeSettings, openSettings, seedConfig } from "./settings-fixture";
 
 // The recommended models in the AI section of the settings screen: the memory of the computer is
 // seeded under the `noren.web.hardware` key of the web build (a browser cannot read it), the list is
@@ -135,7 +135,7 @@ test.describe("the list for the computer", () => {
   test("two computers get different lists", async ({ page }) => {
     await start(page, { hardware: ram(8) });
     const small = await shownIds(await openModels(page));
-    await cancelSettings(page);
+    await closeSettings(page);
     await page.evaluate(
       ([key, value]) => window.localStorage.setItem(key ?? "", value ?? ""),
       [WEB_HARDWARE_KEY, JSON.stringify(ram(16, 24))],
@@ -159,7 +159,7 @@ test.describe("the list for the computer", () => {
     await expect(part.locator('[data-nr-part="settings-models-budget"]')).toHaveText(
       "Chosen for the RAM: a model may take 4.8 GiB of it (60%).",
     );
-    await cancelSettings(page);
+    await closeSettings(page);
 
     await page.evaluate(
       ([key, value]) => window.localStorage.setItem(key ?? "", value ?? ""),
@@ -223,7 +223,7 @@ test.describe("the list for the computer", () => {
     expect(await hardwareReads(page)).toBe(1);
     // The rest of the screen still works.
     await expect(screen.getByRole("heading", { name: "Model bench" })).toBeVisible();
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("a value that is no memory is no reading: the same warning", async ({ page }) => {
@@ -284,7 +284,7 @@ test.describe("the guided install", () => {
     );
     await expect(button(part, `Install ${PHI}`)).toBeFocused();
     await expect(page.locator("textarea.xterm-helper-textarea:focus")).toHaveCount(0);
-    await cancelSettings(page);
+    await closeSettings(page);
     // Back in the terminal, Enter would be the person's.
     expect((await writes(page)).length).toBe(before + 1);
   });

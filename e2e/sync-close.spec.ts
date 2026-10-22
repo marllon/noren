@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
-import { cancelSettings, configText, openSettings, seedConfig } from "./settings-fixture";
+import { closeSettings, configText, openSettings, seedConfig } from "./settings-fixture";
 
 // The push when the app closes (NOR-F19-01d). The web build has no window to close, so a test hook
 // (`window.__norenClose.run()`) runs what the closing page runs: it saves, and then pushes only when
@@ -55,7 +55,7 @@ async function connect(page: Page): Promise<void> {
   await expect(sync.locator('[data-nr-part="settings-sync-status"]')).toContainText(
     `Connected to ${REMOTE}`,
   );
-  await cancelSettings(page);
+  await closeSettings(page);
 }
 
 const close = (page: Page) =>
@@ -148,7 +148,7 @@ test.describe("the check box in the Sync section", () => {
     const text = (await configText(page)) ?? "";
     expect(text).toContain("// my settings");
     expect(text).toContain('"language": "en"');
-    await cancelSettings(page);
+    await closeSettings(page);
 
     // And it holds: the setting is in force for the next close, and a reload shows it checked.
     await page.reload();
@@ -156,7 +156,7 @@ test.describe("the check box in the Sync section", () => {
     await expect(box(again)).toBeChecked();
     await box(again).uncheck();
     await expect.poll(() => configText(page)).toContain('"pushOnClose": false');
-    await cancelSettings(page);
+    await closeSettings(page);
   });
 
   test("changes what the close does at once, with no restart", async ({ page }) => {
@@ -165,7 +165,7 @@ test.describe("the check box in the Sync section", () => {
     expect((await close(page)).outcome).toEqual({ kind: "skipped", reason: "off" });
     const screen = await openSettings(page);
     await box(screen).check();
-    await cancelSettings(page);
+    await closeSettings(page);
     expect((await close(page)).outcome).toEqual({ kind: "pushed", files: expect.any(Number) });
   });
 });

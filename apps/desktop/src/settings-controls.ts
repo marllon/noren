@@ -105,6 +105,8 @@ export const CHOICE_CONTROLS = {
   bell: "list",
   rightClick: "list",
   keyPreset: "segmented",
+  /** The theme section: the whole app or only the active space. */
+  themeScope: "segmented",
 } as const satisfies Record<string, ChoiceControl>;
 
 export type ChoiceId = keyof typeof CHOICE_CONTROLS;

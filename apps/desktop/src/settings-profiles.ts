@@ -209,6 +209,22 @@ export interface ProfilesPlan {
   changes: ConfigEdit[];
   /** The problems by the key of the row. */
   problems: Record<string, Partial<Record<ProfileField, string>>>;
+  /** The id each new row gets when `changes` are written, by the key of the row. */
+  ids: Record<string, string>;
+}
+
+/**
+ * `rows` after `ids` were written: a new row that got an id is the profile of the file now (its key is
+ * the id), so the next plan edits it instead of adding it again.
+ */
+export function withSavedIds(
+  rows: readonly ProfileRow[],
+  ids: Readonly<Record<string, string>>,
+): ProfileRow[] {
+  return rows.map((row) => {
+    const id = row.saved ? undefined : ids[row.key];
+    return id === undefined ? row : { ...row, key: id, saved: true };
+  });
 }
 
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
@@ -233,14 +249,17 @@ const SSH_SETTINGS = [
  * profile cannot have. A row is matched to the profile of the file by its id; a profile of the file
  * that has no row is removed, a new row is appended, an empty new row is left out. A box that is
  * not as the file has it is written, and an optional one that was emptied is taken out of the file.
- * Rows with problems are reported and nothing of them is written.
+ * Rows with problems are reported and nothing of them is written. A new row in `held` (the one the
+ * person is still filling in) is reported but not added yet: its id comes from its name, so it waits
+ * until the person leaves the row.
  */
 export function planProfiles(
   config: Config,
   draft: readonly ProfileRow[] | undefined,
   takenIds: Iterable<string> = [],
+  held: ReadonlySet<string> = new Set(),
 ): ProfilesPlan {
-  const plan: ProfilesPlan = { changes: [], problems: {} };
+  const plan: ProfilesPlan = { changes: [], problems: {}, ids: {} };
   if (draft === undefined) return plan;
   const file = config.profiles ?? [];
   const taken = new Set<string>([...takenIds, ...RESERVED_PROFILE_IDS, ...file.map((p) => p.id)]);
@@ -280,7 +299,10 @@ export function planProfiles(
       const candidate = profileOfRow(row, newProfileId(row.name, taken));
       const problems = problemsOfRow(candidate);
       if (Object.keys(problems).length > 0) plan.problems[row.key] = problems;
-      else added.push(candidate as unknown as UserProfile);
+      else if (!held.has(row.key)) {
+        added.push(candidate as unknown as UserProfile);
+        plan.ids[row.key] = candidate["id"] as string;
+      }
     }
   }
 

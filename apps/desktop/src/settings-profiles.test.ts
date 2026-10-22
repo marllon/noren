@@ -10,6 +10,7 @@ import {
   profileRowsOf,
   withNewProfile,
   withProfileEdited,
+  withSavedIds,
   withoutProfile,
 } from "./settings-profiles";
 import type { ProfileField, ProfileRow } from "./settings-profiles";
@@ -497,5 +498,63 @@ describe("planSave with the profiles", () => {
     expect(append && "append" in append ? append.append : []).toEqual([
       { id: "wsl-2", name: "WSL", program: "wsl" },
     ]);
+  });
+});
+
+describe("a new profile that is written as the person fills it in (NOR-F20-10c)", () => {
+  const filled = (): ProfileRow[] =>
+    withNewProfile(rows()).map((row) =>
+      row.saved ? row : { ...row, name: "Work", program: "pwsh" },
+    );
+
+  it("tells the id each new row gets, so the row can become that profile", () => {
+    const plan = planProfiles(config(FILE), filled());
+    expect(plan.ids).toEqual({ "new-1": "work" });
+    expect(plan.changes).toEqual([
+      { path: ["profiles"], append: [expect.objectContaining({ id: "work" })] },
+    ]);
+  });
+
+  it("gives the next id of a name that is taken, and none to a row that is not valid yet", () => {
+    const second = withNewProfile(filled()).map((row) =>
+      row.key === "new-2" ? { ...row, name: "Work", program: "cmd" } : row,
+    );
+    expect(planProfiles(config(FILE), second).ids).toEqual({ "new-1": "work", "new-2": "work-2" });
+
+    const half = withNewProfile(rows()).map((row) => (row.saved ? row : { ...row, name: "Half" }));
+    const plan = planProfiles(config(FILE), half);
+    expect(plan.ids).toEqual({});
+    expect(plan.problems["new-1"]).toBeDefined();
+  });
+
+  it("holds a row the person is still in: its problems are told, nothing of it is written", () => {
+    const held = planProfiles(config(FILE), filled(), [], new Set(["new-1"]));
+    expect(held.changes).toEqual([]);
+    expect(held.ids).toEqual({});
+
+    const half = withNewProfile(rows()).map((row) => (row.saved ? row : { ...row, name: "Half" }));
+    expect(
+      planProfiles(config(FILE), half, [], new Set(["new-1"])).problems["new-1"],
+    ).toBeDefined();
+  });
+
+  it("holds only the row asked for, and still edits the profiles of the file", () => {
+    const edited = withProfileEdited(filled(), "ops", { program: "fish" });
+    const plan = planProfiles(config(FILE), edited, [], new Set(["new-1"]));
+    expect(plan.changes).toEqual([{ path: ["profiles", 1, "program"], value: "fish" }]);
+  });
+
+  it("turns the new rows into the profiles of the file once they are written", () => {
+    const plan = planProfiles(config(FILE), filled());
+    const after = withSavedIds(filled(), plan.ids);
+    expect(after.map((row) => [row.key, row.saved])).toEqual([
+      ["dev", true],
+      ["ops", true],
+      ["work", true],
+    ]);
+    // A row with no id (blank, or not valid yet) stays a new row.
+    const blank = withNewProfile(rows());
+    expect(withSavedIds(blank, {})).toEqual(blank);
+    expect(withSavedIds(blank, { "new-9": "other" })).toEqual(blank);
   });
 });

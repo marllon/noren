@@ -266,8 +266,8 @@ test.describe("using a theme", () => {
     );
     await expect(status(screen)).toHaveText("Using “Noren Paper” for the whole app.");
     await expect.poll(() => configText(page)).toContain('"theme": "noren-paper"');
-    // It is not part of Save: the screen can be cancelled and the theme stays.
-    await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+    // The screen has no Save: it can be closed and the theme stays.
+    await screen.getByRole("button", { name: "Close", exact: true }).click();
     await expect(settingsScreen(page)).toHaveCount(0);
     expect(await rootVar(page, "--nr-bg")).toBe(BG.paper);
     expect(await configText(page)).toContain('"theme": "noren-paper"');
@@ -309,7 +309,13 @@ test.describe("using a theme", () => {
     await addSpace(page, "Work");
     const screen = await openThemes(page);
     const before = await configText(page);
-    await screen.getByRole("radio", { name: "Only the space “Work”", exact: true }).check();
+    await screen.getByRole("radio", { name: "This space", exact: true }).check();
+    // The space is named in the line under the choice, not in a button.
+    await expect(
+      screen.getByText("The space is “Work”: a theme chosen for it shows only there.", {
+        exact: true,
+      }),
+    ).toBeVisible();
     await pick(screen, "Noren Paper").click();
     await expect.poll(() => rootVar(page, "--nr-bg")).toBe(BG.paper);
     await expect(status(screen)).toHaveText("Using “Noren Paper” only in the space “Work”.");
@@ -322,7 +328,7 @@ test.describe("using a theme", () => {
     await expect(pick(screen, "Noren Paper")).toHaveAttribute("aria-pressed", "true");
     expect(await configText(page)).toBe(before);
     // Back in the first space the theme of the app shows.
-    await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+    await screen.getByRole("button", { name: "Close", exact: true }).click();
     await page
       .getByRole("navigation", { name: "Spaces", exact: true })
       .getByRole("button", { name: "Main", exact: true })
@@ -338,7 +344,7 @@ test.describe("using a theme", () => {
   test("'Use the theme of the app' takes the theme of the space away", async ({ page }) => {
     await start(page, { config: '{ "appearance": { "theme": "noren-dusk" } }' });
     const screen = await openThemes(page);
-    const scope = screen.getByRole("radio", { name: "Only the space “Main”", exact: true });
+    const scope = screen.getByRole("radio", { name: "This space", exact: true });
     await scope.check();
     const useGlobal = screen.getByRole("button", { name: "Use the theme of the app", exact: true });
     await expect(useGlobal).toBeDisabled();
@@ -360,7 +366,7 @@ test.describe("using a theme", () => {
     await start(page, { config: '{ "appearance": { "theme": "noren-dusk" } }' });
     const screen = await openThemes(page);
     await expect(screen.locator('[data-nr-part="themes-space-override"]')).toHaveCount(0);
-    await screen.getByRole("radio", { name: "Only the space “Main”", exact: true }).check();
+    await screen.getByRole("radio", { name: "This space", exact: true }).check();
     await pick(screen, "Noren Paper").click();
     await screen.getByRole("radio", { name: "The whole app", exact: true }).check();
     await expect(screen.locator('[data-nr-part="themes-space-override"]')).toHaveText(
@@ -640,7 +646,7 @@ test.describe("deleting", () => {
   }) => {
     await start(page, { themes: [MINE], config: '{ "appearance": { "theme": "noren-dusk" } }' });
     const screen = await openThemes(page);
-    await screen.getByRole("radio", { name: "Only the space “Main”", exact: true }).check();
+    await screen.getByRole("radio", { name: "This space", exact: true }).check();
     await pick(screen, "Mine").click();
     await expect.poll(() => rootVar(page, "--nr-bg")).toBe(BG.mine);
     await screen.getByRole("button", { name: "Delete Mine", exact: true }).click();
@@ -864,7 +870,12 @@ test.describe("in Portuguese", () => {
     await themes.scrollIntoViewIfNeeded();
     await expect(gallery(dialog, "Galeria de temas", "Temas")).toBeVisible();
     await expect(themes.getByRole("radio", { name: "O app todo", exact: true })).toBeChecked();
-    await expect(themes.getByRole("radio", { name: /^Só o espaço “/ })).toBeVisible();
+    await expect(themes.getByRole("radio", { name: "Só este espaço", exact: true })).toBeVisible();
+    await expect(
+      themes.getByText("O espaço é “Main”: um tema escolhido para ele só aparece nele.", {
+        exact: true,
+      }),
+    ).toBeVisible();
     await expect(card(dialog, "mine")).toContainText("Escuro · Seu");
     await expect(card(dialog, "noren-paper")).toContainText("Claro · De fábrica");
     await expect(
@@ -929,7 +940,7 @@ test.describe("accessibility", () => {
     }) => {
       await start(page, { themes: [MINE], config: `{ "appearance": { "theme": "${theme}" } }` });
       const screen = await openThemes(page);
-      await screen.getByRole("radio", { name: "Only the space “Main”", exact: true }).check();
+      await screen.getByRole("radio", { name: "This space", exact: true }).check();
       await pick(screen, "Mine").click();
       await expect(status(screen)).toContainText("Using");
       await expectNoAxeViolations(page, `themes section for a space (${label})`);

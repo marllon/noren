@@ -2145,7 +2145,7 @@ body {
 /*
  * The settings screen (NOR-F20-10a): the title and the search on top, the column of sections on the
  * left, the sections in one column of rows on the right (the label and the explanation of a field on
- * the left, its control on the right) and Save and Cancel under it all. Every size of the layout is a
+ * the left, its control on the right) and, under it all, the line that says every change is saved. Every size of the layout is a
  * multiple of --su (8 px): the column, the padding, the gaps, the height of a control, the width of
  * the controls, so the labels start at one line and the controls at another in every section.
  */
@@ -2184,6 +2184,7 @@ body {
   box-sizing: border-box;
   width: var(--settings-control);
   max-width: 60%;
+  margin-left: auto;
   height: calc(var(--su) * 4);
   padding: 0 var(--su);
   border: 1px solid var(--nr-border);
@@ -2192,6 +2193,33 @@ body {
   color: inherit;
   font: inherit;
   font-size: 13px;
+}
+
+/* The X that closes the screen (there is no Save: every change is already written). */
+.settings-close {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: calc(var(--su) * 4);
+  height: calc(var(--su) * 4);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: calc(var(--nr-radius) / 2);
+  background: transparent;
+  color: var(--nr-muted);
+  cursor: pointer;
+}
+
+.settings-close:hover {
+  background: color-mix(in srgb, var(--nr-text) 8%, transparent);
+  color: var(--nr-text);
+}
+
+.settings-close:focus-visible {
+  outline: 2px solid var(--nr-accent);
+  outline-offset: 0;
 }
 
 .settings-form {
@@ -2340,6 +2368,12 @@ body:has(.settings-dialog) .config-notice {
 
 .settings-feedback:empty {
   display: none;
+}
+
+.settings-autosave {
+  margin: 0;
+  font-size: 12px;
+  line-height: calc(var(--su) * 3);
 }
 
 .settings-field {

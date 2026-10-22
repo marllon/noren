@@ -3,7 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import {
   configText,
   openSettings,
-  saveSettings,
+  closeSettings,
   seedConfig,
   settingsScreen,
 } from "./settings-fixture";
@@ -152,7 +152,7 @@ test.describe("on a dark system", () => {
       getComputedStyle(element).getPropertyValue("background-color"),
     );
     expect(dialogBackground).toBe(DUSK.surface);
-    await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+    await screen.getByRole("button", { name: "Close", exact: true }).click();
   });
 
   test("a system that cannot paint the effect keeps the window opaque, and the settings say why", async ({
@@ -303,7 +303,7 @@ test.describe("on a dark system", () => {
     const screen = await openSettings(page);
     await screen.getByRole("combobox", { name: "Window effect", exact: true }).selectOption("mica");
     await opacityBox(screen).fill("0.8");
-    await saveSettings(page);
+    await closeSettings(page);
 
     const text = (await configText(page)) ?? "";
     expect(text).toContain("// my window");
@@ -335,9 +335,11 @@ test.describe("on a dark system", () => {
     const screen = await openSettings(page);
     await opacityBox(screen).fill("0.1");
     await expect(screen.getByRole("alert").filter({ hasText: "0.3 to 1" })).toBeVisible();
-    await expect(screen.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+    // Out of range: nothing is written, and the file keeps its 0.5.
+    await page.waitForTimeout(700);
+    expect(await configText(page)).toContain('"opacity": 0.5');
     await opacityBox(screen).fill("");
-    await saveSettings(page);
+    await closeSettings(page);
 
     expect(await configText(page)).toContain('"opacity": null');
     // No value any more: the opacity of the theme, since the window has Mica.

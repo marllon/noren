@@ -5,7 +5,7 @@ import {
   changeSettings,
   configText,
   openSettings,
-  saveSettings,
+  closeSettings,
   seedConfig,
 } from "./settings-fixture";
 
@@ -178,7 +178,7 @@ test("the mode stays after a reload, and going back to the sidebar brings the tr
   const screen = await openSettings(page);
   await expect(radio(screen, "On top")).toBeChecked();
   await radio(screen, "In the sidebar").check();
-  await saveSettings(page);
+  await closeSettings(page);
   await settled(page);
 
   await expect(bar(page)).toHaveCount(0);

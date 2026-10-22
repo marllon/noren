@@ -2,8 +2,9 @@ import { expect } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
 // Helpers for the tests that use the settings screen: it is the only place the layout, the
-// shortcut preset and the notifications are chosen now. Changes are a draft until Save, which
-// writes them into `config.jsonc` (the web build keeps that text under `noren.web.config`).
+// shortcut preset and the notifications are chosen now. There is no Save (NOR-F20-10c): every change
+// is written into `config.jsonc` as it is made (the web build keeps that text under
+// `noren.web.config`), and closing the screen writes what still waits.
 
 /** Key of the text of `config.jsonc` in the browser storage, in the web build. */
 export const WEB_CONFIG_KEY = "noren.web.config";
@@ -22,28 +23,35 @@ export async function openSettings(page: Page): Promise<Locator> {
   return screen;
 }
 
-/** Saves what was changed in the screen; the screen closes. */
-export async function saveSettings(page: Page): Promise<void> {
+/** Closes the screen with its X. What was changed is already written (or is, before the screen goes). */
+export async function closeSettings(page: Page): Promise<void> {
   const screen = settingsScreen(page);
-  await screen.getByRole("button", { name: "Save", exact: true }).click();
+  await screen.getByRole("button", { name: "Close", exact: true }).click();
   await expect(screen).toHaveCount(0);
 }
 
-/** Closes the screen without saving. */
-export async function cancelSettings(page: Page): Promise<void> {
-  const screen = settingsScreen(page);
-  await screen.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(screen).toHaveCount(0);
-}
+/**
+ * Waits long enough for a write that was due to have happened: a text waits half a second for the next
+ * key (leaving its box brings it forward). Only for proving that nothing was written.
+ */
+export const quiet = (page: Page): Promise<void> => page.waitForTimeout(700);
 
-/** Opens the screen, lets `change` touch its controls, and saves. */
+/** How many times the app asked to write `config.jsonc` (the fake backend counts them). */
+export const configSaveCount = (page: Page): Promise<number> =>
+  page.evaluate(
+    () =>
+      (window as Window & { __norenTest?: { configSaves(): number } }).__norenTest?.configSaves() ??
+      -1,
+  );
+
+/** Opens the screen, lets `change` touch its controls, and closes it. */
 export async function changeSettings(
   page: Page,
   change: (screen: Locator) => Promise<void>,
 ): Promise<void> {
   const screen = await openSettings(page);
   await change(screen);
-  await saveSettings(page);
+  await closeSettings(page);
 }
 
 /** Turns the "Pane headers" preference on or off, through the settings screen. */
@@ -66,7 +74,7 @@ export async function openShortcutsScreen(page: Page): Promise<Locator> {
 export async function closeShortcutsScreen(page: Page): Promise<void> {
   await shortcutsScreen(page).getByRole("button", { name: "Close", exact: true }).click();
   await expect(shortcutsScreen(page)).toHaveCount(0);
-  await cancelSettings(page);
+  await closeSettings(page);
 }
 
 /** The text of `config.jsonc` as the web build holds it, `null` when there is no file. */

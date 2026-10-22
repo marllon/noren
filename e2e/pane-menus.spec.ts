@@ -5,7 +5,7 @@ import {
   changeSettings,
   configText,
   openSettings,
-  saveSettings,
+  closeSettings,
   seedConfig,
   settingsScreen,
 } from "./settings-fixture";
@@ -589,7 +589,7 @@ test.describe("the limit of panes of a tab", () => {
     const box = terminal.getByRole("textbox", { name: LIMIT_BOX, exact: true });
     await expect(box).toHaveValue("8");
     await box.fill("2");
-    await saveSettings(page);
+    await closeSettings(page);
     expect(await configText(page)).toContain('"maxPanes": 2');
 
     await frame(page, first).click();
@@ -624,25 +624,26 @@ test.describe("the limit of panes of a tab", () => {
     await expect.poll(() => paneIds(page).then((rows) => rows.length)).toBe(5);
   });
 
-  test("a value out of the range is shown where it is typed and nothing is written", async ({
+  test("a value out of the range is shown where it is typed and nothing is written for it", async ({
     page,
   }) => {
     await open(page);
     const screen = await openSettings(page);
     const terminal = screen.getByRole("region", { name: "Terminal options", exact: true });
     const box = terminal.getByRole("textbox", { name: LIMIT_BOX, exact: true });
-    const save = settingsScreen(page).getByRole("button", { name: "Save", exact: true });
     for (const wrong of ["1", "17", "4.5", "many", ""]) {
       await box.fill(wrong);
       await expect(box).toHaveAttribute("aria-invalid", "true");
       await expect(terminal).toContainText("A whole number of panes, from 2 to 16.");
-      await expect(save).toBeDisabled();
     }
+    await page.waitForTimeout(700);
+    expect(await configText(page)).toBeNull();
+    // A value in the range is written, with no Save to press.
     await box.fill("16");
     await expect(box).not.toHaveAttribute("aria-invalid", "true");
-    await expect(save).toBeEnabled();
+    await expect.poll(async () => (await configText(page)) ?? "").toContain('"maxPanes": 16');
     await page.keyboard.press("Escape");
-    expect(await configText(page)).toBeNull();
+    await expect(settingsScreen(page)).toHaveCount(0);
   });
 
   test("a file with a value out of the range is refused with its line, and the default stays", async ({

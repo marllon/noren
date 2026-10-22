@@ -430,7 +430,7 @@ export const en = {
   "settings.windowOpacity": "Interface opacity (0.3 to 1)",
   "settings.windowOpacitySlider": "Interface opacity",
   "settings.windowOpacityHint":
-    "Empty: solid; with an effect, the opacity of the theme; with a picture, half see-through. The slider acts at once; Save keeps it.",
+    "Empty: solid; with an effect, the opacity of the theme; with a picture, half see-through. The slider acts at once.",
   "settings.background": "Background",
   "settings.backgroundImage": "Background image (file)",
   "settings.backgroundOpacity": "Image opacity (0 to 1)",
@@ -491,6 +491,9 @@ export const en = {
   "settings.profileArgs": "Arguments (one per line)",
   "settings.profileCwd": "Start folder",
   "settings.profileRemove": "Remove profile",
+  "settings.profileRemoveTitle": "Remove this profile?",
+  "settings.profileRemoveMessage": "“{name}” is taken out of config.jsonc. This cannot be undone.",
+  "settings.autoSaved": "Every change is saved as you make it.",
   "settings.profileAdd": "Add profile",
   "settings.profileAddSsh": "Add SSH profile",
   "settings.profileHost": "Host",
@@ -508,7 +511,8 @@ export const en = {
   "settings.profileRemoteCwd": "Start folder on that machine (optional)",
   "settings.profilesSshHint":
     "Opens a shell on another machine through the ssh of this computer. No password or passphrase is stored: use an ssh agent for a protected key.",
-  "settings.profilesHint": "The start folder is optional. Saving a profile starts nothing.",
+  "settings.profilesHint":
+    "The start folder is optional. A profile is saved as you fill it in, and it starts nothing.",
   "settings.shortcuts": "Shortcuts",
   "settings.preset": "Shortcut preset",
   "settings.preset.safe": "Safe",
@@ -894,10 +898,11 @@ export const en = {
   // The themes section of the settings screen: the gallery and what is done with a theme
   "themes.title": "Themes",
   "themes.hint":
-    "Click a theme to use it. Customize or duplicate one to make it yours. Everything here acts at once, outside Save.",
+    "Click a theme to use it. Customize or duplicate one to make it yours. Everything here acts at once.",
   "themes.scope": "Use a theme for",
   "themes.scopeApp": "The whole app",
-  "themes.scopeSpace": "Only the space “{name}”",
+  "themes.scopeSpace": "This space",
+  "themes.scopeHint": "The space is “{name}”: a theme chosen for it shows only there.",
   "themes.spaceOverride":
     "The space “{name}” has a theme of its own, so the theme of the app shows in the other spaces.",
   "themes.list": "Theme gallery",
@@ -1116,7 +1121,7 @@ export const en = {
   "ask.step.provider":
     "Or open Settings, then AI, and add a provider of your own: the kind, the address of its API and a model. A key goes to the keychain of your system, never to config.jsonc.",
   "ask.step.choose":
-    "In the same place, choose the provider and the model for {function}, and press Save.",
+    "In the same place, choose the provider and the model for {function}: they are saved as you choose.",
   "ask.review": "Preview of what will be sent",
   "ask.sendsTo": "This goes to {target}. Nothing is sent until you press Send.",
   "ask.theProvider": "the provider",
@@ -1174,7 +1179,7 @@ export const en = {
   "providers.step.own":
     "Or add a provider of your own below: its kind, API address and a model. An API key goes in the key box, to the system keychain, never to config.jsonc.",
   "providers.step.turnOn":
-    "Turn the AI on above, choose a provider and a model for each function, and press Save.",
+    "Turn the AI on above and choose a provider and a model for each function: they are saved as you choose.",
   "providers.ollamaModels": "Ollama models",
   "providers.checkAgain": "Check Ollama again",
   "providers.testOllama": "Test connection to Ollama",
@@ -1198,7 +1203,7 @@ export const en = {
   "providers.newKey": "Provider API key (optional)",
   "providers.add": "Add provider",
   "providers.footnote":
-    "Adding or removing a provider writes config.jsonc at once; the rest is written by Save. Keys go to the system keychain, never to config.jsonc.",
+    "Adding or removing a provider writes config.jsonc at once, like every other setting. Keys go to the system keychain, never to config.jsonc.",
   "providers.added": "Added {id}.",
   "providers.addedKey": "Added {id}, and its key is stored in the keychain.",
   "providers.addedNoKey": "Added {id}, but its key was not stored: {reason}",

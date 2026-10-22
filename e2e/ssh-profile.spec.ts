@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import {
-  cancelSettings,
+  closeSettings,
+  configSaveCount,
   configText,
   openSettings,
-  saveSettings,
+  quiet,
   seedConfig,
-  settingsScreen,
 } from "./settings-fixture";
 
 // Profiles of kind ssh (a shell in a norend on another machine), on the fake backend: the profiles
@@ -257,8 +257,6 @@ const field = (fieldset: Locator, name: string): Locator =>
   fieldset.getByRole("textbox", { name, exact: true });
 const profileBox = (screen: Locator, name: string): Locator =>
   screen.getByRole("group", { name, exact: true });
-const save = (page: Page): Locator =>
-  settingsScreen(page).getByRole("button", { name: "Save", exact: true });
 
 test.describe("the profiles screen with ssh profiles", () => {
   test("creates a profile of kind ssh that is listed and opens a tab of kind ssh", async ({
@@ -279,8 +277,12 @@ test.describe("the profiles screen with ssh profiles", () => {
     await field(box, "Port (optional)").fill("2222");
     await field(box, "Key file (optional)").fill("C:\\keys\\id_ed25519");
     await field(box, "Known hosts file (optional)").fill("C:\\keys\\known_hosts");
-    await expect(save(page)).toBeEnabled();
-    await saveSettings(page);
+    // The row is complete but the person is still in it: a new profile is written when they leave it,
+    // because its id is made from its name.
+    await quiet(page);
+    expect(await configSaveCount(page)).toBe(0);
+    await closeSettings(page);
+    expect(await configSaveCount(page)).toBe(1);
 
     const text = (await configText(page)) ?? "";
     const written = JSON.parse(text) as { profiles: Record<string, unknown>[] };
@@ -331,12 +333,15 @@ test.describe("the profiles screen with ssh profiles", () => {
     await expect(field(box, "User (optional)")).toHaveValue("deploy");
     await expect(field(box, "Port (optional)")).toHaveValue("2222");
     await expect(field(box, "Key file (optional)")).toHaveValue("");
-    // Nothing changed yet: nothing to save.
-    await expect(save(page)).toBeDisabled();
+    // Nothing changed yet: nothing is written.
+    await quiet(page);
+    expect(await configSaveCount(page)).toBe(0);
 
     await field(box, "Port (optional)").fill("22");
+    await expect.poll(() => configSaveCount(page)).toBe(1);
     await field(box, "Key file (optional)").fill("C:\\keys\\id_ed25519");
-    await saveSettings(page);
+    await expect.poll(() => configSaveCount(page)).toBe(2);
+    await closeSettings(page);
     const text = (await configText(page)) ?? "";
     expect(text).toContain("// keep me");
     const written = JSON.parse(text.replace("// keep me\n", "")) as {
@@ -345,7 +350,7 @@ test.describe("the profiles screen with ssh profiles", () => {
     expect(written.profiles).toEqual([{ ...BOX, port: 22, identityFile: "C:\\keys\\id_ed25519" }]);
   });
 
-  test("blocks Save on an invalid edit, says which box and why, and lets go when it is fixed", async ({
+  test("refuses an invalid edit, says which box and why, writes nothing for it and goes on when it is fixed", async ({
     page,
   }) => {
     await start(page);
@@ -355,25 +360,25 @@ test.describe("the profiles screen with ssh profiles", () => {
     await field(box, "Port (optional)").fill("abc");
     await expect(box.getByRole("alert")).toHaveText("Must be a whole number");
     await expect(field(box, "Port (optional)")).toHaveAttribute("aria-invalid", "true");
-    await expect(save(page)).toBeDisabled();
 
     await field(box, "Port (optional)").fill("70000");
     await expect(box.getByRole("alert")).toHaveText("Must be at most 65535");
-    await expect(save(page)).toBeDisabled();
 
     await field(box, "Port (optional)").fill("2222");
     await field(box, "Host").fill("");
     await expect(box.getByRole("alert")).toHaveText("The host is empty");
-    await expect(save(page)).toBeDisabled();
 
     await field(box, "Host").fill("-oProxyCommand=evil");
     await expect(box.getByRole("alert")).toContainText("not starting with");
-    await expect(save(page)).toBeDisabled();
+    // Not one of the wrong values was written, and the port put back where the file has it is no change.
+    await quiet(page);
+    expect(await configSaveCount(page)).toBe(0);
+    expect(JSON.parse((await configText(page)) ?? "{}")).toEqual({ profiles: [BOX] });
 
     await field(box, "Host").fill("build2.example.org");
     await expect(box.getByRole("alert")).toHaveCount(0);
-    await expect(save(page)).toBeEnabled();
-    await saveSettings(page);
+    await expect.poll(() => configSaveCount(page)).toBe(1);
+    await closeSettings(page);
     expect(JSON.parse((await configText(page)) ?? "{}")).toEqual({
       profiles: [{ ...BOX, host: "build2.example.org" }],
     });
@@ -385,15 +390,18 @@ test.describe("the profiles screen with ssh profiles", () => {
     await start(page, "{}");
     const screen = await openSettings(page);
     await screen.getByRole("button", { name: "Add SSH profile", exact: true }).click();
-    // Empty: nothing to save.
-    await expect(save(page)).toBeDisabled();
+    // Empty: nothing to write.
+    await quiet(page);
+    expect(await configSaveCount(page)).toBe(0);
     const box = profileBox(screen, "New profile 1");
     await field(box, "Name").fill("Half");
     // A name and no host.
     await expect(box.getByRole("alert")).toHaveText("The host is empty");
-    await expect(save(page)).toBeDisabled();
-    await cancelSettings(page);
+    await quiet(page);
+    expect(await configSaveCount(page)).toBe(0);
+    await closeSettings(page);
     expect(await configText(page)).toBe("{}");
+    expect(await configSaveCount(page)).toBe(0);
   });
 
   test("removes a profile of kind ssh, and it leaves the palette", async ({ page }) => {
@@ -402,8 +410,13 @@ test.describe("the profiles screen with ssh profiles", () => {
     await profileBox(screen, "Build box")
       .getByRole("button", { name: "Remove profile", exact: true })
       .click();
+    await page
+      .getByRole("alertdialog", { name: "Remove this profile?", exact: true })
+      .getByRole("button", { name: "Remove", exact: true })
+      .click();
     await expect(profileBox(screen, "Build box")).toHaveCount(0);
-    await saveSettings(page);
+    await expect.poll(() => configSaveCount(page)).toBe(1);
+    await closeSettings(page);
     expect(JSON.parse((await configText(page)) ?? "{}")).toEqual({ profiles: [] });
 
     await page.locator('[data-nr-part="pane"]:visible').first().click();
@@ -421,7 +434,7 @@ test.describe("the profiles screen with ssh profiles", () => {
     await field(profileBox(screen, "Dev"), "Program").fill("bash");
     // The shell row has no box of the machine.
     await expect(profileBox(screen, "Dev").getByRole("textbox", { name: "Host" })).toHaveCount(0);
-    await saveSettings(page);
+    await closeSettings(page);
     expect(JSON.parse((await configText(page)) ?? "{}")).toEqual({
       profiles: [{ ...shell, program: "bash" }, BOX],
     });

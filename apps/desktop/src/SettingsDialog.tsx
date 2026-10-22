@@ -1,6 +1,6 @@
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import type { ChangeEvent, FormEvent, KeyboardEvent, ReactNode } from "react";
+import type { ChangeEvent, FormEvent, KeyboardEvent, MouseEvent, ReactNode } from "react";
 import {
   AI_FUNCTIONS,
   BELL_STYLES,
@@ -22,7 +22,8 @@ import type {
   RightClickAction,
   WindowEffect,
 } from "@noren/model";
-import { useConfigState, configManager } from "./config-store";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { configManager, useConfigState } from "./config-store";
 import { LANGUAGE_NAMES, t, useT } from "./i18n";
 import { effectName } from "./i18n/names";
 import { resolveBindings } from "./keybindings";
@@ -64,9 +65,9 @@ import { ShortcutsDialog } from "./ShortcutsDialog";
 import { ThemesPanel } from "./ThemesPanel";
 import type { ThemesSpace } from "./ThemesPanel";
 import { addUserThemes, getUserThemes } from "./user-themes-store";
+import { TYPING_WAIT_MS, useSettingsWriter } from "./settings-apply";
 import {
   compactAvailable,
-  hasProblems,
   keepOpenAvailable,
   planSave,
   previewOf,
@@ -257,10 +258,15 @@ interface SettingsDialogProps {
  * follows the scroll; the search keeps the sections and rows that have its words. Hidden rows stay
  * in the page, so what a panel was told or a box holds is not lost by a search.
  *
- * What is changed in the sections is a draft until Save, which writes only the settings that differ
- * from the ones in force into `config.jsonc` (its comments stay) and closes the screen; the interface
- * follows the file, so the change shows without a reload. A file with a problem of its own is not
- * edited: Save waits until it is fixed. Importing is not part of the draft (see the Import section).
+ * There is no Save (NOR-F20-10c): a change of a section that the file takes is written to
+ * `config.jsonc` as it is made, only the setting that changed (the rest of the file and its comments
+ * stay), and the interface follows the file, so the change shows without a reload. A choice (a switch,
+ * a button, a list, a chooser) is written at once; a text or a number typed waits a moment for the
+ * next key and is written when the person leaves its box; a new profile is written when they leave
+ * its row (its id comes from its name). A value the file would refuse says why under its box and is
+ * not written, and the rest still is. Closing the screen (Esc, the X, a click outside it) writes what
+ * waits first, so nothing valid is lost. A file with a problem of its own is not edited: the screen
+ * says so and waits until it is fixed. Importing has its own steps (see the Import section).
  */
 export function SettingsDialog({
   backend,
@@ -277,9 +283,27 @@ export function SettingsDialog({
   const contentRef = useRef<HTMLDivElement>(null);
   const shortcutsButtonRef = useRef<HTMLButtonElement>(null);
   const { config, errors } = useConfigState();
-  const [draft, setDraft] = useState<SettingsDraft>({});
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<string>();
+  const profiles = useProfiles();
+  // The new profile row the person is in is held: its id comes from its name, so it is written when
+  // they leave the row (or close the screen) and not while its name is still being typed.
+  const heldRow = (): ReadonlySet<string> => {
+    const active = document.activeElement;
+    const key =
+      active instanceof HTMLElement && dialogRef.current?.contains(active)
+        ? active.closest<HTMLElement>("[data-nr-new-profile]")?.dataset["nrNewProfile"]
+        : undefined;
+    return new Set(key === undefined ? [] : [key]);
+  };
+  const [{ draft, failure }, writer] = useSettingsWriter(() => ({
+    takenProfileIds: takenProfileIds(configManager.state.config, profiles),
+    heldProfileRows: heldRow(),
+    picture: picture.status,
+  }));
+  const edit = (update: (now: SettingsDraft) => SettingsDraft, wait?: number) =>
+    writer.edit(update, wait);
+  const flush = () => writer.flush();
+  const settle = () => writer.settle();
+  const soon = () => writer.soon();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState<SettingsSection>("appearance");
@@ -291,7 +315,6 @@ export function SettingsDialog({
   const schemeInputRef = useRef<HTMLInputElement>(null);
   const profilesInputRef = useRef<HTMLInputElement>(null);
   const profilesButtonRef = useRef<HTMLButtonElement>(null);
-  const profiles = useProfiles();
   // What the system did with the effect that is saved (not with the one in the draft).
   const effectNote = windowEffectNote(useWindowEffectReport());
   const [importStatus, setImportStatus] = useState("");
@@ -330,6 +353,10 @@ export function SettingsDialog({
     );
   }, [draft, config, picture.status]);
   useEffect(() => () => setAppearancePreview(undefined), []);
+  // A path is written once the window could read it; when the read ends the path is due.
+  useEffect(() => {
+    if (picture.status === "ready") writer.soon();
+  }, [picture.status, shown.backgroundImage, writer]);
   const inForce = useSettingsAppearance();
   // The sliders stand where their boxes say, inside the range of the schema; an empty box or half a
   // number leaves the handle at the value in force.
@@ -390,34 +417,54 @@ export function SettingsDialog({
   };
   const modFiles = useModFiles();
   const modRows = settingsModRows(modFiles, shown.mods);
+  // The reasons under the boxes: what the draft holds that the file would refuse.
   const plan = planSave(config, draft, { takenProfileIds: takenProfileIds(config, profiles) });
   const [firstError] = errors;
-  const canSave =
-    !saving && firstError === undefined && plan.changes.length > 0 && !hasProblems(plan);
-  const change = (patch: SettingsDraft) => setDraft((now) => ({ ...now, ...patch }));
-  const changeTerminal = (patch: NonNullable<SettingsDraft["terminal"]>) =>
-    setDraft((now) => ({ ...now, terminal: { ...now.terminal, ...patch } }));
-  const changeArchive = (patch: NonNullable<SettingsDraft["archive"]>) =>
-    setDraft((now) => ({ ...now, archive: { ...now.archive, ...patch } }));
-  // The rows of the list are one draft: the first change takes the profiles of the file as they are.
+  // A choice is written at once; a text or a number on its way waits a moment (see `SettingsWriter`).
+  const change = (patch: SettingsDraft) => edit((now) => ({ ...now, ...patch }));
+  const typeIn = (patch: SettingsDraft) => edit((now) => ({ ...now, ...patch }), TYPING_WAIT_MS);
+  const changeTerminal = (patch: NonNullable<SettingsDraft["terminal"]>, wait?: number) =>
+    edit((now) => ({ ...now, terminal: { ...now.terminal, ...patch } }), wait);
+  const typeTerminal = (patch: NonNullable<SettingsDraft["terminal"]>) =>
+    changeTerminal(patch, TYPING_WAIT_MS);
+  const changeArchive = (patch: NonNullable<SettingsDraft["archive"]>, wait?: number) =>
+    edit((now) => ({ ...now, archive: { ...now.archive, ...patch } }), wait);
   const changeAi = (patch: Pick<NonNullable<SettingsDraft["ai"]>, "enabled">) =>
-    setDraft((now) => ({ ...now, ai: { ...now.ai, ...patch } }));
-  const changeAiTarget = (fn: AiFunction, patch: AiTargetDraft) =>
-    setDraft((now) => ({ ...now, ai: { ...now.ai, [fn]: { ...now.ai?.[fn], ...patch } } }));
-  const changeProfiles = (next: (rows: readonly ProfileRow[]) => readonly ProfileRow[]) =>
-    setDraft((now) => ({ ...now, profiles: next(now.profiles ?? shown.profiles) }));
-  const editProfile = (key: string, patch: Partial<Record<ProfileField, string>>) =>
-    changeProfiles((rows) => withProfileEdited(rows, key, patch));
-
-  const save = async () => {
-    if (!canSave) return;
-    setSaving(true);
-    setFailure(undefined);
-    const result = await configManager.update(plan.changes);
-    setSaving(false);
-    if (result.ok) onClose();
-    else setFailure(result.message);
+    edit((now) => ({ ...now, ai: { ...now.ai, ...patch } }));
+  const changeAiTarget = (fn: AiFunction, patch: AiTargetDraft, wait?: number) =>
+    edit((now) => ({ ...now, ai: { ...now.ai, [fn]: { ...now.ai?.[fn], ...patch } } }), wait);
+  // The rows of the list are one draft: the first change takes the profiles of the file as they are.
+  const changeProfiles = (
+    next: (rows: readonly ProfileRow[]) => readonly ProfileRow[],
+    wait?: number,
+  ) => edit((now) => ({ ...now, profiles: next(now.profiles ?? shown.profiles) }), wait);
+  const editProfile = (
+    key: string,
+    patch: Partial<Record<ProfileField, string>>,
+    wait = TYPING_WAIT_MS,
+  ) => changeProfiles((rows) => withProfileEdited(rows, key, patch), wait);
+  // Taking a profile away is the one change here that cannot be taken back, so it asks first (a row
+  // the file does not have yet goes at once).
+  const [removing, setRemoving] = useState<ProfileRow>();
+  const askRemoveProfile = (row: ProfileRow) => {
+    if (row.saved) setRemoving(row);
+    else changeProfiles((rows) => withoutProfile(rows, row.key));
   };
+
+  // Closing writes what waits first. When something valid could not be written (the file has a
+  // problem, or the write failed) the screen stays and says why; closing again lets go of it.
+  const closeBlocked = useRef(false);
+  const close = async () => {
+    const written = await settle();
+    if (written || closeBlocked.current) onClose();
+    else closeBlocked.current = true;
+  };
+  useEffect(() => {
+    closeBlocked.current = false;
+  }, [draft]);
+
+  // Leaving a box writes what waits at once, and the Enter of a box does too.
+  const onBlur = () => soon();
 
   // The same flow as "Import color scheme..." in the command palette: the importers read the file
   // by what is in it, so the input takes any file.
@@ -455,20 +502,46 @@ export function SettingsDialog({
     if (!result.ok) return result.message;
     setImportPlan(undefined);
     setImportStatus(result.message);
+    // The list the screen was editing does not have the profiles that came in, and a list that lacks a
+    // profile of the file takes it away: the file is the list again.
+    edit((now) => {
+      const next = { ...now };
+      delete next.profiles;
+      return next;
+    });
     profilesButtonRef.current?.focus();
     return undefined;
   };
 
+  // Nothing submits: the Enter of a box writes what it holds and does no more.
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    void save();
+    void flush();
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
+      if (event.target.type === "text") {
+        event.preventDefault();
+        void flush();
+      }
+      return;
+    }
     if (event.key !== "Escape") return;
     event.preventDefault();
     event.stopPropagation();
-    onClose();
+    void close();
+  };
+
+  // A click on the backdrop closes the screen like the X does; one that starts inside it and ends on
+  // the backdrop (a text selected by dragging past the edge) does not.
+  const pressedBackdrop = useRef(false);
+  const onBackdropDown = (event: MouseEvent) => {
+    pressedBackdrop.current = event.target === event.currentTarget;
+  };
+  const onBackdropClick = (event: MouseEvent) => {
+    if (event.target === event.currentTarget && pressedBackdrop.current) void close();
+    pressedBackdrop.current = false;
   };
 
   // Escape in the search first empties it; the next one closes the screen like anywhere else.
@@ -539,7 +612,7 @@ export function SettingsDialog({
             value={shown.width}
             problem={plan.problems.width}
             slider={sliders.width}
-            onChange={(width) => change({ width })}
+            onChange={(width) => typeIn({ width })}
           />,
         ),
         row(
@@ -664,7 +737,7 @@ export function SettingsDialog({
             value={shown.windowOpacity}
             problem={plan.problems.windowOpacity}
             slider={sliders.windowOpacity}
-            onChange={(windowOpacity) => change({ windowOpacity })}
+            onChange={(windowOpacity) => typeIn({ windowOpacity })}
           />,
         ),
       ],
@@ -684,7 +757,7 @@ export function SettingsDialog({
               problem={plan.problems.backgroundImage}
               text
               wide
-              onChange={(backgroundImage) => change({ backgroundImage })}
+              onChange={(backgroundImage) => typeIn({ backgroundImage })}
             />
             <BackgroundPicker
               backend={backend}
@@ -704,7 +777,7 @@ export function SettingsDialog({
             value={shown.backgroundOpacity}
             problem={plan.problems.backgroundOpacity}
             slider={sliders.backgroundOpacity}
-            onChange={(backgroundOpacity) => change({ backgroundOpacity })}
+            onChange={(backgroundOpacity) => typeIn({ backgroundOpacity })}
           />,
         ),
         row(
@@ -716,7 +789,7 @@ export function SettingsDialog({
             value={shown.backgroundBlur}
             problem={plan.problems.backgroundBlur}
             slider={sliders.backgroundBlur}
-            onChange={(backgroundBlur) => change({ backgroundBlur })}
+            onChange={(backgroundBlur) => typeIn({ backgroundBlur })}
           />,
         ),
         row(
@@ -742,7 +815,7 @@ export function SettingsDialog({
             problem={plan.terminalProblems.fontFamily}
             text
             wide
-            onChange={(fontFamily) => changeTerminal({ fontFamily })}
+            onChange={(fontFamily) => typeTerminal({ fontFamily })}
           />,
         ),
         ...(fonts.length > 0
@@ -774,7 +847,7 @@ export function SettingsDialog({
             value={shown.terminal.fontSize}
             problem={plan.terminalProblems.fontSize}
             slider={sliders.fontSize}
-            onChange={(fontSize) => changeTerminal({ fontSize })}
+            onChange={(fontSize) => typeTerminal({ fontSize })}
           />,
         ),
         row(
@@ -786,7 +859,7 @@ export function SettingsDialog({
             value={shown.terminal.lineHeight}
             problem={plan.terminalProblems.lineHeight}
             slider={sliders.lineHeight}
-            onChange={(lineHeight) => changeTerminal({ lineHeight })}
+            onChange={(lineHeight) => typeTerminal({ lineHeight })}
           />,
         ),
         row(
@@ -832,7 +905,7 @@ export function SettingsDialog({
             value={shown.terminal.scrollback}
             problem={plan.terminalProblems.scrollback}
             slider={sliders.scrollback}
-            onChange={(scrollback) => changeTerminal({ scrollback })}
+            onChange={(scrollback) => typeTerminal({ scrollback })}
           />,
         ),
         row(
@@ -870,7 +943,7 @@ export function SettingsDialog({
             value={shown.terminal.maxPanes}
             problem={plan.terminalProblems.maxPanes}
             slider={sliders.maxPanes}
-            onChange={(maxPanes) => changeTerminal({ maxPanes })}
+            onChange={(maxPanes) => typeTerminal({ maxPanes })}
           />,
         ),
         row(
@@ -920,6 +993,7 @@ export function SettingsDialog({
                       className="settings-profile"
                       aria-label={heading}
                       data-nr-part="settings-profile"
+                      data-nr-new-profile={profileRow.saved ? undefined : profileRow.key}
                     >
                       <NumberBox
                         label={t("settings.profileName")}
@@ -967,6 +1041,9 @@ export function SettingsDialog({
                             onChange={(identityFile) =>
                               editProfile(profileRow.key, { identityFile })
                             }
+                            onPick={(identityFile) =>
+                              editProfile(profileRow.key, { identityFile }, 0)
+                            }
                           />
                           <PathBox
                             kind="file"
@@ -977,6 +1054,9 @@ export function SettingsDialog({
                             problem={problems?.knownHostsFile}
                             onChange={(knownHostsFile) =>
                               editProfile(profileRow.key, { knownHostsFile })
+                            }
+                            onPick={(knownHostsFile) =>
+                              editProfile(profileRow.key, { knownHostsFile }, 0)
                             }
                           />
                         </>
@@ -1002,6 +1082,7 @@ export function SettingsDialog({
                           value={profileRow.program}
                           problem={problems?.program}
                           onChange={(program) => editProfile(profileRow.key, { program })}
+                          onPick={(program) => editProfile(profileRow.key, { program }, 0)}
                         />
                       )}
                       <TextArea
@@ -1030,14 +1111,13 @@ export function SettingsDialog({
                           value={profileRow.cwd}
                           problem={problems?.cwd}
                           onChange={(cwd) => editProfile(profileRow.key, { cwd })}
+                          onPick={(cwd) => editProfile(profileRow.key, { cwd }, 0)}
                         />
                       )}
                       <button
                         type="button"
                         className="settings-link"
-                        onClick={() =>
-                          changeProfiles((rows) => withoutProfile(rows, profileRow.key))
-                        }
+                        onClick={() => askRemoveProfile(profileRow)}
                       >
                         {t("settings.profileRemove")}
                       </button>
@@ -1140,7 +1220,7 @@ export function SettingsDialog({
             field="notifications.longCommandSeconds"
             value={shown.longCommandSeconds}
             problem={plan.problems.longCommandSeconds}
-            onChange={(longCommandSeconds) => change({ longCommandSeconds })}
+            onChange={(longCommandSeconds) => typeIn({ longCommandSeconds })}
           />,
         ),
       ],
@@ -1168,7 +1248,7 @@ export function SettingsDialog({
             hint={t("settings.archiveHint")}
             value={shown.archive.afterHours}
             problem={plan.archiveProblems.afterHours}
-            onChange={(afterHours) => changeArchive({ afterHours })}
+            onChange={(afterHours) => changeArchive({ afterHours }, TYPING_WAIT_MS)}
           />,
         ),
       ],
@@ -1236,7 +1316,7 @@ export function SettingsDialog({
                     problem={problem?.field === "model" ? problem.message : undefined}
                     text
                     wide
-                    onChange={(model) => changeAiTarget(fn, { model })}
+                    onChange={(model) => changeAiTarget(fn, { model }, TYPING_WAIT_MS)}
                   />
                 </fieldset>
               );
@@ -1509,7 +1589,7 @@ export function SettingsDialog({
 
   return (
     <>
-      <div className="dialog-backdrop">
+      <div className="dialog-backdrop" onMouseDown={onBackdropDown} onClick={onBackdropClick}>
         <div
           ref={dialogRef}
           className="space-dialog settings-dialog"
@@ -1533,8 +1613,18 @@ export function SettingsDialog({
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={onSearchKeyDown}
             />
+            <button
+              type="button"
+              className="settings-close"
+              data-nr-part="settings-close"
+              aria-label={t("common.close")}
+              title={t("common.close")}
+              onClick={() => void close()}
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
           </div>
-          <form className="settings-form" onSubmit={onSubmit}>
+          <form className="settings-form" onSubmit={onSubmit} onBlur={onBlur}>
             <nav
               className="settings-nav"
               aria-label={t("settings.sections")}
@@ -1607,14 +1697,9 @@ export function SettingsDialog({
                   </p>
                 )}
               </div>
-              <div className="dialog-actions">
-                <button type="button" onClick={onClose}>
-                  {t("common.cancel")}
-                </button>
-                <button type="submit" className="primary" disabled={!canSave}>
-                  {t("common.save")}
-                </button>
-              </div>
+              <p className="settings-hint settings-autosave" data-nr-part="settings-autosave">
+                {t("settings.autoSaved")}
+              </p>
             </div>
           </form>
         </div>
@@ -1627,6 +1712,21 @@ export function SettingsDialog({
             setImportPlan(undefined);
             profilesButtonRef.current?.focus();
           }}
+        />
+      )}
+      {removing !== undefined && (
+        <ConfirmDialog
+          title={t("settings.profileRemoveTitle")}
+          message={t("settings.profileRemoveMessage", {
+            name: removing.name.trim() || removing.key,
+          })}
+          confirmLabel={t("common.remove")}
+          onConfirm={() => {
+            writer.markProfileRemoved(removing.key);
+            changeProfiles((rows) => withoutProfile(rows, removing.key));
+            setRemoving(undefined);
+          }}
+          onCancel={() => setRemoving(undefined)}
         />
       )}
       {shortcutsOpen && (

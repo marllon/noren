@@ -2,7 +2,14 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
-import { configText, openSettings, saveSettings, seedConfig } from "./settings-fixture";
+import {
+  closeSettings,
+  configSaveCount,
+  configText,
+  openSettings,
+  quiet,
+  seedConfig,
+} from "./settings-fixture";
 
 // Choosing the picture of the background with the file chooser (NOR-F20-08a): the "Choose image…"
 // button of the settings screen and of the dialog of a space, the preview of the file chosen and the
@@ -133,7 +140,7 @@ test.describe("on a dark system", () => {
   test.use({ colorScheme: "dark" });
 
   test.describe("the settings screen", () => {
-    test("Choose image… opens the chooser, shows what was chosen and writes it when saved", async ({
+    test("Choose image… opens the chooser, shows what was chosen and writes it at once", async ({
       page,
     }) => {
       await start(page);
@@ -162,13 +169,15 @@ test.describe("on a dark system", () => {
       await expect(thumbnail(section)).toHaveAttribute("alt", "Preview of the image");
       await expect(imageBox(section)).toHaveValue(PICTURE);
       await expect(remove).toBeEnabled();
-      // The window tries the picture out as soon as it is chosen (NOR-F20-10b), but nothing is
-      // written until Save.
+      // The window shows the picture as soon as it is chosen, and the file names it: there is no
+      // Save to press.
       await expect(layer(page)).toHaveCount(1);
       expect(await layerStyle(page, "background-image")).toMatch(/^url\("blob:/);
-      expect((await configText(page)) ?? "").not.toContain('"image"');
+      await expect
+        .poll(async () => (await configText(page)) ?? "")
+        .toContain(`"image": "${PICTURE}"`);
 
-      await saveSettings(page);
+      await closeSettings(page);
       expect(await configText(page)).toContain(`"image": "${PICTURE}"`);
       await expect(layer(page)).toHaveCount(1);
       expect(await layerStyle(page, "background-image")).toMatch(/^url\("blob:/);
@@ -183,14 +192,15 @@ test.describe("on a dark system", () => {
       await expect.poll(() => pickCalls(page).then((calls) => calls.length)).toBe(1);
       await expect(thumbnail(section)).toHaveCount(0);
       await expect(imageBox(section)).toHaveValue("");
-      await expect(screen.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await quiet(page);
+      expect(await configSaveCount(page)).toBe(0);
       // The button is ready for another try.
       await expect(
         section.getByRole("button", { name: "Choose image…", exact: true }),
       ).toBeEnabled();
     });
 
-    test("Remove goes back to no image, and Save writes null", async ({ page }) => {
+    test("Remove goes back to no image, and writes null at once", async ({ page }) => {
       await start(page, configWith(`{ "image": "${PICTURE}" }`, '// kept\n"language": "en", '));
       const screen = await openSettings(page);
       const section = backgroundSection(screen);
@@ -203,24 +213,31 @@ test.describe("on a dark system", () => {
       await expect(section.getByText("No image", { exact: true })).toBeVisible();
       await expect(imageBox(section)).toHaveValue("");
       await expect(section.getByRole("button", { name: "Remove", exact: true })).toBeDisabled();
+      await expect.poll(async () => (await configText(page)) ?? "").toContain('"image": null');
+      await expect(layer(page)).toHaveCount(0);
 
-      await saveSettings(page);
+      await closeSettings(page);
       const text = (await configText(page)) ?? "";
       expect(text).toContain("// kept");
       expect(text).toContain('"image": null');
       await expect(layer(page)).toHaveCount(0);
     });
 
-    test("a picture chosen and then removed before Save is never written", async ({ page }) => {
+    test("a picture chosen and then removed leaves the file with no picture", async ({ page }) => {
       await start(page);
       await pickNext(page, PICTURE);
       const screen = await openSettings(page);
       const section = backgroundSection(screen);
       await section.getByRole("button", { name: "Choose image…", exact: true }).click();
       await expect(thumbnail(section)).toBeVisible();
+      await expect
+        .poll(async () => (await configText(page)) ?? "")
+        .toContain(`"image": "${PICTURE}"`);
       await section.getByRole("button", { name: "Remove", exact: true }).click();
       await expect(thumbnail(section)).toHaveCount(0);
-      await expect(screen.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await expect.poll(async () => (await configText(page)) ?? "").toContain('"image": null');
+      expect(await configText(page)).not.toContain(PICTURE);
+      await expect(layer(page)).toHaveCount(0);
     });
 
     test("the box still takes a path typed by hand, and the preview follows it", async ({
@@ -237,7 +254,10 @@ test.describe("on a dark system", () => {
       await imageBox(section).fill("https://example.com/sky.png");
       await expect(thumbnail(section)).toHaveCount(0);
       await expect(section.getByRole("alert").filter({ hasText: "web addresses" })).toBeVisible();
-      await expect(screen.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      // The picture that could be read is in the file; the web address, which is no picture, is not.
+      await quiet(page);
+      expect(await configText(page)).toContain(`"image": "${OTHER}"`);
+      expect(await configText(page)).not.toContain("https://");
     });
 
     test("a file that cannot be read says why under the preview", async ({ page }) => {
@@ -249,9 +269,31 @@ test.describe("on a dark system", () => {
       await expect(failureNote(section)).toContainText("The image cannot be shown:");
       await expect(failureNote(section)).toContainText("fixtures/missing.png was not found");
       await expect(thumbnail(section)).toHaveCount(0);
-      // The path is in the box, so the person can fix it or remove it.
+      // The path is in the box, so the person can fix it or remove it, and it is not in the file: a
+      // path the window cannot read is not a picture to keep.
       await expect(imageBox(section)).toHaveValue("fixtures/missing.png");
       await expect(section.getByRole("button", { name: "Remove", exact: true })).toBeEnabled();
+      await quiet(page);
+      expect(await configSaveCount(page)).toBe(0);
+    });
+
+    test("a path typed wrong is not written, and the right one is written once the window can read it", async ({
+      page,
+    }) => {
+      await start(page);
+      const screen = await openSettings(page);
+      const section = backgroundSection(screen);
+      // A path with a letter missing, then the right one: nothing is written for the wrong one (there is no
+      // such file), and the window never asked for it.
+      await imageBox(section).fill("fixtures/backgroun.png");
+      await expect(failureNote(section)).toBeVisible();
+      await quiet(page);
+      expect(await configSaveCount(page)).toBe(0);
+      await expect(layer(page)).toHaveCount(0);
+      await imageBox(section).fill(PICTURE);
+      await expect.poll(() => configSaveCount(page)).toBe(1);
+      expect(await configText(page)).toContain(`"image": "${PICTURE}"`);
+      await expect(layer(page)).toHaveCount(1);
     });
 
     test("a chooser that cannot be opened says why and can be tried again", async ({ page }) => {
@@ -429,7 +471,7 @@ test.describe("on a dark system", () => {
       ]);
       await section.getByRole("button", { name: "Remover", exact: true }).click();
       await expect(thumbnail(section)).toHaveCount(0);
-      await screen.getByRole("button", { name: "Cancelar", exact: true }).click();
+      await screen.getByRole("button", { name: "Fechar", exact: true }).click();
 
       await pickNext(page, PICTURE);
       await page
@@ -511,7 +553,7 @@ test.describe("on a light system", () => {
     await expect(thumbnail(section)).toBeVisible();
     await section.scrollIntoViewIfNeeded();
     await expectNoAxeViolations(page, "the settings screen with the picture preview, light");
-    await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+    await screen.getByRole("button", { name: "Close", exact: true }).click();
 
     await pickNext(page, PICTURE);
     const dialog = await openBackgroundDialog(page, "Main");

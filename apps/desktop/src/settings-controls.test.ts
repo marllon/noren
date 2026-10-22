@@ -157,6 +157,7 @@ function choices(dictionary: Record<string, string>): Record<ChoiceId, string[]>
       (action) => dictionary[`settings.rightClick.${action}`] ?? "",
     ),
     keyPreset: names(dictionary, "settings.preset.safe", "settings.preset.browser"),
+    themeScope: names(dictionary, "themes.scopeApp", "themes.scopeSpace"),
   };
 }
 

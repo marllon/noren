@@ -5,7 +5,7 @@ import { createDefaultWorkspace } from "../packages/model/src/default-workspace"
 import { createSequentialIds } from "../packages/model/src/ids";
 import { reduce } from "../packages/model/src/reducer";
 import { exportSpace } from "../packages/model/src/space-file";
-import { cancelSettings, openSettings } from "./settings-fixture";
+import { closeSettings, openSettings } from "./settings-fixture";
 
 // The spaces in the sync (NOR-F19-01c). The sync is the in-memory one of the web build, seeded under
 // `noren.web.sync`, so nothing runs git or touches a network. A push writes every space as a
@@ -96,7 +96,7 @@ async function connect(page: Page): Promise<void> {
   await sync.getByRole("textbox", { name: "Remote address", exact: true }).fill(REMOTE);
   await sync.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(sync.locator('[data-nr-part="settings-sync-status"]')).toContainText("Connected to");
-  await cancelSettings(page);
+  await closeSettings(page);
 }
 
 /** Runs the palette command whose title is `title`, found by typing `query`. */
@@ -121,7 +121,7 @@ async function press(page: Page, name: "Push" | "Pull"): Promise<string> {
   await sync.getByRole("button", { name, exact: true }).click();
   await expect(said).toBeVisible();
   const text = (await said.textContent()) ?? "";
-  await cancelSettings(page);
+  await closeSettings(page);
   return text;
 }
 

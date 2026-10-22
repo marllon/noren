@@ -4,7 +4,7 @@ import type { Locator, Page } from "@playwright/test";
 import {
   configText,
   openSettings,
-  saveSettings,
+  closeSettings,
   seedConfig,
   settingsScreen,
 } from "./settings-fixture";
@@ -98,7 +98,7 @@ const modRow = (screen: Locator, name: string): Locator =>
 async function changeMods(page: Page, change: (screen: Locator) => Promise<void>): Promise<void> {
   const screen = await openSettings(page);
   await change(screen);
-  await saveSettings(page);
+  await closeSettings(page);
 }
 
 const modsNotice = (page: Page): Locator => page.locator('[data-nr-part="mods-notice"]');
@@ -209,17 +209,20 @@ test.describe("the Mods section of the settings screen", () => {
     expect(await stillHere(page)).toBe(true);
   });
 
-  test("a change in the screen is a draft until Save", async ({ page }) => {
+  test("a mod chosen in the screen is on in the window and written at once, and stays when the screen closes", async ({
+    page,
+  }) => {
     await start(page, examples());
     const before = await sidebarBackground(page);
     const screen = await openSettings(page);
     await modRow(screen, TINTED).check();
     await expect(modRow(screen, TINTED)).toBeChecked();
-    expect(await sidebarBackground(page)).toBe(before);
-    await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect.poll(() => sidebarBackground(page)).not.toBe(before);
+    await expect.poll(() => savedConfig(page)).toContain(`"mods": ["${TINTED}"]`);
+    await page.keyboard.press("Escape");
     await expect(settingsScreen(page)).toHaveCount(0);
-    expect(await sidebarBackground(page)).toBe(before);
-    expect(await configText(page)).toBeNull();
+    expect(await sidebarBackground(page)).not.toBe(before);
+    expect(await savedConfig(page)).toContain(`"mods": ["${TINTED}"]`);
   });
 
   test("the mods that are on keep their order, and the last one wins", async ({ page }) => {
@@ -526,7 +529,7 @@ test.describe("reloading while the app runs", () => {
     await modRow(screen, "gone.css").click();
     // Let go of, it has no row to come back to.
     await expect(gone).toHaveCount(0);
-    await saveSettings(page);
+    await closeSettings(page);
     expect(await savedConfig(page)).toContain('"mods": ["here.css"]');
     await expect(modsNotice(page)).toHaveCount(0);
   });

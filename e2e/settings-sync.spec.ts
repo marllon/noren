@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { FAKE_GALLERY_LAGOON } from "../packages/model/src/gallery-fixture";
 import { expectNoAxeViolations } from "./axe-fixture";
-import { cancelSettings, configText, openSettings, seedConfig } from "./settings-fixture";
+import { closeSettings, configText, openSettings, seedConfig } from "./settings-fixture";
 
 // The Sync section of the settings screen and the "Pull settings" and "Push settings" commands of
 // the palette (NOR-F19-01b). The sync is the in-memory one of the web build, seeded under
@@ -187,7 +187,7 @@ test("Pull brings the files of the remote where the app reads them", async ({ pa
   expect(await stored(page, WEB_MODS_KEY)).toEqual({ "rounded.css": MOD });
 
   // The theme is among the themes of the app without a restart.
-  await cancelSettings(page);
+  await closeSettings(page);
   await runCommand(page, "theme: lagoon", "Theme: Lagoon");
 
   // The settings file the pull wrote is the one the screen reads now.
@@ -195,7 +195,7 @@ test("Pull brings the files of the remote where the app reads them", async ({ pa
   await expect(again.getByRole("textbox", { name: "Scrollback (lines)", exact: true })).toHaveValue(
     "4321",
   );
-  await cancelSettings(page);
+  await closeSettings(page);
 
   const second = await openSync(page);
   await button(second.sync, "Pull").click();
@@ -291,7 +291,7 @@ test("Pull settings and Push settings in the palette say where to connect, then 
 
   const { sync } = await openSync(page);
   await connect(sync);
-  await cancelSettings(page);
+  await closeSettings(page);
 
   await runCommand(page, "pull settings", "Pull settings");
   await expect(notice(page)).toHaveText("Pulled 1 file: mods/rounded.css.");
@@ -313,7 +313,7 @@ test("a conflict and a failure reach the notice of the palette commands too", as
   });
   const { sync } = await openSync(page);
   await connect(sync);
-  await cancelSettings(page);
+  await closeSettings(page);
   await runCommand(page, "pull settings", "Pull settings");
   await expect(notice(page)).toContainText("Pull stopped: config.jsonc");
   await expect(notice(page)).toContainText("Nothing changed on this computer.");

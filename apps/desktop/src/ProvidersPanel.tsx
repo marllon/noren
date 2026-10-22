@@ -197,7 +197,7 @@ export function ProvidersPanel({ backend }: ProvidersPanelProps) {
     }
   };
 
-  // Enter in a box does what the box is for; it must not save the rest of the screen.
+  // Enter in a box does what the box is for (the key box stores its key, the form adds the provider).
   const onEnter = (action: () => void) => (event: KeyboardEvent) => {
     if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement)) return;
     event.preventDefault();

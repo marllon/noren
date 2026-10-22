@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
-import { cancelSettings, configText, saveSettings, seedConfig } from "./settings-fixture";
+import { closeSettings, configSaveCount, configText, quiet, seedConfig } from "./settings-fixture";
 
 // The controls of the settings screen (NOR-F20-10b): every field has the right one. A yes or no is a
 // switch, a number with a range in the schema is a box with a slider beside it, a path has a button
@@ -10,7 +10,7 @@ import { cancelSettings, configText, saveSettings, seedConfig } from "./settings
 // buttons when it has two or three short options and a drop-down list otherwise, and a color is the
 // swatch and box of the theme editor. What a person can see (the picture, the sidebar, the tabs, the
 // font and the cursor of the terminal, the three sliders of the window) shows in the window at once
-// as a preview, Cancel takes it back and Save writes it. Everything runs on the fake backend.
+// and, with no Save (NOR-F20-10c), the file has it a moment later. Everything runs on the fake backend.
 
 interface Drawing {
   fontFamily: string;
@@ -70,8 +70,8 @@ async function start(
 const rowOf = (screen: Locator, key: string): Locator => screen.locator(`[data-nr-row="${key}"]`);
 const body = (page: Page): Locator => page.locator(".app-body");
 const sidebar = (page: Page): Locator => page.locator('[data-nr-part="sidebar"]');
-const save = (screen: Locator): Locator =>
-  screen.getByRole("button", { name: "Save", exact: true });
+/** The text of the settings file, once it holds `part`. */
+const written = (page: Page) => async (): Promise<string> => (await configText(page)) ?? "";
 const pictureLayer = (page: Page): Locator => page.locator('[data-nr-part="background"]');
 const drawing = (page: Page): Promise<Drawing | undefined> =>
   page.evaluate(() => (window as HookWindow).__norenTest?.terminalDrawing());
@@ -140,18 +140,19 @@ test.describe("the switch", () => {
     await row.scrollIntoViewIfNeeded();
     const pane = row.getByRole("switch", { name: "Pane headers", exact: true });
     await expect(pane).not.toBeChecked();
-    await expect(save(screen)).toBeDisabled();
 
     await pane.click();
     await expect(pane).toBeChecked();
-    await expect(save(screen)).toBeEnabled();
+    await expect.poll(written(page)).toContain('"paneHeaders": true');
 
-    // The keyboard: Space on the focused switch turns it back.
+    // The keyboard: Space on the focused switch turns it back, and every turn is written.
     await pane.focus();
     await page.keyboard.press("Space");
     await expect(pane).not.toBeChecked();
+    await expect.poll(written(page)).toContain('"paneHeaders": false');
     await page.keyboard.press("Space");
     await expect(pane).toBeChecked();
+    await expect.poll(written(page)).toContain('"paneHeaders": true');
     // Its role is a switch, and the checked state is the one a screen reader reads.
     expect(await pane.evaluate((element) => element.getAttribute("role"))).toBe("switch");
     expect(await pane.evaluate((element) => (element as HTMLInputElement).checked)).toBe(true);
@@ -209,13 +210,16 @@ test.describe("the switch", () => {
     await expect(keep).toBeChecked();
   });
 
-  test("Save writes what the switches say", async ({ page }) => {
+  test("the switches write what they say, at once, one setting for each", async ({ page }) => {
     const screen = await start(page);
     await rowOf(screen, "appearance.paneHeaders").getByRole("switch").click();
+    await expect.poll(() => configSaveCount(page)).toBe(1);
     const blinks = rowOf(screen, "terminal.cursorBlinks").getByRole("switch");
     await blinks.scrollIntoViewIfNeeded();
     await blinks.click();
-    await saveSettings(page);
+    await expect.poll(() => configSaveCount(page)).toBe(2);
+    await closeSettings(page);
+    expect(await configSaveCount(page)).toBe(2);
     const text = (await configText(page)) ?? "";
     expect(text).toContain('"paneHeaders": true');
     expect(text).toContain('"blink": false');
@@ -328,7 +332,7 @@ test.describe("the slider beside a box", () => {
       await expect(row.getByRole("alert")).toHaveCount(0);
     });
 
-    test(`${range.row}: what is typed in the box is where the handle stands, and a value out of the range holds Save back`, async ({
+    test(`${range.row}: what is typed in the box is where the handle stands, and a value out of the range is not written`, async ({
       page,
     }) => {
       const screen = await start(page);
@@ -342,17 +346,20 @@ test.describe("the slider beside a box", () => {
         String(Math.min(range.max, Math.max(range.min, Number(middle)))),
       );
       await expect(row.getByRole("alert")).toHaveCount(0);
+      // A number in the range is written when the typing pauses.
+      await expect.poll(() => configSaveCount(page)).toBe(1);
 
-      // Out of the range: the box says why where it is typed, Save waits, the handle is at the top.
+      // Out of the range: the box says why where it is typed, nothing is written, the handle is at the top.
       await box.fill(range.over);
       await expect(row.getByRole("alert")).toBeVisible();
       await expect(box).toHaveAttribute("aria-invalid", "true");
-      await expect(save(screen)).toBeDisabled();
       await expect(slider).toHaveValue(String(range.max));
-      // Back inside, the problem goes and Save is ready.
+      await quiet(page);
+      expect(await configSaveCount(page)).toBe(1);
+      // Back inside, the problem goes and the number is written.
       await box.fill(String(range.max));
       await expect(row.getByRole("alert")).toHaveCount(0);
-      await expect(save(screen)).toBeEnabled();
+      await expect.poll(() => configSaveCount(page)).toBe(2);
     });
   }
 
@@ -415,17 +422,19 @@ test.describe("the slider beside a box", () => {
     }
   });
 
-  test("Save writes a number the slider chose", async ({ page }) => {
+  test("a number the slider chose is written when the handle stops", async ({ page }) => {
     const screen = await start(page);
     const row = rowOf(screen, "terminal.fontSize");
     await row.scrollIntoViewIfNeeded();
     await row.getByRole("slider").focus();
     await page.keyboard.press("End");
+    await expect.poll(written(page)).toContain('"size": 72');
     const panes = rowOf(screen, "terminal.maxPanes");
     await panes.scrollIntoViewIfNeeded();
     await panes.getByRole("slider").focus();
     await page.keyboard.press("Home");
-    await saveSettings(page);
+    await expect.poll(written(page)).toContain('"maxPanes": 2');
+    await closeSettings(page);
     const text = (await configText(page)) ?? "";
     expect(text).toContain('"size": 72');
     expect(text).toContain('"maxPanes": 2');
@@ -494,7 +503,8 @@ test.describe("the row of buttons and the list", () => {
     await expect(group.getByRole("radio", { name: "Left", exact: true })).toBeChecked();
     await page.keyboard.press("ArrowRight");
     await expect(group.getByRole("radio", { name: "Right", exact: true })).toBeChecked();
-    await expect(save(screen)).toBeEnabled();
+    // Every move was written, and the file ends on the last one.
+    await expect.poll(written(page)).toContain('"position": "right"');
   });
 
   test("a choice of four or more options, or of long ones, is a list, with every option and the chosen one showing", async ({
@@ -533,19 +543,25 @@ test.describe("the row of buttons and the list", () => {
     }
   });
 
-  test("a list chooses by its names, and Save writes the value", async ({ page }) => {
+  test("a list chooses by its names, and the value is written at once", async ({ page }) => {
     const screen = await start(page);
     const bell = rowOf(screen, "terminal.bell").getByRole("combobox");
     await bell.scrollIntoViewIfNeeded();
     await bell.selectOption({ label: "Flash and beep" });
     await expect(bell).toHaveValue("both");
+    await expect.poll(written(page)).toContain('"bell": "both"');
     const click = rowOf(screen, "terminal.rightClick").getByRole("combobox");
     await click.selectOption({ label: "Always paste" });
+    await expect.poll(written(page)).toContain('"rightClick": "paste"');
+    // The language is the last: the screen itself speaks Portuguese the moment it is chosen.
     await rowOf(screen, "appearance.language")
       .getByRole("combobox")
       .selectOption({ label: "Português (Brasil)" });
-    await expect(save(screen)).toBeEnabled();
-    await saveSettings(page);
+    await expect.poll(written(page)).toContain('"language": "pt-BR"');
+    await page
+      .getByRole("dialog", { name: "Configurações", exact: true })
+      .getByRole("button", { name: "Fechar", exact: true })
+      .click();
     const text = (await configText(page)) ?? "";
     expect(text).toContain('"bell": "both"');
     expect(text).toContain('"rightClick": "paste"');
@@ -567,7 +583,8 @@ test.describe("the row of buttons and the list", () => {
           ).length,
         })),
       );
-      expect(found.length).toBe(5);
+      // The five choices of the sections and the one of the themes (the whole app or this space).
+      expect(found.length).toBe(6);
       for (const group of found) {
         expect(group.count).toBeGreaterThanOrEqual(2);
         expect(group.count).toBeLessThanOrEqual(3);
@@ -706,11 +723,10 @@ test.describe("the chooser of a path", () => {
     );
   });
 
-  test("a path the chooser gave is checked like one typed, and Save writes it", async ({
+  test("a path the chooser gave is checked like one typed, and written with the profile when its row is left", async ({
     page,
   }) => {
     const profile = await openSshProfile(page);
-    const screen = settingsOf(page);
     await profile.scrollIntoViewIfNeeded();
     await profile.getByRole("textbox", { name: "Name", exact: true }).fill("Staging");
     await profile.getByRole("textbox", { name: "Host", exact: true }).fill("staging.example.org");
@@ -720,12 +736,19 @@ test.describe("the chooser of a path", () => {
     await profile
       .getByRole("button", { name: "Choose a file for “Key file (optional)”", exact: true })
       .click();
-    await expect(save(screen)).toBeEnabled();
-    await saveSettings(page);
-    const written = JSON.parse((await configText(page)) ?? "{}") as {
+    await expect(
+      profile.getByRole("textbox", { name: "Key file (optional)", exact: true }),
+    ).toHaveValue("C:\\Users\\me\\.ssh\\id_ed25519");
+    // The row is complete but still has the keyboard: a new profile is written when its row is left.
+    await quiet(page);
+    expect(await configSaveCount(page)).toBe(0);
+    await settingsOf(page).getByRole("heading", { name: "Settings", exact: true }).click();
+    await expect.poll(() => configSaveCount(page)).toBe(1);
+    await closeSettings(page);
+    const saved = JSON.parse((await configText(page)) ?? "{}") as {
       profiles: { identityFile?: string; host?: string }[];
     };
-    expect(written.profiles[0]).toMatchObject({
+    expect(saved.profiles[0]).toMatchObject({
       host: "staging.example.org",
       identityFile: "C:\\Users\\me\\.ssh\\id_ed25519",
     });
@@ -796,7 +819,7 @@ test.describe("the color picker of the theme editor", () => {
 });
 
 test.describe("what has an effect shows in the window at once, as a preview", () => {
-  test("the sidebar: its side, its width, its density and compact mode follow the screen, and Cancel takes it all back", async ({
+  test("the sidebar: its side, its width, its density and compact mode follow the screen, are written, and stay when it closes", async ({
     page,
   }) => {
     const screen = await start(page);
@@ -817,60 +840,69 @@ test.describe("what has an effect shows in the window at once, as a preview", ()
     await expect.poll(async () => (await sidebar(page).boundingBox())?.width).toBe(480);
     await rowOf(screen, "appearance.compact").getByRole("switch").click();
     await expect(body(page)).toHaveAttribute("data-nr-sidebar-mode", "auto-hide");
-    // Nothing is written: the file is as it was.
-    expect(await configText(page)).toBe(fileFor("en", "dark"));
+    // The file has all four, with no Save to press.
+    await expect.poll(written(page)).toContain('"compact": true');
+    const text = await written(page)();
+    expect(text).toContain('"position": "right"');
+    expect(text).toContain('"density": "compact"');
+    expect(text).toContain('"width": 480');
 
-    await cancelSettings(page);
-    await expect(body(page)).toHaveAttribute("data-nr-side", "left");
-    await expect(body(page)).toHaveAttribute("data-nr-density", "comfortable");
-    await expect(body(page)).toHaveAttribute("data-nr-sidebar-mode", "docked");
-    await expect.poll(async () => (await sidebar(page).boundingBox())?.width).toBe(200);
-    expect(await configText(page)).toBe(fileFor("en", "dark"));
+    await closeSettings(page);
+    await expect(body(page)).toHaveAttribute("data-nr-side", "right");
+    await expect(body(page)).toHaveAttribute("data-nr-density", "compact");
+    await expect(body(page)).toHaveAttribute("data-nr-sidebar-mode", "auto-hide");
   });
 
-  test("a width that is not valid yet keeps the last one the window showed, and says why", async ({
+  test("a width that is not valid yet keeps the last one the window showed, says why, and the file keeps the last good one", async ({
     page,
   }) => {
     const screen = await start(page);
     const row = rowOf(screen, "appearance.width");
     await row.getByRole("textbox").fill("300");
     await expect.poll(async () => (await sidebar(page).boundingBox())?.width).toBe(300);
+    await expect.poll(written(page)).toContain('"width": 300');
     await row.getByRole("textbox").fill("30");
     await expect(row.getByRole("alert")).toHaveText("Whole pixels, from 180 to 480.");
     await expect.poll(async () => (await sidebar(page).boundingBox())?.width).toBe(300);
     await row.getByRole("textbox").fill("");
     await expect(row.getByRole("alert")).toBeVisible();
     await expect.poll(async () => (await sidebar(page).boundingBox())?.width).toBe(300);
+    await quiet(page);
+    expect(await configSaveCount(page)).toBe(1);
+    expect(await written(page)()).toContain('"width": 300');
   });
 
-  test("the tabs on top, the sidebar hidden with them", async ({ page }) => {
+  test("the tabs on top, the sidebar hidden with them, and it stays when the screen closes", async ({
+    page,
+  }) => {
     const screen = await start(page);
     await expect(body(page)).toHaveAttribute("data-nr-sidebar-mode", "docked");
     await rowOf(screen, "appearance.tabs")
       .getByRole("radio", { name: "On top", exact: true })
       .check();
     await expect(body(page)).toHaveAttribute("data-nr-sidebar-mode", "auto-hide");
-    await cancelSettings(page);
-    await expect(body(page)).toHaveAttribute("data-nr-sidebar-mode", "docked");
+    await expect.poll(written(page)).toContain('"tabs": "top"');
+    await closeSettings(page);
+    await expect(body(page)).toHaveAttribute("data-nr-sidebar-mode", "auto-hide");
   });
 
-  test("the pane headers: the switch turns them on in the window before Save, and Cancel takes them off", async ({
+  test("the pane headers: the switch turns them on in the window and in the file, and they stay when the screen closes", async ({
     page,
   }) => {
     const screen = await start(page);
     await expect(page.locator('[data-nr-part="pane-header"]')).toHaveCount(0);
     await rowOf(screen, "appearance.paneHeaders").getByRole("switch").click();
     await expect(page.locator('[data-nr-part="pane-header"]')).toHaveCount(1);
-    await cancelSettings(page);
-    await expect(page.locator('[data-nr-part="pane-header"]')).toHaveCount(0);
+    await expect.poll(written(page)).toContain('"paneHeaders": true');
+    await closeSettings(page);
+    await expect(page.locator('[data-nr-part="pane-header"]')).toHaveCount(1);
   });
 
-  test("the terminal: the font size, the line height, the cursor and the font follow the screen, and Cancel takes them back", async ({
+  test("the terminal: the font size, the line height, the cursor and the font follow the screen and the file has them", async ({
     page,
   }) => {
     const screen = await start(page);
     await expect.poll(async () => (await drawing(page))?.fontSize).toBe(14);
-    const before = await drawing(page);
 
     const size = rowOf(screen, "terminal.fontSize");
     await size.scrollIntoViewIfNeeded();
@@ -879,10 +911,13 @@ test.describe("what has an effect shows in the window at once, as a preview", ()
     await expect.poll(async () => (await drawing(page))?.fontSize).toBe(72);
     await size.getByRole("textbox").fill("20");
     await expect.poll(async () => (await drawing(page))?.fontSize).toBe(20);
-    // Half a number on the way, and one out of the range, leave the terminal where it was.
+    await expect.poll(written(page)).toContain('"size": 20');
+    // Half a number on the way, and one out of the range, leave the terminal and the file where they were.
     await size.getByRole("textbox").fill("2");
     await expect(size.getByRole("alert")).toBeVisible();
     await expect.poll(async () => (await drawing(page))?.fontSize).toBe(20);
+    await quiet(page);
+    expect(await written(page)()).toContain('"size": 20');
 
     const line = rowOf(screen, "terminal.lineHeight");
     await line.getByRole("slider").focus();
@@ -896,15 +931,23 @@ test.describe("what has an effect shows in the window at once, as a preview", ()
     await expect.poll(async () => (await drawing(page))?.cursorBlink).toBe(false);
     await rowOf(screen, "terminal.fontList").getByRole("textbox").fill("Consolas");
     await expect.poll(async () => (await drawing(page))?.fontFamily).toContain("Consolas");
-    // The file has none of it.
-    expect(await configText(page)).toBe(fileFor("en", "dark"));
+    // The file has all of it (the font size is the 20 that was a number, not the 2 that was not).
+    await expect.poll(written(page)).toContain('"family": "Consolas"');
+    const text = await written(page)();
+    expect(text).toContain('"size": 20');
+    expect(text).toContain('"lineHeight": 3');
+    expect(text).toContain('"style": "underline"');
+    expect(text).toContain('"blink": false');
 
-    await cancelSettings(page);
-    await expect.poll(async () => await drawing(page)).toEqual(before);
-    expect(await configText(page)).toBe(fileFor("en", "dark"));
+    await closeSettings(page);
+    await expect
+      .poll(async () => await drawing(page))
+      .toMatchObject({ fontSize: 20, lineHeight: 3, cursorStyle: "underline", cursorBlink: false });
   });
 
-  test("Save keeps what the window was showing, and writes it", async ({ page }) => {
+  test("what the window shows is what the file has, and it stays when the screen closes", async ({
+    page,
+  }) => {
     const screen = await start(page);
     const size = rowOf(screen, "terminal.fontSize");
     await size.scrollIntoViewIfNeeded();
@@ -916,7 +959,7 @@ test.describe("what has an effect shows in the window at once, as a preview", ()
       .getByRole("radio", { name: "Right", exact: true })
       .check();
     await expect.poll(async () => (await drawing(page))?.fontSize).toBe(18);
-    await saveSettings(page);
+    await closeSettings(page);
     await expect.poll(async () => (await drawing(page))?.fontSize).toBe(18);
     expect((await drawing(page))?.cursorStyle).toBe("bar");
     await expect(body(page)).toHaveAttribute("data-nr-side", "right");
@@ -926,7 +969,7 @@ test.describe("what has an effect shows in the window at once, as a preview", ()
     expect(text).toContain('"position": "right"');
   });
 
-  test("the picture: chosen with the chooser it shows behind the terminal at once, Cancel takes it away, and a path that cannot be read shows nothing and no notice", async ({
+  test("the picture: chosen with the chooser it shows behind the terminal and is written, and a path that cannot be read shows nothing, no notice, and is not written", async ({
     page,
   }) => {
     const screen = await start(page);
@@ -939,6 +982,8 @@ test.describe("what has an effect shows in the window at once, as a preview", ()
     await expect(row.locator('[data-nr-part="background-thumbnail-failure"]')).toBeVisible();
     await expect(pictureLayer(page)).toHaveCount(0);
     await expect(page.locator('[data-nr-part="background-notice"]')).toHaveCount(0);
+    await quiet(page);
+    expect(await configSaveCount(page)).toBe(0);
 
     await page.evaluate((path) => (window as HookWindow).__norenTest?.setImagePick(path), PICTURE);
     await row.getByRole("button", { name: "Choose image…", exact: true }).click();
@@ -946,14 +991,14 @@ test.describe("what has an effect shows in the window at once, as a preview", ()
     expect(
       await pictureLayer(page).evaluate((element) => getComputedStyle(element).backgroundImage),
     ).toMatch(/^url\("blob:/);
-    expect(await configText(page)).toBe(fileFor("en", "dark"));
+    await expect.poll(written(page)).toContain(`"image": "${PICTURE}"`);
 
-    await cancelSettings(page);
-    await expect(pictureLayer(page)).toHaveCount(0);
-    expect(await configText(page)).toBe(fileFor("en", "dark"));
+    await closeSettings(page);
+    await expect(pictureLayer(page)).toHaveCount(1);
+    expect(await written(page)()).toContain(`"image": "${PICTURE}"`);
   });
 
-  test("the picture: in a file that has one, emptying the box shows none at once, and Cancel brings it back", async ({
+  test("the picture: in a file that has one, taking it away shows none at once, writes null, and stays that way", async ({
     page,
   }) => {
     const withPicture = `{ "appearance": { "theme": "noren-dusk", "background": { "image": "${PICTURE}" } } }\n`;
@@ -963,9 +1008,9 @@ test.describe("what has an effect shows in the window at once, as a preview", ()
     await expect(pictureLayer(page)).toHaveCount(1);
     await row.getByRole("button", { name: "Remove", exact: true }).click();
     await expect(pictureLayer(page)).toHaveCount(0);
-    expect(await configText(page)).toBe(withPicture);
-    await cancelSettings(page);
-    await expect(pictureLayer(page)).toHaveCount(1);
+    await expect.poll(written(page)).toContain('"image": null');
+    await closeSettings(page);
+    await expect(pictureLayer(page)).toHaveCount(0);
   });
 });
 

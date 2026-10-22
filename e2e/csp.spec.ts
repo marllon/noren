@@ -122,7 +122,7 @@ test("the app runs under the policy: terminal, palette, settings, mods and a pic
   await page.keyboard.press("Escape");
 
   const settings = await openSettings(page);
-  await settings.getByRole("button", { name: "Cancel", exact: true }).click();
+  await settings.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "New space", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "New space", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");

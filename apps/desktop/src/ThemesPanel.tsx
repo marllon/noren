@@ -6,6 +6,8 @@ import { useConfigState } from "./config-store";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useT } from "./i18n";
 import { importSchemeFile } from "./scheme-import";
+import { Choice } from "./SettingsFields";
+import { CHOICE_CONTROLS } from "./settings-controls";
 import { themeChoiceOf } from "./theme-choice";
 import { ThemeEditorDialog } from "./ThemeEditorDialog";
 import { ThemeRenameDialog } from "./ThemeRenameDialog";
@@ -200,27 +202,18 @@ export function ThemesPanel({ backend, space, onSpaceTheme }: ThemesPanelProps) 
     <div className="themes-panel" data-nr-part="themes-panel" ref={panelRef}>
       <p className="settings-hint">{t("themes.hint")}</p>
       {space !== undefined && (
-        <fieldset className="settings-field themes-scope" data-nr-part="themes-scope">
-          <legend>{t("themes.scope")}</legend>
-          <label className="settings-option">
-            <input
-              type="radio"
-              name="themes-scope"
-              checked={scope === "app"}
-              onChange={() => setScope("app")}
-            />
-            <span>{t("themes.scopeApp")}</span>
-          </label>
-          <label className="settings-option">
-            <input
-              type="radio"
-              name="themes-scope"
-              checked={scope === "space"}
-              onChange={() => setScope("space")}
-            />
-            <span>{t("themes.scopeSpace", { name: space.name })}</span>
-          </label>
-        </fieldset>
+        <Choice<"app" | "space">
+          control={CHOICE_CONTROLS.themeScope}
+          legend={t("themes.scope")}
+          hint={t("themes.scopeHint", { name: space.name })}
+          name="themes-scope"
+          value={scope}
+          options={[
+            { value: "app", label: t("themes.scopeApp") },
+            { value: "space", label: t("themes.scopeSpace") },
+          ]}
+          onChange={setScope}
+        />
       )}
       {target === undefined && spaceOwn !== undefined && space !== undefined && (
         <p className="settings-hint" data-nr-part="themes-space-override">

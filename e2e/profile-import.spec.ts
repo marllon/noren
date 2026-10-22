@@ -8,7 +8,7 @@ import {
   PLIST_LAGOON,
 } from "../packages/model/src/import-fixtures";
 import {
-  cancelSettings,
+  closeSettings,
   configText,
   openSettings,
   seedConfig,
@@ -129,7 +129,7 @@ test("the settings screen has the two imports, and they act only when asked", as
   // Opening the screen reads and writes nothing.
   expect(await saves(page)).toBe(0);
   expect(await configText(page)).toBe(CONFIG);
-  await cancelSettings(page);
+  await closeSettings(page);
 });
 
 test("importing profiles shows what would be added before anything is written", async ({
@@ -229,7 +229,7 @@ test("confirming adds the profiles to the list and to config.jsonc, keeping its 
   expect(text).not.toContain("Old Shell");
 
   // The list of profiles in the palette: the machine's shells, then the imported ones.
-  await cancelSettings(page);
+  await closeSettings(page);
   expect(await profileTitles(page)).toEqual([...MACHINE_TITLES, ...IMPORTED_TITLES]);
 
   // No window reload, and importing started no shell: only the one the app opened.
@@ -245,7 +245,7 @@ test("an imported profile opens a tab that starts its program, arguments and fol
   await pickProfilesFile(page, screen, FIXTURE);
   await preview(page).getByRole("button", { name: "Import 5 profiles", exact: true }).click();
   await expect(preview(page)).toHaveCount(0);
-  await cancelSettings(page);
+  await closeSettings(page);
 
   await openPalette(page);
   await box(page).fill(">new dev shell");
@@ -275,7 +275,7 @@ test("the imported profiles are still there after a reload", async ({ page }) =>
   await pickProfilesFile(page, screen, FIXTURE);
   await preview(page).getByRole("button", { name: "Import 5 profiles", exact: true }).click();
   await expect(preview(page)).toHaveCount(0);
-  await cancelSettings(page);
+  await closeSettings(page);
 
   await page.reload();
   await expect
@@ -305,7 +305,7 @@ test("cancelling the preview, or pressing Escape, writes nothing and adds nothin
 
   expect(await saves(page)).toBe(0);
   expect(await configText(page)).toBe(CONFIG);
-  await cancelSettings(page);
+  await closeSettings(page);
   expect(await profileTitles(page)).toEqual(MACHINE_TITLES);
 });
 
@@ -321,7 +321,7 @@ test("a hidden profile never reaches the list, even when it is the only one", as
   );
   await expect(preview(page)).toHaveCount(0);
   expect(await saves(page)).toBe(0);
-  await cancelSettings(page);
+  await closeSettings(page);
   expect(await profileTitles(page)).toEqual(MACHINE_TITLES);
 });
 
@@ -343,7 +343,7 @@ test("a file that is not a settings file with profiles says so and writes nothin
   await expect(preview(page)).toHaveCount(0);
   expect(await saves(page)).toBe(0);
   expect(await configText(page)).toBe(CONFIG);
-  await cancelSettings(page);
+  await closeSettings(page);
   expect(await profileTitles(page)).toEqual(MACHINE_TITLES);
 });
 
@@ -365,7 +365,7 @@ test("a settings file with a problem of its own is not edited: the preview says 
   expect(await saves(page)).toBe(0);
   expect(await configText(page)).toBe(broken);
   await preview(page).getByRole("button", { name: "Cancel", exact: true }).click();
-  await cancelSettings(page);
+  await closeSettings(page);
 });
 
 test("a refused write keeps the preview open with the reason", async ({ page }) => {
@@ -395,7 +395,7 @@ test("importing the same file again numbers the ids and names, and every profile
     await pickProfilesFile(page, screen, FIXTURE);
     await preview(page).getByRole("button", { name: "Import 5 profiles", exact: true }).click();
     await expect(preview(page)).toHaveCount(0);
-    await cancelSettings(page);
+    await closeSettings(page);
   }
   const titles = await profileTitles(page);
   expect(titles).toHaveLength(2 + 5 + 5);
@@ -473,7 +473,7 @@ test("importing a color scheme from the settings screen puts the theme on the li
   // Importing a scheme writes a theme file, not the settings file.
   expect(await saves(page)).toBe(0);
   expect(await configText(page)).toBe(CONFIG);
-  await cancelSettings(page);
+  await closeSettings(page);
 
   await openPalette(page);
   await box(page).fill(">theme: lagoon");
@@ -501,5 +501,5 @@ test("a color scheme file that is not one says so in the screen and adds no them
   );
   expect(await page.evaluate(() => window.localStorage.getItem("noren.web.themes"))).toBeNull();
   await expect(settingsScreen(page)).toBeVisible();
-  await cancelSettings(page);
+  await closeSettings(page);
 });

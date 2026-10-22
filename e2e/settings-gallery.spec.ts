@@ -9,7 +9,7 @@ import {
   FAKE_GALLERY_MOD,
 } from "../packages/model/src/gallery-fixture";
 import { expectNoAxeViolations } from "./axe-fixture";
-import { cancelSettings, openSettings } from "./settings-fixture";
+import { closeSettings, openSettings } from "./settings-fixture";
 
 // The gallery section of the settings screen (NOR-F18-02b): the index (here a fixture seeded under
 // `noren.web.gallery`, so nothing touches the network) set against what is installed, an Install
@@ -145,7 +145,7 @@ test("installing a theme puts it among the themes of the app", async ({ page }) 
   await expect(row(gallery, "Lagoon").getByRole("button")).toHaveCount(0);
   expect(Object.keys(await stored(page, WEB_THEMES_KEY)).sort()).toEqual(["ember", "lagoon"]);
 
-  await cancelSettings(page);
+  await closeSettings(page);
   await page.locator('[data-nr-part="pane"]:visible').click();
   await page.keyboard.press("Control+Shift+P");
   await page.keyboard.type(">theme: lagoon");
@@ -195,7 +195,7 @@ test("a theme that passes the hash but is not a theme is said so and left out of
   await expect(said).toContainText("Broken was installed, but it is not a usable theme");
   await expect(said).toContainText("terminal");
 
-  await cancelSettings(page);
+  await closeSettings(page);
   await page.locator('[data-nr-part="pane"]:visible').click();
   await page.keyboard.press("Control+Shift+P");
   await page.keyboard.type(">theme: broken");

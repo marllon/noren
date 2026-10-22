@@ -41,6 +41,13 @@ test.describe("dark scheme", () => {
       .getByRole("treeitem", { name: SPLIT_FIXTURE.title, exact: true })
       .click();
     await expect(page.locator(`[data-pane-id="${SPLIT_FIXTURE.second}"]`)).toBeVisible();
+    // The rows of the glass sidebar are taller (NOR-F20-18b), so the list of tabs overflows in this
+    // window, and where the click on a tab leaves it scrolled depends on the frame the pane list
+    // opened in; the picture is of the glass and the split panes, so the list is put at its top.
+    await page
+      .getByRole("tree", { name: "Tabs", exact: true })
+      .evaluate((list) => void (list.scrollTop = 0));
+    await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
     await page.addStyleTag({ content: ".space-layer .terminal-view { visibility: hidden; }" });
     await expect(page).toHaveScreenshot("glass-split-dark.png", {
       animations: "disabled",

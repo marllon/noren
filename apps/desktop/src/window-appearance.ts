@@ -1,4 +1,4 @@
-import { BACKGROUND_VEIL, interfaceOpacity, resolveBackground } from "@noren/model";
+import { BACKGROUND_VEIL, GLASS_VEIL, interfaceOpacity, resolveBackground } from "@noren/model";
 import type {
   BackgroundLayer,
   Config,
@@ -34,6 +34,8 @@ export interface WindowSources {
   spaceBackground?: SpaceBackground | undefined;
   /** A picture is on screen (not only wanted): the panels let it through unless the settings say otherwise. */
   pictureShown?: boolean | undefined;
+  /** The interface style is glass: the panels are glass whatever is behind them (see `interfaceOpacity`). */
+  glass?: boolean | undefined;
   /** The numbers a screen is trying out (the sliders), laid over the settings and the space. */
   preview?: AppearancePreview | undefined;
 }
@@ -72,6 +74,7 @@ export function windowAppearance({
   applied,
   spaceBackground,
   pictureShown = false,
+  glass = false,
   preview,
 }: WindowSources): WindowAppearance {
   return {
@@ -83,6 +86,7 @@ export function windowAppearance({
       applied,
       themeOpacity: theme.ui.opacity,
       picture: pictureShown,
+      glass,
     }),
     effect: applied,
     // The theme, then the settings file, then the space: the last one that says something wins.
@@ -117,12 +121,14 @@ export function withOpacity(color: string, opacity: number): string {
  *
  * - `--nr-opacity`: the opacity of the interface, a number;
  * - `--nr-bg-glass` and `--nr-surface-glass`: `--nr-bg` and `--nr-surface` at that opacity, which the
- *   window, the title bar, the sidebar and the tab bar are painted with;
+ *   window, the title bar, the sidebar and the tab bar are painted with (`--nr-bg-glass` is the solid
+ *   `--nr-bg` under glass with no system effect, where the backdrop covers the window);
  * - `--nr-terminal-glass`: the background of the terminal at that opacity, which the pane of a terminal
  *   is painted with while a picture shows behind it (the terminal itself draws no background then);
  * - `--nr-background-image`, `--nr-background-opacity` and `--nr-background-blur`: the picture
  *   behind the terminals, how much of it shows and how blurred it is (with its unit);
- * - `--nr-background-veil`: how much of the background of the theme is drawn over the picture;
+ * - `--nr-background-veil`: how much of the background of the theme is drawn over the picture (the
+ *   veil of the glass style, `GLASS_VEIL`, under glass: the glass lets more through, so the veil is stronger);
  * - `--nr-background-backing`: what the picture is drawn on, the solid background of the theme (the
  *   glass of the window while it has an effect, so the effect shows through);
  * - `--nr-panel-blur`: how much the sidebar blurs the picture it lets through (`ui.blur` of the theme).
@@ -131,16 +137,22 @@ export function windowVariables(
   appearance: WindowAppearance,
   theme: Theme,
   imageUrl: string | null,
+  glass = false,
 ): Record<string, string> {
   return {
     "--nr-opacity": String(appearance.opacity),
-    "--nr-bg-glass": withOpacity(theme.ui.bg, appearance.opacity),
+    // Under glass with no system effect the window itself is solid: the backdrop (the illustration or the
+    // picture over its solid backing) covers it, and the glass is the panels, not the page behind them.
+    "--nr-bg-glass":
+      glass && appearance.effect === "none"
+        ? theme.ui.bg
+        : withOpacity(theme.ui.bg, appearance.opacity),
     "--nr-surface-glass": withOpacity(theme.ui.surface, appearance.opacity),
     "--nr-terminal-glass": withOpacity(theme.terminal.background, appearance.opacity),
     "--nr-background-image": imageUrl === null ? "none" : `url("${imageUrl}")`,
     "--nr-background-opacity": String(appearance.background.opacity),
     "--nr-background-blur": `${appearance.background.blur}px`,
-    "--nr-background-veil": String(BACKGROUND_VEIL),
+    "--nr-background-veil": String(glass ? GLASS_VEIL : BACKGROUND_VEIL),
     "--nr-background-backing":
       appearance.effect === "none" ? theme.ui.bg : withOpacity(theme.ui.bg, appearance.opacity),
     "--nr-panel-blur": `${theme.ui.blur}px`,

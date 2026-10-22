@@ -1077,6 +1077,8 @@ export class FakeBackend implements Backend {
   readonly #modListeners = new Set<(files: ModFile[]) => void>();
   readonly #windowEffects: Set<WindowEffect>;
   #appliedEffect: WindowEffect = "none";
+  /** Whether the fake system has its transparency effects off (see `systemTransparencyReduced`). */
+  #transparencyReduced = false;
   readonly #images = new Map<string, Uint8Array>();
   /** What the fake file chooser answers next, one entry for each time it is opened. */
   readonly #imagePicks: (string | null | Error)[] = [];
@@ -2438,6 +2440,16 @@ export class FakeBackend implements Backend {
   /** The effect the window has now (`none` until `setWindowEffect` got one this system can paint). */
   get appliedWindowEffect(): WindowEffect {
     return this.#appliedEffect;
+  }
+
+  async systemTransparencyReduced(): Promise<boolean> {
+    this.#record("systemTransparencyReduced");
+    return this.#transparencyReduced;
+  }
+
+  /** Turns the transparency effects of the fake system off (`true`) or on, for the next question. */
+  setSystemTransparencyReduced(reduced: boolean): void {
+    this.#transparencyReduced = reduced;
   }
 
   async readBackgroundImage(path: string): Promise<BackgroundImageFile> {

@@ -23,6 +23,7 @@ interface Hook {
   paneIds(): string[];
   focusedPaneId(): string | undefined;
   sendOutput(paneId: string, text: string): boolean;
+  paneSnapshot(paneId: string): string;
   split(dir: "row" | "column", paneId?: string): string | undefined;
   openedLinks(): string[];
   browserViews(): { paneId: string; url: string; bounds: Bounds }[];
@@ -82,6 +83,13 @@ async function print(page: Page, paneId: string, text: string): Promise<void> {
     { id: paneId, bytes: CLEAR + text },
   );
   expect(sent).toBe(true);
+  // Something is in the terminal once its buffer says so; a click on it before that finds no link. The
+  // glass style paints behind the terminal, which makes a frame slower than it was without it.
+  await expect
+    .poll(() =>
+      page.evaluate((id) => (window as HookWindow).__norenTest?.paneSnapshot(id) ?? "", paneId),
+    )
+    .not.toBe("");
 }
 
 /** Clicks the first row of the terminal on screen, `x` pixels from its left edge. */

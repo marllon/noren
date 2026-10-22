@@ -128,7 +128,7 @@ import {
   useInterfaceStyle,
   useLayout,
 } from "./layout-store";
-import { applyInterfaceStyle } from "./interface-style";
+import { applyColorScheme, applyInterfaceStyle } from "./interface-style";
 import { SettingsDialog } from "./SettingsDialog";
 import { closeSettings, openSettings, useSettingsOpen } from "./settings-ui";
 import { SidebarResizer } from "./SidebarResizer";
@@ -194,6 +194,12 @@ import { addUserThemes, getUserThemes, useAllThemes } from "./user-themes-store"
 import { useWindowAppearance } from "./use-window";
 import { applyWindowVariables, terminalOpacity, windowVariables } from "./window-appearance";
 import { requestWindowEffect, requestedWindowEffect } from "./window-effect-store";
+import { GlassBackdrop } from "./GlassBackdrop";
+import {
+  applySystemTransparency,
+  refreshSystemTransparency,
+  useSystemTransparencyReduced,
+} from "./system-transparency";
 import { BackgroundNotice, WindowBackground } from "./WindowBackground";
 import { spaceModOptions } from "./mod-options";
 import { ModStyles } from "./ModStyles";
@@ -476,6 +482,8 @@ export interface NorenTestHook {
   configSaves(): number;
   /** The effects the app asked the window for, in order, with the scheme each was painted for. */
   windowEffectCalls(): { effect: string; scheme: string }[];
+  /** Turns the transparency effects of the (fake) system off or on, as its Windows switch does, and has the app read it again. */
+  setSystemTransparencyReduced(reduced: boolean): void;
   /** The scrollback snapshot files the backend holds now, by pane id. */
   scrollbackFiles(): Record<string, string>;
   /** Every call the backend got about a snapshot (read, write or remove), in order, with the pane. */
@@ -937,10 +945,15 @@ function Shell({ store }: { store: WorkspaceStore }) {
   // The built-in themes and the ones the user imported or placed in the themes folder.
   const themes = useAllThemes();
   // The terminal is see-through while the interface is, and has no background at all while a
-  // picture shows behind it.
+  // picture shows behind it. Under glass the pane of the terminal is the glass (the card the stylesheet
+  // fills), so the terminal paints nothing of its own while the glass lets anything through.
   const appearance = useWindowAppearance();
   const pictureShown = pictureUrl(usePicture()) !== null;
-  const terminalAlpha = terminalOpacity(appearance, pictureShown);
+  const glassOn = useInterfaceStyle() === "glass";
+  const terminalAlpha = terminalOpacity(
+    appearance,
+    pictureShown || (glassOn && appearance.opacity < 1),
+  );
   const colors = useMemo(() => terminalTheme(theme, terminalAlpha), [theme, terminalAlpha]);
   // The global theme, for the callbacks below that must not change with it.
   const themeChoiceRef = useRef(themeChoice);
@@ -2214,6 +2227,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
             effect: String(call.args[0]),
             scheme: String(call.args[1]),
           })),
+        setSystemTransparencyReduced: (reduced) => {
+          fake.setSystemTransparencyReduced(reduced);
+          void refreshSystemTransparency(fake);
+        },
         scrollbackFiles: () => ({ ...fake.scrollbackFiles }),
         scrollbackCalls: () =>
           fake.calls
@@ -3210,6 +3227,7 @@ export function App() {
   }, [style]);
   useLayoutEffect(() => {
     applyTheme(document.documentElement, theme, style);
+    applyColorScheme(document.documentElement, theme.kind);
   }, [theme, style]);
   // The picture is read when the window wants a new one; until it is on screen the variable is none.
   useLayoutEffect(() => {
@@ -3218,9 +3236,21 @@ export function App() {
   useLayoutEffect(() => {
     applyWindowVariables(
       document.documentElement,
-      windowVariables(appearance, theme, pictureAddress),
+      windowVariables(appearance, theme, pictureAddress, style === "glass"),
     );
-  }, [appearance, theme, pictureAddress]);
+  }, [appearance, theme, pictureAddress, style]);
+  // The glass is opaque while the system has its transparency effects off (the media feature of the
+  // same name is read by the stylesheet itself; this is the switch the web view does not report).
+  const transparencyReduced = useSystemTransparencyReduced();
+  useEffect(() => {
+    const ask = () => void refreshSystemTransparency(backend);
+    ask();
+    window.addEventListener("focus", ask);
+    return () => window.removeEventListener("focus", ask);
+  }, []);
+  useLayoutEffect(() => {
+    applySystemTransparency(document.documentElement, transparencyReduced);
+  }, [transparencyReduced]);
 
   return (
     <main
@@ -3229,6 +3259,9 @@ export function App() {
       data-nr-picture={pictureAddress !== null ? "shown" : undefined}
     >
       <WindowBackground picture={picture} />
+      {style === "glass" && pictureAddress === null && appearance.effect === "none" && (
+        <GlassBackdrop kind={theme.kind} />
+      )}
       <TitleBar />
       {import.meta.env.VITE_NOREN_DEMO === "1" && <DemoBanner />}
       <ConfigErrorNotice />

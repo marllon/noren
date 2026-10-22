@@ -9,6 +9,44 @@ import type { Locator, Page } from "@playwright/test";
 /** Key of the text of `config.jsonc` in the browser storage, in the web build. */
 export const WEB_CONFIG_KEY = "noren.web.config";
 
+/**
+ * The gap of the glass style (the default style) between the cards of the window and around them, in
+ * pixels: `--nr-gap` of style-tokens.css. The sidebar is not against the edge of the window under glass,
+ * it is this far from it, and so is the terminal.
+ */
+export const GLASS_GAP = 8;
+
+/**
+ * A settings file that chooses the dense style. The tests that are about the machinery of the classic
+ * look (a solid window, the opacity numbers of the picture, a sidebar flush with the edge) start from
+ * it: the glass style, which is the default, changes those on purpose (NOR-F20-18a) and has its own
+ * tests (glass-surfaces.spec.ts).
+ */
+export const DENSE_CONFIG = '{ "appearance": { "style": "dense" } }';
+
+/**
+ * A computed color without its alpha, as `rgb(r, g, b)`. Under the glass style the terminal draws no
+ * background of its own (the pane is the glass), so what xterm paints on its element is the color of
+ * the theme with an alpha of 0, `rgba(20, 22, 27, 0)`: the tests that ask which theme reached the
+ * terminal compare the color, which is the theme's whether the paint is see-through or solid.
+ */
+export function withoutAlpha(color: string): string {
+  const match = /^rgba\((\d+), (\d+), (\d+), [\d.]+\)$/.exec(color);
+  return match === null ? color : `rgb(${match[1]}, ${match[2]}, ${match[3]})`;
+}
+
+/**
+ * `text`, a settings file of the simple kind the tests seed (one root object), with the dense style
+ * chosen in its `appearance` (made, if the file has none). A file that already names a style is left as
+ * it is. Only for the specs described at `DENSE_CONFIG`.
+ */
+export function denseOf(text: string): string {
+  if (/"style"\s*:/.test(text)) return text;
+  const appearance = /"appearance"\s*:\s*\{/;
+  if (appearance.test(text)) return text.replace(appearance, '$& "style": "dense",');
+  return text.replace("{", '{ "appearance": { "style": "dense" },');
+}
+
 export const settingsScreen = (page: Page): Locator =>
   page.getByRole("dialog", { name: "Settings", exact: true });
 

@@ -1,10 +1,12 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import {
+  DENSE_CONFIG,
   configText,
+  denseOf,
   openSettings,
   closeSettings,
-  seedConfig,
+  seedConfig as seedFile,
   settingsScreen,
 } from "./settings-fixture";
 
@@ -35,7 +37,19 @@ async function seedEffects(page: Page, effects: string[]): Promise<void> {
   );
 }
 
+/**
+ * This spec is about the window machinery of the classic look (a solid window, the opacity of the
+ * theme under an effect), which the dense style keeps: every file it seeds chooses that style. The glass
+ * style, the default, makes the interface see-through on purpose and has its own tests (glass-surfaces.spec.ts).
+ */
+const seedConfig = (page: Page, text: string): Promise<void> => seedFile(page, denseOf(text));
+
+/** Plays `text` as the file an editor saved, with the dense style chosen in it like the files this spec seeds. */
+const setFile = (page: Page, text: string): Promise<void> =>
+  page.evaluate((file) => (window as HookWindow).__norenTest?.setConfig(file), denseOf(text));
+
 async function start(page: Page): Promise<void> {
+  await seedFile(page, DENSE_CONFIG);
   await page.goto("/");
   await expect
     .poll(() => page.evaluate(() => (window as HookWindow).__norenTest?.paneIds().length ?? 0))
@@ -204,11 +218,7 @@ test.describe("on a dark system", () => {
     await start(page);
     expect(await rootVar(page, "--nr-opacity")).toBe("0.8");
 
-    await page.evaluate(() =>
-      (window as HookWindow).__norenTest?.setConfig(
-        '{\n  "appearance": {\n    "window": { "opacity": 0.1 }\n  }\n}',
-      ),
-    );
+    await setFile(page, '{\n  "appearance": {\n    "window": { "opacity": 0.1 }\n  }\n}');
     const notice = page.locator('[data-nr-part="config-notice"]');
     await expect(notice).toBeVisible();
     await expect(notice).toContainText("appearance.window.opacity");
@@ -216,11 +226,7 @@ test.describe("on a dark system", () => {
     expect(await rootVar(page, "--nr-opacity")).toBe("0.8");
 
     // The lowest allowed is accepted.
-    await page.evaluate(() =>
-      (window as HookWindow).__norenTest?.setConfig(
-        '{ "appearance": { "window": { "opacity": 0.3 } } }',
-      ),
-    );
+    await setFile(page, '{ "appearance": { "window": { "opacity": 0.3 } } }');
     await expect(notice).toHaveCount(0);
     expect(await rootVar(page, "--nr-opacity")).toBe("0.3");
   });
@@ -232,15 +238,11 @@ test.describe("on a dark system", () => {
     await start(page);
     expect(await effectOf(page)).toBe("none");
 
-    await page.evaluate(() =>
-      (window as HookWindow).__norenTest?.setConfig(
-        '{ "appearance": { "window": { "effect": "acrylic" } } }',
-      ),
-    );
+    await setFile(page, '{ "appearance": { "window": { "effect": "acrylic" } } }');
     await expect.poll(() => effectOf(page)).toBe("acrylic");
     expect(await rootVar(page, "--nr-opacity")).toBe("0.92");
 
-    await page.evaluate(() => (window as HookWindow).__norenTest?.setConfig("{}"));
+    await setFile(page, "{}");
     await expect.poll(() => effectOf(page)).toBe("none");
     expect(await rootVar(page, "--nr-opacity")).toBe("1");
     expect(await bodyBackground(page)).toBe(DUSK.bg);
@@ -266,10 +268,9 @@ test.describe("on a dark system", () => {
       .poll(() => page.evaluate(() => (window as HookWindow).__norenTest?.windowEffectCalls()))
       .toEqual([{ effect: "mica", scheme: "light" }]);
 
-    await page.evaluate(() =>
-      (window as HookWindow).__norenTest?.setConfig(
-        '{ "appearance": { "theme": "noren-fjord", "window": { "effect": "mica" } } }',
-      ),
+    await setFile(
+      page,
+      '{ "appearance": { "theme": "noren-fjord", "window": { "effect": "mica" } } }',
     );
     await expect
       .poll(() => page.evaluate(() => (window as HookWindow).__norenTest?.windowEffectCalls()))
@@ -279,11 +280,7 @@ test.describe("on a dark system", () => {
       ]);
 
     // Back to following the system: the window follows it too, and is not left with a look of its own.
-    await page.evaluate(() =>
-      (window as HookWindow).__norenTest?.setConfig(
-        '{ "appearance": { "theme": "system", "window": { "effect": "mica" } } }',
-      ),
-    );
+    await setFile(page, '{ "appearance": { "theme": "system", "window": { "effect": "mica" } } }');
     await expect
       .poll(() => page.evaluate(() => (window as HookWindow).__norenTest?.windowEffectCalls()))
       .toEqual([

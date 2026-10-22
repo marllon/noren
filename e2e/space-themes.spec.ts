@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
-import { configText, seedConfig } from "./settings-fixture";
+import { configText, seedConfig, withoutAlpha } from "./settings-fixture";
 
 // The theme of a space: a space can have its own theme, which shows while it is the active space;
 // with none, the global theme (`appearance.theme` of the file, else the system's) shows. It is
@@ -23,12 +23,14 @@ const rootVar = (page: Page, name: string): Promise<string> =>
   page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
 /** The background of the terminal on screen (xterm sets it on its scrollable element). */
 const terminalBackground = (page: Page): Promise<string> =>
-  page.evaluate(() => {
-    const visible = [...document.querySelectorAll<HTMLElement>(".xterm-scrollable-element")].find(
-      (element) => element.getClientRects().length > 0 && element.offsetParent !== null,
-    );
-    return visible === undefined ? "" : getComputedStyle(visible).backgroundColor;
-  });
+  page
+    .evaluate(() => {
+      const visible = [...document.querySelectorAll<HTMLElement>(".xterm-scrollable-element")].find(
+        (element) => element.getClientRects().length > 0 && element.offsetParent !== null,
+      );
+      return visible === undefined ? "" : getComputedStyle(visible).backgroundColor;
+    })
+    .then(withoutAlpha);
 
 const switcher = (page: Page): Locator =>
   page.getByRole("navigation", { name: "Spaces", exact: true });

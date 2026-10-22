@@ -1350,7 +1350,7 @@ export const ptBR: Dictionary = {
   "field.appearance.window.effect":
     'O que o sistema pinta atrás da janela: "mica" ou "acrylic" no Windows 11, "vibrancy" no macOS, "none" para uma janela comum e opaca. Um sistema que não pinta o efeito mantém a janela opaca.',
   "field.appearance.window.opacity":
-    "A opacidade da interface, de 0,3 (deixa passar a maior parte do que está atrás da janela) a 1 (sólida). Sem valor (ou null) a janela é sólida; com um efeito ligado usa a opacidade do tema; e com uma imagem atrás os painéis ficam meio transparentes (0,55), e a imagem aparece pela barra lateral e pelos terminais.",
+    "A opacidade da interface, de 0,3 (deixa passar a maior parte do que está atrás da janela) a 1 (sólida). Sem valor (ou null) o estilo Vidro deixa os painéis de vidro a 0,62 (a barra lateral 0,2 menos), seja o que for que estiver atrás deles; no estilo Técnico denso a janela é sólida, com um efeito ligado usa a opacidade do tema, e com uma imagem atrás os painéis ficam meio transparentes (0,55), e a imagem aparece pela barra lateral e pelos terminais.",
   "field.appearance.background": "A imagem atrás dos terminais.",
   "field.appearance.background.image":
     "Um arquivo de imagem deste computador mostrado atrás dos terminais: um caminho absoluto ou um caminho dentro da pasta de configuração do app (como backgrounds/sky.jpg). Um endereço da web é recusado. null não mostra imagem, mesmo onde o tema tem uma. A imagem de um espaço vale mais que esta.",

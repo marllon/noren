@@ -3,6 +3,7 @@ import type { SpaceBackground } from "@noren/model";
 import { useAppearancePreview } from "./appearance-preview";
 import { pictureUrl, usePicture } from "./background-image-store";
 import { useConfigState } from "./config-store";
+import { useInterfaceStyle } from "./layout-store";
 import { useTheme } from "./use-theme";
 import { windowAppearance } from "./window-appearance";
 import type { WindowAppearance } from "./window-appearance";
@@ -68,9 +69,10 @@ export function useSettingsAppearance(): WindowAppearance {
   const applied = useAppliedWindowEffect();
   const preview = useAppearancePreview();
   const pictureShown = pictureUrl(usePicture()) !== null;
+  const glass = useInterfaceStyle() === "glass";
   return useMemo(
-    () => windowAppearance({ config, theme, applied, pictureShown, preview }),
-    [config, theme, applied, pictureShown, preview],
+    () => windowAppearance({ config, theme, applied, pictureShown, glass, preview }),
+    [config, theme, applied, pictureShown, glass, preview],
   );
 }
 
@@ -86,8 +88,18 @@ export function useWindowAppearance(): WindowAppearance {
   const own = useSpaceBackground();
   const preview = useAppearancePreview();
   const pictureShown = pictureUrl(usePicture()) !== null;
+  const glass = useInterfaceStyle() === "glass";
   return useMemo(
-    () => windowAppearance({ config, theme, applied, spaceBackground: own, pictureShown, preview }),
-    [config, theme, applied, own, pictureShown, preview],
+    () =>
+      windowAppearance({
+        config,
+        theme,
+        applied,
+        spaceBackground: own,
+        pictureShown,
+        glass,
+        preview,
+      }),
+    [config, theme, applied, own, pictureShown, glass, preview],
   );
 }

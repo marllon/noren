@@ -1,4 +1,5 @@
 import { PICTURE_PANEL_OPACITY } from "./background";
+import { GLASS_PANEL_OPACITY } from "./glass";
 
 // The look of the window itself: the effect the system paints behind it (Mica, Acrylic, vibrancy)
 // and how opaque the interface is on top of it. Pure: the effect is applied by the shell
@@ -76,24 +77,32 @@ export interface OpacitySources {
    * through unless something says otherwise. Left out: no picture.
    */
   picture?: boolean | undefined;
+  /**
+   * The interface style is glass (`appearance.style`): the window always has something behind the
+   * panels (the picture, or the illustrated backdrop), so with nothing said they are glass
+   * (`GLASS_PANEL_OPACITY`) whether a picture shows or not. Left out: not glass.
+   */
+  glass?: boolean | undefined;
 }
 
 /**
  * How opaque the interface is, from `MIN_WINDOW_OPACITY` to 1 (solid). A value in the settings
- * always counts. Without one the window is solid, except while it has an effect (then the theme says,
- * `ui.opacity`, since an effect is only seen through a window that lets some of it through) or a
- * picture shows behind it (then the panels are `PICTURE_PANEL_OPACITY`, which lets the picture
- * through).
+ * always counts. Without one the window is solid, except under the glass style (then the panels are
+ * `GLASS_PANEL_OPACITY`, whatever is behind them), while a picture shows behind it (then they are
+ * `PICTURE_PANEL_OPACITY`, which lets the picture through) or while it has an effect (then the theme
+ * says, `ui.opacity`, since an effect is only seen through a window that lets some of it through).
  */
 export function interfaceOpacity({
   configured,
   applied,
   themeOpacity,
   picture = false,
+  glass = false,
 }: OpacitySources): number {
   if (typeof configured === "number") {
     return clampNumber(configured, MIN_WINDOW_OPACITY, 1, 1);
   }
+  if (glass) return GLASS_PANEL_OPACITY;
   if (picture) return PICTURE_PANEL_OPACITY;
   return applied === "none" ? 1 : clampNumber(themeOpacity, MIN_WINDOW_OPACITY, 1, 1);
 }

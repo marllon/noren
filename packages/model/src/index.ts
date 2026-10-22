@@ -55,6 +55,14 @@ export type { BackgroundImageFile, BackgroundLayer, ResolvedBackground } from ".
 export { pictureUnderPanel, worstPixel } from "./background-panel";
 export type { PanelOverPicture } from "./background-panel";
 export {
+  GLASS_PANEL_OPACITY,
+  GLASS_SIDE_MIN_OPACITY,
+  GLASS_SIDE_OPACITY_STEP,
+  GLASS_SIDE_SOLID_RAMP,
+  GLASS_VEIL,
+  glassSideOpacity,
+} from "./glass";
+export {
   DEFAULT_WINDOW_EFFECT,
   MIN_WINDOW_OPACITY,
   WINDOW_EFFECTS,

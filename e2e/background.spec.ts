@@ -2,7 +2,14 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { NOREN_DUSK } from "../packages/model/src/builtin-themes";
-import { configText, openSettings, closeSettings, seedConfig } from "./settings-fixture";
+import {
+  DENSE_CONFIG,
+  configText,
+  denseOf,
+  openSettings,
+  closeSettings,
+  seedConfig as seedFile,
+} from "./settings-fixture";
 
 // The picture behind the terminals. It is a file on this computer: the web build keeps the files a
 // path can name under `noren.web.images` in the browser storage (a fixture picture is seeded
@@ -38,7 +45,15 @@ async function seedImages(page: Page, files: Record<string, Buffer>): Promise<vo
   );
 }
 
+/**
+ * This spec is about how a picture is read and layered (the opacity of the interface over it, the veil,
+ * a solid terminal without one), which the dense style keeps as it was: every file it seeds chooses that
+ * style. The glass style has its own picture tests (glass-surfaces.spec.ts).
+ */
+const seedConfig = (page: Page, text: string): Promise<void> => seedFile(page, denseOf(text));
+
 async function start(page: Page): Promise<void> {
+  await seedFile(page, DENSE_CONFIG);
   await seedImages(page, { [PICTURE]: FIXTURE });
   await page.goto("/");
   await expect
@@ -328,9 +343,10 @@ test.describe("on a dark system", () => {
       .getByRole("textbox", { name: "Background image (file)", exact: true })
       .fill("https://example.com/sky.png");
     await expect(screen.getByRole("alert").filter({ hasText: "web addresses" })).toBeVisible();
-    // A web address is not a picture the file takes: nothing is written for it.
+    // A web address is not a picture the file takes: nothing is written for it (the file is still the one
+    // this spec started from).
     await page.waitForTimeout(700);
-    expect(await configText(page)).toBeNull();
+    expect(await configText(page)).toBe(DENSE_CONFIG);
   });
 
   test("a space can have a picture of its own, that shows only while it is the active space", async ({

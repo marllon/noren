@@ -294,6 +294,7 @@ fn main() {
             update::update_check,
             update::update_install,
             bridge::window_effect_set,
+            bridge::system_transparency_reduced,
             bridge::background_image_read,
             bridge::background_image_pick,
             bridge::path_pick,

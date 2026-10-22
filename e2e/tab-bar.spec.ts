@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { seedSidebarState } from "./sidebar-fixture";
 import {
+  GLASS_GAP,
   changeSettings,
   configText,
   openSettings,
@@ -91,8 +92,8 @@ test("switching to top tabs shows the bar above the terminal, one tab per item i
   const contentBox = await box(content(page));
   expect(barBox.y + barBox.height).toBeLessThanOrEqual(contentBox.y + 1);
   expect(barBox.y).toBeGreaterThan(0);
-  expect(contentBox.x).toBe(0);
-  expect(contentBox.width).toBe(page.viewportSize()?.width);
+  expect(contentBox.x).toBe(GLASS_GAP);
+  expect(contentBox.width).toBe((page.viewportSize()?.width ?? 0) - 2 * GLASS_GAP);
   await expect(sidebar(page)).toHaveAttribute("data-nr-state", "hidden");
   // The tree is not in the sidebar any more: the list of tabs on screen is the bar.
   await expect(tree(page)).toHaveCount(0);
@@ -187,7 +188,7 @@ test("the mode stays after a reload, and going back to the sidebar brings the tr
   await expect(sidebar(page)).not.toHaveAttribute("data-nr-state", /.+/);
   const side = await box(sidebar(page));
   const main = await box(content(page));
-  expect(side.x).toBe(0);
+  expect(side.x).toBe(GLASS_GAP);
   expect(main.x).toBeGreaterThanOrEqual(side.x + side.width);
   // The folded or open state of the group is the same as before.
   await expect(page.getByRole("treeitem", { name: "Work", exact: true })).toHaveAttribute(

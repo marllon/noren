@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   BACKGROUND_VEIL,
   DEFAULT_BACKGROUND_OPACITY,
+  GLASS_PANEL_OPACITY,
+  GLASS_VEIL,
   NOREN_DUSK,
   NOREN_PAPER,
   PICTURE_PANEL_OPACITY,
@@ -283,5 +285,59 @@ describe("the terminal over a translucent window or a picture", () => {
     expect(isTranslucent("#14161bFE")).toBe(true);
     expect(isTranslucent(undefined)).toBe(false);
     expect(isTranslucent("rgba(0,0,0,0.5)")).toBe(false);
+  });
+});
+
+describe("under the glass style", () => {
+  const glass = (
+    config: Config = {},
+    extra: { pictureShown?: boolean; applied?: "none" | "mica" } = {},
+  ) => windowAppearance({ config, theme: NOREN_DUSK, applied: "none", glass: true, ...extra });
+
+  it("is see-through by default, with or without a picture: the panels are glass", () => {
+    expect(glass().opacity).toBe(GLASS_PANEL_OPACITY);
+    expect(glass({}, { pictureShown: true }).opacity).toBe(GLASS_PANEL_OPACITY);
+    // Over a system effect too: the glass of the style, and not the opacity of the theme.
+    expect(glass({}, { applied: "mica" }).opacity).toBe(GLASS_PANEL_OPACITY);
+  });
+
+  it("takes the opacity of the settings over it, and the numbers of a picture are the same", () => {
+    const config: Config = {
+      appearance: { window: { opacity: 0.8 }, background: { opacity: 0.4, blur: 6 } },
+    };
+    expect(glass(config)).toMatchObject({
+      opacity: 0.8,
+      background: { opacity: 0.4, blur: 6 },
+    });
+  });
+
+  it("is not the style of a window that says nothing about it: the opacity stays solid", () => {
+    expect(windowAppearance({ config: {}, theme: NOREN_DUSK, applied: "none" }).opacity).toBe(1);
+  });
+
+  it("puts the glass veil over a picture, and keeps the window solid behind the backdrop", () => {
+    const appearance = glass();
+    const variables = windowVariables(appearance, NOREN_DUSK, "blob:abc", true);
+    expect(variables["--nr-background-veil"]).toBe(String(GLASS_VEIL));
+    expect(variables["--nr-opacity"]).toBe(String(GLASS_PANEL_OPACITY));
+    // The backdrop covers the window, so the page behind the glass is solid: the glass is the panels.
+    expect(variables["--nr-bg-glass"]).toBe(NOREN_DUSK.ui.bg);
+    expect(variables["--nr-background-backing"]).toBe(NOREN_DUSK.ui.bg);
+    // The rest is what the other style sets, under the same names.
+    expect(Object.keys(variables).sort()).toEqual(
+      Object.keys(windowVariables(appearance, NOREN_DUSK, "blob:abc")).sort(),
+    );
+  });
+
+  it("keeps the window itself translucent under a system effect, where the effect is the backdrop", () => {
+    const appearance = glass({}, { applied: "mica" });
+    const variables = windowVariables(appearance, NOREN_DUSK, null, true);
+    expect(variables["--nr-bg-glass"]).toBe(`rgb(20 22 27 / ${GLASS_PANEL_OPACITY})`);
+  });
+
+  it("leaves the veil of the other style as it was", () => {
+    const variables = windowVariables(glass(), NOREN_DUSK, "blob:abc");
+    expect(variables["--nr-background-veil"]).toBe(String(BACKGROUND_VEIL));
+    expect(GLASS_VEIL).not.toBe(BACKGROUND_VEIL);
   });
 });

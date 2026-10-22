@@ -1,7 +1,13 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { sidebarState } from "./sidebar-fixture";
-import { closeSettings, changeSettings, configText, openSettings } from "./settings-fixture";
+import {
+  GLASS_GAP,
+  closeSettings,
+  changeSettings,
+  configText,
+  openSettings,
+} from "./settings-fixture";
 
 // The settings file `config.jsonc`. The web build has no file system: its backend keeps the text
 // of the file under `noren.web.config` in the browser storage, and the test hook `setConfig`
@@ -87,7 +93,7 @@ async function box(locator: Locator) {
   return found;
 }
 
-/** The sidebar sits against the left or the right edge of the window, and the body says so. */
+/** The sidebar sits against the left or the right edge of the window (one gap of the glass style from it), and the body says so. */
 async function expectSide(page: Page, side: "left" | "right"): Promise<void> {
   await expect(body(page)).toHaveAttribute("data-nr-side", side);
   await expect
@@ -95,7 +101,7 @@ async function expectSide(page: Page, side: "left" | "right"): Promise<void> {
       const at = await box(sidebar(page));
       return side === "left" ? at.x : (page.viewportSize()?.width ?? 0) - (at.x + at.width);
     })
-    .toBe(0);
+    .toBe(GLASS_GAP);
 }
 
 const radio = (screen: Locator, name: string) => screen.getByRole("radio", { name, exact: true });

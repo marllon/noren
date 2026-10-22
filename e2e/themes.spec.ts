@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
-import { configText, seedConfig } from "./settings-fixture";
+import { configText, seedConfig, withoutAlpha } from "./settings-fixture";
 
 // The global theme: eight built-in themes, picked in the command palette, saved as
 // `appearance.theme` in `config.jsonc` (the web build keeps that text under `noren.web.config`)
@@ -37,10 +37,12 @@ const rootVar = (page: Page, name: string): Promise<string> =>
   page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
 /** The color the terminal paints its background with (xterm sets it on its scrollable element). */
 const terminalBackground = (page: Page): Promise<string> =>
-  page.evaluate(() => {
-    const viewport = document.querySelector<HTMLElement>(".xterm-scrollable-element");
-    return viewport === null ? "" : getComputedStyle(viewport).backgroundColor;
-  });
+  page
+    .evaluate(() => {
+      const viewport = document.querySelector<HTMLElement>(".xterm-scrollable-element");
+      return viewport === null ? "" : getComputedStyle(viewport).backgroundColor;
+    })
+    .then(withoutAlpha);
 
 const palette = (page: Page): Locator => page.locator('[data-nr-part="palette"]');
 const options = (page: Page): Locator => palette(page).getByRole("option");

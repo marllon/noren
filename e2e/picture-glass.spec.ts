@@ -3,7 +3,14 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { readPixels } from "./png-pixels";
-import { closeSettings, configText, openSettings, seedConfig } from "./settings-fixture";
+import {
+  DENSE_CONFIG,
+  closeSettings,
+  configText,
+  denseOf,
+  openSettings,
+  seedConfig,
+} from "./settings-fixture";
 
 // A picture that shows (NOR-F20-08b): with one behind the window the sidebar and the terminals are
 // see-through by default (the sidebar frosted), the picture shows at a stronger default under a veil
@@ -33,7 +40,9 @@ async function start(page: Page, config?: string): Promise<void> {
     },
     { key: WEB_IMAGES_KEY, value: JSON.stringify({ [PICTURE]: FIXTURE.toString("base64") }) },
   );
-  if (config !== undefined) await seedConfig(page, config);
+  // The numbers of this spec (the opacity of the panels, the veil, the layers) are the ones of the dense
+  // style, which keeps the machinery of a picture as it was; the glass style has its own (glass-surfaces.spec.ts).
+  await seedConfig(page, config !== undefined ? denseOf(config) : DENSE_CONFIG);
   await page.goto("/");
   await expect
     .poll(() => page.evaluate(() => (window as HookWindow).__norenTest?.paneIds().length ?? 0))

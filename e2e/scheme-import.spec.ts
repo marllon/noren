@@ -8,7 +8,7 @@ import {
   PLIST_LAGOON,
   PLIST_MISSING_COLOR,
 } from "../packages/model/src/import-fixtures";
-import { configText, seedConfig } from "./settings-fixture";
+import { configText, seedConfig, withoutAlpha } from "./settings-fixture";
 
 // "Import color scheme..." in the palette: the person picks a file, the importers read it by what
 // is in it (an XML property list, JSON with comments, or `key = value` text, with or without an
@@ -41,12 +41,14 @@ const rootVar = (page: Page, name: string): Promise<string> =>
   page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
 /** The background of the terminal on screen (xterm sets it on its scrollable element). */
 const terminalBackground = (page: Page): Promise<string> =>
-  page.evaluate(() => {
-    const visible = [...document.querySelectorAll<HTMLElement>(".xterm-scrollable-element")].find(
-      (element) => element.getClientRects().length > 0 && element.offsetParent !== null,
-    );
-    return visible === undefined ? "" : getComputedStyle(visible).backgroundColor;
-  });
+  page
+    .evaluate(() => {
+      const visible = [...document.querySelectorAll<HTMLElement>(".xterm-scrollable-element")].find(
+        (element) => element.getClientRects().length > 0 && element.offsetParent !== null,
+      );
+      return visible === undefined ? "" : getComputedStyle(visible).backgroundColor;
+    })
+    .then(withoutAlpha);
 
 const palette = (page: Page): Locator => page.locator('[data-nr-part="palette"]');
 const options = (page: Page): Locator => palette(page).getByRole("option");

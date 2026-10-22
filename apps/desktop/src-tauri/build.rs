@@ -75,6 +75,7 @@ const COMMANDS: &[&str] = &[
     "update_check",
     "update_install",
     "window_effect_set",
+    "system_transparency_reduced",
     "background_image_read",
     "background_image_pick",
     "path_pick",

@@ -166,7 +166,7 @@ The style never changes the colors of the theme. The lines and the glass are wor
 
 The root element of the window carries the style as `data-nr-style="glass"` or `data-nr-style="dense"`, and the token set of that attribute (the table below) is what the stylesheet reads. Both sets have the same names, so a component never asks which style is on. The page starts as `glass` before the settings are read.
 
-The first step of the new look (task NOR-F20-17) is the style itself: the attribute, the two token sets, the fonts and the switch. The type and the corners of the components that exist today already follow it. The components of the approved designs (the glass sidebar and panels, the status bar of the dense style and the rest) come in the next tasks and are built on these tokens; until then the glass and the line tokens are defined but not painted by any component yet.
+The new look comes in steps. The style itself is the first (task NOR-F20-17): the attribute, the two token sets, the fonts and the switch. The surfaces of the glass window are the second (task NOR-F20-18a, below): the window behind everything, the sidebar and the panes as cards of glass, the highlight, the controls and the opaque panels. What goes inside the sidebar and the header of a pane (the brand, the search, the favorites grid, the rows with their state dots, the focus ring with its seal) and the status bar of the dense style come in the next tasks and are built on these tokens.
 
 ### The fonts
 
@@ -176,7 +176,25 @@ The font of the terminal is a setting of its own (`terminal.font.family`) and is
 
 ### Reduced transparency
 
-With `prefers-reduced-transparency: reduce` (which is also what the web view reports on Windows when the transparency effects of the system are turned off), the glass is opaque: the fills of the sidebar and the panels are the solid `--nr-surface` and `--nr-bg` of the theme and the blur is off. The dense style has no glass, so it is the same either way.
+With `prefers-reduced-transparency: reduce`, or when the system has its transparency effects turned off, the glass is opaque: the fills of the sidebar, the title bar and the panes are the solid `--nr-surface` and `--nr-bg` of the theme and the blur is off; the shape (corners, gap, line) stays. The dense style has no glass, so it is the same either way.
+
+The web view does not always report the "Transparency effects" switch of Windows (Settings > Personalization > Colors) as that media feature, so the app asks for the switch itself: the `system_transparency_reduced` command of the shell reads the value `EnableTransparency` under `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize` (read only, never written; 0 is off; anything else, or no value, is on) and the page puts the answer on the root element as `data-nr-transparency="reduced"`, which the stylesheet treats like the media feature. It asks when the window starts and each time it gains the focus, so a change made in the system settings while the app is open is followed when you come back. Other systems answer "on".
+
+### The glass surfaces
+
+Under the glass style (task NOR-F20-18a) the window is built from the tokens above, as in the approved design of the main window:
+
+- **The window behind everything.** The picture of the person (see [the background picture](#the-background-picture)) or, when there is none, an illustrated backdrop: a night landscape (a sky, a moon, stars and three ridges of hills; `GlassBackdrop.tsx`, the part `glass-backdrop`) for a dark theme and a pale one of the same shapes for a light theme (the colors are `BACKDROP_PALETTES` in `interface-style.ts`). It is made of boxes and clip paths, nothing is fetched, it takes no click and a screen reader skips it. It is not drawn while a system effect (Mica, Acrylic) is behind the window: the effect is the window then. The blur of the **Background** section softens it as it softens a picture.
+- **The sidebar** is a card with `--nr-radius-side` corners (14 px), `--nr-glass-side` as its fill, the filter `--nr-glass-blur-side` (`blur(30px) saturate(160%)`) over what is behind it, and a 1 px line, `--nr-line` (8% of the text color). **The title bar** is a strip of the same glass, flush with the top of the window.
+- **The panels** are cards with `--nr-radius-panel` corners (12 px), `--nr-glass-panel` as their fill, `--nr-glass-blur-panel` (`blur(24px)`) and the same line: each pane of a tab, the bar of top tabs, the bar of favorites when it is at the top of the window, the Ask panel and the panel of a plugin. The terminal inside a pane draws no background of its own, so the glass shows; at an opacity of 1 it paints itself again, solid.
+- **The gap**, `--nr-gap` (8 px), is around the cards and between them, and also where the panes of a tab meet (the line you drag to resize is that gap, lit in the highlight while it is pointed at). The terminal keeps a few pixels off the rounded corners of its card.
+- **The highlight** is the color of the active space, `--nr-highlight`: the ring of the pane in focus (a tab with more than one pane) is that color at 55% and follows the corners of the card, and the line between panes lights up in it while it is dragged. It does not change `--nr-accent`, which stays the accent of the theme. Without a color of its own a space gets `--nr-style-accent`.
+- **Transparency and blur follow the controls of the settings.** The **Interface opacity** slider moves the fills at once (the panels at its value, the sidebar and the title bar 0.2 less), and the blur slider of the **Background** section softens the backdrop or the picture at once, before the file has the number.
+- **Opaque** with `prefers-reduced-transparency` and with the Windows transparency effects off (see [reduced transparency](#reduced-transparency)).
+- **Readable over any picture.** The veil over a picture is 0.55 under glass, and with the defaults the text of the sidebar and of the terminal keeps 4.5:1 against the hardest pixel a picture can have (white under a dark theme, black under a light one) in every built-in theme whose own text has room for it (`glass.test.ts`, with the same sum the stylesheet paints); the end-to-end tests also measure it in the pixels of the page, over a white and a black picture and over the illustrated backdrop. Over any picture the secondary text keeps 3:1, and 4.5:1 over the backdrop.
+- The dense style does not change: every rule of this section sits under `:root[data-nr-style="glass"]` (a test holds it to that).
+
+The colors that differ between a dark and a light theme (the state colors, the backdrop) are picked with `data-nr-scheme` on the root, and not with `light-dark()`: the build of the app rewrites `light-dark()` to follow the color scheme of the system and not the theme.
 
 ## The window: effect, opacity and background
 
@@ -203,7 +221,8 @@ Three things change how the window itself looks, beyond the colors of a theme. A
 `appearance.window.opacity` is a number from 0.3 to 1. It is how opaque the **backgrounds** of the window, the title bar, the sidebar, the tab bar and the terminals are; text, borders and the accent are never faded, and menus, dialogs and the command palette stay solid so they are always readable.
 
 - With a value in the file, that value, with or without an effect. Below 1, what is behind the window shows through (the effect, or the desktop).
-- Without a value (or with `null`): solid, except while the window has an effect, when it is the `ui.opacity` of the theme (0.92 for the built-in themes), and while a picture shows behind the window (below), when it is 0.55, so the picture shows through the sidebar and the terminals. A picture that could not be read does not count: the panels stay solid, since nothing would show through them.
+- Without a value (or with `null`) under the **glass** style: 0.62, whatever is behind the panels (the picture, the illustrated backdrop or a system effect). The sidebar and the title bar are 0.2 less opaque (0.42), never under 0.2, and solid when the panels are, so a slider at 1 gives a plain opaque window.
+- Without a value under the **dense** style: solid, except while the window has an effect, when it is the `ui.opacity` of the theme (0.92 for the built-in themes), and while a picture shows behind the window (below), when it is 0.55, so the picture shows through the sidebar and the terminals. A picture that could not be read does not count: the panels stay solid, since nothing would show through them.
 - The **Window** section of the settings screen has a slider for it next to its box. The slider shows its effect in the window at once and the file has the number when you stop moving it; closing the screen keeps it.
 - It is applied by the variable `--nr-opacity` (and `--nr-bg-glass`, `--nr-surface-glass`; see the table of variables below), which a mod can use.
 - Why 0.3 is the lowest: a test holds every built-in theme to a contrast of 4.5:1 for its text and 3:1 for its muted text, in the interface and in the terminal, at the lowest opacity over the extreme backdrop of its own kind (black for a dark theme, white for a light one). What shows behind the window decides the rest; a backdrop of the other kind cannot be made readable by any opacity, which is why the effect follows the theme.
@@ -235,7 +254,7 @@ The picture is read by the app (the page is never given a path or an address to 
 
 1. **What the picture is drawn on**: the solid background of the theme (`--nr-background-backing`). While the window has an effect it is the glass of the window instead, so Mica or Acrylic still shows through.
 2. **The picture**, at its opacity and blur.
-3. **The veil**: the background of the theme again, drawn over the picture at 0.4 (`--nr-background-veil`), whatever the opacity of the picture is. It is dark on a dark theme and light on a light one, and keeps the text readable on a bright or busy picture even with the opacity at 1.
+3. **The veil**: the background of the theme again, drawn over the picture at 0.4 (`--nr-background-veil`; 0.55 under the glass style, whose panels let more through), whatever the opacity of the picture is. It is dark on a dark theme and light on a light one, and keeps the text readable on a bright or busy picture even with the opacity at 1.
 4. **The panels**, painted over all of it at the opacity of the interface (0.55 while a picture shows and the settings say nothing): the title bar, the sidebar, the tab bar and the favorites bar when it is at the top of the window (`appearance.favorites`) with the `--nr-surface-glass` color, and each terminal with a pane of glass of its own, the background of the terminal at that opacity (`--nr-terminal-glass`). The picture shows through all of them, and **the sidebar, the tab bar and the favorites bar on top blur what they let through** (`ui.blur` of the theme, 18 px for the built-in ones). The terminal does not blur: it repaints all the time, and a blur behind it would be redone for every frame.
 
 The terminal itself draws no background while a picture shows (xterm.js gets a see-through theme), and the opacity of its pane is a CSS color, so moving the opacity of the interface never repaints a terminal. The **Background** section of the settings screen has a slider for the opacity of the picture and one for its blur, and the dialog of a space (**Background image...**) has the same two: they show their effect at once on the window, before **Save** or **Apply**, and **Cancel** takes it back. Typing in the box next to a slider moves the slider and the window too (half a number on the way, such as `0.`, leaves the window as it was).
@@ -312,96 +331,100 @@ These names are the contract between Noren and your mods. They are set by the ap
 
 Set on the root element of the page by the active theme (and the active space, for `--nr-space-color` and the picture), so a mod can use them in any rule and they follow a change of theme at once.
 
-| Variable                  | What it holds                                                                                           |
-| ------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `--nr-bg`                 | Background of the window.                                                                               |
-| `--nr-surface`            | Background of the surfaces on top of it: the sidebar, the title bar, the dialogs.                       |
-| `--nr-text`               | Text.                                                                                                   |
-| `--nr-muted`              | Secondary text.                                                                                         |
-| `--nr-accent`             | The accent of the theme.                                                                                |
-| `--nr-border`             | Lines and borders.                                                                                      |
-| `--nr-radius`             | The corner radius, with its unit (`10px`).                                                              |
-| `--nr-space-color`        | The color of the active space, or the accent when it has none.                                          |
-| `--nr-opacity`            | How opaque the interface is, a number from 0.3 to 1 (see [the opacity](#the-opacity-of-the-interface)). |
-| `--nr-bg-glass`           | `--nr-bg` at that opacity: what the window itself is painted with.                                      |
-| `--nr-surface-glass`      | `--nr-surface` at that opacity: what the title bar, the sidebar and the bars on top are painted with.   |
-| `--nr-background-image`   | The picture behind the terminals as `url(...)`, or `none`.                                              |
-| `--nr-background-opacity` | How much of the picture shows, a number from 0 to 1.                                                    |
-| `--nr-background-blur`    | How blurred the picture is, with its unit (`6px`).                                                      |
-| `--nr-background-veil`    | How much of `--nr-bg` is drawn over the picture, a number from 0 to 1 (0.4).                            |
-| `--nr-background-backing` | What the picture is drawn on: `--nr-bg`, or its glass while the window has an effect.                   |
-| `--nr-terminal-glass`     | The background of the terminal at the opacity of the interface: the pane of a terminal over a picture.  |
-| `--nr-panel-blur`         | How much the sidebar blurs the picture it lets through, with its unit (`18px`, the `ui.blur`).          |
+| Variable                  | What it holds                                                                                                                                      |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--nr-bg`                 | Background of the window.                                                                                                                          |
+| `--nr-surface`            | Background of the surfaces on top of it: the sidebar, the title bar, the dialogs.                                                                  |
+| `--nr-text`               | Text.                                                                                                                                              |
+| `--nr-muted`              | Secondary text.                                                                                                                                    |
+| `--nr-accent`             | The accent of the theme.                                                                                                                           |
+| `--nr-border`             | Lines and borders.                                                                                                                                 |
+| `--nr-radius`             | The corner radius, with its unit (`10px`).                                                                                                         |
+| `--nr-space-color`        | The color of the active space, or the accent when it has none.                                                                                     |
+| `--nr-opacity`            | How opaque the interface is, a number from 0.3 to 1 (see [the opacity](#the-opacity-of-the-interface)).                                            |
+| `--nr-bg-glass`           | `--nr-bg` at that opacity: what the window itself is painted with (solid under glass with no system effect, where the backdrop covers the window). |
+| `--nr-surface-glass`      | `--nr-surface` at that opacity: what the title bar, the sidebar and the bars on top are painted with.                                              |
+| `--nr-background-image`   | The picture behind the terminals as `url(...)`, or `none`.                                                                                         |
+| `--nr-background-opacity` | How much of the picture shows, a number from 0 to 1.                                                                                               |
+| `--nr-background-blur`    | How blurred the picture is, with its unit (`6px`).                                                                                                 |
+| `--nr-background-veil`    | How much of `--nr-bg` is drawn over the picture, a number from 0 to 1 (0.4; 0.55 under glass).                                                     |
+| `--nr-background-backing` | What the picture is drawn on: `--nr-bg`, or its glass while the window has an effect.                                                              |
+| `--nr-terminal-glass`     | The background of the terminal at the opacity of the interface: the pane of a terminal over a picture.                                             |
+| `--nr-panel-blur`         | How much the sidebar blurs the picture it lets through, with its unit (`18px`, the `ui.blur`).                                                     |
 
 #### Style variables
 
 The token set of the interface style (see [the interface style](#the-interface-style-glass-and-dense)): the root element has the set of its `data-nr-style`, so these have a value whatever the theme is. A mod may read them and may set them on the root to change a style.
 
-| Variable                | Glass                               | Dense                          | What it holds                                                                      |
-| ----------------------- | ----------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------- |
-| `--nr-font-ui`          | Geist                               | JetBrains Mono                 | The font of the interface, with the fonts it falls back to.                        |
-| `--nr-font-mono`        | Geist Mono                          | JetBrains Mono                 | The font of shortcuts, paths and code in the interface.                            |
-| `--nr-font-size`        | `13px`                              | `12px`                         | The size of the text of the interface.                                             |
-| `--nr-font-size-small`  | `12px`                              | `11.5px`                       | The size of secondary text.                                                        |
-| `--nr-radius-side`      | `14px`                              | `0px`                          | The corners of the sidebar.                                                        |
-| `--nr-radius-panel`     | `12px`                              | `0px`                          | The corners of the panels (the terminals, the dialogs).                            |
-| `--nr-radius-control`   | `10px`                              | `3px`                          | The corners of buttons, fields and rows.                                           |
-| `--nr-radius-chip`      | `99px`                              | `3px`                          | The corners of small labels (the branch, the state of a command).                  |
-| `--nr-gap`              | `8px`                               | `1px`                          | The space between the sidebar and the panels, and between panels.                  |
-| `--nr-row-height`       | `44px`                              | `24px`                         | The height of a row of the tree of tabs.                                           |
-| `--nr-control-height`   | `32px`                              | `22px`                         | The height of a button of a bar.                                                   |
-| `--nr-line`             | 8% of `--nr-text`                   | `--nr-border`                  | Thin lines and the borders of cards.                                               |
-| `--nr-line-strong`      | 14% of `--nr-text`                  | 20% of `--nr-text` on the line | The borders of controls.                                                           |
-| `--nr-style-accent`     | `#5EE6C8`                           | `#2EE6D6`                      | The highlight the style starts from (the accent of the theme stays `--nr-accent`). |
-| `--nr-state-running`    | `#7EE2A8` (dark), `#1E8F5A` (light) | `#4ADE80` (dark), `#15803D`    | The dot of a tab with a command running.                                           |
-| `--nr-state-waiting`    | `#F5B84B` (dark), `#B7791F` (light) | `#FFB547` (dark), `#B45309`    | The dot of a tab that waits for you.                                               |
-| `--nr-glass-side`       | `--nr-surface` at 42%               | `--nr-surface`                 | What the sidebar is filled with.                                                   |
-| `--nr-glass-panel`      | `--nr-bg` at 62%                    | `--nr-bg`                      | What the panels are filled with.                                                   |
-| `--nr-glass-blur-side`  | `blur(30px) saturate(160%)`         | `none`                         | The backdrop filter of the sidebar.                                                |
-| `--nr-glass-blur-panel` | `blur(24px)`                        | `none`                         | The backdrop filter of the panels.                                                 |
+| Variable                | Glass                                                | Dense                          | What it holds                                                                           |
+| ----------------------- | ---------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------- |
+| `--nr-font-ui`          | Geist                                                | JetBrains Mono                 | The font of the interface, with the fonts it falls back to.                             |
+| `--nr-font-mono`        | Geist Mono                                           | JetBrains Mono                 | The font of shortcuts, paths and code in the interface.                                 |
+| `--nr-font-size`        | `13px`                                               | `12px`                         | The size of the text of the interface.                                                  |
+| `--nr-font-size-small`  | `12px`                                               | `11.5px`                       | The size of secondary text.                                                             |
+| `--nr-radius-side`      | `14px`                                               | `0px`                          | The corners of the sidebar.                                                             |
+| `--nr-radius-panel`     | `12px`                                               | `0px`                          | The corners of the panels (the terminals, the dialogs).                                 |
+| `--nr-radius-control`   | `10px`                                               | `3px`                          | The corners of buttons, fields and rows.                                                |
+| `--nr-radius-chip`      | `99px`                                               | `3px`                          | The corners of small labels (the branch, the state of a command).                       |
+| `--nr-gap`              | `8px`                                                | `1px`                          | The space between the sidebar and the panels, and between panels.                       |
+| `--nr-row-height`       | `44px`                                               | `24px`                         | The height of a row of the tree of tabs.                                                |
+| `--nr-control-height`   | `32px`                                               | `22px`                         | The height of a button of a bar.                                                        |
+| `--nr-line`             | 8% of `--nr-text`                                    | `--nr-border`                  | Thin lines and the borders of cards.                                                    |
+| `--nr-line-strong`      | 14% of `--nr-text`                                   | 20% of `--nr-text` on the line | The borders of controls.                                                                |
+| `--nr-style-accent`     | `#5EE6C8`                                            | `#2EE6D6`                      | The highlight the style starts from (the accent of the theme stays `--nr-accent`).      |
+| `--nr-highlight`        | the color of the active space                        | the color of the active space  | The highlight of the window: the ring of the pane in focus, the handle that is dragged. |
+| `--nr-state-running`    | `#7EE2A8` (dark), `#1E8F5A` (light)                  | `#4ADE80` (dark), `#15803D`    | The dot of a tab with a command running.                                                |
+| `--nr-state-waiting`    | `#F5B84B` (dark), `#B7791F` (light)                  | `#FFB547` (dark), `#B45309`    | The dot of a tab that waits for you.                                                    |
+| `--nr-glass-side`       | `--nr-surface` at 0.2 less than `--nr-opacity` (42%) | `--nr-surface`                 | What the sidebar and the title bar are filled with.                                     |
+| `--nr-glass-panel`      | `--nr-bg` at `--nr-opacity` (62%)                    | `--nr-bg`                      | What the panels are filled with.                                                        |
+| `--nr-glass-blur-side`  | `blur(30px) saturate(160%)`                          | `none`                         | The backdrop filter of the sidebar.                                                     |
+| `--nr-glass-blur-panel` | `blur(24px)`                                         | `none`                         | The backdrop filter of the panels.                                                      |
 
 #### Parts
 
 `data-nr-part` names what an element is. `data-nr-state` (where the table gives values) says what state it is in, and is absent when the element is in none.
 
-| `data-nr-part`       | What it is                                                     | `data-nr-state`                                   |
-| -------------------- | -------------------------------------------------------------- | ------------------------------------------------- |
-| `sidebar`            | The sidebar.                                                   | `revealed` or `hidden`, only with compact mode on |
-| `space-switcher`     | The row of spaces at the foot of the sidebar.                  |                                                   |
-| `item`               | A tab, in the sidebar or in the bar on top.                    | `active`                                          |
-| `item-title`         | The title inside a tab.                                        |                                                   |
-| `group`              | A group of tabs.                                               | `expanded` or `collapsed`                         |
-| `pinned-list`        | The list of pinned tabs.                                       | `over` while a tab is dragged over it             |
-| `favorites`          | The bar of favorites, always on screen.                        | `over` while a tab is dragged over it             |
-| `favorites-hint`     | The line that says how to add a favorite, only while none is.  |                                                   |
-| `favorite`           | One tile of the bar: a favorite tab, a profile or an action.   | `active`, `running` or `unavailable`              |
-| `tabbar`             | The bar of tabs on top, when the tabs are on top.              |                                                   |
-| `pane`               | One terminal pane.                                             |                                                   |
-| `pane-header`        | The header of a pane, when pane headers are on.                |                                                   |
-| `palette`            | The command palette.                                           |                                                   |
-| `library`            | The library of archived and closed tabs.                       |                                                   |
-| `library-row`        | One tab of the library.                                        | `selected`                                        |
-| `peek`               | The peek of a tab: its last lines in a popover beside it.      |                                                   |
-| `settings`           | The settings screen.                                           |                                                   |
-| `background`         | The picture behind the terminals, only while one is on screen. |                                                   |
-| `background-backing` | What the picture is drawn on, only while a picture shows.      |                                                   |
-| `background-veil`    | The veil over the picture, only while a picture shows.         |                                                   |
+| `data-nr-part`       | What it is                                                                                             | `data-nr-state`                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| `sidebar`            | The sidebar.                                                                                           | `revealed` or `hidden`, only with compact mode on |
+| `space-switcher`     | The row of spaces at the foot of the sidebar.                                                          |                                                   |
+| `item`               | A tab, in the sidebar or in the bar on top.                                                            | `active`                                          |
+| `item-title`         | The title inside a tab.                                                                                |                                                   |
+| `group`              | A group of tabs.                                                                                       | `expanded` or `collapsed`                         |
+| `pinned-list`        | The list of pinned tabs.                                                                               | `over` while a tab is dragged over it             |
+| `favorites`          | The bar of favorites, always on screen.                                                                | `over` while a tab is dragged over it             |
+| `favorites-hint`     | The line that says how to add a favorite, only while none is.                                          |                                                   |
+| `favorite`           | One tile of the bar: a favorite tab, a profile or an action.                                           | `active`, `running` or `unavailable`              |
+| `tabbar`             | The bar of tabs on top, when the tabs are on top.                                                      |                                                   |
+| `pane`               | One terminal pane.                                                                                     |                                                   |
+| `pane-header`        | The header of a pane, when pane headers are on.                                                        |                                                   |
+| `palette`            | The command palette.                                                                                   |                                                   |
+| `library`            | The library of archived and closed tabs.                                                               |                                                   |
+| `library-row`        | One tab of the library.                                                                                | `selected`                                        |
+| `peek`               | The peek of a tab: its last lines in a popover beside it.                                              |                                                   |
+| `settings`           | The settings screen.                                                                                   |                                                   |
+| `glass-backdrop`     | The illustrated backdrop of the glass window, only while no picture and no system effect is behind it. |                                                   |
+| `background`         | The picture behind the terminals, only while one is on screen.                                         |                                                   |
+| `background-backing` | What the picture is drawn on, only while a picture shows.                                              |                                                   |
+| `background-veil`    | The veil over the picture, only while a picture shows.                                                 |                                                   |
 
 #### Other attributes
 
-| Attribute               | On                                              | Values                                                             |
-| ----------------------- | ----------------------------------------------- | ------------------------------------------------------------------ |
-| `data-nr-focused`       | `pane`                                          | `true` or `false`, only in a tab that is split into panes          |
-| `data-nr-selected`      | `item`                                          | `true` while the tab is part of a selection                        |
-| `data-nr-pinned`        | `item`                                          | `true` for a pinned tab                                            |
-| `data-nr-kind`          | `favorite`                                      | `tab`, `profile` or `action`: what the tile stands for             |
-| `data-nr-placement`     | `favorites`                                     | `sidebar` or `top`: where the bar is (`appearance.favorites`)      |
-| `data-nr-indicator`     | the marks on a tab                              | `running`, `failed`, `unread` or `bell`                            |
-| `data-nr-side`          | the area that holds the sidebar and the content | `left` or `right`: the side of the sidebar                         |
-| `data-nr-density`       | the area that holds the sidebar and the content | `comfortable` or `compact`                                         |
-| `data-nr-style`         | the root of the window                          | `glass` or `dense`: the interface style (`appearance.style`)       |
-| `data-nr-window-effect` | the root of the window                          | `none`, `mica`, `acrylic` or `vibrancy`: the effect the window has |
-| `data-nr-picture`       | the root of the window                          | `shown` while a picture is on screen; absent otherwise             |
+| Attribute               | On                                              | Values                                                                        |
+| ----------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------- |
+| `data-nr-focused`       | `pane`                                          | `true` or `false`, only in a tab that is split into panes                     |
+| `data-nr-selected`      | `item`                                          | `true` while the tab is part of a selection                                   |
+| `data-nr-pinned`        | `item`                                          | `true` for a pinned tab                                                       |
+| `data-nr-kind`          | `favorite`                                      | `tab`, `profile` or `action`: what the tile stands for                        |
+| `data-nr-placement`     | `favorites`                                     | `sidebar` or `top`: where the bar is (`appearance.favorites`)                 |
+| `data-nr-indicator`     | the marks on a tab                              | `running`, `failed`, `unread` or `bell`                                       |
+| `data-nr-side`          | the area that holds the sidebar and the content | `left` or `right`: the side of the sidebar                                    |
+| `data-nr-density`       | the area that holds the sidebar and the content | `comfortable` or `compact`                                                    |
+| `data-nr-style`         | the root of the window                          | `glass` or `dense`: the interface style (`appearance.style`)                  |
+| `data-nr-scheme`        | the root of the window                          | `dark` or `light`: the kind of the theme in force                             |
+| `data-nr-transparency`  | the root of the window                          | `reduced` while the system has its transparency effects off; absent otherwise |
+| `data-nr-window-effect` | the root of the window                          | `none`, `mica`, `acrylic` or `vibrancy`: the effect the window has            |
+| `data-nr-picture`       | the root of the window                          | `shown` while a picture is on screen; absent otherwise                        |
 
 #### Reading the page
 

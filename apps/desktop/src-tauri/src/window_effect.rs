@@ -115,6 +115,47 @@ pub fn parse_scheme(name: &str) -> Result<Option<Theme>, String> {
     }
 }
 
+/// Whether the system has its transparency effects turned off: the "Transparency effects" switch of
+/// Windows (Settings > Personalization > Colors), kept as the `EnableTransparency` value (0 is off)
+/// under the Personalize key of the settings of the current user. Only that value is read, never
+/// written, and nothing else of the registry is looked at. The web view does not always report the
+/// switch as `prefers-reduced-transparency`, so the glass style asks the system itself and draws
+/// opaque panels when either says so. `false` where there is no such switch (other systems) and
+/// when the value is missing or cannot be read: then the system has the effects, as it does by default.
+#[cfg(windows)]
+pub fn transparency_reduced() -> bool {
+    use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+    use windows::core::w;
+
+    let mut data: u32 = 0;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    // SAFETY: `data` and `size` are live locals of the sizes the call is told (one DWORD); the key
+    // and value names are NUL-terminated literals; the key is opened read only by the call itself
+    // and closed again before it returns.
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
+            w!("EnableTransparency"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some((&mut data as *mut u32).cast()),
+            Some(&mut size),
+        )
+    };
+    reduced_from_value(status.is_ok().then_some(data))
+}
+
+#[cfg(not(windows))]
+pub fn transparency_reduced() -> bool {
+    false
+}
+
+/// The rule on the value of `EnableTransparency`: only an explicit 0 turns the effects off.
+fn reduced_from_value(value: Option<u32>) -> bool {
+    value == Some(0)
+}
+
 /// What the interface gets back: [`EffectOutcome`] with the names the interface uses.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EffectReportDto {
@@ -149,6 +190,21 @@ mod tests {
                 Err(format!("'{name}' is not a window scheme"))
             );
         }
+    }
+
+    #[test]
+    fn only_an_explicit_zero_turns_the_transparency_effects_off() {
+        assert!(reduced_from_value(Some(0)));
+        assert!(!reduced_from_value(Some(1)));
+        assert!(!reduced_from_value(Some(2)));
+        // A missing value, or one that could not be read, is the default of the system: effects on.
+        assert!(!reduced_from_value(None));
+    }
+
+    #[test]
+    fn the_transparency_setting_can_be_read_without_changing_anything() {
+        // The answer depends on the machine, so only that the read comes back (and twice the same).
+        assert_eq!(transparency_reduced(), transparency_reduced());
     }
 
     #[test]

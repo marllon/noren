@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
-import { configText, seedConfig } from "./settings-fixture";
+import { GLASS_GAP, configText, seedConfig } from "./settings-fixture";
 import {
   ACTIONS_CWD,
   ACTIONS_TEXT,
@@ -585,8 +585,9 @@ test("in compact mode the bar on top stays on screen across the window while the
   await expect(sidebar(page).locator('[data-nr-part="favorites"]')).toHaveCount(0);
   const full = await box(bar(page));
   const viewport = page.viewportSize();
-  expect(full.x).toBeCloseTo(0, 0);
-  expect(full.width).toBeCloseTo(viewport?.width ?? 0, 0);
+  // Across the window: one gap of the glass style from each edge.
+  expect(full.x).toBeCloseTo(GLASS_GAP, 0);
+  expect(full.width).toBeCloseTo((viewport?.width ?? 0) - 2 * GLASS_GAP, 0);
   await expect(bar(page)).toBeInViewport({ ratio: 1 });
   // A tile works with the sidebar hidden, and its menu does not bring the sidebar out.
   await tile(page, "scratch").click();

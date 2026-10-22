@@ -2,15 +2,19 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { seedSidebarState } from "./sidebar-fixture";
 import {
+  DENSE_CONFIG,
   changeSettings,
   configText,
   openSettings,
   closeSettings,
+  seedConfig,
   settingsScreen,
 } from "./settings-fixture";
 
 // The layout preferences (side, width, density, compact mode) are settings of `config.jsonc`,
-// chosen in the settings screen; a new test context starts with no file, which is every default.
+// chosen in the settings screen; a new test context starts with no file, which is every default. They are
+// about the sidebar flush with the edges of the window, so they start from the dense style: the glass
+// style keeps a gap around its cards (glass-surfaces.spec.ts measures that one).
 
 const sidebar = (page: Page) => page.locator('[data-nr-part="sidebar"]');
 const content = (page: Page) => page.getByRole("region", { name: "Content", exact: true });
@@ -61,6 +65,7 @@ async function dragHandle(page: Page, dx: number): Promise<void> {
 }
 
 test.beforeEach(async ({ page }) => {
+  await seedConfig(page, DENSE_CONFIG);
   await seedSidebarState(page);
   await page.goto("/");
   await expect(tab(page, "api")).toBeVisible();

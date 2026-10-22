@@ -797,6 +797,15 @@ export class TauriBackend implements Backend {
     };
   }
 
+  async systemTransparencyReduced(): Promise<boolean> {
+    // The answer is only a yes or a no; anything the bridge cannot say is "not reduced".
+    try {
+      return (await this.#bridge.invoke<boolean>("system_transparency_reduced")) === true;
+    } catch {
+      return false;
+    }
+  }
+
   async readBackgroundImage(path: string): Promise<BackgroundImageFile> {
     // A raw response arrives as an ArrayBuffer; a plain list of numbers is read too, for a bridge
     // that has no binary channel.

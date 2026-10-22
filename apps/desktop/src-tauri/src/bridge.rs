@@ -1507,6 +1507,14 @@ pub async fn window_effect_set<R: tauri::Runtime>(
     Ok(outcome.into())
 }
 
+/// Whether the system has its transparency effects turned off (the Windows switch, read only), so the
+/// glass interface style draws opaque panels. A plain yes or no; see
+/// [`crate::window_effect::transparency_reduced`].
+#[tauri::command]
+pub fn system_transparency_reduced() -> bool {
+    crate::window_effect::transparency_reduced()
+}
+
 /// Name of the event emitted when a file of the `mods` folder is added, changed or removed. The
 /// payload is the whole list of mods after the change.
 pub const MODS_CHANGED_EVENT: &str = "mods-changed";
@@ -3786,6 +3794,7 @@ mod tests {
                 fonts_list_monospace,
                 hardware_read,
                 window_effect_set,
+                system_transparency_reduced,
                 scrollback_save,
                 scrollback_load,
                 scrollback_list,
@@ -4268,6 +4277,20 @@ mod tests {
         }
         assert!(!dir.0.join("escape.txt").exists());
         assert!(!dir.0.join(SCROLLBACK_DIR_NAME).exists());
+    }
+
+    #[test]
+    fn the_transparency_switch_of_the_system_is_answered_as_a_plain_yes_or_no() {
+        // What the machine says depends on the machine; the contract is a JSON boolean, with no
+        // argument, that agrees with the function the command calls.
+        let dir = TempDir::new("transparency-reduced");
+        let answer = call_command("system_transparency_reduced", serde_json::json!({}), &dir.0)
+            .expect("the switch is read");
+        let InvokeResponseBody::Json(json) = answer else {
+            panic!("a JSON answer for a boolean");
+        };
+        let reduced: bool = serde_json::from_str(&json).expect("a boolean");
+        assert_eq!(reduced, crate::window_effect::transparency_reduced());
     }
 
     #[test]

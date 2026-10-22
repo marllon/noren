@@ -10,11 +10,19 @@
  * The one token both have a say in, --nr-radius (the corners of the components that are not
  * redrawn yet), is set with the theme: the theme's own under glass, at most 3px under dense.
  *
- * The designs are dark; the light values (the state colors) were worked out for the same contrast,
- * and light-dark() picks one by the color-scheme the theme sets on the root.
+ * The designs are dark; the light values (the state colors) were worked out for the same contrast, and
+ * the rules at the end of this file (data-nr-scheme="light", set on the root with the theme) give them.
+ * light-dark() is not used: the build of the app rewrites it to follow the system, not the theme.
  *
- * Under prefers-reduced-transparency (also what the system reports when its transparency effects are
- * off) the glass is opaque: the fills are the solid colors of the theme and the blur is off.
+ * The glass follows the transparency control of the settings: its fills are the colors of the theme at
+ * --nr-opacity (the opacity of the interface, set by the app from appearance.window.opacity; the
+ * panels at that opacity, the sidebar 0.2 less, as in the design), so a slider moves them at once.
+ * --nr-highlight is the color of the active space, which is the highlight of the window.
+ *
+ * Under prefers-reduced-transparency, and when the system has its transparency effects off (the
+ * Windows switch, which the app reads itself and puts on the root element as
+ * data-nr-transparency="reduced", since the web view does not always report it as that media
+ * feature), the glass is opaque: the fills are the solid colors of the theme and the blur is off.
  */
 
 :root[data-nr-style="glass"] {
@@ -37,14 +45,32 @@
   --nr-line: color-mix(in srgb, var(--nr-text) 8%, transparent);
   --nr-line-strong: color-mix(in srgb, var(--nr-text) 14%, transparent);
 
-  /* The highlight the style starts from, and the dots of the state of a tab. */
+  /* The highlight the style starts from, the one the window uses (the color of the active space), and the dots of the state of a tab. */
   --nr-style-accent: #5ee6c8;
-  --nr-state-running: light-dark(#1e8f5a, #7ee2a8);
-  --nr-state-waiting: light-dark(#b7791f, #f5b84b);
+  --nr-highlight: var(--nr-space-color, var(--nr-style-accent));
+  --nr-state-running: #7ee2a8;
+  --nr-state-waiting: #f5b84b;
 
-  /* The glass: what the sidebar and the panels are filled with, and what blurs the picture behind them. */
-  --nr-glass-side: color-mix(in srgb, var(--nr-surface) 42%, transparent);
-  --nr-glass-panel: color-mix(in srgb, var(--nr-bg) 62%, transparent);
+  /*
+   * The glass: what the sidebar and the panels are filled with, and what blurs the picture behind them.
+   * The panels are the background of the theme at --nr-opacity (0.62 when nothing says); the sidebar
+   * is 0.2 less opaque, never under 0.2, and solid when the panels are (the last term takes the 0.2
+   * away over the last 0.05 of the slider). glassSideOpacity in the model works out the same number.
+   */
+  --nr-glass-side: color-mix(
+    in srgb,
+    var(--nr-surface)
+      calc(
+        max(var(--nr-opacity, 0.62) - 0.2 * min(1, (1 - var(--nr-opacity, 0.62)) / 0.05), 0.2) *
+          100%
+      ),
+    transparent
+  );
+  --nr-glass-panel: color-mix(
+    in srgb,
+    var(--nr-bg) calc(var(--nr-opacity, 0.62) * 100%),
+    transparent
+  );
   --nr-glass-blur-side: blur(30px) saturate(160%);
   --nr-glass-blur-panel: blur(24px);
 }
@@ -70,14 +96,26 @@
   --nr-line-strong: color-mix(in srgb, var(--nr-text) 20%, var(--nr-border));
 
   --nr-style-accent: #2ee6d6;
-  --nr-state-running: light-dark(#15803d, #4ade80);
-  --nr-state-waiting: light-dark(#b45309, #ffb547);
+  --nr-highlight: var(--nr-space-color, var(--nr-style-accent));
+  --nr-state-running: #4ade80;
+  --nr-state-waiting: #ffb547;
 
   /* No glass: the surfaces are solid, so the same names give opaque fills and no blur. */
   --nr-glass-side: var(--nr-surface);
   --nr-glass-panel: var(--nr-bg);
   --nr-glass-blur-side: none;
   --nr-glass-blur-panel: none;
+}
+
+/* The state colors of a light theme: darker, for the same contrast on a light surface. */
+:root[data-nr-style="glass"][data-nr-scheme="light"] {
+  --nr-state-running: #1e8f5a;
+  --nr-state-waiting: #b7791f;
+}
+
+:root[data-nr-style="dense"][data-nr-scheme="light"] {
+  --nr-state-running: #15803d;
+  --nr-state-waiting: #b45309;
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -87,4 +125,12 @@
     --nr-glass-blur-side: none;
     --nr-glass-blur-panel: none;
   }
+}
+
+/* The same, for the system that says it with its own switch and not with the media feature. */
+:root[data-nr-style="glass"][data-nr-transparency="reduced"] {
+  --nr-glass-side: var(--nr-surface);
+  --nr-glass-panel: var(--nr-bg);
+  --nr-glass-blur-side: none;
+  --nr-glass-blur-panel: none;
 }

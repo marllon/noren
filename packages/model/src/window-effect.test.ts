@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PICTURE_PANEL_OPACITY } from "./background";
 import { THEMES } from "./builtin-themes";
+import { GLASS_PANEL_OPACITY } from "./glass";
 import { contrastRatio } from "./theme";
 import {
   DEFAULT_WINDOW_EFFECT,
@@ -77,6 +78,39 @@ describe("interfaceOpacity", () => {
     expect(
       interfaceOpacity({ configured: undefined, applied: "none", themeOpacity, picture: false }),
     ).toBe(1);
+  });
+
+  it("makes the panels glass under the glass style, whatever is behind them, and not otherwise", () => {
+    for (const applied of ["none", "mica"] as const) {
+      for (const picture of [false, true]) {
+        expect(
+          interfaceOpacity({ configured: undefined, applied, themeOpacity, picture, glass: true }),
+        ).toBe(GLASS_PANEL_OPACITY);
+        expect(
+          interfaceOpacity({ configured: null, applied, themeOpacity, picture, glass: true }),
+        ).toBe(GLASS_PANEL_OPACITY);
+      }
+    }
+    // Not glass, nothing changes: solid with nothing behind, the picture's opacity over a picture.
+    expect(interfaceOpacity({ configured: undefined, applied: "none", themeOpacity })).toBe(1);
+    expect(
+      interfaceOpacity({ configured: undefined, applied: "none", themeOpacity, glass: false }),
+    ).toBe(1);
+  });
+
+  it("takes a value in the settings over the glass, clamped like any other", () => {
+    expect(interfaceOpacity({ configured: 0.8, applied: "none", themeOpacity, glass: true })).toBe(
+      0.8,
+    );
+    expect(interfaceOpacity({ configured: 1, applied: "none", themeOpacity, glass: true })).toBe(1);
+    expect(interfaceOpacity({ configured: 0.01, applied: "none", themeOpacity, glass: true })).toBe(
+      MIN_WINDOW_OPACITY,
+    );
+  });
+
+  it("is a value that lets the glass through, but not all of it", () => {
+    expect(GLASS_PANEL_OPACITY).toBeGreaterThan(MIN_WINDOW_OPACITY);
+    expect(GLASS_PANEL_OPACITY).toBeLessThan(1);
   });
 
   it("is a value that lets the picture through, but not all of it", () => {

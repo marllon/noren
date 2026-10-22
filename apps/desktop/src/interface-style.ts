@@ -14,6 +14,14 @@ export { DEFAULT_INTERFACE_STYLE };
 /** The attribute of the root element that picks the token set of a style. */
 export const STYLE_ATTRIBUTE = "data-nr-style";
 
+/**
+ * The attribute of the root element that says whether the theme in force is a dark or a light one,
+ * `data-nr-scheme="dark"` or `data-nr-scheme="light"`. The stylesheet picks the values that differ by
+ * scheme (the state colors, the illustrated backdrop) with it, and not with `light-dark()`, which the
+ * build of the app rewrites to follow the system and not the theme.
+ */
+export const SCHEME_ATTRIBUTE = "data-nr-scheme";
+
 /** The most a theme's corners may round under the dense style, in pixels: its corners are square. */
 export const DENSE_MAX_RADIUS = 3;
 
@@ -26,6 +34,48 @@ export const STYLE_ACCENTS: Readonly<
 > = {
   glass: ["#5EE6C8", "#A99BFF", "#F5B84B", "#FF8FA3"],
   dense: ["#2EE6D6", "#B4FF39", "#FFB547", "#FF5CA8"],
+};
+
+/** The colors of the illustrated backdrop of the glass style, one landscape for each kind of theme. */
+export interface BackdropPalette {
+  /** The window behind the sky. */
+  base: string;
+  sky: string;
+  moon: string;
+  star: string;
+  /** The three ridges of hills, from the farthest to the nearest. */
+  far: string;
+  middle: string;
+  near: string;
+}
+
+/**
+ * The backdrop of the glass window (`GlassBackdrop.tsx`): the night landscape of the approved design
+ * for a dark theme, and a pale one of the same shapes for a light theme (the design is dark; with the
+ * light glass of a light theme over a dark landscape the text would have nothing to be read against:
+ * every color of the pale one keeps the secondary text of the light themes at 4.5:1 under the glass).
+ * The colors are here and not in the stylesheet, which has no literal color: the component puts them on
+ * the backdrop as `--glass-*` variables.
+ */
+export const BACKDROP_PALETTES: Readonly<Record<"dark" | "light", BackdropPalette>> = {
+  dark: {
+    base: "#191C3A",
+    sky: "#1D2046",
+    moon: "#F1E6CC",
+    star: "#FFFFFF",
+    far: "#343A78",
+    middle: "#4A3474",
+    near: "#11132A",
+  },
+  light: {
+    base: "#F2F4FD",
+    sky: "#ECEFFB",
+    moon: "#FBEFC9",
+    star: "#A5ABD6",
+    far: "#E0E5F7",
+    middle: "#E8DFF4",
+    near: "#DAE0F3",
+  },
 };
 
 /** One weight of a packaged font: the family name the stylesheet gives it, and its weight. */
@@ -74,4 +124,9 @@ export interface AttributeTarget {
 /** Puts `style` on `root`, which picks the token set of that style. */
 export function applyInterfaceStyle(root: AttributeTarget, style: InterfaceStyle): void {
   root.setAttribute(STYLE_ATTRIBUTE, style);
+}
+
+/** Puts the kind of the theme (`dark` or `light`) on `root`. */
+export function applyColorScheme(root: AttributeTarget, kind: "dark" | "light"): void {
+  root.setAttribute(SCHEME_ATTRIBUTE, kind);
 }

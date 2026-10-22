@@ -115,7 +115,7 @@ const windowSchema = z
     ),
     opacity: setting(
       z.number().min(MIN_WINDOW_OPACITY).max(1).nullable(),
-      "How opaque the interface is, from 0.3 (it lets most of what is behind the window through) to 1 (solid). Without a value (or null) the window is solid; with an effect on it takes the opacity of the theme; and with a picture behind it the panels are half see-through (0.55), so the picture shows through the sidebar and the terminals.",
+      "How opaque the interface is, from 0.3 (it lets most of what is behind the window through) to 1 (solid). Without a value (or null) the glass style makes the panels glass at 0.62 (the sidebar 0.2 less) whatever is behind them; under the dense style the window is solid, with an effect on it takes the opacity of the theme, and with a picture behind it the panels are half see-through (0.55), so the picture shows through the sidebar and the terminals.",
       null,
     ),
   })

@@ -100,7 +100,10 @@ webview2-com = "0.39"
 # and the show of the window of the run, never its focus) with the types WebView2 and Tauri use.
 # Already in the lockfile through Tauri, wry and webview2-com, same version; the three features are
 # already switched on by Tauri and tao, so nothing new is compiled. 0.62.2, MIT OR Apache-2.0.
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+# `Win32_System_Registry` is for one read only call (`window_effect::transparency_reduced`): the
+# "Transparency effects" switch of Windows, which the glass interface style obeys even where the web
+# view does not report it as `prefers-reduced-transparency`. A feature of the same crate, no new crate.
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 # The mock runtime of `tauri::test`, so the tests can call a command through the same path the

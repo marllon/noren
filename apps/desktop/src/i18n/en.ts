@@ -1335,7 +1335,7 @@ export const en = {
   "field.appearance.window.effect":
     'What the system paints behind the window: "mica" or "acrylic" on Windows 11, "vibrancy" on macOS, "none" for a plain opaque window. A system that cannot paint the effect keeps the window opaque.',
   "field.appearance.window.opacity":
-    "How opaque the interface is, from 0.3 (it lets most of what is behind the window through) to 1 (solid). Without a value (or null) the window is solid; with an effect on it takes the opacity of the theme; and with a picture behind it the panels are half see-through (0.55), so the picture shows through the sidebar and the terminals.",
+    "How opaque the interface is, from 0.3 (it lets most of what is behind the window through) to 1 (solid). Without a value (or null) the glass style makes the panels glass at 0.62 (the sidebar 0.2 less) whatever is behind them; under the dense style the window is solid, with an effect on it takes the opacity of the theme, and with a picture behind it the panels are half see-through (0.55), so the picture shows through the sidebar and the terminals.",
   "field.appearance.background": "The picture behind the terminals.",
   "field.appearance.background.image":
     "A picture file on this computer shown behind the terminals: an absolute path, or a path inside the config folder of the app (such as backgrounds/sky.jpg). A web address is refused. null shows no picture, even where the theme has one. The picture of a space wins over this one.",

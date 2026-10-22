@@ -1,14 +1,28 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { INTERFACE_STYLES, NOREN_DUSK, NOREN_PAPER } from "@noren/model";
+import {
+  GLASS_PANEL_OPACITY,
+  GLASS_SIDE_MIN_OPACITY,
+  GLASS_SIDE_OPACITY_STEP,
+  GLASS_SIDE_SOLID_RAMP,
+  INTERFACE_STYLES,
+  NOREN_DUSK,
+  NOREN_PAPER,
+  THEMES,
+  contrastRatio,
+  pictureUnderPanel,
+} from "@noren/model";
 import type { InterfaceStyle } from "@noren/model";
 import {
+  BACKDROP_PALETTES,
   DEFAULT_INTERFACE_STYLE,
   DENSE_MAX_RADIUS,
   PACKAGED_FONTS,
   STYLE_ACCENTS,
+  SCHEME_ATTRIBUTE,
   STYLE_ATTRIBUTE,
   STYLE_FONT,
+  applyColorScheme,
   applyInterfaceStyle,
   styleRadius,
 } from "./interface-style";
@@ -304,6 +318,152 @@ describe("what the app fetches for its look", () => {
     expect(notices).toContain("SIL Open Font License");
     for (const family of ["Geist", "Geist Mono", "JetBrains Mono"]) {
       expect(notices).toContain(family);
+    }
+  });
+});
+
+describe("the glass surfaces (NOR-F20-18a)", () => {
+  const stylesCss = read("styles.css").replace(/\/\*[\s\S]*?\*\//g, "");
+
+  it("tells the kind of the theme to the stylesheet with an attribute of the root", () => {
+    expect(SCHEME_ATTRIBUTE).toBe("data-nr-scheme");
+    const set: [string, string][] = [];
+    const target = { setAttribute: (name: string, value: string) => set.push([name, value]) };
+    applyColorScheme(target, "dark");
+    applyColorScheme(target, "light");
+    expect(set).toEqual([
+      ["data-nr-scheme", "dark"],
+      ["data-nr-scheme", "light"],
+    ]);
+  });
+
+  it("uses light-dark() nowhere: the build of the app rewrites it to follow the system, not the theme", () => {
+    for (const name of readdirSync(here).filter((file) => file.endsWith(".css"))) {
+      const code = read(name).replace(/\/\*[\s\S]*?\*\//g, "");
+      expect(code, name).not.toMatch(/light-dark\(/);
+    }
+  });
+
+  it("works the fills of the glass out from --nr-opacity with the numbers of the model", () => {
+    const glass = tokens("glass");
+    const panel = glass.get("--nr-glass-panel") ?? "";
+    const side = glass.get("--nr-glass-side") ?? "";
+    // Both fall back to the opacity of the glass when the app has not set the variable yet.
+    for (const text of [panel, side]) {
+      const fallbacks = [...text.matchAll(/var\(--nr-opacity, ([0-9.]+)\)/g)].map((m) =>
+        Number(m[1]),
+      );
+      expect(fallbacks.length).toBeGreaterThan(0);
+      for (const fallback of fallbacks) expect(fallback).toBe(GLASS_PANEL_OPACITY);
+    }
+    expect(panel).toContain("var(--nr-bg)");
+    expect(side).toContain("var(--nr-surface)");
+    // The sidebar: max(opacity - STEP * min(1, (1 - opacity) / RAMP), MIN), the sum of glassSideOpacity.
+    const sum =
+      /max\(\s*var\(--nr-opacity, [0-9.]+\) - ([0-9.]+) \* min\(1, \(1 - var\(--nr-opacity, [0-9.]+\)\) \/ ([0-9.]+)\),\s*([0-9.]+)\s*\)/.exec(
+        side,
+      );
+    expect(sum, side).not.toBeNull();
+    expect(Number(sum?.[1])).toBe(GLASS_SIDE_OPACITY_STEP);
+    expect(Number(sum?.[2])).toBe(GLASS_SIDE_SOLID_RAMP);
+    expect(Number(sum?.[3])).toBe(GLASS_SIDE_MIN_OPACITY);
+  });
+
+  it("has the color of the active space as the highlight of both styles, falling back to the style's own", () => {
+    for (const style of INTERFACE_STYLES) {
+      expect(tokens(style).get("--nr-highlight")).toBe(
+        "var(--nr-space-color, var(--nr-style-accent))",
+      );
+    }
+  });
+
+  it("makes the glass opaque the same way for the system switch as for the media feature", () => {
+    const media = tokensCss.indexOf("@media (prefers-reduced-transparency: reduce)");
+    const fromMedia = declarations(block(tokensCss.slice(media), SELECTOR("glass")));
+    const fromSwitch = declarations(
+      block(tokensCss, `${SELECTOR("glass")}[data-nr-transparency="reduced"]`),
+    );
+    expect([...fromSwitch.entries()].sort()).toEqual([...fromMedia.entries()].sort());
+    expect(fromSwitch.size).toBe(4);
+  });
+
+  it("keeps the backdrop of the design for a dark theme, and every color of the pale one light enough to read on", () => {
+    for (const kind of ["dark", "light"] as const) {
+      for (const color of Object.values(BACKDROP_PALETTES[kind])) {
+        expect(color).toMatch(/^#[0-9A-F]{6}$/);
+      }
+    }
+    // The night landscape of vidro-janela.
+    expect(BACKDROP_PALETTES.dark).toEqual({
+      base: "#191C3A",
+      sky: "#1D2046",
+      moon: "#F1E6CC",
+      star: "#FFFFFF",
+      far: "#343A78",
+      middle: "#4A3474",
+      near: "#11132A",
+    });
+    // Under the glass of the sidebar the text and the secondary text of a theme with room for them stay at
+    // 4.5:1 over every color of the backdrop of its kind that can be behind a sidebar (the moon is at the
+    // right of the window), and the text of a pane over all of them (what axe measures). The stars are
+    // dots of 2 or 3 pixels that the blur of the glass spreads to nothing, so they are not measured.
+    let measured = 0;
+    for (const theme of THEMES) {
+      if (contrastRatio(theme.ui.muted, theme.ui.surface) < 4.6) continue;
+      if (contrastRatio(theme.ui.text, theme.ui.bg) < 7.5) continue;
+      measured++;
+      for (const [name, color] of Object.entries(BACKDROP_PALETTES[theme.kind])) {
+        if (name === "star") continue;
+        const pane = pictureUnderPanel(color, {
+          bg: color,
+          panel: theme.ui.bg,
+          imageOpacity: 1,
+          panelOpacity: 0.62,
+          veil: 0,
+        });
+        expect(
+          contrastRatio(theme.terminal.foreground, pane),
+          `${theme.id} terminal text over ${name}`,
+        ).toBeGreaterThanOrEqual(4.5);
+        if (name === "moon") continue;
+        const side = pictureUnderPanel(color, {
+          bg: color,
+          panel: theme.ui.surface,
+          imageOpacity: 1,
+          panelOpacity: 0.42,
+          veil: 0,
+        });
+        expect(
+          contrastRatio(theme.ui.muted, side),
+          `${theme.id} muted over ${name}`,
+        ).toBeGreaterThanOrEqual(4.5);
+        expect(
+          contrastRatio(theme.ui.text, side),
+          `${theme.id} text over ${name}`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+    expect(measured).toBeGreaterThanOrEqual(2);
+    expect(THEMES.some((theme) => theme.id === NOREN_PAPER.id)).toBe(true);
+  });
+
+  it("keeps every rule of the glass section under the glass attribute, so the dense style does not move", () => {
+    const start = stylesCss.indexOf(".glass-backdrop {");
+    expect(start).toBeGreaterThan(0);
+    const section = stylesCss.slice(start);
+    const selectors = [...section.matchAll(/(?:^|\})\s*([^{}@]+)\{/g)].flatMap((match) =>
+      (match[1] ?? "")
+        .split(",")
+        .map((selector) => selector.trim())
+        .filter((selector) => selector !== ""),
+    );
+    expect(selectors.length).toBeGreaterThan(20);
+    for (const selector of selectors) {
+      expect(
+        selector.startsWith(':root[data-nr-style="glass"]') ||
+          selector.startsWith(".glass-backdrop"),
+        selector,
+      ).toBe(true);
     }
   });
 });

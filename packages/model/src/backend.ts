@@ -532,6 +532,15 @@ export interface Backend {
    */
   setWindowEffect(effect: WindowEffect, scheme: WindowScheme): Promise<WindowEffectReport>;
   /**
+   * Whether the system has its transparency effects turned off (the "Transparency effects" switch of
+   * Windows, in the Personalization settings; read only, from the settings of the current user): the
+   * glass interface style then draws opaque panels, as it does for `prefers-reduced-transparency`.
+   * It is asked of the system and not only of the page because the web view does not always report the
+   * Windows switch as that media feature. `false` where there is no such switch (other systems, a
+   * browser) or it cannot be read. Never rejects.
+   */
+  systemTransparencyReduced(): Promise<boolean>;
+  /**
    * The picture file of a background: `path` is an absolute path or a path inside the config folder
    * of the app (`backgroundImageProblem` tells what is refused: web addresses, network paths, `..`,
    * anything that is not a picture extension). The bytes must really be a png, jpeg, webp, gif or

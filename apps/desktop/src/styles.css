@@ -5495,3 +5495,252 @@ ul.settings-models {
 .settings-update-progress progress {
   width: 100%;
 }
+
+/*
+ * The glass style: the surfaces of the main window (NOR-F20-18a, D23). Everything below is under
+ * data-nr-style="glass" (the default style), so the dense style keeps the surfaces above as they are.
+ * The values are the tokens of style-tokens.css, which come from the approved design of the window:
+ *
+ *   the window   the illustrated backdrop (GlassBackdrop.tsx) or the picture of the person, behind everything
+ *   the sidebar  a card of 14px corners, --nr-glass-side, blur(30px) saturate(160%), a line at 8%
+ *   the panels   cards of 12px corners, --nr-glass-panel, blur(24px), the same line: each pane of a
+ *                tab, the bar of top tabs, the bar of favorites at the top, the Ask panel and the
+ *                panel of a plugin
+ *   the gap      8px between every card and around them (--nr-gap), also where the panes of a tab meet
+ *
+ * The fills follow --nr-opacity (the transparency control of the settings), the blur of the picture is
+ * --nr-background-blur (the blur control), and the highlight (the ring of the pane in focus, the handle
+ * that is dragged) is the color of the active space, --nr-highlight. Under prefers-reduced-transparency
+ * or with the transparency effects of the system off, the fills are solid and the blur is off: the
+ * tokens say it, so nothing below asks.
+ */
+
+/* The backdrop: a night landscape for a dark theme, a pale one for a light theme (the colors, --glass-*, are set on it by GlassBackdrop.tsx), in a box of its own so it can blur. */
+.glass-backdrop {
+  position: fixed;
+  inset: calc(var(--nr-background-blur, 0px) * -2);
+  z-index: -1;
+  overflow: hidden;
+  background: var(--glass-base);
+  filter: blur(var(--nr-background-blur, 0px));
+  pointer-events: none;
+}
+
+.glass-backdrop-sky {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 62%;
+  background: var(--glass-sky);
+}
+
+.glass-backdrop-moon {
+  position: absolute;
+  top: 9%;
+  right: 16%;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  background: var(--glass-moon);
+  opacity: 0.9;
+}
+
+.glass-backdrop-star {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--glass-star);
+}
+
+.glass-backdrop-ridge {
+  position: absolute;
+  inset: auto 0 0;
+}
+
+.glass-backdrop-ridge[data-nr-ridge="far"] {
+  height: 70%;
+  background: var(--glass-far);
+  clip-path: polygon(
+    0 48%,
+    12% 30%,
+    24% 44%,
+    38% 18%,
+    52% 40%,
+    64% 24%,
+    78% 42%,
+    90% 28%,
+    100% 36%,
+    100% 100%,
+    0 100%
+  );
+}
+
+.glass-backdrop-ridge[data-nr-ridge="middle"] {
+  height: 55%;
+  background: var(--glass-middle);
+  clip-path: polygon(
+    0 40%,
+    9% 52%,
+    21% 30%,
+    33% 50%,
+    46% 34%,
+    58% 56%,
+    71% 36%,
+    84% 54%,
+    100% 30%,
+    100% 100%,
+    0 100%
+  );
+}
+
+.glass-backdrop-ridge[data-nr-ridge="near"] {
+  height: 34%;
+  background: var(--glass-near);
+  clip-path: polygon(
+    0 30%,
+    14% 55%,
+    27% 38%,
+    41% 62%,
+    55% 40%,
+    68% 58%,
+    82% 34%,
+    100% 52%,
+    100% 100%,
+    0 100%
+  );
+}
+
+/* The title bar is a strip of the same glass as the sidebar, flush with the top of the window. */
+:root[data-nr-style="glass"] .app .titlebar {
+  border-bottom-color: var(--nr-line);
+  background: var(--nr-glass-side);
+  backdrop-filter: var(--nr-glass-blur-side);
+}
+
+/* The row of cards: a gap around it and between its cards. */
+:root[data-nr-style="glass"] .app-body {
+  box-sizing: border-box;
+  gap: var(--nr-gap);
+  padding: var(--nr-gap);
+}
+
+:root[data-nr-style="glass"] .app-body .main {
+  gap: var(--nr-gap);
+}
+
+:root[data-nr-style="glass"] .app-body .sidebar {
+  border: 1px solid var(--nr-line);
+  border-radius: var(--nr-radius-side);
+  background: var(--nr-glass-side);
+  backdrop-filter: var(--nr-glass-blur-side);
+}
+
+/* The handle sits in the middle of the gap between the sidebar and what is next to it. */
+:root[data-nr-style="glass"] .app-body[data-nr-side="left"] .sidebar-resize {
+  right: calc(var(--nr-gap) / -2 - 3px);
+}
+
+:root[data-nr-style="glass"] .app-body[data-nr-side="right"] .sidebar-resize {
+  left: calc(var(--nr-gap) / -2 - 3px);
+}
+
+/* Compact mode: the sidebar card floats inside the gap, and leaves the window by its whole width plus the gap. */
+:root[data-nr-style="glass"] .app-body[data-nr-sidebar-mode="auto-hide"] .sidebar {
+  top: var(--nr-gap);
+  bottom: var(--nr-gap);
+}
+
+:root[data-nr-style="glass"]
+  .app-body[data-nr-sidebar-mode="auto-hide"][data-nr-side="left"]
+  .sidebar {
+  left: var(--nr-gap);
+}
+
+:root[data-nr-style="glass"]
+  .app-body[data-nr-sidebar-mode="auto-hide"][data-nr-side="right"]
+  .sidebar {
+  right: var(--nr-gap);
+}
+
+:root[data-nr-style="glass"]
+  .app-body[data-nr-sidebar-mode="auto-hide"][data-nr-side="left"]
+  .sidebar:not([data-nr-state="revealed"]) {
+  transform: translateX(calc(-100% - var(--nr-gap) * 2));
+}
+
+:root[data-nr-style="glass"]
+  .app-body[data-nr-sidebar-mode="auto-hide"][data-nr-side="right"]
+  .sidebar:not([data-nr-state="revealed"]) {
+  transform: translateX(calc(100% + var(--nr-gap) * 2));
+}
+
+/* The panels. */
+:root[data-nr-style="glass"] .app .tab-bar,
+:root[data-nr-style="glass"] .app .favorites[data-nr-placement="top"],
+:root[data-nr-style="glass"] .app .ask-panel,
+:root[data-nr-style="glass"] .app .plugin-panel,
+:root[data-nr-style="glass"] .app .pane-frame {
+  border: 1px solid var(--nr-line);
+  border-radius: var(--nr-radius-panel);
+  background: var(--nr-glass-panel);
+  backdrop-filter: var(--nr-glass-blur-panel);
+}
+
+/*
+ * A pane is a card whose corners clip what is drawn in it; the terminal inside draws nothing of its own. Its
+ * line is inside its box (border-box): the panel that holds it in a split is a scroll box, and a pane
+ * 2px taller than the panel made it draw a native scroll bar in the gap between two panes.
+ */
+:root[data-nr-style="glass"] .app .pane-frame {
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+:root[data-nr-style="glass"] .app .terminal-view {
+  background: transparent;
+}
+
+/* The terminal keeps off the rounded corners of its card. */
+:root[data-nr-style="glass"] .app .terminal-host {
+  inset: 4px 4px 4px 8px;
+}
+
+/* The panes of a tab are cards with the gap between them, so the line between two is the gap itself; it lights up where it can be dragged. */
+:root[data-nr-style="glass"] .app .split-separator {
+  box-sizing: border-box;
+  background-color: transparent;
+  background-clip: content-box;
+}
+
+:root[data-nr-style="glass"] .app .split-separator[data-nr-dir="row"] {
+  width: var(--nr-gap);
+  padding: 0 calc(var(--nr-gap) / 2 - 1px);
+}
+
+:root[data-nr-style="glass"] .app .split-separator[data-nr-dir="column"] {
+  height: var(--nr-gap);
+  padding: calc(var(--nr-gap) / 2 - 1px) 0;
+}
+
+:root[data-nr-style="glass"] .app .split-separator[data-separator="hover"],
+:root[data-nr-style="glass"] .app .split-separator[data-separator="active"] {
+  background-color: var(--nr-highlight);
+}
+
+/* The ring of the pane in focus follows its corners and is the color of the space. */
+:root[data-nr-style="glass"] .app .pane-frame[data-nr-focused="true"]::after {
+  border-color: color-mix(in srgb, var(--nr-highlight) 55%, transparent);
+  border-radius: inherit;
+}
+
+:root[data-nr-style="glass"] .app .pane-agent-ring {
+  border-radius: inherit;
+}
+
+/*
+ * The terminal draws nothing of its own on the glass, so the native scroll bar xterm.css gives its viewport
+ * (always there, with its arrows, under the picture of the terminal) would show through. It is a thin
+ * bar in the color of the text, with no track and no arrows, in every terminal of the glass window.
+ */
+:root[data-nr-style="glass"] .app .xterm .xterm-viewport {
+  scrollbar-color: color-mix(in srgb, var(--nr-text) 28%, transparent) transparent;
+  scrollbar-width: thin;
+}

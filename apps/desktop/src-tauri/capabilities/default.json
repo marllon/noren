@@ -75,6 +75,7 @@
     "allow-update-check",
     "allow-update-install",
     "allow-window-effect-set",
+    "allow-system-transparency-reduced",
     "allow-background-image-read",
     "allow-background-image-pick",
     "allow-path-pick",

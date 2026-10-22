@@ -1,4 +1,14 @@
-import { FakeBackend, MAX_THEME_NAME, NOREN_DUSK, THEMES, parseTheme } from "@noren/model";
+import {
+  FakeBackend,
+  MAX_THEME_NAME,
+  NOREN_DUSK,
+  NOREN_PAPER,
+  THEMES,
+  importColorSchemes,
+  parseTheme,
+  serializeTheme,
+  typeIntoField,
+} from "@noren/model";
 import type { Theme } from "@noren/model";
 import { PLIST_LAGOON } from "@noren/model/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -10,6 +20,7 @@ import {
   exportUserThemeFile,
   isUserTheme,
   renameUserTheme,
+  saveEditedTheme,
 } from "./themes-section";
 import {
   addUserThemes,
@@ -294,5 +305,168 @@ describe("exportUserThemeFile", () => {
     };
     await importSchemeFile(file, { backend, existing: [], added: addUserThemes });
     expect(Object.keys(backend.userThemeFiles)).toEqual(["lagoon"]);
+  });
+});
+
+describe("saveEditedTheme", () => {
+  /** `theme` after typing `text` in each box of `boxes`, as the editor does. */
+  function edited(theme: Theme, boxes: [Parameters<typeof typeIntoField>[1], string][]): Theme {
+    return boxes.reduce((current, [field, text]) => {
+      const typed = typeIntoField(current, field, text);
+      expect(typed.problem, `${field} <- ${text}`).toBeUndefined();
+      return typed.theme;
+    }, theme);
+  }
+
+  it("writes a theme that ships with the app, edited, as a new theme of the user's own, and adds it to the gallery", async () => {
+    const backend = await withFiles();
+    const theme = edited(NOREN_DUSK, [
+      ["ui.accent", "#00aaff"],
+      ["terminal.ansi.1", "#ff0000"],
+      ["ui.radius", "2"],
+    ]);
+    const outcome = await saveEditedTheme(backend, theme, "My Dusk", "new");
+    expect(outcome.ok).toBe(true);
+    expect(outcome.message).toBe("Saved “My Dusk” as one of your themes.");
+    expect(outcome.theme?.id).toBe("my-dusk");
+    expect(Object.keys(backend.userThemeFiles)).toEqual(["my-dusk"]);
+    expect(savedTheme(backend, "my-dusk")).toEqual({
+      ...NOREN_DUSK,
+      id: "my-dusk",
+      name: "My Dusk",
+      ui: { ...NOREN_DUSK.ui, accent: "#00aaff", radius: 2 },
+      terminal: {
+        ...NOREN_DUSK.terminal,
+        ansi: NOREN_DUSK.terminal.ansi.map((color, at) => (at === 1 ? "#ff0000" : color)),
+      },
+    });
+    // The file is the text every theme file is, and the theme in the gallery is what is on the disk.
+    expect(backend.userThemeFiles["my-dusk"]).toBe(serializeTheme(savedTheme(backend, "my-dusk")));
+    expect(getUserThemes()).toEqual([savedTheme(backend, "my-dusk")]);
+    expect(isUserTheme(savedTheme(backend, "my-dusk"))).toBe(true);
+  });
+
+  it("numbers the id and the name of a new theme when the name is taken, and never takes an id that ships with the app", async () => {
+    const backend = await withFiles({ mine });
+    const first = await saveEditedTheme(backend, mine, "Mine", "new");
+    expect(first.theme?.id).toBe("mine-2");
+    expect(first.theme?.name).toBe("Mine (2)");
+    const system = await saveEditedTheme(backend, NOREN_DUSK, "Noren Dusk", "new");
+    expect(system.theme?.id).toBe("noren-dusk-2");
+    expect((await saveEditedTheme(backend, NOREN_DUSK, "System", "new")).theme?.id).toBe(
+      "system-2",
+    );
+    expect(Object.keys(backend.userThemeFiles).sort()).toEqual([
+      "mine",
+      "mine-2",
+      "noren-dusk-2",
+      "system-2",
+    ]);
+  });
+
+  it("writes over the theme of the user when the changes are saved, keeping its id, and the gallery shows the new look", async () => {
+    const backend = await withFiles({ mine });
+    const theme = edited(mine, [
+      ["ui.accent", "#abcdef"],
+      ["font.family", "Consolas, monospace"],
+      ["background.blur", ""],
+    ]);
+    const outcome = await saveEditedTheme(backend, theme, "Mine, better", "changes");
+    expect(outcome.ok).toBe(true);
+    expect(outcome.message).toBe("Saved the changes to “Mine, better”.");
+    expect(Object.keys(backend.userThemeFiles)).toEqual(["mine"]);
+    const saved = savedTheme(backend, "mine");
+    expect(saved.name).toBe("Mine, better");
+    expect(saved.ui.accent).toBe("#abcdef");
+    expect(saved.font.family).toBe("Consolas, monospace");
+    expect("blur" in saved.background).toBe(false);
+    expect(getUserThemes()).toEqual([saved]);
+  });
+
+  it("refuses a name that is empty or past the limit before anything is written, with the sentence for it", async () => {
+    const backend = await withFiles({ mine });
+    for (const mode of ["new", "changes"] as const) {
+      expect(await saveEditedTheme(backend, mine, "   ", mode)).toEqual({
+        ok: false,
+        message: "A theme needs a name.",
+      });
+      expect(await saveEditedTheme(backend, mine, "x".repeat(MAX_THEME_NAME + 1), mode)).toEqual({
+        ok: false,
+        message: `A name has at most ${MAX_THEME_NAME} characters.`,
+      });
+    }
+    expect(Object.keys(backend.userThemeFiles)).toEqual(["mine"]);
+    expect(getUserThemes()).toEqual([mine]);
+    setLanguage("pt-BR");
+    expect((await saveEditedTheme(backend, mine, "", "new")).message).toBe(
+      "Um tema precisa de um nome.",
+    );
+  });
+
+  it("refuses a theme the schema does not accept, and writes nothing", async () => {
+    const backend = await withFiles();
+    const broken = { ...NOREN_DUSK, ui: { ...NOREN_DUSK.ui, accent: "red" } } as Theme;
+    for (const mode of ["new", "changes"] as const) {
+      const outcome = await saveEditedTheme(backend, broken, "Broken", mode);
+      expect(outcome.ok).toBe(false);
+      expect(outcome.message).toContain("Could not save “Broken”");
+      expect(outcome.message).toContain("ui.accent");
+    }
+    expect(backend.userThemeFiles).toEqual({});
+    expect(getUserThemes()).toEqual([]);
+  });
+
+  it("keeps the disk and the gallery as they were when the disk refuses, and says why, in either language", async () => {
+    const backend = await withFiles({ mine });
+    backend.setUserThemeSaveFailure(new Error("disk full"));
+    const theme = edited(mine, [["ui.accent", "#abcdef"]]);
+    expect(await saveEditedTheme(backend, theme, "Mine", "changes")).toEqual({
+      ok: false,
+      message: "Could not save “Mine”: disk full",
+    });
+    expect(await saveEditedTheme(backend, theme, "Mine copy", "new")).toEqual({
+      ok: false,
+      message: "Could not save “Mine copy”: disk full",
+    });
+    expect(Object.keys(backend.userThemeFiles)).toEqual(["mine"]);
+    expect(savedTheme(backend, "mine")).toEqual(mine);
+    expect(getUserThemes()).toEqual([mine]);
+    setLanguage("pt-BR");
+    expect((await saveEditedTheme(backend, theme, "Mine", "changes")).message).toBe(
+      "Não foi possível salvar “Mine”: disk full",
+    );
+    backend.setUserThemeSaveFailure(undefined);
+    expect((await saveEditedTheme(backend, theme, "Mine", "changes")).message).toBe(
+      "As mudanças em “Mine” foram salvas.",
+    );
+    expect((await saveEditedTheme(backend, theme, "Outro", "new")).message).toBe(
+      "Salvo “Outro” como um dos seus temas.",
+    );
+  });
+
+  it("writes a file that comes back whole through the importer, as Export and Import do (the lesson of the gallery)", async () => {
+    const backend = await withFiles();
+    const theme = edited(NOREN_PAPER, [
+      ["ui.accent", "#12ab34"],
+      ["terminal.selection", "#12ab3480"],
+      ["font.size", "17"],
+      ["background.image", "backgrounds/sky.png"],
+      ["background.opacity", "0.3"],
+      ["background.blur", "9"],
+    ]);
+    const outcome = await saveEditedTheme(backend, theme, "Round trip", "new");
+    const text = backend.userThemeFiles["round-trip"];
+    expect(text).toBeDefined();
+    const imported = importColorSchemes(text as string);
+    expect(imported).toEqual({
+      ok: true,
+      format: "json",
+      themes: [outcome.theme],
+      warnings: [],
+    });
+    // And the loader of the folder reads it again as the same theme on the next start.
+    resetUserThemes();
+    await loadUserThemes(backend);
+    expect(getUserThemes()).toEqual([outcome.theme]);
   });
 });

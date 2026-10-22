@@ -101,6 +101,34 @@ export { deriveTheme, normalizeColor, reservedThemeIds, slugify } from "./theme-
 export type { SchemeColors } from "./theme-derive";
 export { MAX_THEME_NAME, duplicateTheme, renameTheme } from "./theme-actions";
 export {
+  ANSI_INDEXES,
+  NUMBER_RANGES,
+  ansiField,
+  fieldText,
+  isColor,
+  isNumber,
+  numberText,
+  readThemeField,
+  setThemeField,
+  themeContrastWarnings,
+  typeIntoField,
+} from "./theme-edit";
+export type {
+  AnsiField,
+  AnsiIndex,
+  ColorField,
+  ContrastCheck,
+  ContrastWarning,
+  FieldProblem,
+  FieldReading,
+  NumberField,
+  NumberRange,
+  TerminalColorField,
+  TextField,
+  ThemeField,
+  UiColorField,
+} from "./theme-edit";
+export {
   MAX_IMPORT_CHARS,
   UNKNOWN_FORMAT_MESSAGE,
   detectFormat,

@@ -38,6 +38,15 @@
 //!    (never a key of the system: no input reaches the window, which is disabled), reads the number
 //!    of panes of the tab from the page after each one and fails if it did not go up by exactly one;
 //!    the picture is of the tab as they left it;
+//!    With `--open-settings <section>` (NOR-F20-09b, finding 326) the run opens the settings screen in
+//!    the page by calling `click()` on the settings button of the title bar (a DOM call inside the
+//!    page, like the key events above, never a mouse click of the system) and scrolls the section
+//!    to the top, failing if the screen or the section is not there; `--theme-editor <theme id>`
+//!    opens the theme editor of that theme from its card in the Themes section the same way,
+//!    `--editor-group <group>` scrolls the editor to a group, and `--editor-set <field>=<value>`
+//!    types a value into a box of the editor (the page's own `input` event, as the keyboard would
+//!    make) and fails if the preview of the editor did not change. The picture is of the page as
+//!    these left it;
 //! 7. the run checks and prints that the window never had the focus of the system (no look of
 //!    [`Watch`] found a window of this program in front), lies outside every monitor, is out of the
 //!    taskbar and Alt+Tab, is disabled, and that the foreground window just before the window was
@@ -72,6 +81,10 @@ const SETTINGS_FLAG: &str = "--settings";
 const LIVE_SETTINGS_FLAG: &str = "--live-settings";
 const IMAGE_FLAG: &str = "--image";
 const SPLIT_KEYS_FLAG: &str = "--split-keys";
+const OPEN_SETTINGS_FLAG: &str = "--open-settings";
+const THEME_EDITOR_FLAG: &str = "--theme-editor";
+const EDITOR_GROUP_FLAG: &str = "--editor-group";
+const EDITOR_SET_FLAG: &str = "--editor-set";
 
 /// The whole run, from the start of the program to the app quitting, has this long.
 const TIMEOUT: Duration = Duration::from_secs(60);
@@ -124,10 +137,80 @@ pub struct ShotArgs {
     /// `--split-keys`: the page is sent Ctrl+Shift+D and Ctrl+Shift+E as key events, and the run
     /// checks that each one added a pane to the tab (see [`split_verdict`]).
     pub split_keys: bool,
+    /// What the run does in the page besides that: the settings screen, the theme editor.
+    pub steps: PageSteps,
+}
+
+/// What the run does in the page once it is up, in this order: opens the settings screen at a
+/// section, opens the theme editor on a theme of the Themes section, scrolls the editor to a group
+/// and types values into its boxes. All of it is made by calls inside the page (see
+/// [`settings_expression`]): nothing reaches the keyboard, the mouse or the interface of the system.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PageSteps {
+    /// `--open-settings <section>`: the `data-nr-part` of the section is `settings-<section>`.
+    pub open_settings: Option<String>,
+    /// `--theme-editor <theme id>`: the editor of the theme with that id (its card in the Themes section).
+    pub theme_editor: Option<String>,
+    /// `--editor-group <group>`: the group of the editor that is scrolled to the top.
+    pub editor_group: Option<String>,
+    /// `--editor-set <field>=<value>`, in the order given: a box of the editor and what is typed in it.
+    pub editor_set: Vec<(String, String)>,
+}
+
+impl PageSteps {
+    /// Whether the run does nothing in the page.
+    pub fn is_empty(&self) -> bool {
+        self.section().is_none() && self.theme_editor.is_none()
+    }
+
+    /// The section of the settings screen the run opens: the one asked for, else the Themes section
+    /// when an editor is asked for (its cards are there).
+    pub fn section(&self) -> Option<&str> {
+        match (&self.open_settings, &self.theme_editor) {
+            (Some(section), _) => Some(section),
+            (None, Some(_)) => Some("themes"),
+            (None, None) => None,
+        }
+    }
+}
+
+/// A word the page is asked for by: lower case letters, digits and single hyphens, as the ids of a
+/// section, a group and a theme are. Anything else could not be a name of the page, and is never put
+/// into a script.
+fn is_word(text: &str) -> bool {
+    !text.is_empty()
+        && text.len() <= 48
+        && text.split('-').all(|part| {
+            !part.is_empty()
+                && part
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        })
+}
+
+/// The name of a box of the editor: a path of the theme such as `ui.accent` or `terminal.ansi.1`.
+fn is_field(text: &str) -> bool {
+    let parts: Vec<&str> = text.split('.').collect();
+    parts.len() >= 2
+        && text.len() <= 32
+        && parts
+            .iter()
+            .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_alphanumeric()))
+        && parts[0].bytes().all(|b| b.is_ascii_lowercase())
+}
+
+/// What may be typed into a box: letters, digits, spaces and the few signs of a color, a number and a
+/// path, so the text can never leave the string of the script it is put in.
+fn is_value(text: &str) -> bool {
+    text.len() <= 64
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b" #,._/-".contains(&b))
 }
 
 /// Reads `--smoke-shot <png> [--settings <file>] [--live-settings <file>] [--image <file>]
-/// [--split-keys]`.
+/// [--split-keys] [--open-settings <section>] [--theme-editor <theme id>] [--editor-group <group>]
+/// [--editor-set <field>=<value>]...`.
 pub fn parse_args(args: &[String]) -> Result<ShotArgs, String> {
     let at = args
         .iter()
@@ -149,10 +232,53 @@ pub fn parse_args(args: &[String]) -> Result<ShotArgs, String> {
         live_settings: None,
         image: None,
         split_keys: false,
+        steps: PageSteps::default(),
     };
     while let Some(flag) = rest.next() {
         if flag == SPLIT_KEYS_FLAG {
             if std::mem::replace(&mut parsed.split_keys, true) {
+                return Err(format!("{flag} was given twice"));
+            }
+            continue;
+        }
+        if flag == EDITOR_SET_FLAG {
+            let pair = rest
+                .next()
+                .ok_or_else(|| format!("{flag} needs <field>=<value> after it"))?;
+            let (field, value) = pair
+                .split_once('=')
+                .ok_or_else(|| format!("{flag} {pair:?} is not <field>=<value>"))?;
+            if !is_field(field) {
+                return Err(format!(
+                    "{flag}: {field:?} is not the name of a box of the editor"
+                ));
+            }
+            if !is_value(value) {
+                return Err(format!(
+                    "{flag}: {value:?} has a character a box is never given (letters, digits, space and # , . _ / - only)"
+                ));
+            }
+            parsed
+                .steps
+                .editor_set
+                .push((field.to_owned(), value.to_owned()));
+            continue;
+        }
+        if let Some(slot) = match flag.as_str() {
+            OPEN_SETTINGS_FLAG => Some(&mut parsed.steps.open_settings),
+            THEME_EDITOR_FLAG => Some(&mut parsed.steps.theme_editor),
+            EDITOR_GROUP_FLAG => Some(&mut parsed.steps.editor_group),
+            _ => None,
+        } {
+            let value = rest
+                .next()
+                .ok_or_else(|| format!("{flag} needs a name after it"))?;
+            if !is_word(value) {
+                return Err(format!(
+                    "{flag}: {value:?} is not a name (lower case letters, digits and hyphens)"
+                ));
+            }
+            if slot.replace(value.clone()).is_some() {
                 return Err(format!("{flag} was given twice"));
             }
             continue;
@@ -173,6 +299,25 @@ pub fn parse_args(args: &[String]) -> Result<ShotArgs, String> {
         if slot.replace(PathBuf::from(value)).is_some() {
             return Err(format!("{flag} was given twice"));
         }
+    }
+    let steps = &parsed.steps;
+    if steps.theme_editor.is_none()
+        && (steps.editor_group.is_some() || !steps.editor_set.is_empty())
+    {
+        return Err(format!(
+            "{EDITOR_GROUP_FLAG} and {EDITOR_SET_FLAG} are for the editor, and {THEME_EDITOR_FLAG} was not given"
+        ));
+    }
+    if steps.theme_editor.is_some()
+        && steps
+            .open_settings
+            .as_deref()
+            .is_some_and(|s| s != "themes")
+    {
+        return Err(format!(
+            "{THEME_EDITOR_FLAG} opens the editor from the Themes section, not from {:?}",
+            steps.open_settings.as_deref().unwrap_or_default()
+        ));
     }
     Ok(parsed)
 }
@@ -690,6 +835,169 @@ fn split_verdict(counts: &[u64]) -> Result<(), String> {
     Ok(())
 }
 
+// ---- the settings screen and the theme editor ----------------------------------------------------
+
+/// Longest a step may wait in the page for what it opens to show (the page polls every 50 ms).
+const STEP_WAIT_MS: u64 = 8000;
+/// After the steps: the dialogs and the preview are painted in this time.
+const STEP_SETTLE: Duration = Duration::from_millis(900);
+
+/// The start of every script of a step: `until` waits for `find()` to give something, up to `ms`,
+/// and `fail` is the answer of a step that did not work (the run fails with the reason).
+const STEP_PRELUDE: &str = r#"const until = async (find, ms) => {
+    const end = Date.now() + ms;
+    for (;;) {
+      const found = find();
+      if (found) return found;
+      if (Date.now() > end) return null;
+      await new Promise((done) => setTimeout(done, 50));
+    }
+  };
+  const fail = (reason) => JSON.stringify({ ok: false, reason });
+  const frames = () =>
+    new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));"#;
+
+/// The script that opens the settings screen and scrolls the section `section` to the top. It calls
+/// `click()` on the settings button of the title bar, a DOM call inside the page that the page's own
+/// listener answers as it answers a click of the mouse; nothing reaches the mouse of the system, and
+/// the window is disabled anyway. `section` is a word (see [`is_word`]), never other text.
+fn settings_expression(section: &str) -> String {
+    format!(
+        r#"(async () => {{
+  {STEP_PRELUDE}
+  const button = document.querySelector(".settings-button");
+  if (!button) return fail("the title bar has no settings button");
+  button.click();
+  const screen = await until(() => document.querySelector('[data-nr-part="settings"]'), {STEP_WAIT_MS});
+  if (!screen) return fail("the settings screen did not open");
+  const section = await until(() => screen.querySelector('[data-nr-part="settings-{section}"]'), {STEP_WAIT_MS});
+  if (!section) return fail("the settings screen has no section '{section}'");
+  section.scrollIntoView({{ block: "start" }});
+  await frames();
+  const heading = section.querySelector("h3");
+  return JSON.stringify({{
+    ok: true,
+    sections: screen.querySelectorAll("section.settings-section").length,
+    heading: heading ? heading.textContent : "",
+  }});
+}})()"#
+    )
+}
+
+/// The script that opens the theme editor of the theme `theme` from its card (the button `edit`,
+/// "Customize" or "Edit") and, with `group`, scrolls the editor to that group. Both are words.
+fn editor_expression(theme: &str, group: Option<&str>) -> String {
+    let group = group.unwrap_or("");
+    format!(
+        r#"(async () => {{
+  {STEP_PRELUDE}
+  const card = await until(
+    () => document.querySelector('[data-nr-part="settings-themes"] [data-nr-part="theme-card"][data-nr-theme="{theme}"]'),
+    {STEP_WAIT_MS},
+  );
+  if (!card) return fail("the Themes section has no card for the theme '{theme}'");
+  const edit = card.querySelector('[data-nr-action="edit"]');
+  if (!edit) return fail("the card of '{theme}' has no button to edit it");
+  edit.click();
+  const editor = await until(() => document.querySelector('[data-nr-part="theme-editor"]'), {STEP_WAIT_MS});
+  if (!editor) return fail("the theme editor did not open");
+  const wanted = "{group}";
+  if (wanted !== "") {{
+    const group = editor.querySelector('[data-nr-group="' + wanted + '"]');
+    if (!group) return fail("the theme editor has no group " + JSON.stringify(wanted));
+    const controls = group.closest(".theme-editor-controls");
+    if (controls) controls.scrollTop = group.offsetTop - controls.offsetTop;
+  }}
+  await frames();
+  const preview = editor.querySelector('[data-nr-part="theme-preview"]');
+  if (!preview) return fail("the theme editor shows no preview");
+  const name = editor.querySelector('[data-nr-field="name"] input');
+  return JSON.stringify({{
+    ok: true,
+    groups: editor.querySelectorAll("[data-nr-group]").length,
+    swatches: preview.querySelectorAll(".tp-swatch").length,
+    name: name ? name.value : "",
+  }});
+}})()"#
+    )
+}
+
+/// The script that types `value` into the box `field` of the open editor, the way the keyboard
+/// would (the value is set and the page's own `input` event is dispatched, which its listener reads)
+/// and answers whether the preview of the editor changed because of it (it waits for a change, up to
+/// [`STEP_WAIT_MS`]: a picture is read from the disk before it shows) and whether the box says the
+/// value is not valid. `field` and `value` are the checked ones of [`is_field`] and [`is_value`].
+fn editor_set_expression(field: &str, value: &str) -> String {
+    format!(
+        r#"(async () => {{
+  {STEP_PRELUDE}
+  const editor = document.querySelector('[data-nr-part="theme-editor"]');
+  if (!editor) return fail("the theme editor is not open");
+  const holder = editor.querySelector('[data-nr-field="{field}"]');
+  const input = holder && holder.querySelector('input[type="text"]');
+  if (!input) return fail("the theme editor has no box '{field}'");
+  const preview = editor.querySelector('[data-nr-part="theme-preview"]');
+  const before = preview ? preview.getAttribute("style") : null;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+  setter.call(input, "{value}");
+  input.dispatchEvent(new Event("input", {{ bubbles: true }}));
+  await frames();
+  // A box that makes the app read a file (the picture) changes the preview a moment later.
+  await until(
+    () => (preview && preview.getAttribute("style") !== before) || input.getAttribute("aria-invalid") === "true" ? true : null,
+    {STEP_WAIT_MS},
+  );
+  const after = preview ? preview.getAttribute("style") : null;
+  return JSON.stringify({{
+    ok: true,
+    changed: before !== after,
+    invalid: input.getAttribute("aria-invalid") === "true",
+    value: input.value,
+  }});
+}})()"#
+    )
+}
+
+/// What a step answered: the object of the page, or the reason it did not work. `answer` is the
+/// answer of `Runtime.evaluate` (`awaitPromise`, `returnByValue`); the script returns JSON text.
+fn step_answer_of(answer: &str) -> Result<Value, String> {
+    let value: Value = serde_json::from_str(answer)
+        .map_err(|e| format!("the web view answered something that is not JSON: {e}"))?;
+    if let Some(problem) = value.get("exceptionDetails") {
+        return Err(format!("the page could not run the step: {problem}"));
+    }
+    let text = value
+        .pointer("/result/value")
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("the page gave no answer to the step: {answer}"))?;
+    let page: Value = serde_json::from_str(text).map_err(|e| format!("the page's answer: {e}"))?;
+    if page.get("ok").and_then(Value::as_bool) == Some(true) {
+        Ok(page)
+    } else {
+        Err(page
+            .get("reason")
+            .and_then(Value::as_str)
+            .unwrap_or("the page did not say why")
+            .to_owned())
+    }
+}
+
+/// Whether a box that was typed into took the value and the preview followed it, as a sentence for
+/// the one that did not (`Ok` when it did).
+fn typed_verdict(field: &str, value: &str, answer: &Value) -> Result<(), String> {
+    if answer.get("invalid").and_then(Value::as_bool) == Some(true) {
+        return Err(format!(
+            "the box {field} says {value:?} is not a value it takes"
+        ));
+    }
+    if answer.get("changed").and_then(Value::as_bool) != Some(true) {
+        return Err(format!(
+            "the preview of the editor did not change when {field} was set to {value:?}"
+        ));
+    }
+    Ok(())
+}
+
 // ---- the system -----------------------------------------------------------------------------------
 
 #[cfg(windows)]
@@ -995,6 +1303,51 @@ fn send_split_keys(window: &tauri::WebviewWindow, deadline: Instant) -> Result<V
     Ok(counts)
 }
 
+/// Runs one script of a step in the page and reads its answer.
+fn page_step(window: &tauri::WebviewWindow, expression: &str) -> Result<Value, String> {
+    let params = json!({ "expression": expression, "awaitPromise": true, "returnByValue": true });
+    let answer = platform::devtools(window, "Runtime.evaluate", &params.to_string(), CALL)?;
+    step_answer_of(&answer)
+}
+
+/// Does what [`PageSteps`] says, in order, printing one line for each. The first step that does not
+/// work is the verdict (the picture is still taken, to be looked at).
+fn run_page_steps(window: &tauri::WebviewWindow, steps: &PageSteps) -> Result<(), String> {
+    let Some(section) = steps.section() else {
+        return Ok(());
+    };
+    let opened = page_step(window, &settings_expression(section))?;
+    print_line(&format!(
+        "SMOKE SHOT settings opened: section {section:?} at the top of the screen ({} section(s), heading {:?})",
+        opened.get("sections").and_then(Value::as_u64).unwrap_or(0),
+        opened.get("heading").and_then(Value::as_str).unwrap_or("")
+    ));
+    let Some(theme) = &steps.theme_editor else {
+        return Ok(());
+    };
+    let editor = page_step(
+        window,
+        &editor_expression(theme, steps.editor_group.as_deref()),
+    )?;
+    print_line(&format!(
+        "SMOKE SHOT theme editor opened on {theme:?}: {} group(s), preview of {} color(s){}",
+        editor.get("groups").and_then(Value::as_u64).unwrap_or(0),
+        editor.get("swatches").and_then(Value::as_u64).unwrap_or(0),
+        steps
+            .editor_group
+            .as_ref()
+            .map_or(String::new(), |group| format!(", scrolled to {group:?}"))
+    ));
+    for (field, value) in &steps.editor_set {
+        let answer = page_step(window, &editor_set_expression(field, value))?;
+        typed_verdict(field, value, &answer)?;
+        print_line(&format!(
+            "SMOKE SHOT theme editor box {field} set to {value:?}: the preview changed"
+        ));
+    }
+    Ok(())
+}
+
 /// What the program is doing, told to the looks at the foreground window so one that finds a
 /// window of this program in front says when.
 mod phase {
@@ -1004,6 +1357,7 @@ mod phase {
     pub const SETTINGS_WRITTEN: &str = "the settings were being applied";
     pub const SETTLING: &str = "the page was settling";
     pub const SPLITTING: &str = "the page was being sent the split shortcuts";
+    pub const STEPS: &str = "the page was opening the settings screen";
     pub const CAPTURING: &str = "the picture was being taken";
     pub const CHECKING: &str = "the run was checking";
 }
@@ -1096,6 +1450,17 @@ fn run(
     } else {
         Ok(())
     };
+    // The settings screen and the theme editor, opened by calls inside the page; the picture is of the
+    // page as they leave it, and a step that did not work fails the run after the picture is written.
+    let steps = if shot.args.steps.is_empty() {
+        Ok(())
+    } else {
+        shot.watch.phase(phase::STEPS);
+        let verdict = run_page_steps(&window, &shot.args.steps);
+        shot.watch.phase(phase::SETTLING);
+        thread::sleep(STEP_SETTLE);
+        verdict
+    };
     let state = look_at_page(&window)?;
     print_line(&format!(
         "SMOKE SHOT page drawn: {} x {} px, {} terminal(s), picture {}{}",
@@ -1177,6 +1542,7 @@ fn run(
         ));
     }
     split?;
+    steps?;
     check_no_global_shortcut(app)?;
     check_daemon_stopped(&app.state::<AppState>())
 }
@@ -1314,6 +1680,7 @@ mod tests {
         assert_eq!(full.live_settings, Some(PathBuf::from("l.jsonc")));
         assert_eq!(full.image, Some(PathBuf::from("sky.png")));
         assert!(!plain.split_keys && !full.split_keys);
+        assert!(plain.steps.is_empty() && full.steps.is_empty());
         let keys = parse_args(&args(&["noren", "--smoke-shot", "k.png", "--split-keys"])).unwrap();
         assert!(keys.split_keys);
         assert_eq!(keys.out, PathBuf::from("k.png"));
@@ -1379,6 +1746,314 @@ mod tests {
             let error = parse_args(&args(list)).unwrap_err();
             assert!(error.contains(reason), "{list:?}: {error}");
         }
+    }
+
+    fn steps_of(list: &[&str]) -> PageSteps {
+        let mut all = vec!["noren", "--smoke-shot", "a.png"];
+        all.extend_from_slice(list);
+        parse_args(&args(&all)).unwrap().steps
+    }
+
+    #[test]
+    fn the_settings_screen_and_the_editor_are_asked_for_by_name() {
+        // Nothing asked: nothing is done in the page.
+        let none = steps_of(&[]);
+        assert!(none.is_empty());
+        assert_eq!(none.section(), None);
+        assert_eq!(none, PageSteps::default());
+
+        let settings = steps_of(&["--open-settings", "themes"]);
+        assert!(!settings.is_empty());
+        assert_eq!(settings.section(), Some("themes"));
+        assert_eq!(settings.theme_editor, None);
+
+        let other = steps_of(&["--open-settings", "terminal"]);
+        assert_eq!(other.section(), Some("terminal"));
+
+        // The editor is opened from the Themes section, which it opens by itself.
+        let editor = steps_of(&["--theme-editor", "noren-dusk"]);
+        assert!(!editor.is_empty());
+        assert_eq!(editor.section(), Some("themes"));
+        assert_eq!(editor.theme_editor.as_deref(), Some("noren-dusk"));
+        assert!(editor.editor_set.is_empty());
+
+        let full = steps_of(&[
+            "--editor-set",
+            "ui.accent=#22d3ee",
+            "--theme-editor",
+            "noren-paper",
+            "--editor-group",
+            "terminal",
+            "--open-settings",
+            "themes",
+            "--editor-set",
+            "terminal.ansi.1=#ff0000",
+            "--editor-set",
+            "font.family=Fira Code, monospace",
+        ]);
+        assert_eq!(full.section(), Some("themes"));
+        assert_eq!(full.theme_editor.as_deref(), Some("noren-paper"));
+        assert_eq!(full.editor_group.as_deref(), Some("terminal"));
+        assert_eq!(
+            full.editor_set,
+            vec![
+                ("ui.accent".to_owned(), "#22d3ee".to_owned()),
+                ("terminal.ansi.1".to_owned(), "#ff0000".to_owned()),
+                ("font.family".to_owned(), "Fira Code, monospace".to_owned()),
+            ]
+        );
+        // They mix with the other arguments, wherever they are.
+        let mixed = parse_args(&args(&[
+            "noren",
+            "--smoke-shot",
+            "a.png",
+            "--open-settings",
+            "themes",
+            "--split-keys",
+            "--settings",
+            "s.jsonc",
+        ]))
+        .unwrap();
+        assert!(mixed.split_keys);
+        assert_eq!(mixed.settings, Some(PathBuf::from("s.jsonc")));
+        assert_eq!(mixed.steps.section(), Some("themes"));
+    }
+
+    #[test]
+    fn names_and_values_the_page_cannot_take_are_refused_before_anything_starts() {
+        let cases: [(&[&str], &str); 17] = [
+            (&["--open-settings"], "needs a name"),
+            (&["--open-settings", "Themes"], "is not a name"),
+            (&["--open-settings", "a/b"], "is not a name"),
+            (&["--open-settings", "-x"], "is not a name"),
+            (&["--open-settings", "x--y"], "is not a name"),
+            (&["--open-settings", ""], "is not a name"),
+            (
+                &["--open-settings", "themes", "--open-settings", "terminal"],
+                "given twice",
+            ),
+            (&["--theme-editor", "x\";alert(1)//"], "is not a name"),
+            (&["--editor-set"], "needs <field>=<value>"),
+            (
+                &["--theme-editor", "a", "--editor-set", "ui.accent"],
+                "is not <field>=<value>",
+            ),
+            (
+                &["--theme-editor", "a", "--editor-set", "Ui.accent=#fff"],
+                "not the name of a box",
+            ),
+            (
+                &["--theme-editor", "a", "--editor-set", "accent=#fff"],
+                "not the name of a box",
+            ),
+            (
+                &["--theme-editor", "a", "--editor-set", "ui..accent=#fff"],
+                "not the name of a box",
+            ),
+            (
+                &["--theme-editor", "a", "--editor-set", "ui.accent=a\"b"],
+                "has a character a box is never given",
+            ),
+            (
+                &["--theme-editor", "a", "--editor-set", "ui.accent=a\\b"],
+                "has a character a box is never given",
+            ),
+            (&["--editor-group", "terminal"], "was not given"),
+            (
+                &["--theme-editor", "a", "--open-settings", "terminal"],
+                "not from",
+            ),
+        ];
+        for (list, reason) in cases {
+            let mut all = vec!["noren", "--smoke-shot", "a.png"];
+            all.extend_from_slice(list);
+            let error = parse_args(&args(&all)).unwrap_err();
+            assert!(error.contains(reason), "{list:?}: {error}");
+        }
+        let editor_set_alone = parse_args(&args(&[
+            "noren",
+            "--smoke-shot",
+            "a.png",
+            "--editor-set",
+            "ui.accent=#fff",
+        ]))
+        .unwrap_err();
+        assert!(
+            editor_set_alone.contains("was not given"),
+            "{editor_set_alone}"
+        );
+    }
+
+    #[test]
+    fn a_word_a_field_and_a_value_are_only_what_a_script_can_hold_safely() {
+        for word in [
+            "themes",
+            "noren-dusk",
+            "terminal",
+            "a",
+            "a1-b2",
+            "settings-themes",
+        ] {
+            assert!(is_word(word), "{word}");
+        }
+        for word in [
+            "", "-", "a-", "-a", "a--b", "Themes", "a b", "a_b", "a\"", "a;b", "é",
+        ] {
+            assert!(!is_word(word), "{word:?}");
+        }
+        assert!(!is_word(&"a".repeat(49)));
+        assert!(is_word(&"a".repeat(48)));
+
+        for field in [
+            "ui.accent",
+            "terminal.ansi.1",
+            "terminal.ansi.15",
+            "font.size",
+            "background.blur",
+            "ui.radius",
+        ] {
+            assert!(is_field(field), "{field}");
+        }
+        for field in [
+            "",
+            "ui",
+            "ui.",
+            ".ui",
+            "ui..x",
+            "Ui.accent",
+            "ui.acc ent",
+            "ui.accent'",
+            "1.a",
+        ] {
+            assert!(!is_field(field), "{field:?}");
+        }
+
+        for value in [
+            "#22d3ee",
+            "#ffaa0080",
+            "0.5",
+            "12",
+            "Fira Code, Consolas, monospace",
+            "backgrounds/sky.png",
+            "a_b-c",
+            "",
+        ] {
+            assert!(is_value(value), "{value}");
+        }
+        for value in [
+            "a\"b", "a'b", "a\\b", "a\nb", "a;b", "a(b)", "a{b}", "a<b", "é", "a=b",
+        ] {
+            assert!(!is_value(value), "{value:?}");
+        }
+        assert!(!is_value(&"a".repeat(65)));
+    }
+
+    /// The scripts are one async function called at once and have no placeholder of the format left in them.
+    fn assert_script_is_whole(script: &str) {
+        assert!(script.starts_with("(async () => {"), "{script}");
+        assert!(script.ends_with("})()"), "{script}");
+        let open = script.matches('{').count();
+        let close = script.matches('}').count();
+        assert_eq!(open, close, "the braces are not balanced in {script}");
+        assert!(!script.contains("{{") && !script.contains("}}"), "{script}");
+        // A name of the format that was not filled in would show as {name} in a place that is not code.
+        for name in [
+            "{section}",
+            "{theme}",
+            "{field}",
+            "{value}",
+            "{group}",
+            "{STEP_",
+        ] {
+            assert!(!script.contains(name), "{name} in {script}");
+        }
+    }
+
+    #[test]
+    fn the_scripts_of_the_steps_name_what_they_open_and_nothing_reaches_the_system() {
+        let settings = settings_expression("themes");
+        assert_script_is_whole(&settings);
+        assert!(settings.contains(".settings-button"));
+        assert!(settings.contains(".click()"));
+        assert!(settings.contains(r#"[data-nr-part="settings"]"#));
+        assert!(settings.contains(r#"[data-nr-part="settings-themes"]"#));
+        assert!(settings.contains("scrollIntoView"));
+        // The reason a section is missing is a string of the page: no quote of Rust's Debug inside it.
+        assert!(settings.contains("has no section 'themes'"));
+
+        let editor = editor_expression("noren-dusk", Some("terminal"));
+        assert_script_is_whole(&editor);
+        assert!(editor.contains(r#"[data-nr-theme="noren-dusk"]"#));
+        assert!(editor.contains(r#"[data-nr-action="edit"]"#));
+        assert!(editor.contains(r#"[data-nr-part="theme-editor"]"#));
+        assert!(editor.contains(r#"const wanted = "terminal";"#));
+        let without_group = editor_expression("noren-dusk", None);
+        assert_script_is_whole(&without_group);
+        assert!(without_group.contains(r#"const wanted = "";"#));
+
+        let typed = editor_set_expression("ui.accent", "#22d3ee");
+        assert_script_is_whole(&typed);
+        assert!(typed.contains(r#"[data-nr-field="ui.accent"]"#));
+        assert!(typed.contains(r##"setter.call(input, "#22d3ee");"##));
+        assert!(typed.contains(r#"new Event("input""#));
+
+        // Everything the page is asked to do is inside the page: no script reaches for the
+        // keyboard, the mouse or the interface of the system, and none dispatches a mouse event.
+        for script in [&settings, &editor, &typed] {
+            for banned in [
+                "MouseEvent",
+                "PointerEvent",
+                "mousedown",
+                "SendKeys",
+                "focus()",
+                "fetch(",
+                "XMLHttpRequest",
+                "eval(",
+            ] {
+                assert!(!script.contains(banned), "{banned} in {script}");
+            }
+        }
+    }
+
+    #[test]
+    fn what_a_step_answers_is_the_page_or_the_reason_it_did_not_work() {
+        let answer = |text: &str| json!({ "result": { "value": text } }).to_string();
+        let ok =
+            step_answer_of(&answer(r#"{"ok":true,"sections":14,"heading":"Themes"}"#)).unwrap();
+        assert_eq!(ok["sections"], 14);
+        assert_eq!(ok["heading"], "Themes");
+        let refused = step_answer_of(&answer(
+            r#"{"ok":false,"reason":"the settings screen did not open"}"#,
+        ));
+        assert_eq!(refused.unwrap_err(), "the settings screen did not open");
+        let silent = step_answer_of(&answer(r#"{"ok":false}"#));
+        assert_eq!(silent.unwrap_err(), "the page did not say why");
+        let thrown = step_answer_of(&json!({ "exceptionDetails": { "text": "boom" } }).to_string());
+        assert!(thrown.unwrap_err().contains("could not run the step"));
+        assert!(step_answer_of("{}").unwrap_err().contains("no answer"));
+        assert!(step_answer_of("nope").unwrap_err().contains("not JSON"));
+        assert!(
+            step_answer_of(&answer("nope"))
+                .unwrap_err()
+                .contains("the page's answer")
+        );
+    }
+
+    #[test]
+    fn a_box_that_was_typed_into_must_have_changed_the_preview_and_say_the_value_is_good() {
+        let good = json!({ "ok": true, "changed": true, "invalid": false, "value": "#22d3ee" });
+        assert_eq!(typed_verdict("ui.accent", "#22d3ee", &good), Ok(()));
+        let same = json!({ "ok": true, "changed": false, "invalid": false, "value": "#e07a5f" });
+        let error = typed_verdict("ui.accent", "#e07a5f", &same).unwrap_err();
+        assert!(
+            error.contains("did not change") && error.contains("ui.accent"),
+            "{error}"
+        );
+        let bad = json!({ "ok": true, "changed": false, "invalid": true, "value": "#12" });
+        let error = typed_verdict("ui.accent", "#12", &bad).unwrap_err();
+        assert!(error.contains("not a value it takes"), "{error}");
+        // A page that says nothing is not a page that changed.
+        assert!(typed_verdict("ui.accent", "#fff", &json!({})).is_err());
     }
 
     #[test]
@@ -1492,6 +2167,7 @@ mod tests {
             live_settings: None,
             image: None,
             split_keys: false,
+            steps: PageSteps::default(),
         })
         .unwrap();
         assert_ne!(run.state_dir, other.state_dir);
@@ -1513,6 +2189,7 @@ mod tests {
             live_settings: None,
             image: None,
             split_keys: false,
+            steps: PageSteps::default(),
         })
         .unwrap_err();
         assert!(error.contains("could not read the settings"), "{error}");
@@ -1535,6 +2212,7 @@ mod tests {
             live_settings: Some(live.clone()),
             image: None,
             split_keys: false,
+            steps: PageSteps::default(),
         })
         .unwrap();
         // The app starts with no settings of its own; the file appears when the run says so.
@@ -1551,6 +2229,7 @@ mod tests {
             live_settings: None,
             image: None,
             split_keys: false,
+            steps: PageSteps::default(),
         })
         .unwrap();
         assert!(!plain.apply_live_settings().unwrap());
@@ -1562,6 +2241,7 @@ mod tests {
             live_settings: Some(given.join("nothing.jsonc")),
             image: None,
             split_keys: false,
+            steps: PageSteps::default(),
         })
         .unwrap_err();
         assert!(error.contains("could not read the settings"), "{error}");

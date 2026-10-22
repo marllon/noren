@@ -19,6 +19,9 @@ import {
   backgroundSettings,
   daemonPids,
   isCustom,
+  isField,
+  isValue,
+  isWord,
   missingLines,
   outputName,
   parseArgs,
@@ -129,7 +132,7 @@ describe("the refusal while the person is playing", () => {
 });
 
 describe("the arguments of pnpm shot", () => {
-  it("default to the three built-in pictures in target/shots", () => {
+  it("default to the five built-in pictures in target/shots", () => {
     expect(parseArgs([])).toEqual({
       out: DEFAULT_OUT,
       prefix: "",
@@ -138,6 +141,10 @@ describe("the arguments of pnpm shot", () => {
       liveSettings: undefined,
       image: undefined,
       splitKeys: false,
+      openSettings: undefined,
+      themeEditor: undefined,
+      editorGroup: undefined,
+      editorSet: [],
       build: true,
     });
     expect(isCustom(parseArgs([]))).toBe(false);
@@ -159,6 +166,16 @@ describe("the arguments of pnpm shot", () => {
       "--image",
       "c.png",
       "--split-keys",
+      "--open-settings",
+      "themes",
+      "--theme-editor",
+      "noren-dusk",
+      "--editor-group",
+      "terminal",
+      "--editor-set",
+      "ui.accent=#22d3ee",
+      "--editor-set",
+      "font.family=Fira Code, monospace",
       "--no-build",
     ]);
     expect(parsed).toEqual({
@@ -169,6 +186,13 @@ describe("the arguments of pnpm shot", () => {
       liveSettings: "b.jsonc",
       image: "c.png",
       splitKeys: true,
+      openSettings: "themes",
+      themeEditor: "noren-dusk",
+      editorGroup: "terminal",
+      editorSet: [
+        ["ui.accent", "#22d3ee"],
+        ["font.family", "Fira Code, monospace"],
+      ],
       build: false,
     });
     expect(isCustom(parsed)).toBe(true);
@@ -178,6 +202,10 @@ describe("the arguments of pnpm shot", () => {
     // The shortcuts alone are a window of their own too, and do not need a value.
     expect(isCustom(parseArgs(["--split-keys"]))).toBe(true);
     expect(parseArgs(["--split-keys", "--out", "x"]).splitKeys).toBe(true);
+    // So are the settings screen and the theme editor (NOR-F20-09b): a window of their own, each alone.
+    expect(isCustom(parseArgs(["--open-settings", "themes"]))).toBe(true);
+    expect(isCustom(parseArgs(["--theme-editor", "noren-dusk"]))).toBe(true);
+    expect(parseArgs(["--theme-editor", "noren-dusk", "--name", "ed"]).name).toBe("ed");
     expect(isCustom(parseArgs(["--out", "x", "--prefix", "y", "--no-build"]))).toBe(false);
   });
 
@@ -193,6 +221,23 @@ describe("the arguments of pnpm shot", () => {
       [["--name", "ok"], "--name names the print"],
       [["--split-keys", "--split-keys"], "--split-keys was given twice"],
       [["--split-keys", "--name", "a/b"], "--name"],
+      [["--open-settings"], "--open-settings needs a value"],
+      [["--open-settings", "Themes"], "is not a name"],
+      [["--open-settings", "a/b"], "is not a name"],
+      [["--open-settings", "x--y"], "is not a name"],
+      [["--open-settings", "themes", "--open-settings", "terminal"], "was given twice"],
+      [["--theme-editor", 'x";alert(1)//'], "is not a name"],
+      [["--editor-group", "terminal"], "--theme-editor was not given"],
+      [["--editor-set", "ui.accent=#fff"], "--theme-editor was not given"],
+      [["--theme-editor", "a", "--editor-set"], "--editor-set needs <field>=<value>"],
+      [["--theme-editor", "a", "--editor-set", "ui.accent"], "is not <field>=<value>"],
+      [["--theme-editor", "a", "--editor-set", "Ui.accent=#fff"], "not the name of a box"],
+      [
+        ["--theme-editor", "a", "--editor-set", 'ui.accent=a"b'],
+        "has a character a box is never given",
+      ],
+      [["--theme-editor", "a", "--open-settings", "terminal"], "not from"],
+      [["--name", "ok", "--out", "x"], "--name names the print"],
     ];
     for (const [argv, sentence] of cases) {
       expect(() => parseArgs(argv), argv.join(" ")).toThrow(sentence);
@@ -222,15 +267,120 @@ describe("what the app is given and must say", () => {
     expect(appArgs("o.png", "s.jsonc", undefined, undefined, false)).not.toContain("--split-keys");
   });
 
-  it("names the files and makes the three built-in pictures", () => {
+  it("builds the arguments of the settings screen and the theme editor, in the order the app does them", () => {
+    expect(
+      appArgs("o.png", undefined, undefined, undefined, false, { openSettings: "themes" }),
+    ).toEqual(["--smoke-shot", "o.png", "--open-settings", "themes"]);
+    expect(
+      appArgs("o.png", "s.jsonc", undefined, undefined, true, {
+        themeEditor: "noren-dusk",
+        editorGroup: "terminal",
+        editorSet: [["ui.accent", "#22d3ee"], "terminal.ansi.1=#ff5555"],
+      }),
+    ).toEqual([
+      "--smoke-shot",
+      "o.png",
+      "--settings",
+      "s.jsonc",
+      "--split-keys",
+      "--theme-editor",
+      "noren-dusk",
+      "--editor-group",
+      "terminal",
+      "--editor-set",
+      "ui.accent=#22d3ee",
+      "--editor-set",
+      "terminal.ansi.1=#ff5555",
+    ]);
+    // Without steps nothing of them is passed.
+    for (const flag of ["--open-settings", "--theme-editor", "--editor-group", "--editor-set"]) {
+      expect(appArgs("o.png", undefined, undefined, undefined, false, {})).not.toContain(flag);
+    }
+  });
+
+  it("knows what a word, a field and a value are, as the app does (a script is made of them)", () => {
+    for (const word of ["themes", "noren-dusk", "a", "a1-b2"])
+      expect(isWord(word), word).toBe(true);
+    for (const word of [
+      "",
+      "-",
+      "a-",
+      "a--b",
+      "Themes",
+      "a b",
+      "a_b",
+      'a"',
+      "a;b",
+      "é",
+      "a".repeat(49),
+    ])
+      expect(isWord(word), word).toBe(false);
+    for (const field of ["ui.accent", "terminal.ansi.15", "font.size", "background.blur"])
+      expect(isField(field), field).toBe(true);
+    for (const field of [
+      "",
+      "ui",
+      "ui.",
+      ".ui",
+      "ui..x",
+      "Ui.accent",
+      "ui.acc ent",
+      "1.a",
+      "a.".repeat(20),
+    ])
+      expect(isField(field), field).toBe(false);
+    for (const value of ["#22d3ee", "0.5", "Fira Code, monospace", "backgrounds/sky.png", ""])
+      expect(isValue(value), value).toBe(true);
+    for (const value of [
+      'a"b',
+      "a'b",
+      "a\\b",
+      "a\nb",
+      "a;b",
+      "a(b)",
+      "a{b}",
+      "é",
+      "a=b",
+      "a".repeat(65),
+    ])
+      expect(isValue(value), value).toBe(false);
+  });
+
+  it("names the files and makes the five built-in pictures", () => {
     expect(outputName("", "default")).toBe("default.png");
     expect(outputName("after-", "background")).toBe("after-background.png");
-    expect(BUILTIN_SCENARIOS.map((s) => s.name)).toEqual(["default", "background", "split"]);
-    expect(BUILTIN_SCENARIOS.map((s) => s.picture)).toEqual([false, true, false]);
+    expect(BUILTIN_SCENARIOS.map((s) => s.name)).toEqual([
+      "default",
+      "background",
+      "split",
+      "themes",
+      "editor",
+    ]);
+    expect(BUILTIN_SCENARIOS.map((s) => s.picture)).toEqual([false, true, false, false, false]);
     // Only the third one sends the shortcuts of the split.
-    expect(BUILTIN_SCENARIOS.map((s) => s.splitKeys === true)).toEqual([false, false, true]);
+    expect(BUILTIN_SCENARIOS.map((s) => s.splitKeys === true)).toEqual([
+      false,
+      false,
+      true,
+      false,
+      false,
+    ]);
     // The picture goes in while the app runs: see the note on BUILTIN_SCENARIOS.
-    expect(BUILTIN_SCENARIOS.map((s) => s.live)).toEqual([false, true, false]);
+    expect(BUILTIN_SCENARIOS.map((s) => s.live)).toEqual([false, true, false, false, false]);
+    // The fourth opens the Themes section of the settings screen, the fifth the editor of a theme
+    // with two boxes typed into; each of those boxes is one the page has.
+    const themes = BUILTIN_SCENARIOS[3];
+    expect(themes.openSettings).toBe("themes");
+    expect(themes.themeEditor).toBeUndefined();
+    const editor = BUILTIN_SCENARIOS[4];
+    expect(editor.themeEditor).toBe("noren-dusk");
+    expect(editor.openSettings).toBeUndefined();
+    for (const set of editor.editorSet) {
+      const [field, value] = set.split("=");
+      expect(isField(field), field).toBe(true);
+      expect(isValue(value), value).toBe(true);
+    }
+    expect(editor.editorSet.length).toBeGreaterThan(0);
   });
 
   it("requires the checks of the run in its output, and the picture only when one is asked for", () => {
@@ -288,6 +438,37 @@ SMOKE SHOT OK`),
     // No line, or a line without the counts, never counts as a pass.
     expect(splitKeysProblem("SMOKE SHOT OK")).toContain("did not say");
     expect(splitKeysProblem("SMOKE SHOT split keys: panes ? -> ? -> ?")).toContain("did not say");
+  });
+
+  it("requires the lines of the settings screen and of the editor only for a run that opens them", () => {
+    const plain = requiredLines(false);
+    expect(plain.some((line) => line.includes("settings opened"))).toBe(false);
+    expect(plain.some((line) => line.includes("theme editor"))).toBe(false);
+    const settings = requiredLines(false, false, { openSettings: "themes" });
+    expect(settings).toContain('SMOKE SHOT settings opened: section "themes"');
+    expect(settings.some((line) => line.includes("theme editor"))).toBe(false);
+    // An editor opens the Themes section by itself, so that line is required of it too.
+    const editor = requiredLines(false, false, {
+      themeEditor: "noren-paper",
+      editorSet: ["ui.accent=#22d3ee", ["terminal.ansi.1", "#ff5555"]],
+    });
+    expect(editor).toContain('SMOKE SHOT settings opened: section "themes"');
+    expect(editor).toContain('SMOKE SHOT theme editor opened on "noren-paper"');
+    expect(editor).toContain("SMOKE SHOT theme editor box ui.accent set to");
+    expect(editor).toContain("SMOKE SHOT theme editor box terminal.ansi.1 set to");
+    expect(editor[editor.length - 1]).toBe("SMOKE SHOT OK");
+    // What the app really prints is what is required.
+    const printed = [
+      ...requiredLines(false),
+      'SMOKE SHOT settings opened: section "themes" at the top of the screen (14 section(s), heading "Themes")',
+      'SMOKE SHOT theme editor opened on "noren-paper": 9 group(s), preview of 16 color(s)',
+      'SMOKE SHOT theme editor box ui.accent set to "#22d3ee": the preview changed',
+      'SMOKE SHOT theme editor box terminal.ansi.1 set to "#ff5555": the preview changed',
+    ].join("\n");
+    expect(missingLines(printed, editor)).toEqual([]);
+    expect(missingLines(requiredLines(false).join("\n"), editor)).toEqual(
+      editor.filter((line) => !requiredLines(false).includes(line)),
+    );
   });
 
   it("tells which lines an output lacks", () => {

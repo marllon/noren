@@ -9,16 +9,26 @@
 //
 //   pnpm shot [--out <dir>] [--prefix <text>] [--no-build]
 //   pnpm shot [--settings <file>] [--live-settings <file>] [--image <file>] [--split-keys]
-//             [--name <name>] [--out <dir>] [--prefix <text>]
+//             [--open-settings <section>] [--theme-editor <theme id>] [--editor-group <group>]
+//             [--editor-set <field>=<value>]... [--name <name>] [--out <dir>] [--prefix <text>]
 //
-// Without `--settings`, `--image` or `--split-keys` three pictures are made, `<prefix>default.png` (the
+// Without a window asked for (`--settings`, `--image`, `--split-keys`, `--open-settings`...) five pictures are
+// made, `<prefix>themes.png` (the settings screen opened from inside the page and scrolled to its Themes
+// section), `<prefix>editor.png` (the theme editor of Noren Dusk opened from its card, with the accent
+// and a color of the palette typed into their boxes, the app checking that the preview followed), and
+// the three below: `<prefix>default.png` (the
 // window as it starts), `<prefix>background.png` (a picture behind the terminals and an interface that
 // lets it through, the settings written while the app runs, as the settings screen writes them) and
 // `<prefix>split.png` (the app sends Ctrl+Shift+D and Ctrl+Shift+E to its own page as key events, in
 // the page, never to the keyboard of the system, reads the pane count back from the page and fails if
 // either did not add one). With `--settings` (the file the app starts with), `--live-settings`
-// (written once it is up), `--image` or `--split-keys`, one picture of that window,
-// `<prefix><name>.png` (`custom`, or `split` for `--split-keys` alone, by default); the settings are
+// (written once it is up), `--image`, `--split-keys`, `--open-settings` or `--theme-editor`, one picture of
+// that window, `<prefix><name>.png` (`custom`, or `split`, `settings` or `editor` for `--split-keys`,
+// `--open-settings` or `--theme-editor` alone, by default); `--open-settings <section>` clicks the settings
+// button and scrolls the section to the top, `--theme-editor <theme id>` opens the editor of that theme
+// from its card (the calls are made inside the page, never by the mouse of the system), `--editor-group
+// <group>` scrolls the editor to a group and `--editor-set <field>=<value>` types a value into a box of
+// the editor; a step that does not work fails the run after the PNG is written. The settings are
 // `config.jsonc` of the run (a picture is `backgrounds/<its name>` there). A picture that was asked
 // for and is not on screen fails the run, after its PNG is written. The files go to `--out`
 // (`target/shots` by default).
@@ -130,20 +140,39 @@ function scenarios() {
     const path = (file) => (file === undefined ? undefined : resolve(file));
     const hasWindow =
       args.settings !== undefined || args.liveSettings !== undefined || args.image !== undefined;
+    const steps = {
+      openSettings: args.openSettings,
+      themeEditor: args.themeEditor,
+      editorGroup: args.editorGroup,
+      editorSet: args.editorSet,
+    };
+    const alone = (flag, name) => (flag && !hasWindow ? name : undefined);
     return [
       {
-        name: args.name ?? (args.splitKeys && !hasWindow ? "split" : "custom"),
+        name:
+          args.name ??
+          alone(args.themeEditor !== undefined, "editor") ??
+          alone(args.openSettings !== undefined, "settings") ??
+          alone(args.splitKeys, "split") ??
+          "custom",
         settings: path(args.settings),
         liveSettings: path(args.liveSettings),
         image: path(args.image),
         picture: args.image !== undefined,
         splitKeys: args.splitKeys,
+        steps,
       },
     ];
   }
   return BUILTIN_SCENARIOS.map((scenario) => {
+    const steps = {
+      openSettings: scenario.openSettings,
+      themeEditor: scenario.themeEditor,
+      editorGroup: scenario.editorGroup,
+      editorSet: scenario.editorSet ?? [],
+    };
     if (!scenario.picture)
-      return { name: scenario.name, picture: false, splitKeys: scenario.splitKeys === true };
+      return { name: scenario.name, picture: false, splitKeys: scenario.splitKeys === true, steps };
     const settings = join(work, "background.jsonc");
     const image = join(work, BACKGROUND_FILE);
     writeFileSync(settings, backgroundSettings());
@@ -152,6 +181,7 @@ function scenarios() {
       name: scenario.name,
       picture: true,
       splitKeys: false,
+      steps,
       settings: scenario.live ? undefined : settings,
       liveSettings: scenario.live ? settings : undefined,
       image,
@@ -180,7 +210,14 @@ function shoot(scenario) {
   rmSync(out, { force: true });
   const run = spawnSync(
     binary,
-    appArgs(out, scenario.settings, scenario.liveSettings, scenario.image, scenario.splitKeys),
+    appArgs(
+      out,
+      scenario.settings,
+      scenario.liveSettings,
+      scenario.image,
+      scenario.splitKeys,
+      scenario.steps,
+    ),
     {
       cwd: root,
       encoding: "utf8",
@@ -199,7 +236,10 @@ function shoot(scenario) {
   if (run.status === REFUSED_EXIT_CODE) fail("noren refused: game mode is on", REFUSED_EXIT_CODE);
   if (run.status !== 0)
     fail(`noren --smoke-shot exited with code ${run.status} (${scenario.name})`);
-  const missing = missingLines(stdout, requiredLines(scenario.picture, scenario.splitKeys));
+  const missing = missingLines(
+    stdout,
+    requiredLines(scenario.picture, scenario.splitKeys, scenario.steps),
+  );
   if (missing.length > 0)
     fail(`not found in the output of ${scenario.name}: ${missing.join("; ")}`);
   if (scenario.splitKeys) {

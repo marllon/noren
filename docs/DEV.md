@@ -229,18 +229,21 @@ at in the web view of the real app. `pnpm shot` takes a picture of the real main
 window ever being on your screen.
 
 ```sh
-pnpm shot                                   # target/shots/default.png, background.png and split.png
-pnpm shot --out some/dir --prefix after-    # some/dir/after-default.png, after-background.png, after-split.png
+pnpm shot                                   # target/shots/default.png, background.png, split.png, themes.png and editor.png
+pnpm shot --out some/dir --prefix after-    # some/dir/after-default.png, after-background.png, after-split.png, ...
 pnpm shot --no-build                        # reuse target/debug/noren.exe (it embeds the interface of the last build)
 pnpm shot --live-settings s.jsonc --image sky.png --name sky   # one picture of a window of your own
 pnpm shot --split-keys --name split3        # one picture of a tab the two split shortcuts made
+pnpm shot --open-settings themes            # the settings screen at its Themes section (--name settings)
+pnpm shot --theme-editor noren-paper --editor-group terminal --editor-set ui.accent=#22d3ee   # the theme editor
 ```
 
 It builds the debug app like `pnpm smoke` does and runs `noren --smoke-shot <png>` once per picture,
 which prints a `SMOKE SHOT ...` line for each thing it checked. Windows only (the picture comes from
-WebView2). The three pictures made by default are the window as it starts, one with a picture behind
-the terminals and an interface that lets it through (`appearance.window.opacity` 0.7, a picture at 0.6)
-and one of a tab that Ctrl+Shift+D and Ctrl+Shift+E split (see the next list).
+WebView2). The five pictures made by default are the window as it starts, one with a picture behind
+the terminals and an interface that lets it through (`appearance.window.opacity` 0.7, a picture at 0.6),
+one of a tab that Ctrl+Shift+D and Ctrl+Shift+E split, the settings screen at its Themes section and the
+theme editor of Noren Dusk with two boxes typed into (see the next list).
 
 - **The window never shows on a monitor, and never has the focus.** The window of the run is created
   without asking for the focus and not focusable (`smoke_focus::quiet_windows`; the configuration of a
@@ -269,6 +272,22 @@ and one of a tab that Ctrl+Shift+D and Ctrl+Shift+E split (see the next list).
   number of panes of the tab from the page (`data-nr-part="pane"` of the tab on screen) and fails if it
   did not go up by exactly one; it prints `SMOKE SHOT shortcut ... : 1 -> 2 pane(s)` for each and
   `SMOKE SHOT split keys: panes 1 -> 2 -> 3`, and the picture is of the tab as they left it.
+- **The settings screen and the theme editor are opened by calls inside the page.** `--open-settings
+  <section>` calls `click()` on the settings button of the title bar (a DOM call that the page answers
+  as it answers a click of the mouse, in the page and nowhere else: the window is disabled and nothing
+  reaches the mouse of the system), waits for the screen and scrolls the section whose `data-nr-part`
+  is `settings-<section>` to the top (`themes`, `terminal`, `background`, `profiles`...); it fails,
+  with the reason, if the screen or the section is not there. `--theme-editor <theme id>` then clicks
+  the Customize or Edit button of the card of that theme in the Themes section (it opens the section by
+  itself) and waits for the editor; `--editor-group <group>` scrolls the editor to a group
+  (`accent`, `colors`, `sidebar`, `terminal`, `font`, `corners`, `transparency`, `picture`) and
+  `--editor-set <field>=<value>` (as many as you like, in order) sets a box of the editor to a value
+  and dispatches the `input` event of the page, as the keyboard would, then fails if the preview of the
+  editor did not change or the box says the value is not valid. The names are lower case words and the
+  values letters, digits, space and `# , . _ / -`, checked by the script and by the app before anything
+  is put in a script. They print `SMOKE SHOT settings opened: section ...`, `SMOKE SHOT theme editor
+  opened on ...` and `SMOKE SHOT theme editor box ... set to ...`; the picture is of the page as they
+  left it, and a step that did not work fails the run after the PNG is written.
 - **Settings and pictures of its own.** The run keeps the files of the app in a folder of its own,
   removed when it ends (the state, settings and token of your Noren are never read or written).
   `--settings <file>` is the settings file the app starts with (`config.jsonc`), `--live-settings

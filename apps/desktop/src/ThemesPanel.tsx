@@ -7,6 +7,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { useT } from "./i18n";
 import { importSchemeFile } from "./scheme-import";
 import { themeChoiceOf } from "./theme-choice";
+import { ThemeEditorDialog } from "./ThemeEditorDialog";
 import { ThemeRenameDialog } from "./ThemeRenameDialog";
 import { ThemeThumbnail } from "./ThemeThumbnail";
 import {
@@ -15,8 +16,9 @@ import {
   exportUserThemeFile,
   isUserTheme,
   renameUserTheme,
+  saveEditedTheme,
 } from "./themes-section";
-import type { Outcome } from "./themes-section";
+import type { Outcome, SaveMode } from "./themes-section";
 import { chooseTheme } from "./use-theme";
 import { addUserThemes, getUserThemes, useAllThemes } from "./user-themes-store";
 
@@ -28,7 +30,14 @@ export interface ThemesSpace {
   themeId: string | undefined;
 }
 
-type ThemesBackend = Pick<Backend, "saveUserTheme" | "deleteUserTheme" | "exportUserTheme">;
+type ThemesBackend = Pick<
+  Backend,
+  | "saveUserTheme"
+  | "deleteUserTheme"
+  | "exportUserTheme"
+  | "pickBackgroundImage"
+  | "readBackgroundImage"
+>;
 
 interface ThemesPanelProps {
   backend: ThemesBackend;
@@ -45,7 +54,7 @@ interface Said {
 }
 
 /** Where the keyboard goes once a dialog closes or the gallery changes: a button of a card. */
-type FocusTarget = { id: string; part: "pick" | "rename" } | { part: "first" };
+type FocusTarget = { id: string; part: "pick" | "rename" | "edit" } | { part: "first" };
 
 const said = (outcome: Outcome): Said => ({ text: outcome.message, alert: !outcome.ok });
 
@@ -67,6 +76,7 @@ export function ThemesPanel({ backend, space, onSpaceTheme }: ThemesPanelProps) 
   const [line, setLine] = useState<Said>({ text: "", alert: false });
   const [renaming, setRenaming] = useState<Theme>();
   const [deleting, setDeleting] = useState<Theme>();
+  const [editing, setEditing] = useState<{ theme: Theme; own: boolean }>();
   const [focus, setFocus] = useState<FocusTarget>();
 
   const user = getUserThemes();
@@ -87,8 +97,8 @@ export function ThemesPanel({ backend, space, onSpaceTheme }: ThemesPanelProps) 
         ? [...(cards ?? [])].find((element) => element.dataset["nrTheme"] === focus.id)
         : cards?.[0];
     const button =
-      "id" in focus && focus.part === "rename"
-        ? card?.querySelector<HTMLElement>('[data-nr-action="rename"]')
+      "id" in focus && focus.part !== "pick"
+        ? card?.querySelector<HTMLElement>(`[data-nr-action="${focus.part}"]`)
         : card?.querySelector<HTMLElement>(".theme-pick");
     button?.focus();
     setFocus(undefined);
@@ -140,6 +150,25 @@ export function ThemesPanel({ backend, space, onSpaceTheme }: ThemesPanelProps) 
     say(outcome);
     setRenaming(undefined);
     setFocus({ id: theme.id, part: "rename" });
+    return undefined;
+  };
+
+  /** Saves what the editor made; answers why it was refused, or closes the editor and says what was saved. */
+  const saveEdited = async (
+    edited: Theme,
+    name: string,
+    mode: SaveMode,
+  ): Promise<string | undefined> => {
+    const outcome = await saveEditedTheme(backend, edited, name, mode);
+    if (!outcome.ok) return outcome.message;
+    say(outcome);
+    setEditing(undefined);
+    // A new theme has a card of its own; a theme saved over keeps its card, and its button.
+    setFocus(
+      outcome.theme !== undefined && mode === "new"
+        ? { id: outcome.theme.id, part: "pick" }
+        : { id: edited.id, part: "edit" },
+    );
     return undefined;
   };
 
@@ -250,6 +279,17 @@ export function ThemesPanel({ backend, space, onSpaceTheme }: ThemesPanelProps) 
                 <button
                   type="button"
                   className="settings-link"
+                  data-nr-action="edit"
+                  aria-label={t(own ? "themes.editTheme" : "themes.customizeTheme", {
+                    name: theme.name,
+                  })}
+                  onClick={() => setEditing({ theme, own })}
+                >
+                  {t(own ? "themes.edit" : "themes.customize")}
+                </button>
+                <button
+                  type="button"
+                  className="settings-link"
                   data-nr-action="duplicate"
                   aria-label={t("themes.duplicateTheme", { name: theme.name })}
                   onClick={() => void duplicate(theme)}
@@ -326,6 +366,22 @@ export function ThemesPanel({ backend, space, onSpaceTheme }: ThemesPanelProps) 
               onCancel={() => {
                 setFocus({ id: renaming.id, part: "rename" });
                 setRenaming(undefined);
+              }}
+            />
+          </StopEscape>,
+          document.body,
+        )}
+      {editing !== undefined &&
+        createPortal(
+          <StopEscape>
+            <ThemeEditorDialog
+              source={editing.theme}
+              own={editing.own}
+              backend={backend}
+              onSave={saveEdited}
+              onCancel={() => {
+                setFocus({ id: editing.theme.id, part: "edit" });
+                setEditing(undefined);
               }}
             />
           </StopEscape>,

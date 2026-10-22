@@ -2690,6 +2690,315 @@ body {
   border-radius: 1px;
 }
 
+/* The theme editor, a dialog of the themes section: the boxes of every group of a theme on the left (they scroll), a preview of the theme being edited on the right. */
+.space-dialog.theme-editor {
+  width: min(1040px, 94%);
+  max-height: 92vh;
+  overflow: hidden;
+}
+
+.theme-editor-body {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 460px);
+  gap: 16px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.theme-editor-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding-right: 8px;
+  overflow-y: auto;
+  font-size: 13px;
+}
+
+.theme-editor-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.theme-editor-side h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.theme-editor-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.theme-editor-notes p {
+  margin: 0;
+}
+
+.space-dialog .theme-editor-group {
+  gap: 8px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--nr-border);
+}
+
+.space-dialog .theme-editor-group > legend {
+  margin-bottom: 6px;
+  color: var(--nr-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.theme-editor-group .settings-number {
+  align-self: stretch;
+}
+
+.theme-editor-group .settings-number .settings-option > span {
+  flex: 1 1 auto;
+}
+
+.theme-editor-kind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.theme-editor-kind > span {
+  color: var(--nr-muted);
+}
+
+/* A color: its name, a swatch that opens the color picker and the box of its hex value. */
+.theme-color {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.theme-color-label {
+  flex: 1 1 8em;
+  min-width: 0;
+}
+
+.theme-color-boxes {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.theme-swatch {
+  box-sizing: border-box;
+  width: 34px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: transparent;
+  cursor: pointer;
+}
+
+.space-dialog input.theme-hex {
+  width: 7em;
+}
+
+.space-dialog input.theme-hex[aria-invalid="true"] {
+  border-color: var(--nr-accent);
+}
+
+.theme-color-problem {
+  flex-basis: 100%;
+}
+
+/* The sixteen colors of the palette: a row for each name, the normal color and the bright one side by side. */
+.theme-palette {
+  display: grid;
+  grid-template-columns: 6.5em max-content max-content;
+  gap: 6px 12px;
+  align-items: center;
+  justify-content: start;
+}
+
+.theme-palette-title {
+  color: var(--nr-muted);
+}
+
+.theme-palette-head {
+  color: var(--nr-muted);
+  font-size: 12px;
+}
+
+.theme-palette-row {
+  display: contents;
+}
+
+.theme-palette-row .theme-color {
+  flex-wrap: nowrap;
+}
+
+/* The preview: the theme as a small window of its own, drawn only from the custom properties the component sets. The backdrop (set by the component) stands for what the system paints behind a window that lets it through. */
+.theme-preview {
+  box-sizing: border-box;
+  flex: none;
+  padding: 14px;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--tp-backdrop);
+}
+
+.tp-window {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: 300px;
+  overflow: hidden;
+  border: 1px solid var(--tp-border);
+  border-radius: var(--tp-radius);
+  background: var(--tp-backing);
+  color: var(--tp-text);
+  font-size: 11px;
+  isolation: isolate;
+}
+
+.tp-picture {
+  position: absolute;
+  inset: calc(var(--tp-picture-blur) * -2);
+  z-index: -2;
+  background-image: var(--tp-picture);
+  background-position: center;
+  background-size: cover;
+  opacity: var(--tp-picture-opacity);
+  filter: blur(var(--tp-picture-blur));
+  pointer-events: none;
+}
+
+.tp-veil {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--tp-bg);
+  opacity: var(--tp-veil);
+  pointer-events: none;
+}
+
+.tp-title {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--tp-border);
+  background: var(--tp-surface-glass);
+  color: var(--tp-muted);
+}
+
+/* The words of the preview are generated content: it is a picture of colors, not text of the page. */
+.theme-preview [data-text]::before {
+  content: attr(data-text);
+  white-space: pre;
+}
+
+.tp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tp-accent);
+}
+
+.tp-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.tp-side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+  width: 84px;
+  padding: 8px 6px;
+  border-right: 1px solid var(--tp-border);
+  background: var(--tp-surface-glass);
+  backdrop-filter: blur(var(--tp-panel-blur));
+}
+
+.tp-tab {
+  padding: 3px 6px;
+  border-radius: calc(var(--tp-radius) / 2);
+  color: var(--tp-muted);
+}
+
+.tp-tab-on {
+  background: color-mix(in srgb, var(--tp-accent) 22%, var(--tp-surface));
+  box-shadow: inset 2px 0 0 var(--tp-accent);
+  color: var(--tp-text);
+}
+
+.tp-terminal {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  overflow: hidden;
+  background: var(--tp-term-glass);
+  color: var(--tp-term-fg);
+  font-family: var(--tp-font);
+  font-size: var(--tp-font-size);
+  font-variant-ligatures: var(--tp-ligatures);
+  line-height: var(--tp-line-height);
+}
+
+.tp-line {
+  overflow: hidden;
+  white-space: pre;
+}
+
+.tp-selection {
+  background: var(--tp-selection);
+}
+
+.tp-cursor {
+  display: inline-block;
+  width: 0.6em;
+  height: 1.1em;
+  vertical-align: text-bottom;
+  background: var(--tp-cursor);
+}
+
+.tp-palette {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 3px;
+  margin-top: 8px;
+}
+
+.tp-swatch {
+  height: 12px;
+  border: 1px solid color-mix(in srgb, var(--tp-term-fg) 25%, transparent);
+  border-radius: 2px;
+}
+
+@media (max-width: 860px) {
+  .theme-editor-body {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .theme-editor-controls,
+  .theme-editor-side {
+    overflow: visible;
+  }
+}
+
 /* The mods in the settings screen: a row for each file, a switch and, for the ones that are on, the order. */
 .settings-mods {
   display: flex;

@@ -199,19 +199,28 @@ test.describe("the gallery", () => {
     await expect(
       screen.getByRole("button", { name: "Follow the system", exact: true }),
     ).toBeDisabled();
-    // Only "Duplicate" for a theme that ships with the app.
-    await expect(card(screen, "noren-dusk").getByRole("button")).toHaveCount(2);
+    // Only "Customize" (the editor, NOR-F20-09b) and "Duplicate" for a theme that ships with the app.
+    await expect(card(screen, "noren-dusk").getByRole("button")).toHaveCount(3);
+    await expect(
+      card(screen, "noren-dusk").getByRole("button", { name: "Customize Noren Dusk", exact: true }),
+    ).toBeVisible();
     await expect(
       card(screen, "noren-dusk").getByRole("button", { name: "Duplicate Noren Dusk", exact: true }),
     ).toBeVisible();
   });
 
-  test("a theme of the person has Duplicate, Rename, Export and Delete", async ({ page }) => {
+  test("a theme of the person has Edit, Duplicate, Rename, Export and Delete", async ({ page }) => {
     await start(page, { themes: [MINE] });
     const screen = await openThemes(page);
     const buttons = card(screen, "mine").getByRole("button");
-    await expect(buttons).toHaveCount(5);
-    for (const name of ["Duplicate Mine", "Rename Mine", "Export Mine", "Delete Mine"]) {
+    await expect(buttons).toHaveCount(6);
+    for (const name of [
+      "Edit Mine",
+      "Duplicate Mine",
+      "Rename Mine",
+      "Export Mine",
+      "Delete Mine",
+    ]) {
       await expect(card(screen, "mine").getByRole("button", { name, exact: true })).toBeVisible();
     }
   });
@@ -949,6 +958,10 @@ test.describe("accessibility", () => {
     await expect(pick(screen, "Noren Paper")).toBeFocused();
     await page.keyboard.press("Enter");
     await expect.poll(() => rootVar(page, "--nr-bg")).toBe(BG.paper);
+    await page.keyboard.press("Tab");
+    await expect(
+      screen.getByRole("button", { name: "Customize Noren Paper", exact: true }),
+    ).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(
       screen.getByRole("button", { name: "Duplicate Noren Paper", exact: true }),

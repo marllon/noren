@@ -25,6 +25,9 @@ const reasonOf = (error: unknown): string =>
 export const isUserTheme = (theme: Theme, user: readonly Theme[] = getUserThemes()): boolean =>
   user.some((own) => own.id === theme.id);
 
+/** How an edited theme is saved: as a theme of its own that is new, or over the one it came from. */
+export type SaveMode = "new" | "changes";
+
 /** The words of a refusal of the schema (`name: ...`), in the language in force. */
 export function nameProblem(name: string, errors: readonly string[]): string {
   const first = errors[0] ?? "";
@@ -143,4 +146,62 @@ export async function exportUserThemeFile(
       message: t("themes.exportFailed", { name: theme.name, reason: reasonOf(error) }),
     };
   }
+}
+
+/**
+ * Saves a theme the editor made. `new` is a theme of its own with a new id (the slug of `name`, with a
+ * number added when it is taken, checked against the built-in themes, `system` and every theme the
+ * window has); `changes` keeps the id of `edited`, so the file, the choice of the settings and the
+ * theme of a space that name it keep working, and the window shows the new look at once. The name is
+ * held to the same rules as a rename (a name that is empty or longer than the schema allows is
+ * refused, not changed), and the theme goes through the schema again before anything is written.
+ * Nothing is written when it is refused, and the gallery only changes after the file is on the disk.
+ */
+export async function saveEditedTheme(
+  backend: Pick<Backend, "saveUserTheme">,
+  edited: Theme,
+  name: string,
+  mode: SaveMode,
+): Promise<Outcome> {
+  const named = renameTheme(edited, name);
+  if (!named.ok) {
+    // The name is refused with its own sentence; any other part of the theme with the schema's.
+    const aboutName = named.errors.some((error) => error.startsWith("name:"));
+    return {
+      ok: false,
+      message: aboutName
+        ? nameProblem(name, named.errors)
+        : t("themes.saveFailed", { name: name.trim(), reason: named.errors[0] ?? "" }),
+    };
+  }
+  const made =
+    mode === "new"
+      ? duplicateTheme(
+          named.theme,
+          named.theme.name,
+          allThemes().map((theme) => theme.id),
+        )
+      : named;
+  if (!made.ok) {
+    return {
+      ok: false,
+      message: t("themes.saveFailed", { name: named.theme.name, reason: made.errors[0] ?? "" }),
+    };
+  }
+  try {
+    await backend.saveUserTheme(made.theme.id, serializeTheme(made.theme));
+  } catch (error) {
+    return {
+      ok: false,
+      message: t("themes.saveFailed", { name: made.theme.name, reason: reasonOf(error) }),
+    };
+  }
+  addUserThemes([made.theme]);
+  return {
+    ok: true,
+    message: t(mode === "new" ? "themes.savedNew" : "themes.savedChanges", {
+      name: made.theme.name,
+    }),
+    theme: made.theme,
+  };
 }

@@ -6,9 +6,9 @@
 // `pnpm shot` runs `noren --smoke-shot <png>` (apps/desktop/src-tauri/src/smoke_shot.rs): the real
 // app draws its main window out of sight, with no focus, off the taskbar and Alt+Tab and outside
 // every monitor, and writes the PNG that its own web view gives. No program is started with a
-// window of its own, no key or mouse is sent to the system (the key events of `--split-keys` are made
-// and dispatched inside the page) and no desktop is captured (D19 still holds; this mode is the one
-// exception D22 makes).
+// window of its own, no key or mouse is sent to the system (the key events of `--split-keys` and the
+// calls that open the settings screen and the theme editor are made inside the page) and no desktop is
+// captured (D19 still holds; this mode is the one exception D22 makes).
 import { crc32, deflateSync } from "node:zlib";
 import { gameModeSignalPresent, signalPath } from "./game-mode.mjs";
 
@@ -35,22 +35,43 @@ export function isCustom(parsed) {
     parsed.settings !== undefined ||
     parsed.liveSettings !== undefined ||
     parsed.image !== undefined ||
-    parsed.splitKeys
+    parsed.splitKeys ||
+    parsed.openSettings !== undefined ||
+    parsed.themeEditor !== undefined
   );
 }
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const PREFIX = /^[A-Za-z0-9_-]*$/;
+/** A section, a group or a theme of the page: lower case words joined by single hyphens (the app checks the same). */
+const WORD = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+/** A box of the theme editor: a path of the theme such as `ui.accent` or `terminal.ansi.1`. */
+const FIELD = /^[a-z][a-z0-9]*(\.[A-Za-z0-9]+)+$/;
+/** What may be typed into a box: letters, digits, spaces and the few signs of a color, a number and a path. */
+const VALUE = /^[A-Za-z0-9 #,._/-]*$/;
+
+/** Whether `text` is a word the page can be asked for by (at most 48 characters). */
+export const isWord = (text) => text.length <= 48 && WORD.test(text);
+/** Whether `text` names a box of the theme editor (at most 32 characters). */
+export const isField = (text) => text.length <= 32 && FIELD.test(text);
+/** Whether `text` can be typed into a box (at most 64 characters). */
+export const isValue = (text) => text.length <= 64 && VALUE.test(text);
 
 /**
  * Reads `pnpm shot [--out <dir>] [--prefix <text>] [--name <name>] [--settings <file>]
- * [--live-settings <file>] [--image <file>] [--split-keys] [--no-build]`. With `--settings`,
- * `--live-settings`, `--image` or `--split-keys` one print is made, of that window, called `--name`
- * (`split` for `--split-keys` alone, `custom` otherwise); without them the three built-in ones are
- * made. `--split-keys` makes the app send Ctrl+Shift+D and Ctrl+Shift+E to its own page as key events
- * and check that each one split a pane. `--settings` is the settings file the app starts with;
- * `--live-settings` is written once the app is up, as the settings screen writes it. Throws an Error
- * with a sentence for anything else.
+ * [--live-settings <file>] [--image <file>] [--split-keys] [--open-settings <section>]
+ * [--theme-editor <theme id>] [--editor-group <group>] [--editor-set <field>=<value>]... [--no-build]`.
+ * With `--settings`, `--live-settings`, `--image`, `--split-keys`, `--open-settings` or `--theme-editor`
+ * one print is made, of that window, called `--name` (`editor` for `--theme-editor` alone, `settings` for
+ * `--open-settings` alone, `split` for `--split-keys` alone, `custom` otherwise); without them the five
+ * built-in ones are made. `--split-keys` makes the app send Ctrl+Shift+D and Ctrl+Shift+E to its own
+ * page as key events and check that each one split a pane. `--open-settings` makes the app open the
+ * settings screen from inside its page and scroll the section (`themes`, `terminal`...) to the top;
+ * `--theme-editor` opens the editor of a theme from its card in the Themes section, `--editor-group`
+ * scrolls the editor to a group (`terminal`, `font`, `picture`...) and `--editor-set` types a value into
+ * a box of the editor (`ui.accent=#22d3ee`; the app checks that the preview followed). `--settings` is
+ * the settings file the app starts with; `--live-settings` is written once the app is up, as the
+ * settings screen writes it. Throws an Error with a sentence for anything else.
  */
 export function parseArgs(argv) {
   const parsed = {
@@ -61,6 +82,10 @@ export function parseArgs(argv) {
     liveSettings: undefined,
     image: undefined,
     splitKeys: false,
+    openSettings: undefined,
+    themeEditor: undefined,
+    editorGroup: undefined,
+    editorSet: [],
     build: true,
   };
   const values = {
@@ -70,7 +95,11 @@ export function parseArgs(argv) {
     "--settings": "settings",
     "--live-settings": "liveSettings",
     "--image": "image",
+    "--open-settings": "openSettings",
+    "--theme-editor": "themeEditor",
+    "--editor-group": "editorGroup",
   };
+  const words = new Set(["--open-settings", "--theme-editor", "--editor-group"]);
   const seen = new Set();
   for (let at = 0; at < argv.length; at++) {
     const flag = argv[at];
@@ -83,6 +112,25 @@ export function parseArgs(argv) {
       parsed.splitKeys = true;
       continue;
     }
+    if (flag === "--editor-set") {
+      const pair = argv[++at];
+      if (pair === undefined || pair.startsWith("--"))
+        throw new Error("--editor-set needs <field>=<value> after it");
+      const cut = pair.indexOf("=");
+      if (cut < 0) throw new Error(`--editor-set ${JSON.stringify(pair)} is not <field>=<value>`);
+      const field = pair.slice(0, cut);
+      const value = pair.slice(cut + 1);
+      if (!isField(field))
+        throw new Error(
+          `--editor-set: ${JSON.stringify(field)} is not the name of a box of the editor`,
+        );
+      if (!isValue(value))
+        throw new Error(
+          `--editor-set: ${JSON.stringify(value)} has a character a box is never given (letters, digits, space and # , . _ / - only)`,
+        );
+      parsed.editorSet.push([field, value]);
+      continue;
+    }
     const key = values[flag];
     if (key === undefined) throw new Error(`unknown argument ${JSON.stringify(flag)}`);
     const value = argv[++at];
@@ -90,7 +138,28 @@ export function parseArgs(argv) {
       throw new Error(`${flag} needs a value after it`);
     if (seen.has(flag)) throw new Error(`${flag} was given twice`);
     seen.add(flag);
+    if (words.has(flag) && !isWord(value))
+      throw new Error(
+        `${flag}: ${JSON.stringify(value)} is not a name (lower case letters, digits and hyphens)`,
+      );
     parsed[key] = value;
+  }
+  if (
+    parsed.themeEditor === undefined &&
+    (parsed.editorGroup !== undefined || parsed.editorSet.length > 0)
+  ) {
+    throw new Error(
+      "--editor-group and --editor-set are for the editor, and --theme-editor was not given",
+    );
+  }
+  if (
+    parsed.themeEditor !== undefined &&
+    parsed.openSettings !== undefined &&
+    parsed.openSettings !== "themes"
+  ) {
+    throw new Error(
+      `--theme-editor opens the editor from the Themes section, not from ${JSON.stringify(parsed.openSettings)}`,
+    );
   }
   if (!PREFIX.test(parsed.prefix)) {
     throw new Error(
@@ -105,7 +174,7 @@ export function parseArgs(argv) {
     }
     if (!isCustom(parsed)) {
       throw new Error(
-        "--name names the print of --settings, --live-settings, --image or --split-keys, and none was given",
+        "--name names the print of --settings, --live-settings, --image, --split-keys, --open-settings or --theme-editor, and none was given",
       );
     }
   }
@@ -129,8 +198,10 @@ export function backgroundSettings() {
 /**
  * The prints made when no window is asked for: the window as it starts, one with a picture behind it
  * and a see-through interface (`pnpm shot` makes the files from [`backgroundSettings`] and
- * [`backgroundPng`]), and one of a tab split by the shortcuts Ctrl+Shift+D and Ctrl+Shift+E, which
- * the app sends to its own page as key events (NOR-F20-07b). The second one's settings are written while the app runs, the way the settings
+ * [`backgroundPng`]), one of a tab split by the shortcuts Ctrl+Shift+D and Ctrl+Shift+E, which
+ * the app sends to its own page as key events (NOR-F20-07b), the settings screen at its Themes section
+ * and the theme editor open on Noren Dusk with two boxes typed into, both opened from inside the page
+ * (NOR-F20-09b, finding 326). The second one's settings are written while the app runs, the way the settings
  * screen writes them: the picture named in the settings file the app starts with does not show yet
  * (finding 309: the page asks for it before the store has its backend), and asking for it that way
  * is still possible with `--settings`, which fails with what the page says.
@@ -139,6 +210,14 @@ export const BUILTIN_SCENARIOS = [
   { name: "default", picture: false, live: false },
   { name: "background", picture: true, live: true },
   { name: "split", picture: false, live: false, splitKeys: true },
+  { name: "themes", picture: false, live: false, openSettings: "themes" },
+  {
+    name: "editor",
+    picture: false,
+    live: false,
+    themeEditor: "noren-dusk",
+    editorSet: ["ui.accent=#22d3ee", "terminal.ansi.1=#ff5555"],
+  },
 ];
 
 /** The name of the PNG of a print: the prefix, then the name, then `.png`. */
@@ -148,14 +227,22 @@ export function outputName(prefix, name) {
 
 /**
  * The arguments of `noren` for one print. `settings`, `liveSettings` and `image` are paths, or
- * `undefined`; `splitKeys` asks the app to send the split shortcuts to its page.
+ * `undefined`; `splitKeys` asks the app to send the split shortcuts to its page; `steps` is what the
+ * app does in its page besides that (`openSettings`, `themeEditor`, `editorGroup` and `editorSet`, a
+ * list of `<field>=<value>` texts or of `[field, value]` pairs), all optional.
  */
-export function appArgs(out, settings, liveSettings, image, splitKeys = false) {
+export function appArgs(out, settings, liveSettings, image, splitKeys = false, steps = {}) {
   const args = ["--smoke-shot", out];
   if (settings !== undefined) args.push("--settings", settings);
   if (liveSettings !== undefined) args.push("--live-settings", liveSettings);
   if (image !== undefined) args.push("--image", image);
   if (splitKeys) args.push("--split-keys");
+  if (steps.openSettings !== undefined) args.push("--open-settings", steps.openSettings);
+  if (steps.themeEditor !== undefined) args.push("--theme-editor", steps.themeEditor);
+  if (steps.editorGroup !== undefined) args.push("--editor-group", steps.editorGroup);
+  for (const set of steps.editorSet ?? []) {
+    args.push("--editor-set", Array.isArray(set) ? `${set[0]}=${set[1]}` : set);
+  }
   return args;
 }
 
@@ -164,7 +251,8 @@ export function appArgs(out, settings, liveSettings, image, splitKeys = false) {
  * window out of sight, with no focus, with the foreground window of the system unchanged) and its
  * result; a run that lacks one did not do what it promised.
  */
-export function requiredLines(picture, splitKeys = false) {
+export function requiredLines(picture, splitKeys = false, steps = {}) {
+  const fieldOf = (set) => (Array.isArray(set) ? set[0] : set.split("=")[0]);
   return [
     "SMOKE app-ready received",
     "SMOKE SHOT window placed outside every monitor",
@@ -185,6 +273,13 @@ export function requiredLines(picture, splitKeys = false) {
           "SMOKE SHOT split keys: panes",
         ]
       : []),
+    ...(steps.openSettings !== undefined || steps.themeEditor !== undefined
+      ? [`SMOKE SHOT settings opened: section "${steps.openSettings ?? "themes"}"`]
+      : []),
+    ...(steps.themeEditor !== undefined
+      ? [`SMOKE SHOT theme editor opened on "${steps.themeEditor}"`]
+      : []),
+    ...(steps.editorSet ?? []).map((set) => `SMOKE SHOT theme editor box ${fieldOf(set)} set to`),
     "SMOKE SHOT OK",
   ];
 }

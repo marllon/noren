@@ -20,6 +20,7 @@ import {
 } from "./agents";
 import { DEFAULT_ARCHIVE_AFTER_HOURS, DEFAULT_ARCHIVE_ENABLED } from "./archive";
 import { MAX_BACKGROUND_BLUR, MAX_BACKGROUND_PATH, backgroundImageProblem } from "./background";
+import { DEFAULT_INTERFACE_STYLE, INTERFACE_STYLES } from "./interface-style";
 import { DEFAULT_KEEP_SESSIONS } from "./keep-sessions";
 import { MAX_MODS, MOD_FILE_NAME_PATTERN, isReservedModName } from "./mods";
 import { RoutingSchema } from "./routing";
@@ -157,6 +158,11 @@ const appearanceSchema = z
       z.union([z.literal(SYSTEM_THEME), z.string().regex(THEME_ID_PATTERN)]),
       'The id of the theme, such as "noren-dusk". "system", or no value, follows the light or dark scheme of the system. An id Noren does not have also follows the system.',
       SYSTEM_THEME,
+    ),
+    style: setting(
+      z.enum(INTERFACE_STYLES),
+      'The look of the interface: "glass" (panels of glass over the picture of the window, Geist type) or "dense" (the technical look: square corners, thin lines, a monospaced font everywhere). The theme still says the colors.',
+      DEFAULT_INTERFACE_STYLE,
     ),
     window: windowSchema.optional(),
     background: backgroundSchema.optional(),

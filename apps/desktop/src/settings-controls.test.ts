@@ -150,6 +150,7 @@ function choices(dictionary: Record<string, string>): Record<ChoiceId, string[]>
     sidebarSide: names(dictionary, "settings.left", "settings.right"),
     tabPosition: names(dictionary, "settings.inSidebar", "settings.onTop"),
     favoritesPosition: names(dictionary, "settings.favoritesSidebar", "settings.favoritesTop"),
+    interfaceStyle: names(dictionary, "settings.styleGlass", "settings.styleDense"),
     density: names(dictionary, "settings.comfortable", "settings.compact"),
     windowEffect: WINDOW_EFFECTS.map((effect) => dictionary[`settings.effect.${effect}`] ?? ""),
     cursorShape: CURSOR_STYLES.map((style) => dictionary[`settings.cursor.${style}`] ?? ""),

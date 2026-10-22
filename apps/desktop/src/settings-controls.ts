@@ -100,6 +100,7 @@ export const CHOICE_CONTROLS = {
   sidebarSide: "segmented",
   tabPosition: "segmented",
   favoritesPosition: "segmented",
+  interfaceStyle: "segmented",
   density: "segmented",
   windowEffect: "list",
   cursorShape: "segmented",

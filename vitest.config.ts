@@ -8,6 +8,7 @@ export default defineConfig({
     include: [
       "packages/*/src/**/*.test.ts",
       "apps/*/src/**/*.test.{ts,tsx}",
+      "scripts/check-licenses.vitest.mjs",
       "scripts/game-mode.vitest.mjs",
       "scripts/packages.vitest.mjs",
       "scripts/shot.vitest.mjs",

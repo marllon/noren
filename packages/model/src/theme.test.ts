@@ -252,8 +252,11 @@ describe("the built-in themes", () => {
       expect(row.repository, row.theme).toMatch(/^<https:\/\/github\.com\/[\w.-]+\/[\w.-]+>$/);
       expect(row.holder, row.theme).not.toBe("");
     }
-    // The full license text of each of the six is there.
-    expect(text.match(/Permission is hereby granted, free of charge/g)).toHaveLength(6);
+    // The full license text of each of the six is there. The Fonts section after them has the font
+    // license, which opens its permission the same way, so only what comes before it is counted.
+    const themes = text.slice(0, text.indexOf("\n## Fonts"));
+    expect(text).toContain("\n## Fonts");
+    expect(themes.match(/Permission is hereby granted, free of charge/g)).toHaveLength(6);
   });
 
   it.each(THEMES.map((theme) => [theme.name, theme] as const))(

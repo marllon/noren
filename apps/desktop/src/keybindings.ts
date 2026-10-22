@@ -163,6 +163,14 @@ const LAYOUT_ACTIONS: readonly ActionDef[] = [
     repeat: false,
     chords: NO_CHORD,
   },
+  {
+    id: "layout.interface-style",
+    title: "Toggle interface style",
+    category: "Layout",
+    command: { kind: "layout", toggle: "style" },
+    repeat: false,
+    chords: NO_CHORD,
+  },
 ];
 
 /**

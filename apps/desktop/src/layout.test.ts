@@ -47,9 +47,25 @@ describe("layoutFromConfig", () => {
     });
     expect(layoutFromConfig({ appearance: { tabs: "top" } })).toEqual({ tabs: "top" });
   });
+
+  it("maps the interface style, and says nothing when the file does not", () => {
+    expect(layoutFromConfig({ appearance: { style: "dense" } })).toEqual({ style: "dense" });
+    expect(layoutFromConfig({ appearance: { style: "glass" } })).toEqual({ style: "glass" });
+    expect(layoutFromConfig({ appearance: { favorites: "top" } })).toEqual({ favorites: "top" });
+  });
 });
 
 describe("layoutOf", () => {
+  it("draws the glass style unless the file says dense, whatever else it says", () => {
+    expect(DEFAULT_LAYOUT.style).toBe("glass");
+    expect(layoutOf({}).style).toBe("glass");
+    expect(layoutOf({ appearance: { tabs: "top", favorites: "top" } }).style).toBe("glass");
+    expect(layoutOf({ appearance: { style: "dense" } })).toEqual({
+      ...DEFAULT_LAYOUT,
+      style: "dense",
+    });
+  });
+
   it("is the default layout for a file that says nothing", () => {
     expect(layoutOf({})).toEqual(DEFAULT_LAYOUT);
     expect(layoutOf({})).not.toBe(DEFAULT_LAYOUT);
@@ -148,9 +164,16 @@ describe("parseLayout", () => {
       keepOpen: true,
       tabs: "top",
       favorites: "sidebar",
+      style: "glass",
       paneHeaders: true,
     };
     expect(parseLayout(JSON.stringify(layout))).toEqual(layout);
+  });
+
+  it("never reads the interface style from the old storage: only the file sets it", () => {
+    for (const style of ["dense", "glass", "technical", 3, null, true]) {
+      expect(parseLayout(JSON.stringify({ style })).style).toBe("glass");
+    }
   });
 
   it("never reads the place of the favorites bar from the old storage: only the file sets it", () => {
@@ -184,6 +207,7 @@ describe("parseLayout", () => {
       keepOpen: false,
       tabs: "sidebar",
       favorites: "sidebar",
+      style: "glass",
       paneHeaders: false,
     });
   });

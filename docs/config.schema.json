@@ -29,6 +29,12 @@
             }
           ]
         },
+        "style": {
+          "description": "The look of the interface: \"glass\" (panels of glass over the picture of the window, Geist type) or \"dense\" (the technical look: square corners, thin lines, a monospaced font everywhere). The theme still says the colors.",
+          "default": "glass",
+          "type": "string",
+          "enum": ["glass", "dense"]
+        },
         "window": {
           "type": "object",
           "properties": {

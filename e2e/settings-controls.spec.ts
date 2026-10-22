@@ -583,9 +583,9 @@ test.describe("the row of buttons and the list", () => {
           ).length,
         })),
       );
-      // The six choices of the sections (side, tab position, favorites bar, density, cursor shape,
-      // shortcut preset) and the one of the themes (the whole app or this space).
-      expect(found.length).toBe(7);
+      // The seven choices of the sections (interface style, side, tab position, favorites bar,
+      // density, cursor shape, shortcut preset) and the one of the themes (the whole app or this space).
+      expect(found.length).toBe(8);
       for (const group of found) {
         expect(group.count).toBeGreaterThanOrEqual(2);
         expect(group.count).toBeLessThanOrEqual(3);

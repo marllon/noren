@@ -1,0 +1,90 @@
+/*
+ * The token sets of the two interface styles (appearance.style of config.jsonc). The root element
+ * carries data-nr-style="glass" or data-nr-style="dense" (interface-style.ts), and the set of that
+ * attribute is what the stylesheet and the mods read. The values come from the approved designs of
+ * the main window of each style (type, corners, gaps, lines, the highlight, the glass); both sets
+ * have the same names, so a component never asks which style is on.
+ *
+ * The theme says the colors (--nr-bg, --nr-surface, --nr-text, --nr-border: theme.ts), so the lines
+ * and the glass below are worked out from them and every theme, dark or light, works in either style.
+ * The one token both have a say in, --nr-radius (the corners of the components that are not
+ * redrawn yet), is set with the theme: the theme's own under glass, at most 3px under dense.
+ *
+ * The designs are dark; the light values (the state colors) were worked out for the same contrast,
+ * and light-dark() picks one by the color-scheme the theme sets on the root.
+ *
+ * Under prefers-reduced-transparency (also what the system reports when its transparency effects are
+ * off) the glass is opaque: the fills are the solid colors of the theme and the blur is off.
+ */
+
+:root[data-nr-style="glass"] {
+  /* Type: Geist for the interface, Geist Mono for shortcuts and code. */
+  --nr-font-ui: "Geist", system-ui, sans-serif;
+  --nr-font-mono: "Geist Mono", "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  --nr-font-size: 13px;
+  --nr-font-size-small: 12px;
+
+  /* Shape: the sidebar and the panels are rounded cards with a gap between them. */
+  --nr-radius-side: 14px;
+  --nr-radius-panel: 12px;
+  --nr-radius-control: 10px;
+  --nr-radius-chip: 99px;
+  --nr-gap: 8px;
+  --nr-row-height: 44px;
+  --nr-control-height: 32px;
+
+  /* Lines are a veil of the text color: white on a dark theme, dark on a light one. */
+  --nr-line: color-mix(in srgb, var(--nr-text) 8%, transparent);
+  --nr-line-strong: color-mix(in srgb, var(--nr-text) 14%, transparent);
+
+  /* The highlight the style starts from, and the dots of the state of a tab. */
+  --nr-style-accent: #5ee6c8;
+  --nr-state-running: light-dark(#1e8f5a, #7ee2a8);
+  --nr-state-waiting: light-dark(#b7791f, #f5b84b);
+
+  /* The glass: what the sidebar and the panels are filled with, and what blurs the picture behind them. */
+  --nr-glass-side: color-mix(in srgb, var(--nr-surface) 42%, transparent);
+  --nr-glass-panel: color-mix(in srgb, var(--nr-bg) 62%, transparent);
+  --nr-glass-blur-side: blur(30px) saturate(160%);
+  --nr-glass-blur-panel: blur(24px);
+}
+
+:root[data-nr-style="dense"] {
+  /* Type: one monospaced font for everything. */
+  --nr-font-ui: "JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --nr-font-mono: var(--nr-font-ui);
+  --nr-font-size: 12px;
+  --nr-font-size-small: 11.5px;
+
+  /* Shape: square panels one pixel apart (the gap shows the line color), small controls. */
+  --nr-radius-side: 0px;
+  --nr-radius-panel: 0px;
+  --nr-radius-control: 3px;
+  --nr-radius-chip: 3px;
+  --nr-gap: 1px;
+  --nr-row-height: 24px;
+  --nr-control-height: 22px;
+
+  /* Lines are 1px solid lines of the border color of the theme. */
+  --nr-line: var(--nr-border);
+  --nr-line-strong: color-mix(in srgb, var(--nr-text) 20%, var(--nr-border));
+
+  --nr-style-accent: #2ee6d6;
+  --nr-state-running: light-dark(#15803d, #4ade80);
+  --nr-state-waiting: light-dark(#b45309, #ffb547);
+
+  /* No glass: the surfaces are solid, so the same names give opaque fills and no blur. */
+  --nr-glass-side: var(--nr-surface);
+  --nr-glass-panel: var(--nr-bg);
+  --nr-glass-blur-side: none;
+  --nr-glass-blur-panel: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-nr-style="glass"] {
+    --nr-glass-side: var(--nr-surface);
+    --nr-glass-panel: var(--nr-bg);
+    --nr-glass-blur-side: none;
+    --nr-glass-blur-panel: none;
+  }
+}

@@ -38,7 +38,16 @@ body,
 body {
   background: var(--nr-bg-glass, var(--nr-bg));
   color: var(--nr-text);
-  font-family: system-ui, sans-serif;
+  font-family: var(--nr-font-ui, system-ui, sans-serif);
+}
+
+/*
+ * The type of the interface is the font of the style (--nr-font-ui, from style-tokens.css). A form
+ * control does not take the font of the page on its own, so it is told to; a rule that sets its own
+ * (the monospaced ones below, the terminal) still wins, because this has no specificity.
+ */
+:where(button, input, select, textarea) {
+  font-family: inherit;
 }
 
 .app {
@@ -751,7 +760,7 @@ body {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: var(--nr-font-mono, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -784,7 +793,7 @@ body {
   background: var(--nr-surface);
   color: var(--nr-text);
   box-shadow: 0 6px 20px color-mix(in srgb, var(--nr-bg) 70%, transparent);
-  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: var(--nr-font-mono, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
   font-size: 11px;
   line-height: 1.4;
   pointer-events: none;
@@ -805,7 +814,7 @@ body {
 .peek-empty {
   margin: 0;
   color: var(--nr-muted);
-  font-family: system-ui, sans-serif;
+  font-family: var(--nr-font-ui, system-ui, sans-serif);
 }
 
 /* Text for assistive technology only. */
@@ -1635,7 +1644,7 @@ body {
 
 .preview-text {
   margin: 0;
-  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: var(--nr-font-mono, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
   font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -1792,7 +1801,7 @@ body {
 .diff-letter {
   flex: none;
   width: 1ch;
-  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: var(--nr-font-mono, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
   font-weight: 700;
 }
 
@@ -1844,7 +1853,7 @@ body {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: var(--nr-font-mono, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -4310,7 +4319,7 @@ ul.settings-models {
   border-radius: calc(var(--nr-radius) / 2);
   background: var(--nr-bg);
   color: var(--nr-muted);
-  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: var(--nr-font-mono, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
   font-size: 11px;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -4411,7 +4420,7 @@ ul.settings-models {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: var(--nr-font-mono, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
   text-overflow: ellipsis;
   white-space: pre;
 }
@@ -4559,7 +4568,7 @@ ul.settings-models {
   min-width: 0;
   overflow: hidden;
   color: var(--nr-muted);
-  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: var(--nr-font-mono, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4578,7 +4587,7 @@ ul.settings-models {
   padding-left: 18px;
   overflow: hidden;
   color: var(--nr-muted);
-  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: var(--nr-font-mono, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4733,7 +4742,7 @@ ul.settings-models {
   box-sizing: border-box;
   overflow: hidden;
   color: var(--nr-muted);
-  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: var(--nr-font-mono, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5223,7 +5232,7 @@ ul.settings-models {
   border: 1px solid var(--nr-border);
   border-radius: calc(var(--nr-radius) / 2);
   background: var(--nr-bg);
-  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: var(--nr-font-mono, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
   font-size: 12px;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -5284,7 +5293,7 @@ ul.settings-models {
   padding: 0 4px;
   border-radius: 3px;
   background: color-mix(in srgb, var(--nr-text) 12%, transparent);
-  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: var(--nr-font-mono, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
   font-size: 12px;
 }
 
@@ -5316,7 +5325,7 @@ ul.settings-models {
   margin: 0;
   padding: 8px;
   overflow-x: auto;
-  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: var(--nr-font-mono, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
   font-size: 12px;
   white-space: pre;
 }
@@ -5366,7 +5375,7 @@ ul.settings-models {
 .command-dialog .command-preview {
   max-height: 240px;
   margin: 0;
-  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: var(--nr-font-mono, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
 }
 
 .command-secrets,
@@ -5388,7 +5397,7 @@ ul.settings-models {
 
 .command-result .dialog-detail {
   margin: 6px 0;
-  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: var(--nr-font-mono, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
   font-size: 13px;
 }
 

@@ -2,6 +2,7 @@
 // Reads `pnpm licenses list --json` and fails when a package carries a license outside the lists:
 //   - production dependencies (`--prod`): PROD_ALLOWED
 //   - everything else (dev tooling): PROD_ALLOWED plus DEV_EXTRA
+//   - a font package (`@fontsource/*`) may also carry OFL-1.1, and nothing else may
 // SPDX expressions with OR, AND and parentheses are evaluated; `WITH` passes only for the exact
 // expressions in the allowed lists; workspace packages are skipped.
 // A license outside the lists is never an exception here: it is a decision for the maintainer.
@@ -12,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-const PROD_ALLOWED = new Set([
+export const PROD_ALLOWED = new Set([
   "MIT",
   "Apache-2.0",
   "Apache-2.0 WITH LLVM-exception",
@@ -28,6 +29,18 @@ const PROD_ALLOWED = new Set([
   "MPL-2.0",
 ]);
 const DEV_EXTRA = new Set(["MPL-2.0"]);
+
+// Fonts are published under the SIL Open Font License, which is not in the lists above. It is allowed
+// for the packages that carry only a font (the `@fontsource` packages that hold the fonts of the
+// app, see THIRD_PARTY_NOTICES.md) and for nothing else: any other package under it, or any font
+// package under some other license outside the lists, is still a violation.
+const FONT_LICENSES = new Set(["OFL-1.1"]);
+const FONT_PACKAGE = /^@fontsource(-variable)?\/[a-z0-9-]+$/;
+
+/** The licenses `packageName` may carry: the list given, and the font license for a font package. */
+export function allowedFor(packageName, allowed) {
+  return FONT_PACKAGE.test(packageName) ? new Set([...allowed, ...FONT_LICENSES]) : allowed;
+}
 
 // Recursive-descent evaluator: expr = and ("OR" and)*; and = atom ("AND" atom)*; atom = id | "(" expr ")".
 export function evaluate(expression, allowed) {
@@ -120,14 +133,14 @@ function pnpmLicenses(extraArgs) {
   return JSON.parse(result.stdout);
 }
 
-function violations(report, allowed, ignored) {
+export function violations(report, allowed, ignored) {
   const found = [];
   for (const [license, packages] of Object.entries(report)) {
     for (const pkg of packages) {
       if (ignored.has(pkg.name)) continue;
       let ok;
       try {
-        ok = evaluate(license, allowed);
+        ok = evaluate(license, allowedFor(pkg.name, allowed));
       } catch {
         ok = false;
       }

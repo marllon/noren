@@ -49,6 +49,7 @@ describe("layout store", () => {
         "density": "compact",
         "tabs": "top",
         "favorites": "top",
+        "style": "dense",
         "paneHeaders": true,
       },
     }`);
@@ -60,8 +61,24 @@ describe("layout store", () => {
       density: "compact",
       tabs: "top",
       favorites: "top",
+      style: "dense",
       paneHeaders: true,
     });
+  });
+
+  it("follows the interface style of the file, and the same layout stays the same object", async () => {
+    const backend = await started("{}");
+    expect(getLayout().style).toBe("glass");
+    const before = getLayout();
+    backend.setConfig('{ "appearance": { "style": "dense" } }');
+    expect(getLayout().style).toBe("dense");
+    // Another setting of the file moves nothing the layout has: the object is the same one.
+    const dense = getLayout();
+    backend.setConfig('{ "appearance": { "style": "dense", "theme": "noren-paper" } }');
+    expect(getLayout()).toBe(dense);
+    backend.setConfig("{}");
+    expect(getLayout().style).toBe("glass");
+    expect(getLayout()).toEqual(before);
   });
 });
 

@@ -1,6 +1,7 @@
 import { NOREN_DUSK, NOREN_PAPER, THEMES } from "@noren/model";
-import type { Theme } from "@noren/model";
+import type { InterfaceStyle, Theme } from "@noren/model";
 import type { ITheme } from "@xterm/xterm";
+import { DEFAULT_INTERFACE_STYLE, styleRadius } from "./interface-style";
 
 // The theme is data and lives in `@noren/model` (the schema and the built-in themes). This file
 // turns a theme into what the window uses: the `--nr-*` variables and the colors of xterm.js.
@@ -13,8 +14,14 @@ export function themeForScheme(prefersDark: boolean): Theme {
   return prefersDark ? NOREN_DUSK : NOREN_PAPER;
 }
 
-/** The CSS custom properties of the theme API (`--nr-*`); mods and the stylesheet read these. */
-export function themeVariables(theme: Theme): Record<string, string> {
+/**
+ * The CSS custom properties of the theme API (`--nr-*`); mods and the stylesheet read these. The
+ * radius is the theme's own, except under the dense style, whose corners are square.
+ */
+export function themeVariables(
+  theme: Theme,
+  style: InterfaceStyle = DEFAULT_INTERFACE_STYLE,
+): Record<string, string> {
   const { ui } = theme;
   return {
     "--nr-bg": ui.bg,
@@ -23,7 +30,7 @@ export function themeVariables(theme: Theme): Record<string, string> {
     "--nr-muted": ui.muted,
     "--nr-accent": ui.accent,
     "--nr-border": ui.border,
-    "--nr-radius": `${ui.radius}px`,
+    "--nr-radius": `${styleRadius(style, ui.radius)}px`,
     // The color of the active space; `applySpaceColor` overrides it with the space's own.
     "--nr-space-color": ui.accent,
   };
@@ -34,8 +41,12 @@ export interface StyleTarget {
   style: { setProperty(name: string, value: string): void };
 }
 
-export function applyTheme(root: StyleTarget, theme: Theme): void {
-  for (const [name, value] of Object.entries(themeVariables(theme))) {
+export function applyTheme(
+  root: StyleTarget,
+  theme: Theme,
+  style: InterfaceStyle = DEFAULT_INTERFACE_STYLE,
+): void {
+  for (const [name, value] of Object.entries(themeVariables(theme, style))) {
     root.style.setProperty(name, value);
   }
   root.style.setProperty("color-scheme", theme.kind);

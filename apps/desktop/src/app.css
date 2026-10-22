@@ -4,7 +4,7 @@
  * the app from the mods folder) win over the style of Noren with a plain selector:
  *
  *   vendor  the CSS of the terminal library
- *   base    the style of Noren (styles.css)
+ *   base    the style of Noren (fonts.css, style-tokens.css and styles.css)
  *   mods    the CSS files of the user
  *
  * The statement below fixes the order before any layer is used; every mod repeats it (see
@@ -14,4 +14,6 @@
 @layer vendor, base, mods;
 
 @import "@xterm/xterm/css/xterm.css" layer(vendor);
+@import "./fonts.css" layer(base);
+@import "./style-tokens.css" layer(base);
 @import "./styles.css" layer(base);

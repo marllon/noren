@@ -1,5 +1,5 @@
-import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "@noren/model";
-import type { Config } from "@noren/model";
+import { DEFAULT_INTERFACE_STYLE, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "@noren/model";
+import type { Config, InterfaceStyle } from "@noren/model";
 
 // How the window is laid out: which side the sidebar is on, how wide it is, how dense the rows are
 // and whether it hides. Pure: the interface applies what this returns and `layout-store.ts` keeps it.
@@ -42,6 +42,12 @@ export interface Layout {
    * the terminal (under the tab bar when the tabs are on top too), whatever the sidebar does.
    */
   favorites: FavoritesPlacement;
+  /**
+   * The look of the interface: glass or dense (`interface-style.ts`). Not a place for things like
+   * the others here, but a mode of the window the same way, chosen in the same section of the
+   * settings, switched from the palette the same way and shown at once.
+   */
+  style: InterfaceStyle;
   /** Every pane of a tab shows a header with its title and the zoom and close buttons. */
   paneHeaders: boolean;
 }
@@ -54,6 +60,7 @@ export const DEFAULT_LAYOUT: Layout = {
   keepOpen: false,
   tabs: "sidebar",
   favorites: "sidebar",
+  style: DEFAULT_INTERFACE_STYLE,
   paneHeaders: false,
 };
 
@@ -99,6 +106,8 @@ export function parseLayout(raw: string | null): Layout {
     tabs: tabs === "sidebar" || tabs === "top" ? tabs : DEFAULT_LAYOUT.tabs,
     // The favorites bar never had a home in the browser storage: only the file sets it.
     favorites: DEFAULT_LAYOUT.favorites,
+    // Nor did the interface style: it is a setting of the file from the start.
+    style: DEFAULT_LAYOUT.style,
     // Preferences saved before pane headers existed have no such field: the headers stay off.
     paneHeaders: typeof paneHeaders === "boolean" ? paneHeaders : DEFAULT_LAYOUT.paneHeaders,
   };
@@ -119,6 +128,7 @@ export function layoutFromConfig(config: Config): Partial<Layout> {
   if (appearance?.density !== undefined) set.density = appearance.density;
   if (appearance?.tabs !== undefined) set.tabs = appearance.tabs;
   if (appearance?.favorites !== undefined) set.favorites = appearance.favorites;
+  if (appearance?.style !== undefined) set.style = appearance.style;
   if (appearance?.paneHeaders !== undefined) set.paneHeaders = appearance.paneHeaders;
   return set;
 }

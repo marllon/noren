@@ -328,6 +328,7 @@ export const ptBR: Dictionary = {
   "action.layout.keep-sidebar-open": "Alternar manter a barra lateral aberta",
   "action.layout.top-tabs": "Alternar abas no topo",
   "action.layout.favorites-bar": "Alternar a barra de favoritos no topo",
+  "action.layout.interface-style": "Alternar o estilo da interface",
   "action.palette.open": "Abrir a paleta",
   "action.tab.new": "Nova aba",
   "action.tab.reopen-closed": "Reabrir a aba fechada",
@@ -423,6 +424,9 @@ export const ptBR: Dictionary = {
   "settings.favoritesBar": "Barra de favoritos",
   "settings.favoritesSidebar": "Barra lateral",
   "settings.favoritesTop": "Topo da janela",
+  "settings.interfaceStyle": "Estilo da interface",
+  "settings.styleGlass": "Vidro",
+  "settings.styleDense": "Técnico denso",
   "settings.density": "Densidade",
   "settings.comfortable": "Confortável",
   "settings.compact": "Compacta",
@@ -1366,6 +1370,8 @@ export const ptBR: Dictionary = {
     "Onde ficam as abas: a árvore na barra lateral ou uma barra acima do terminal.",
   "field.appearance.favorites":
     "Onde fica a barra de favoritos: no alto da barra lateral ou numa barra no alto da janela, acima do terminal (sob as abas quando elas também estão no topo).",
+  "field.appearance.style":
+    'O visual da interface: "glass" (painéis de vidro sobre a imagem da janela, fonte Geist) ou "dense" (o visual técnico: cantos retos, linhas finas, fonte monoespaçada em tudo). O tema continua dizendo as cores.',
   "field.appearance.paneHeaders":
     "Mostra um cabeçalho com o título e os botões em cada painel de uma aba.",
   "field.terminal":

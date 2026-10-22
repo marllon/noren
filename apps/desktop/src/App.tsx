@@ -122,7 +122,13 @@ import {
 import type { NavigationPoint } from "./announcer";
 import { runLayoutCommand } from "./layout-actions";
 import type { LayoutCommand } from "./layout-actions";
-import { previewSidebarWidth, saveSidebarWidth, useLayout } from "./layout-store";
+import {
+  previewSidebarWidth,
+  saveSidebarWidth,
+  useInterfaceStyle,
+  useLayout,
+} from "./layout-store";
+import { applyInterfaceStyle } from "./interface-style";
 import { SettingsDialog } from "./SettingsDialog";
 import { closeSettings, openSettings, useSettingsOpen } from "./settings-ui";
 import { SidebarResizer } from "./SidebarResizer";
@@ -3195,10 +3201,16 @@ export function App() {
   useEffect(() => {
     requestWindowEffect(backend, effect, scheme);
   }, [effect, scheme]);
-  // Before paint, so the first frame already has the colors.
+  // Before paint, so the first frame already has the colors and the style. The style is the attribute
+  // that picks the token set (fonts, corners, gaps) and the one token it shares with the theme, the
+  // radius, so the theme is applied again when the style changes.
+  const style = useInterfaceStyle();
   useLayoutEffect(() => {
-    applyTheme(document.documentElement, theme);
-  }, [theme]);
+    applyInterfaceStyle(document.documentElement, style);
+  }, [style]);
+  useLayoutEffect(() => {
+    applyTheme(document.documentElement, theme, style);
+  }, [theme, style]);
   // The picture is read when the window wants a new one; until it is on screen the variable is none.
   useLayoutEffect(() => {
     showBackgroundImage(appearance.background.image);

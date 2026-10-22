@@ -18,6 +18,7 @@ import type {
   Backend,
   BellStyle,
   CursorStyle,
+  InterfaceStyle,
   LanguageSetting,
   RightClickAction,
   WindowEffect,
@@ -105,6 +106,11 @@ const tabPlacementOptions = (): readonly { value: TabsPlacement; label: string }
 const favoritesPlacementOptions = (): readonly { value: FavoritesPlacement; label: string }[] => [
   { value: "sidebar", label: t("settings.favoritesSidebar") },
   { value: "top", label: t("settings.favoritesTop") },
+];
+
+const interfaceStyleOptions = (): readonly { value: InterfaceStyle; label: string }[] => [
+  { value: "glass", label: t("settings.styleGlass") },
+  { value: "dense", label: t("settings.styleDense") },
 ];
 
 const densityOptions = (): readonly { value: Density; label: string }[] => [
@@ -564,6 +570,7 @@ export function SettingsDialog({
     side: sideOptions(),
     tabs: tabPlacementOptions(),
     favorites: favoritesPlacementOptions(),
+    style: interfaceStyleOptions(),
     density: densityOptions(),
     language: languageOptions(),
     effect: windowEffectOptions(),
@@ -594,6 +601,19 @@ export function SettingsDialog({
             value={shown.language}
             options={sectionOptions.language}
             onChange={(language) => change({ language })}
+          />,
+        ),
+        row(
+          "style",
+          [t("settings.interfaceStyle"), ...labelsOf(sectionOptions.style)],
+          <Choice
+            legend={t("settings.interfaceStyle")}
+            field="appearance.style"
+            name="settings-style"
+            control={CHOICE_CONTROLS.interfaceStyle}
+            value={shown.style}
+            options={sectionOptions.style}
+            onChange={(style) => change({ style })}
           />,
         ),
         row(

@@ -60,6 +60,7 @@ The **safe** preset is the default. It does not fight the shell: Ctrl+T, Ctrl+W 
 | Toggle keep sidebar open      | none                  | none                  |
 | Toggle tabs on top            | none                  | none                  |
 | Toggle favorites bar on top   | none                  | none                  |
+| Toggle interface style        | none                  | none                  |
 
 The browser preset is opt-in. It takes Ctrl+T, Ctrl+W and Ctrl+1..9 away from the terminal, so a shell program that uses them (for example a readline "transpose characters" or a "delete word") no longer receives them.
 
@@ -89,7 +90,7 @@ The user's own chords (the overrides) are still provisional: they live in the br
 
 ## Layout actions
 
-Every layout mode of the settings screen is also an action of the registry, so the palette (`>layout`) and a recorded chord reach it: _Switch sidebar side_, _Widen sidebar_ and _Narrow sidebar_ (48 px a step, the same as Shift with the arrows on the sidebar handle; a step that would pass 180 or 480 px goes to the end, and at the end the action says so), _Switch density_, _Toggle compact mode_, _Toggle keep sidebar open_, _Toggle tabs on top_ and _Toggle favorites bar on top_ (the bar of favorites between the top of the sidebar and the top of the window). Each one flips only its own setting and writes it into `config.jsonc` through the same call as the settings screen (`ConfigManager.update`), so every comment of the file stays and the window follows the file with no reload. They do not repeat while the key is held. A width outside 180 to 480 is never written.
+Every layout mode of the settings screen is also an action of the registry, so the palette (`>layout`) and a recorded chord reach it: _Switch sidebar side_, _Widen sidebar_ and _Narrow sidebar_ (48 px a step, the same as Shift with the arrows on the sidebar handle; a step that would pass 180 or 480 px goes to the end, and at the end the action says so), _Switch density_, _Toggle compact mode_, _Toggle keep sidebar open_, _Toggle tabs on top_, _Toggle favorites bar on top_ (the bar of favorites between the top of the sidebar and the top of the window) and _Toggle interface style_ (glass and dense, see [CONFIG.md](CONFIG.md#the-interface-style); it does not depend on the tabs or on compact mode, so it is never refused). Each one flips only its own setting and writes it into `config.jsonc` through the same call as the settings screen (`ConfigManager.update`), so every comment of the file stays and the window follows the file with no reload. They do not repeat while the key is held. A width outside 180 to 480 is never written.
 
 When there is nothing to write, or the write cannot be made, the action shows the usual notice and changes nothing: compact mode and keeping the sidebar open are refused with top tabs (the sidebar always hides there), keeping it open is refused while compact mode is off, a file with a problem of its own is not edited (the notice names the line), and a failed write says why. The shortcut listener leaves them alone while a menu or dialog (the settings screen included) is open.
 

@@ -44,6 +44,7 @@ const EVERYTHING: Config = {
     density: "compact",
     tabs: "top",
     favorites: "top",
+    style: "dense",
     paneHeaders: true,
     window: { effect: "mica", opacity: 0.8 },
     background: { image: "backgrounds/sky.png", opacity: 0.4, blur: 6 },
@@ -74,6 +75,7 @@ describe("settingsOf", () => {
       density: "compact",
       tabs: "top",
       favorites: "top",
+      style: "dense",
       paneHeaders: true,
       preset: "browser",
       notifications: false,
@@ -170,6 +172,18 @@ describe("shownSettings", () => {
       shownSettings({ appearance: { favorites: "top" } }, { density: "compact" }),
     ).toMatchObject({ favorites: "top" });
   });
+
+  it("shows the interface style where the file puts it, glass when it says nothing", () => {
+    expect(shownSettings({}, {}).style).toBe("glass");
+    expect(shownSettings({ appearance: { style: "dense" } }, {}).style).toBe("dense");
+    // A draft that changed it wins over the file; one that did not follows the file.
+    expect(shownSettings({ appearance: { style: "dense" } }, { style: "glass" })).toMatchObject({
+      style: "glass",
+    });
+    expect(shownSettings({ appearance: { style: "dense" } }, { density: "compact" })).toMatchObject(
+      { style: "dense" },
+    );
+  });
 });
 
 describe("compact mode boxes", () => {
@@ -242,6 +256,18 @@ describe("planSave", () => {
     expect(planSave({}, { tabs: "top", favorites: "top" }).changes).toEqual([
       { path: ["appearance", "tabs"], value: "top" },
       { path: ["appearance", "favorites"], value: "top" },
+    ]);
+  });
+
+  it("writes the interface style at its own place, and only when it differs from the one in force", () => {
+    expect(planSave({}, { style: "dense" }).changes).toEqual([
+      { path: ["appearance", "style"], value: "dense" },
+    ]);
+    // Glass is what a file that says nothing has: choosing it there is already so, nothing to write.
+    expect(planSave({}, { style: "glass" }).changes).toEqual([]);
+    expect(planSave({ appearance: { style: "dense" } }, { style: "dense" }).changes).toEqual([]);
+    expect(planSave({ appearance: { style: "dense" } }, { style: "glass" }).changes).toEqual([
+      { path: ["appearance", "style"], value: "glass" },
     ]);
   });
 

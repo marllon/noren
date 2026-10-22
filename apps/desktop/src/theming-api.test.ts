@@ -148,9 +148,15 @@ describe("the layers", () => {
     expect(rules.split("\n").filter((line) => line.trim() !== "")).toEqual([
       MOD_LAYER_ORDER,
       '@import "@xterm/xterm/css/xterm.css" layer(vendor);',
+      '@import "./fonts.css" layer(base);',
+      '@import "./style-tokens.css" layer(base);',
       '@import "./styles.css" layer(base);',
     ]);
-    // The stylesheet of the app brings no layer of its own, so a mod is always after all of it.
+    // The stylesheets of the app bring no layer of their own, so a mod is always after all of them.
+    for (const name of ["styles.css", "fonts.css", "style-tokens.css"]) {
+      const text = readFileSync(new URL(name, here), "utf8");
+      expect(text, name).not.toMatch(/@layer|@import/);
+    }
     expect(stylesCss).not.toMatch(/@layer|@import/);
   });
 

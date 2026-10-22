@@ -16,7 +16,7 @@ It is the config folder of the app (Tauri `app_config_dir`), next to `state.json
 
 The **Settings** button (the gear in the title bar), or **Open settings** in the command palette (`Ctrl+Shift+P`, then `>`), opens the screen. It has a search on top, a column of sections on the left and, on the right, every section in one column of rows (see [How the screen is laid out](#how-the-screen-is-laid-out)). The fifteen sections, in the order of the column:
 
-- **Appearance**: the language of the interface (see [Language](#language)), the side of the sidebar and its width, where the tabs are (the sidebar or a bar on top), where the favorites bar is (the top of the sidebar or a bar at the top of the window), density, compact mode, keeping the sidebar open, and the pane headers.
+- **Appearance**: the language of the interface (see [Language](#language)), the interface style (glass or dense, see [The interface style](#the-interface-style)), the side of the sidebar and its width, where the tabs are (the sidebar or a bar on top), where the favorites bar is (the top of the sidebar or a bar at the top of the window), density, compact mode, keeping the sidebar open, and the pane headers.
 - **Themes**: a gallery of miniatures, one card for each theme (the eight that ship with Noren, then yours). A click on a card uses that theme **for the whole app** (it writes `appearance.theme`, like the palette does) or **only for the active space** (it is saved with the space, not in this file), as the choice above the gallery says; **Follow the system** (or, for a space, **Use the theme of the app**) takes the choice back. **Customize** (on a theme that ships with Noren) and **Edit** (on one of yours) open the theme editor, with every group of a theme (the accent, the background and text, the sidebar, the terminal with its sixteen colors, cursor and selection, the font, the corners, the transparency and the background picture) and a live preview, and **Save as my theme** writes `themes/<id>.json`; nothing is written until then and Cancel throws the changes away. **Duplicate** makes a copy of any theme under a new name and id, which is then yours; a theme of yours can also be **renamed** (the id stays, so the choices that name it keep working), **exported** to a file you choose with the save chooser of the system, and **deleted** after a question (its file in the `themes` folder is removed; the app and the spaces that used it fall back to the theme of the app or the system's). **Import theme...** reads a color scheme file or a theme file exported from Noren. These act at once, with a line under the gallery that tells what happened (the whole screen writes as you go; the theme editor is its own dialog and keeps its own **Save as my theme**). See [THEMING.md](THEMING.md).
 - **Window**: the effect the system paints behind the window (None, Mica, Acrylic or Vibrancy) and how opaque the interface is. If the system could not paint the effect that is saved, the section says so under the choices, with the reason (see [The window and the background](#the-window-and-the-background)).
 - **Background**: the picture file behind the terminals, how much of it shows and how blurred it is. **Choose image...** opens the file chooser of the system (the Windows one on Windows, listing the picture kinds below), a small preview shows the picture that was chosen, and **Remove** takes it away (the file has the change at once, like every setting here); the box under them still takes a path typed by hand, and a path is written only once Noren can read the file it names. The picture of one space is chosen in the menu of the space instead (see [The window and the background](#the-window-and-the-background)).
@@ -43,7 +43,7 @@ There is no Save button (NOR-F20-10c): **every change is written to `config.json
 
 Closing the screen is the only thing left to do, so a value typed in a box that the schema refuses is the one thing that is not kept: it was never a setting.
 
-The layout modes of the Appearance section can also be switched from the command palette without opening the screen (_Switch sidebar side_, _Widen sidebar_, _Narrow sidebar_, _Switch density_, _Toggle compact mode_, _Toggle keep sidebar open_, _Toggle tabs on top_, _Toggle favorites bar on top_; see [KEYBINDINGS.md](KEYBINDINGS.md)). Each writes only its own setting, the same way the settings screen does, and shows a notice if it cannot (the file has a problem, or the disk refused).
+The layout modes of the Appearance section can also be switched from the command palette without opening the screen (_Switch sidebar side_, _Widen sidebar_, _Narrow sidebar_, _Switch density_, _Toggle compact mode_, _Toggle keep sidebar open_, _Toggle tabs on top_, _Toggle favorites bar on top_, _Toggle interface style_; see [KEYBINDINGS.md](KEYBINDINGS.md)). Each writes only its own setting, the same way the settings screen does, and shows a notice if it cannot (the file has a problem, or the disk refused).
 
 Dragging the handle on the edge of the sidebar (or pressing the arrow keys on it) saves `appearance.sidebar.width` the same way, when you let go. The handle does nothing while the file has a problem.
 
@@ -97,6 +97,7 @@ Every setting is optional. Unknown settings are an error, so a typo does not go 
   "language": "system", // "system" | "en" | "pt-BR", see Language below
   "appearance": {
     "theme": "system", // a theme id such as "noren-dusk"; "system" or no value follows the system
+    "style": "glass", // "glass" | "dense": the look of the interface, see The interface style below
     "sidebar": {
       "position": "left", // "left" | "right"
       "width": 200, // whole pixels, 180 to 480
@@ -183,6 +184,14 @@ It is the same bar in both places: the same three kinds of tile (favorite tabs, 
 - The tabs of the bar on top are not dragged (they never were: only the tree of the sidebar is), so with the tabs on top a tab joins the bar with the right click of the tab (_Add to favorites_).
 
 The place of the bar was never kept in the browser storage of the window, so there is nothing of it to move into the file.
+
+### The interface style
+
+`appearance.style` says how the whole window looks beyond its colors: `"glass"` (the default) is panels of glass over the picture of the window, rounded cards with a gap between them, Geist for the type and Geist Mono for shortcuts and code; `"dense"` is the technical look, square corners, 1 px lines, small controls and JetBrains Mono for everything. The three fonts ship inside the app, so nothing is fetched from the network to draw them. What each style sets, the token names and the dark and light values are in [THEMING.md](THEMING.md#the-interface-style-glass-and-dense).
+
+The settings screen has it as _Interface style_ in the Appearance section, a row of two buttons (_Glass_ and _Dense technical_; in Portuguese _Estilo da interface_: _Vidro_ and _Técnico denso_), and the command palette has _Toggle interface style_. Both write only this setting, with the comments of the file in place, and the open window changes at once with no reload: the file wins like any other setting, so an edit of `config.jsonc` by another program changes it too. A value that is neither of the two is refused with the line of the file, and the window keeps the style it had.
+
+The style never changes the colors: the theme (`appearance.theme`) still says them, in either style. It changes one thing the theme also has a say in, the corner radius (`--nr-radius`): under `"dense"` it is at most 3 px, whatever the theme asks for. The font of the terminal is a setting of its own (`terminal.font.family`) and the style does not change it. The style was never kept in the browser storage of the window, so there is nothing of it to move into the file. With `prefers-reduced-transparency` (or the transparency effects of the system off) the glass is opaque; see [THEMING.md](THEMING.md#reduced-transparency).
 
 ## The terminal
 

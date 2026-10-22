@@ -151,6 +151,33 @@ What each profile becomes (an entry of `profiles` in `config.jsonc`, see [CONFIG
 
 The profiles go to the end of `profiles` in the file, keeping the comments and the layout of the file as every write from the settings screen does. If the file has a problem of its own, or the disk refuses the write, the preview stays open with the reason and nothing is written. A file over 1,000,000 bytes is not read.
 
+## The interface style: glass and dense
+
+`appearance.style` of `config.jsonc` chooses how the whole window looks beyond its colors: `glass` (the default) or `dense`. Choose it in **Appearance > Interface style** of the settings screen (a row of two buttons, **Glass** and **Dense technical**) or with the palette command **Toggle interface style**. It changes the open window at once and writes only that key, so the comments and the rest of the file stay (see [CONFIG.md](CONFIG.md)).
+
+|            | Glass                                                                                           | Dense technical                                                |
+| ---------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| What it is | Panels of glass over the picture of the window: rounded cards with a gap, blurred, veiled lines | Square corners, 1 px solid lines, small controls, a status bar |
+| Type       | Geist for the interface, Geist Mono for shortcuts and code                                      | JetBrains Mono for everything                                  |
+| Highlight  | `#5EE6C8`, then `#A99BFF`, `#F5B84B` and `#FF8FA3`                                              | `#2EE6D6`, then `#B4FF39`, `#FFB547` and `#FF5CA8`             |
+| Corners    | 14 px the sidebar, 12 px the panels, 10 px the controls                                         | none on the panels, 3 px on the controls                       |
+
+The style never changes the colors of the theme. The lines and the glass are worked out from the theme (`--nr-bg`, `--nr-surface`, `--nr-text`, `--nr-border`), so every theme, dark or light, works in either style. The one thing both have a say in is the corner radius `--nr-radius`, which the components that are not redrawn yet still read: it is the radius of the theme under glass and at most 3 px under dense, so a theme that asks for round corners gets square ones in the dense style.
+
+The root element of the window carries the style as `data-nr-style="glass"` or `data-nr-style="dense"`, and the token set of that attribute (the table below) is what the stylesheet reads. Both sets have the same names, so a component never asks which style is on. The page starts as `glass` before the settings are read.
+
+The first step of the new look (task NOR-F20-17) is the style itself: the attribute, the two token sets, the fonts and the switch. The type and the corners of the components that exist today already follow it. The components of the approved designs (the glass sidebar and panels, the status bar of the dense style and the rest) come in the next tasks and are built on these tokens; until then the glass and the line tokens are defined but not painted by any component yet.
+
+### The fonts
+
+Geist, Geist Mono and JetBrains Mono ship inside the app (`apps/desktop/src/fonts.css`, from the `@fontsource` packages): when the window opens nothing is fetched from the network, which the policy of the app (`font-src 'self'`) would refuse anyway. They are the Latin subset in woff2, which covers English and Portuguese; any other script falls back to the font of the system. They are published under the SIL Open Font License 1.1, and [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) has the attribution and the license text. A font that is missing falls back to the one the system has (`system-ui`, `Cascadia Mono`, `Consolas`).
+
+The font of the terminal is a setting of its own (`terminal.font.family`) and is not changed by the style.
+
+### Reduced transparency
+
+With `prefers-reduced-transparency: reduce` (which is also what the web view reports on Windows when the transparency effects of the system are turned off), the glass is opaque: the fills of the sidebar and the panels are the solid `--nr-surface` and `--nr-bg` of the theme and the blur is off. The dense style has no glass, so it is the same either way.
+
 ## The window: effect, opacity and background
 
 Three things change how the window itself looks, beyond the colors of a theme. All three are settings of `config.jsonc` (the **Window** and **Background** sections of the settings screen write them; see [CONFIG.md](CONFIG.md)).
@@ -306,6 +333,33 @@ Set on the root element of the page by the active theme (and the active space, f
 | `--nr-terminal-glass`     | The background of the terminal at the opacity of the interface: the pane of a terminal over a picture.  |
 | `--nr-panel-blur`         | How much the sidebar blurs the picture it lets through, with its unit (`18px`, the `ui.blur`).          |
 
+#### Style variables
+
+The token set of the interface style (see [the interface style](#the-interface-style-glass-and-dense)): the root element has the set of its `data-nr-style`, so these have a value whatever the theme is. A mod may read them and may set them on the root to change a style.
+
+| Variable                | Glass                               | Dense                          | What it holds                                                                      |
+| ----------------------- | ----------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------- |
+| `--nr-font-ui`          | Geist                               | JetBrains Mono                 | The font of the interface, with the fonts it falls back to.                        |
+| `--nr-font-mono`        | Geist Mono                          | JetBrains Mono                 | The font of shortcuts, paths and code in the interface.                            |
+| `--nr-font-size`        | `13px`                              | `12px`                         | The size of the text of the interface.                                             |
+| `--nr-font-size-small`  | `12px`                              | `11.5px`                       | The size of secondary text.                                                        |
+| `--nr-radius-side`      | `14px`                              | `0px`                          | The corners of the sidebar.                                                        |
+| `--nr-radius-panel`     | `12px`                              | `0px`                          | The corners of the panels (the terminals, the dialogs).                            |
+| `--nr-radius-control`   | `10px`                              | `3px`                          | The corners of buttons, fields and rows.                                           |
+| `--nr-radius-chip`      | `99px`                              | `3px`                          | The corners of small labels (the branch, the state of a command).                  |
+| `--nr-gap`              | `8px`                               | `1px`                          | The space between the sidebar and the panels, and between panels.                  |
+| `--nr-row-height`       | `44px`                              | `24px`                         | The height of a row of the tree of tabs.                                           |
+| `--nr-control-height`   | `32px`                              | `22px`                         | The height of a button of a bar.                                                   |
+| `--nr-line`             | 8% of `--nr-text`                   | `--nr-border`                  | Thin lines and the borders of cards.                                               |
+| `--nr-line-strong`      | 14% of `--nr-text`                  | 20% of `--nr-text` on the line | The borders of controls.                                                           |
+| `--nr-style-accent`     | `#5EE6C8`                           | `#2EE6D6`                      | The highlight the style starts from (the accent of the theme stays `--nr-accent`). |
+| `--nr-state-running`    | `#7EE2A8` (dark), `#1E8F5A` (light) | `#4ADE80` (dark), `#15803D`    | The dot of a tab with a command running.                                           |
+| `--nr-state-waiting`    | `#F5B84B` (dark), `#B7791F` (light) | `#FFB547` (dark), `#B45309`    | The dot of a tab that waits for you.                                               |
+| `--nr-glass-side`       | `--nr-surface` at 42%               | `--nr-surface`                 | What the sidebar is filled with.                                                   |
+| `--nr-glass-panel`      | `--nr-bg` at 62%                    | `--nr-bg`                      | What the panels are filled with.                                                   |
+| `--nr-glass-blur-side`  | `blur(30px) saturate(160%)`         | `none`                         | The backdrop filter of the sidebar.                                                |
+| `--nr-glass-blur-panel` | `blur(24px)`                        | `none`                         | The backdrop filter of the panels.                                                 |
+
 #### Parts
 
 `data-nr-part` names what an element is. `data-nr-state` (where the table gives values) says what state it is in, and is absent when the element is in none.
@@ -345,6 +399,7 @@ Set on the root element of the page by the active theme (and the active space, f
 | `data-nr-indicator`     | the marks on a tab                              | `running`, `failed`, `unread` or `bell`                            |
 | `data-nr-side`          | the area that holds the sidebar and the content | `left` or `right`: the side of the sidebar                         |
 | `data-nr-density`       | the area that holds the sidebar and the content | `comfortable` or `compact`                                         |
+| `data-nr-style`         | the root of the window                          | `glass` or `dense`: the interface style (`appearance.style`)       |
 | `data-nr-window-effect` | the root of the window                          | `none`, `mica`, `acrylic` or `vibrancy`: the effect the window has |
 | `data-nr-picture`       | the root of the window                          | `shown` while a picture is on screen; absent otherwise             |
 

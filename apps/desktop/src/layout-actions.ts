@@ -14,7 +14,8 @@ import {
 // as the settings screen, so a comment of the file stays and the interface follows the file.
 
 /** The settings a layout action flips. */
-export type LayoutToggle = "side" | "density" | "compact" | "keepOpen" | "tabs" | "favorites";
+export type LayoutToggle =
+  "side" | "density" | "compact" | "keepOpen" | "tabs" | "favorites" | "style";
 
 /** What a layout action asks for: flip one mode, or move the sidebar width by `delta` pixels. */
 export type LayoutCommand =
@@ -33,6 +34,7 @@ const OTHER_FAVORITES: Record<Layout["favorites"], Layout["favorites"]> = {
   sidebar: "top",
   top: "sidebar",
 };
+const OTHER_STYLE: Record<Layout["style"], Layout["style"]> = { glass: "dense", dense: "glass" };
 
 /** A width is usable when it is whole pixels from 180 to 480. */
 export function widthInRange(width: number): boolean {
@@ -82,6 +84,8 @@ export function planLayoutCommand(config: Config, command: LayoutCommand): Layou
       return change("tabs", OTHER_TABS[layout.tabs]);
     case "favorites":
       return change("favorites", OTHER_FAVORITES[layout.favorites]);
+    case "style":
+      return change("style", OTHER_STYLE[layout.style]);
     case "compact":
       if (!compactAvailable(layout)) {
         return {

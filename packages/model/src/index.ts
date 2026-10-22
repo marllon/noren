@@ -247,6 +247,8 @@ export type {
   CommandAskRefusal,
   ExtractedCommand,
 } from "./command-ask";
+export { DEFAULT_INTERFACE_STYLE, INTERFACE_STYLES, isInterfaceStyle } from "./interface-style";
+export type { InterfaceStyle } from "./interface-style";
 export { codeBlocksOf, markdownText, parseMarkdown } from "./markdown";
 export type { MdBlock, MdCode, MdInline } from "./markdown";
 export {

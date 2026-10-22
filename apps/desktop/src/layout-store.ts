@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { Config } from "@noren/model";
+import type { Config, InterfaceStyle } from "@noren/model";
 import { appearancePreview, onAppearancePreview } from "./appearance-preview";
 import { configManager } from "./config-store";
 import { clampWidth, layoutOf } from "./layout";
@@ -58,6 +58,7 @@ function sameLayout(a: Layout, b: Layout): boolean {
     a.keepOpen === b.keepOpen &&
     a.tabs === b.tabs &&
     a.favorites === b.favorites &&
+    a.style === b.style &&
     a.paneHeaders === b.paneHeaders
   );
 }
@@ -111,6 +112,14 @@ export async function saveSidebarWidth(width: number): Promise<void> {
 /** The layout preferences; the component renders again when any of them changes. */
 export function useLayout(): Layout {
   return useSyncExternalStore(subscribe, getLayout);
+}
+
+/**
+ * The interface style in force. A component that only needs the style renders again when the style
+ * changes, not at every move of the sidebar handle.
+ */
+export function useInterfaceStyle(): InterfaceStyle {
+  return useSyncExternalStore(subscribe, () => getLayout().style);
 }
 
 /** Forgets what was read, so a test starts from nothing. */

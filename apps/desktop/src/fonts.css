@@ -1,0 +1,86 @@
+/*
+ * The fonts that ship inside the app, so nothing is fetched from the network when the window opens
+ * (the policy of the app allows fonts from itself only: font-src 'self'). Geist and Geist Mono are
+ * the type of the glass style, JetBrains Mono the type of the dense one (see style-tokens.css).
+ *
+ * Each file is the Latin subset of one weight in woff2, taken from the @fontsource packages of the
+ * app (SIL Open Font License 1.1; THIRD_PARTY_NOTICES.md has the attribution and the license text).
+ * Latin covers English and Portuguese; any other script falls back to the font of the system. The
+ * woff files the packages also hold are left out: every web view that runs the app reads woff2.
+ * Keep this list the same as PACKAGED_FONTS in interface-style.ts (a test holds the two together).
+ *
+ * `font-display: swap` shows the text in the fallback font at once and swaps when the file is
+ * read, which is from the app and takes a moment, so the window never waits on a font.
+ */
+
+/* Geist */
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../node_modules/@fontsource/geist/files/geist-latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../node_modules/@fontsource/geist/files/geist-latin-500-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../node_modules/@fontsource/geist/files/geist-latin-600-normal.woff2") format("woff2");
+}
+
+/* Geist Mono */
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../node_modules/@fontsource/geist-mono/files/geist-mono-latin-400-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../node_modules/@fontsource/geist-mono/files/geist-mono-latin-500-normal.woff2")
+    format("woff2");
+}
+
+/* JetBrains Mono */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-700-normal.woff2")
+    format("woff2");
+}

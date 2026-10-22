@@ -38,6 +38,7 @@ describe("previewLayout: what a draft tries out of the layout", () => {
         keepOpen: true,
         tabs: "top",
         favorites: "top",
+        style: "dense",
         paneHeaders: true,
       }),
     ).toEqual({
@@ -47,10 +48,14 @@ describe("previewLayout: what a draft tries out of the layout", () => {
       keepOpen: true,
       tabs: "top",
       favorites: "top",
+      style: "dense",
       paneHeaders: true,
     });
     // Moving the favorites bar back to the sidebar is something to try out too.
     expect(previewLayout({ favorites: "sidebar" })).toEqual({ favorites: "sidebar" });
+    // So is the interface style, in either direction.
+    expect(previewLayout({ style: "dense" })).toEqual({ style: "dense" });
+    expect(previewLayout({ style: "glass" })).toEqual({ style: "glass" });
     // A switch turned off is something to try out too (the file may have it on).
     expect(previewLayout({ compact: false })).toEqual({ compact: false });
   });

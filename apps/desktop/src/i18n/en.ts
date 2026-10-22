@@ -323,6 +323,7 @@ export const en = {
   "action.layout.keep-sidebar-open": "Toggle keep sidebar open",
   "action.layout.top-tabs": "Toggle tabs on top",
   "action.layout.favorites-bar": "Toggle favorites bar on top",
+  "action.layout.interface-style": "Toggle interface style",
   "action.palette.open": "Open palette",
   "action.tab.new": "New tab",
   "action.tab.reopen-closed": "Reopen closed tab",
@@ -418,6 +419,9 @@ export const en = {
   "settings.favoritesBar": "Favorites bar",
   "settings.favoritesSidebar": "Sidebar",
   "settings.favoritesTop": "Top of window",
+  "settings.interfaceStyle": "Interface style",
+  "settings.styleGlass": "Glass",
+  "settings.styleDense": "Dense technical",
   "settings.density": "Density",
   "settings.comfortable": "Comfortable",
   "settings.compact": "Compact",
@@ -1351,6 +1355,8 @@ export const en = {
     "Where the tabs are: the tree in the sidebar, or a bar above the terminal.",
   "field.appearance.favorites":
     "Where the favorites bar is: at the top of the sidebar, or in a bar at the top of the window, above the terminal (under the tabs when they are on top too).",
+  "field.appearance.style":
+    'The look of the interface: "glass" (panels of glass over the picture of the window, Geist type) or "dense" (the technical look: square corners, thin lines, a monospaced font everywhere). The theme still says the colors.',
   "field.appearance.paneHeaders":
     "Shows a header with the title and the buttons on every pane of a tab.",
   "field.terminal":

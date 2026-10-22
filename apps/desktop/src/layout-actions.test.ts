@@ -66,6 +66,7 @@ describe("the layout actions of the registry", () => {
       "layout.keep-sidebar-open",
       "layout.top-tabs",
       "layout.favorites-bar",
+      "layout.interface-style",
     ]);
     for (const action of layoutActions) {
       expect(action.chords).toEqual({ safe: undefined, browser: undefined });
@@ -112,6 +113,25 @@ describe("planLayoutCommand", () => {
     expect(
       planLayoutCommand({ appearance: { tabs: "top" } }, commandOf("layout.top-tabs")),
     ).toEqual({ changes: [{ path: ["appearance", "tabs"], value: "sidebar" }] });
+  });
+
+  it("flips the interface style between glass and dense, and only that setting", () => {
+    expect(planLayoutCommand({}, commandOf("layout.interface-style"))).toEqual({
+      changes: [{ path: ["appearance", "style"], value: "dense" }],
+    });
+    expect(
+      planLayoutCommand({ appearance: { style: "dense" } }, commandOf("layout.interface-style")),
+    ).toEqual({ changes: [{ path: ["appearance", "style"], value: "glass" }] });
+    // Nothing the tabs or compact mode do stops it: the style has no place in the layout.
+    for (const appearance of [
+      { tabs: "top" as const },
+      { sidebar: { compact: true } },
+      { favorites: "top" as const },
+    ]) {
+      expect(planLayoutCommand({ appearance }, commandOf("layout.interface-style"))).toEqual({
+        changes: [{ path: ["appearance", "style"], value: "dense" }],
+      });
+    }
   });
 
   it("flips the favorites bar between the sidebar and the top of the window, and only that setting", () => {
@@ -207,6 +227,7 @@ describe("runLayoutCommand", () => {
       ["layout.compact-mode", (c) => c.appearance?.sidebar?.compact],
       ["layout.top-tabs", (c) => c.appearance?.tabs],
       ["layout.favorites-bar", (c) => c.appearance?.favorites],
+      ["layout.interface-style", (c) => c.appearance?.style],
     ];
     for (const [id, pick] of ids) {
       const { backend, manager } = await started(COMMENTED);
@@ -227,7 +248,8 @@ describe("runLayoutCommand", () => {
             key === "density" ||
             key === "compact" ||
             key === "tabs" ||
-            key === "favorites"
+            key === "favorites" ||
+            key === "style"
               ? undefined
               : value,
           ),
@@ -254,6 +276,15 @@ describe("runLayoutCommand", () => {
     expect(layoutOf(manager.state.config)).toMatchObject({ favorites: "top", tabs: "sidebar" });
     expect(await runLayoutCommand(manager, flip)).toBeUndefined();
     expect(layoutOf(manager.state.config)).toMatchObject({ favorites: "sidebar", tabs: "sidebar" });
+  });
+
+  it("flips the interface style back and forth through the file, leaving the rest alone", async () => {
+    const { manager } = await started(null);
+    const flip = commandOf("layout.interface-style");
+    expect(await runLayoutCommand(manager, flip)).toBeUndefined();
+    expect(layoutOf(manager.state.config)).toMatchObject({ style: "dense", tabs: "sidebar" });
+    expect(await runLayoutCommand(manager, flip)).toBeUndefined();
+    expect(layoutOf(manager.state.config)).toMatchObject({ style: "glass", tabs: "sidebar" });
   });
 
   it("creates the file when there is none", async () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PICTURE_PANEL_OPACITY } from "./background";
 import { THEMES } from "./builtin-themes";
 import { contrastRatio } from "./theme";
 import {
@@ -61,6 +62,35 @@ describe("interfaceOpacity", () => {
     expect(interfaceOpacity({ configured: 0.6, applied: "none", themeOpacity })).toBe(0.6);
     expect(interfaceOpacity({ configured: 0.6, applied: "mica", themeOpacity })).toBe(0.6);
     expect(interfaceOpacity({ configured: 1, applied: "mica", themeOpacity })).toBe(1);
+  });
+
+  it("lets the panels through while a picture shows, with or without an effect", () => {
+    for (const applied of ["none", "mica"] as const) {
+      expect(
+        interfaceOpacity({ configured: undefined, applied, themeOpacity, picture: true }),
+      ).toBe(PICTURE_PANEL_OPACITY);
+      expect(interfaceOpacity({ configured: null, applied, themeOpacity, picture: true })).toBe(
+        PICTURE_PANEL_OPACITY,
+      );
+    }
+    // The picture that is only wanted (it could not be read) leaves the window as it was.
+    expect(
+      interfaceOpacity({ configured: undefined, applied: "none", themeOpacity, picture: false }),
+    ).toBe(1);
+  });
+
+  it("is a value that lets the picture through, but not all of it", () => {
+    expect(PICTURE_PANEL_OPACITY).toBeGreaterThan(MIN_WINDOW_OPACITY);
+    expect(PICTURE_PANEL_OPACITY).toBeLessThan(1);
+  });
+
+  it("takes a value in the settings over the default of a picture", () => {
+    expect(
+      interfaceOpacity({ configured: 0.8, applied: "none", themeOpacity, picture: true }),
+    ).toBe(0.8);
+    expect(interfaceOpacity({ configured: 1, applied: "none", themeOpacity, picture: true })).toBe(
+      1,
+    );
   });
 
   it("never goes below the lowest opacity nor above solid", () => {

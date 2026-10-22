@@ -10,6 +10,7 @@ import {
   sameModList,
 } from "@noren/model";
 import type { Config, ConfigEdit, LanguageSetting, WindowEffect } from "@noren/model";
+import type { AppearancePreview } from "./appearance-preview";
 import type { Preset } from "./keybindings";
 import { DEFAULT_LAYOUT, layoutFromConfig } from "./layout";
 import type { Layout } from "./layout";
@@ -253,6 +254,41 @@ export function parseBackgroundOpacity(text: string): number | undefined {
 export function parseBackgroundBlur(text: string): number | undefined {
   const value = parseDecimal(text);
   return value !== undefined && value <= MAX_BACKGROUND_BLUR ? value : undefined;
+}
+
+/**
+ * A box of a number that a slider moves, as the window tries it out before Save: `undefined` for a
+ * box nobody touched, `null` for one that was emptied (not set, so the default of the window), the
+ * number otherwise. Text that is not a number yet (a person typing, "0." on the way to "0.8") keeps
+ * what the window was already trying out, `kept`, so the picture does not jump while someone types.
+ */
+export function previewNumber(
+  text: string | undefined,
+  parse: (text: string) => number | undefined,
+  kept?: number | null,
+): number | null | undefined {
+  if (text === undefined) return undefined;
+  return text.trim() === "" ? null : (parse(text) ?? kept);
+}
+
+/**
+ * What a draft tries out in the window at once, before it is saved: the numbers of the sliders.
+ * `previous` is what the window was trying out until now, kept for a box whose text is not a number.
+ */
+export function previewOf(draft: SettingsDraft, previous?: AppearancePreview): AppearancePreview {
+  return {
+    windowOpacity: previewNumber(draft.windowOpacity, parseWindowOpacity, previous?.windowOpacity),
+    backgroundOpacity: previewNumber(
+      draft.backgroundOpacity,
+      parseBackgroundOpacity,
+      previous?.backgroundOpacity,
+    ),
+    backgroundBlur: previewNumber(
+      draft.backgroundBlur,
+      parseBackgroundBlur,
+      previous?.backgroundBlur,
+    ),
+  };
 }
 
 /**

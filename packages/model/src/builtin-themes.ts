@@ -1,3 +1,4 @@
+import { DEFAULT_BACKGROUND_OPACITY } from "./background";
 import { ThemeSchema } from "./theme";
 import type { Theme } from "./theme";
 
@@ -21,7 +22,7 @@ export const FONT = {
 } as const;
 
 /** The background every theme starts with (no image). */
-export const BACKGROUND = { image: null, opacity: 0.15 } as const;
+export const BACKGROUND = { image: null, opacity: DEFAULT_BACKGROUND_OPACITY } as const;
 
 const NOREN_DUSK_DATA = {
   id: "noren-dusk",

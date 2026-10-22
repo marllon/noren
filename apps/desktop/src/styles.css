@@ -48,10 +48,32 @@ body {
 }
 
 /*
- * The picture behind the terminals (WindowBackground.tsx). It is under everything (a negative
- * layer of the root), takes no click, and its edges reach past the window by twice the blur so the
- * blur does not fade them. Address, opacity and blur are the --nr-background-* variables.
+ * The picture behind the terminals (WindowBackground.tsx), in three layers, bottom to top, that
+ * share the negative layer under everything else and take no click: what the picture is drawn on
+ * (the solid background of the theme, or its glass while the window has an effect), the picture
+ * itself and the veil over it, the background of the theme at --nr-background-veil, which keeps the
+ * text readable (dark on a dark theme, light on a light one). The edges of the picture reach past
+ * the window by twice the blur so the blur does not fade them. Address, opacity and blur are the
+ * --nr-background-* variables. The panels (sidebar, title bar, tab bar, terminals) are painted over
+ * all three at the opacity of the interface, so the picture shows through them.
  */
+.window-background-backing,
+.window-background-veil {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.window-background-backing {
+  background: var(--nr-background-backing, var(--nr-bg));
+}
+
+.window-background-veil {
+  background: var(--nr-bg);
+  opacity: var(--nr-background-veil, 0.4);
+}
+
 .window-background {
   position: fixed;
   inset: calc(var(--nr-background-blur, 0px) * -2);
@@ -59,7 +81,7 @@ body {
   background-image: var(--nr-background-image, none);
   background-position: center;
   background-size: cover;
-  opacity: var(--nr-background-opacity, 0.15);
+  opacity: var(--nr-background-opacity, 0.6);
   filter: blur(var(--nr-background-blur, 0px));
   pointer-events: none;
 }
@@ -125,6 +147,26 @@ body {
   position: relative;
   flex: 1;
   min-height: 0;
+}
+
+/*
+ * While a picture shows behind the terminals each one is a pane of glass: the terminal draws no
+ * background of its own (its theme is see-through, see terminalOpacity), and the view paints the
+ * color of the terminal at the opacity of the interface, so the picture shows through it and the text
+ * keeps its contrast. The opacity is a CSS variable, so a slider moves it without touching xterm.
+ */
+.app[data-nr-picture="shown"] .terminal-view {
+  background: var(--nr-terminal-glass, transparent);
+}
+
+/*
+ * xterm.css gives the scrolling box of a terminal a solid black background (for the scroll bar of
+ * macOS). The color of the terminal is painted by xterm on the element inside it, so a terminal with a
+ * see-through background (a picture behind it, or an interface that lets the window through) was a
+ * black block. The box has no color of its own here.
+ */
+.xterm .xterm-viewport {
+  background-color: transparent;
 }
 
 .terminal-host {
@@ -265,6 +307,12 @@ body {
   padding: 8px;
   border-right: 1px solid var(--nr-border);
   background: var(--nr-surface-glass, var(--nr-surface));
+}
+
+/* With a picture behind it the sidebar is frosted glass: what it lets through is blurred. */
+.app[data-nr-picture="shown"] .sidebar,
+.app[data-nr-picture="shown"] .tab-bar {
+  backdrop-filter: blur(var(--nr-panel-blur, 18px));
 }
 
 .app-body[data-nr-side="right"] {
@@ -2169,6 +2217,21 @@ body {
   background: var(--nr-bg);
   color: inherit;
   font: inherit;
+}
+
+/* A box with a slider under it takes the width of its section, so the sliders of a section line up. */
+.settings-number:has(> .settings-slider) {
+  align-self: stretch;
+}
+
+/* A slider under the box of the same number (settings, dialog of a space): the width of its section. */
+.settings-slider {
+  box-sizing: border-box;
+  align-self: stretch;
+  width: 100%;
+  min-width: 120px;
+  margin: 2px 0 0;
+  accent-color: var(--nr-accent);
 }
 
 .settings-number input[aria-invalid="true"],

@@ -29,9 +29,9 @@ const byteLength = (text: string): number => new TextEncoder().encode(text).leng
 
 /** The sha256 of the bytes of each text above (UTF-8). */
 export const FAKE_GALLERY_HASHES = {
-  lagoon: "173a06f56cebf2d1d5d0a4af4aa8b9e87928d7541a1eaa851575eebf904139dd",
-  ember: "bb9b715e5e52f99d64973eec308473d6909d4ce72bac54516cb6a94860bc934e",
-  tampered: "8c65f56448bf868743764e42041dc4830e335234764be97953e443c34440f4a5",
+  lagoon: "2d7aabe937cef54880686030fa6b44661b8d3fd52b24d84d52c03fea8cf5cae3",
+  ember: "3152f9f19d0eb2578f2b19415c46351450e7ff2d8d4a908ef44e3202caad5a11",
+  tampered: "3506365ac61dc1821b2322c5e193f1bbaf01ddf44b0759a2df063410cdfb599a",
   "compact-tabs": "5df2376c202e644fda4e6c85571d12b0d0df8b6f48fda3b74b5d3da37f7b1314",
 } as const;
 

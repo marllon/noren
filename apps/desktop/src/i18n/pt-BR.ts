@@ -429,13 +429,17 @@ export const ptBR: Dictionary = {
   "settings.windowEffectHint":
     "Mica e Acrílico são do Windows, vibrancy do macOS. Onde o sistema não consegue pintar o efeito, a janela continua opaca.",
   "settings.windowOpacity": "Opacidade da interface (0,3 a 1)",
-  "settings.windowOpacityHint": "Vazio: sólida, e a opacidade do tema enquanto houver um efeito.",
+  "settings.windowOpacitySlider": "Opacidade da interface",
+  "settings.windowOpacityHint":
+    "Vazio: sólida, a opacidade do tema enquanto houver um efeito e meio transparente enquanto uma imagem aparece atrás da janela. O controle mostra o efeito na hora; Salvar o mantém.",
   "settings.background": "Fundo",
   "settings.backgroundImage": "Imagem de fundo (arquivo)",
   "settings.backgroundOpacity": "Opacidade da imagem (0 a 1)",
+  "settings.backgroundOpacitySlider": "Opacidade da imagem",
   "settings.backgroundBlur": "Desfoque da imagem (px)",
+  "settings.backgroundBlurSlider": "Desfoque da imagem",
   "settings.backgroundHint":
-    "Um arquivo de imagem neste computador: um caminho completo ou um caminho dentro da pasta de configuração (backgrounds/sky.jpg). Endereços da web não são aceitos. Opacidade e desfoque vazios deixam o tema decidir. Um espaço pode ter uma imagem própria, no menu dele.",
+    "Um arquivo de imagem neste computador: um caminho completo ou um caminho dentro da pasta de configuração (backgrounds/sky.jpg). Endereços da web não são aceitos. Opacidade e desfoque vazios deixam o tema decidir (0,6 e sem desfoque nos temas embutidos). Um véu da cor do tema mantém o texto legível sobre a imagem. Os controles mostram o efeito na hora; Salvar os mantém. Um espaço pode ter uma imagem própria, no menu dele.",
   "settings.terminal": "Terminal",
   "settings.terminalSection": "Opções do terminal",
   "settings.fontList": "Lista de fontes",
@@ -871,7 +875,9 @@ export const ptBR: Dictionary = {
     "Um arquivo de imagem deste computador para o espaço “{name}”: um caminho completo ou um caminho dentro da pasta de configuração (backgrounds/sky.jpg). Endereços da web não são aceitos. Opacidade e desfoque vazios usam os das configurações ou do tema.",
   "background.image": "Arquivo da imagem",
   "background.opacity": "Opacidade (0 a 1)",
+  "background.opacitySlider": "Opacidade da imagem",
   "background.blur": "Desfoque (px)",
+  "background.blurSlider": "Desfoque da imagem",
   "background.remove": "Remover imagem",
   "background.apply": "Aplicar",
   // O seletor da imagem, na tela de configurações e no diálogo de um espaço
@@ -1165,12 +1171,12 @@ export const ptBR: Dictionary = {
   "field.appearance.window.effect":
     'O que o sistema pinta atrás da janela: "mica" ou "acrylic" no Windows 11, "vibrancy" no macOS, "none" para uma janela comum e opaca. Um sistema que não pinta o efeito mantém a janela opaca.',
   "field.appearance.window.opacity":
-    "A opacidade da interface, de 0,3 (deixa passar a maior parte do que está atrás da janela) a 1 (sólida). Sem valor (ou null) a janela é sólida e, com um efeito ligado, usa a opacidade do tema.",
+    "A opacidade da interface, de 0,3 (deixa passar a maior parte do que está atrás da janela) a 1 (sólida). Sem valor (ou null) a janela é sólida; com um efeito ligado usa a opacidade do tema; e com uma imagem atrás os painéis ficam meio transparentes (0,55), e a imagem aparece pela barra lateral e pelos terminais.",
   "field.appearance.background": "A imagem atrás dos terminais.",
   "field.appearance.background.image":
     "Um arquivo de imagem deste computador mostrado atrás dos terminais: um caminho absoluto ou um caminho dentro da pasta de configuração do app (como backgrounds/sky.jpg). Um endereço da web é recusado. null não mostra imagem, mesmo onde o tema tem uma. A imagem de um espaço vale mais que esta.",
   "field.appearance.background.opacity":
-    "Quanto da imagem aparece, de 0 (nada) a 1 (sólida). Sem valor (ou null) quem decide é o tema.",
+    "Quanto da imagem aparece, de 0 (nada) a 1 (sólida). Sem valor (ou null) quem decide é o tema (0,6 nos temas embutidos). Um véu da cor do tema cobre a imagem, então o texto continua legível mesmo com 1.",
   "field.appearance.background.blur":
     "Quanto a imagem é desfocada, em pixels. Sem valor (ou null) quem decide é o tema (nenhum).",
   "field.appearance.sidebar": "A barra lateral.",

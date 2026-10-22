@@ -18,6 +18,7 @@ import {
   parseWidth,
   parseWindowOpacity,
   planSave,
+  previewOf,
   settingsOf,
   settingsSetBy,
   shownSettings,
@@ -393,5 +394,57 @@ describe("the window and the background in the settings screen", () => {
     expect(parseBackgroundBlur("0")).toBe(0);
     for (const bad of ["", "100.5", "-1", "x"])
       expect(parseBackgroundBlur(bad), bad).toBeUndefined();
+  });
+
+  it("tries out in the window the numbers of the three sliders, and nothing else", () => {
+    // Nothing touched: nothing is tried out, so the window follows the file.
+    expect(previewOf({})).toEqual({
+      windowOpacity: undefined,
+      backgroundOpacity: undefined,
+      backgroundBlur: undefined,
+    });
+    expect(
+      previewOf({
+        windowOpacity: "0.5",
+        backgroundOpacity: ".25",
+        backgroundBlur: "12",
+        backgroundImage: "backgrounds/other.png",
+        windowEffect: "mica",
+      }),
+    ).toEqual({ windowOpacity: 0.5, backgroundOpacity: 0.25, backgroundBlur: 12 });
+  });
+
+  it("tries out an emptied box as not set, and a box that is not a number yet as nothing", () => {
+    expect(previewOf({ windowOpacity: "", backgroundBlur: " " })).toMatchObject({
+      windowOpacity: null,
+      backgroundBlur: null,
+    });
+    // Half a number on the way (a person typing) leaves the window as it is.
+    // (With nothing tried out before, that is nothing; see the next test for what was tried.)
+    expect(previewOf({ windowOpacity: "0.", backgroundOpacity: "2", backgroundBlur: "x" })).toEqual(
+      {
+        windowOpacity: undefined,
+        backgroundOpacity: undefined,
+        backgroundBlur: undefined,
+      },
+    );
+  });
+
+  it("keeps what the window was trying out while a box holds half a number", () => {
+    const previous = { windowOpacity: 0.8, backgroundOpacity: 0.25, backgroundBlur: 4 };
+    // "0." on the way to "0.9": the picture does not jump back to the file for it.
+    expect(
+      previewOf({ windowOpacity: "0.", backgroundOpacity: "0.", backgroundBlur: "x" }, previous),
+    ).toEqual(previous);
+    // A box that is a number again takes the new one, and an emptied box is not set.
+    expect(
+      previewOf({ windowOpacity: "0.9", backgroundOpacity: "", backgroundBlur: "7" }, previous),
+    ).toEqual({ windowOpacity: 0.9, backgroundOpacity: null, backgroundBlur: 7 });
+    // A box nobody touched is not tried out, whatever was tried before.
+    expect(previewOf({}, previous)).toEqual({
+      windowOpacity: undefined,
+      backgroundOpacity: undefined,
+      backgroundBlur: undefined,
+    });
   });
 });

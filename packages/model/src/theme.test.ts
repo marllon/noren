@@ -63,7 +63,7 @@ describe("ThemeSchema", () => {
       "terminal": { "foreground": "#e6e6e6", "background": "#14161b", "cursor": "#e07a5f", "selection": "#e07a5f55",
         "ansi": ["#1b1e25","#e06c75","#98c379","#e5c07b","#61afef","#c678dd","#56b6c2","#dcdfe4","#5c6370","#e06c75","#98c379","#e5c07b","#61afef","#c678dd","#56b6c2","#ffffff"] },
       "font": { "family": "Cascadia Code, JetBrains Mono, monospace", "size": 13, "lineHeight": 1.2, "ligatures": true },
-      "background": { "image": null, "opacity": 0.15 }
+      "background": { "image": null, "opacity": 0.6 }
     }`);
     expect(parseTheme(fromFile)).toEqual({ ok: true, theme: NOREN_DUSK });
   });

@@ -39,16 +39,20 @@ export {
 export type { AppliedMod, ModPlan, WrapModResult } from "./mods";
 export {
   BACKGROUND_EXTENSIONS,
+  BACKGROUND_VEIL,
   DEFAULT_BACKGROUND_BLUR,
   DEFAULT_BACKGROUND_OPACITY,
   MAX_BACKGROUND_BLUR,
   MAX_BACKGROUND_BYTES,
   MAX_BACKGROUND_PATH,
+  PICTURE_PANEL_OPACITY,
   backgroundImageProblem,
   resolveBackground,
   sniffImageMime,
 } from "./background";
 export type { BackgroundImageFile, BackgroundLayer, ResolvedBackground } from "./background";
+export { pictureUnderPanel, worstPixel } from "./background-panel";
+export type { PanelOverPicture } from "./background-panel";
 export {
   DEFAULT_WINDOW_EFFECT,
   MIN_WINDOW_OPACITY,

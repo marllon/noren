@@ -4,14 +4,26 @@ import { pictureUrl } from "./background-image-store";
 import type { PictureState } from "./background-image-store";
 
 /**
- * The picture behind the terminals, covering the window. It is drawn under everything else (the
- * stylesheet gives it a negative layer), takes no clicks, and gets its address, opacity and blur
- * from the `--nr-background-*` variables of the root element. Nothing is drawn while there is no
- * picture on screen.
+ * The picture behind the terminals, covering the window, in three layers that take no clicks and
+ * are drawn under everything else (the stylesheet gives them a negative layer): what the picture is
+ * drawn on (the solid background of the theme), the picture itself, and the veil over it, the
+ * background of the theme again, which keeps the text readable (a dark veil on a dark theme, a light
+ * one on a light theme). The picture gets its address, opacity and blur from the
+ * `--nr-background-*` variables of the root element. Nothing is drawn while there is no picture on screen.
  */
 export function WindowBackground({ picture }: { picture: PictureState }) {
   if (pictureUrl(picture) === null) return null;
-  return <div className="window-background" data-nr-part="background" aria-hidden="true" />;
+  return (
+    <>
+      <div
+        className="window-background-backing"
+        data-nr-part="background-backing"
+        aria-hidden="true"
+      />
+      <div className="window-background" data-nr-part="background" aria-hidden="true" />
+      <div className="window-background-veil" data-nr-part="background-veil" aria-hidden="true" />
+    </>
+  );
 }
 
 /**

@@ -1,7 +1,8 @@
 import { backgroundImageProblem } from "@noren/model";
 import type { Space, SpaceBackground } from "@noren/model";
+import type { AppearancePreview } from "./appearance-preview";
 import { BACKGROUND_BLUR_PROBLEM, BACKGROUND_OPACITY_PROBLEM } from "./settings-screen";
-import { parseBackgroundBlur, parseBackgroundOpacity } from "./settings-screen";
+import { parseBackgroundBlur, parseBackgroundOpacity, previewNumber } from "./settings-screen";
 
 // The picture of one space, chosen in the menu of the space. The form holds the text of its three
 // boxes; `planBackground` turns it into what `space/set-background` takes, or says which box is
@@ -40,6 +41,21 @@ export function removalOf(
   return saved !== undefined && form.image === saved
     ? { kind: "clear" }
     : { kind: "reset", image: saved ?? "" };
+}
+
+/**
+ * What the boxes try out in the window at once, before Apply, for the space on screen: an emptied
+ * box is "not set" (the space takes the settings' number), and a box that is not a number yet keeps
+ * what the window was trying out (`previous`).
+ */
+export function previewOfBackground(
+  form: Pick<BackgroundForm, "opacity" | "blur">,
+  previous?: AppearancePreview,
+): Pick<AppearancePreview, "spaceOpacity" | "spaceBlur"> {
+  return {
+    spaceOpacity: previewNumber(form.opacity, parseBackgroundOpacity, previous?.spaceOpacity),
+    spaceBlur: previewNumber(form.blur, parseBackgroundBlur, previous?.spaceBlur),
+  };
 }
 
 /** What is wrong with each box; a box that is fine has no entry. */

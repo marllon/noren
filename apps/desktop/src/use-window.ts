@@ -1,5 +1,7 @@
 import { useMemo, useSyncExternalStore } from "react";
 import type { SpaceBackground } from "@noren/model";
+import { useAppearancePreview } from "./appearance-preview";
+import { pictureUrl, usePicture } from "./background-image-store";
 import { useConfigState } from "./config-store";
 import { useTheme } from "./use-theme";
 import { windowAppearance } from "./window-appearance";
@@ -56,14 +58,36 @@ export function useSpaceBackground(): SpaceBackground | undefined {
   return useSyncExternalStore(subscribe, () => spaceBackground);
 }
 
-/** The look of the window now. */
+/**
+ * The look of the window as the settings and the theme make it, without the picture of the space: the
+ * numbers the sliders of the settings screen start from (and the ones its preview has already moved).
+ */
+export function useSettingsAppearance(): WindowAppearance {
+  const config = useConfigState().config;
+  const theme = useTheme();
+  const applied = useAppliedWindowEffect();
+  const preview = useAppearancePreview();
+  const pictureShown = pictureUrl(usePicture()) !== null;
+  return useMemo(
+    () => windowAppearance({ config, theme, applied, pictureShown, preview }),
+    [config, theme, applied, pictureShown, preview],
+  );
+}
+
+/**
+ * The look of the window now: the settings, the theme, the space and what a screen is trying out
+ * with a slider (`appearance-preview.ts`). A picture that is on screen, not one that is only wanted,
+ * is what lets the panels through.
+ */
 export function useWindowAppearance(): WindowAppearance {
   const config = useConfigState().config;
   const theme = useTheme();
   const applied = useAppliedWindowEffect();
   const own = useSpaceBackground();
+  const preview = useAppearancePreview();
+  const pictureShown = pictureUrl(usePicture()) !== null;
   return useMemo(
-    () => windowAppearance({ config, theme, applied, spaceBackground: own }),
-    [config, theme, applied, own],
+    () => windowAppearance({ config, theme, applied, spaceBackground: own, pictureShown, preview }),
+    [config, theme, applied, own, pictureShown, preview],
   );
 }

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { NOREN_DUSK, NOREN_PAPER } from "@noren/model";
+import {
+  BACKGROUND_VEIL,
+  DEFAULT_BACKGROUND_OPACITY,
+  NOREN_DUSK,
+  NOREN_PAPER,
+  PICTURE_PANEL_OPACITY,
+} from "@noren/model";
 import type { Config, Theme } from "@noren/model";
 import { isTranslucent, terminalTheme } from "./theme";
 import {
@@ -20,7 +26,7 @@ describe("windowAppearance", () => {
     expect(windowAppearance({ config: {}, theme: NOREN_DUSK, applied: "none" })).toEqual({
       opacity: 1,
       effect: "none",
-      background: { image: null, opacity: 0.15, blur: 0 },
+      background: { image: null, opacity: DEFAULT_BACKGROUND_OPACITY, blur: 0 },
     });
   });
 
@@ -39,6 +45,108 @@ describe("windowAppearance", () => {
     // The settings ask for Mica; the system could not paint it, so the window has none.
     const config: Config = { appearance: { window: { effect: "mica" } } };
     expect(windowAppearance({ config, theme: NOREN_DUSK, applied: "none" }).opacity).toBe(1);
+  });
+
+  it("lets the panels through while a picture is on screen, and only then", () => {
+    const shown = windowAppearance({
+      config: {},
+      theme: NOREN_DUSK,
+      applied: "none",
+      pictureShown: true,
+    });
+    expect(shown.opacity).toBe(PICTURE_PANEL_OPACITY);
+    // A picture that is only wanted (it could not be read) must not make the window see-through.
+    const wanted = windowAppearance({
+      config: { appearance: { background: { image: "backgrounds/sky.png" } } },
+      theme: NOREN_DUSK,
+      applied: "none",
+      pictureShown: false,
+    });
+    expect(wanted.opacity).toBe(1);
+    // The setting always counts.
+    const set = windowAppearance({
+      config: { appearance: { window: { opacity: 0.9 } } },
+      theme: NOREN_DUSK,
+      applied: "none",
+      pictureShown: true,
+    });
+    expect(set.opacity).toBe(0.9);
+  });
+
+  it("has a picture that shows by default: more than the 0.15 of before", () => {
+    const { background } = windowAppearance({
+      config: { appearance: { background: { image: "backgrounds/sky.png" } } },
+      theme: NOREN_DUSK,
+      applied: "none",
+      pictureShown: true,
+    });
+    expect(background.opacity).toBe(DEFAULT_BACKGROUND_OPACITY);
+    expect(background.opacity).toBeGreaterThan(0.15);
+  });
+
+  it("lays the numbers of a preview over the settings and the space, and only those", () => {
+    const config: Config = {
+      appearance: {
+        window: { opacity: 0.9 },
+        background: { image: "backgrounds/sky.png", opacity: 0.4, blur: 3 },
+      },
+    };
+    const none = windowAppearance({ config, theme: NOREN_DUSK, applied: "none" });
+    expect(none).toMatchObject({ opacity: 0.9, background: { opacity: 0.4, blur: 3 } });
+    const tried = windowAppearance({
+      config,
+      theme: NOREN_DUSK,
+      applied: "none",
+      preview: { windowOpacity: 0.5, backgroundOpacity: 1, backgroundBlur: 12 },
+    });
+    expect(tried).toMatchObject({
+      opacity: 0.5,
+      background: { image: "backgrounds/sky.png", opacity: 1, blur: 12 },
+    });
+    // A number the preview does not try out stays as the settings have it.
+    const partial = windowAppearance({
+      config,
+      theme: NOREN_DUSK,
+      applied: "none",
+      preview: { backgroundBlur: 20 },
+    });
+    expect(partial).toMatchObject({ opacity: 0.9, background: { opacity: 0.4, blur: 20 } });
+    // A box that was emptied (null) is "not set": the default of the window, not the file.
+    const emptied = windowAppearance({
+      config,
+      theme: NOREN_DUSK,
+      applied: "none",
+      pictureShown: true,
+      preview: { windowOpacity: null, backgroundOpacity: null },
+    });
+    expect(emptied).toMatchObject({
+      opacity: PICTURE_PANEL_OPACITY,
+      background: { opacity: DEFAULT_BACKGROUND_OPACITY },
+    });
+  });
+
+  it("lays the preview of the dialog of a space over the picture of the space", () => {
+    const space = { image: "/home/me/space.png", opacity: 0.9 };
+    const tried = windowAppearance({
+      config: { appearance: { background: { opacity: 0.4, blur: 3 } } },
+      theme: NOREN_DUSK,
+      applied: "none",
+      spaceBackground: space,
+      preview: { spaceOpacity: 0.2, spaceBlur: 7 },
+    });
+    expect(tried.background).toEqual({ image: space.image, opacity: 0.2, blur: 7 });
+    // A space with no picture of its own still takes the numbers (the image says nothing).
+    const none = windowAppearance({
+      config: { appearance: { background: { image: "backgrounds/sky.png" } } },
+      theme: NOREN_DUSK,
+      applied: "none",
+      preview: { spaceOpacity: 0.3 },
+    });
+    expect(none.background).toEqual({
+      image: "backgrounds/sky.png",
+      opacity: 0.3,
+      blur: 0,
+    });
   });
 
   it("merges the background of the theme, the settings and the space, the last one winning", () => {
@@ -91,10 +199,29 @@ describe("windowVariables", () => {
       "--nr-opacity": "0.8",
       "--nr-bg-glass": `rgb(20 22 27 / 0.8)`,
       "--nr-surface-glass": `rgb(27 30 37 / 0.8)`,
+      "--nr-terminal-glass": `rgb(20 22 27 / 0.8)`,
       "--nr-background-image": 'url("blob:abc")',
       "--nr-background-opacity": "0.4",
       "--nr-background-blur": "6px",
+      "--nr-background-veil": String(BACKGROUND_VEIL),
+      // Under Mica the picture is drawn on the glass of the window, so the effect shows through.
+      "--nr-background-backing": `rgb(20 22 27 / 0.8)`,
+      "--nr-panel-blur": `${NOREN_DUSK.ui.blur}px`,
     });
+  });
+
+  it("draws the picture on the solid background of the theme when the window has no effect", () => {
+    const appearance = windowAppearance({
+      config: {},
+      theme: NOREN_DUSK,
+      applied: "none",
+      pictureShown: true,
+    });
+    const variables = windowVariables(appearance, NOREN_DUSK, "blob:abc");
+    expect(variables["--nr-background-backing"]).toBe(NOREN_DUSK.ui.bg);
+    // The panels are see-through, the pane of a terminal too, with the color of the terminal.
+    expect(variables["--nr-opacity"]).toBe(String(PICTURE_PANEL_OPACITY));
+    expect(variables["--nr-terminal-glass"]).toBe(`rgb(20 22 27 / ${PICTURE_PANEL_OPACITY})`);
   });
 
   it("is solid and has no picture for a plain window", () => {
@@ -127,7 +254,7 @@ describe("the terminal over a translucent window or a picture", () => {
   const appearance = (opacity: number) => ({
     opacity,
     effect: "none" as const,
-    background: { image: null, opacity: 0.15, blur: 0 },
+    background: { image: null, opacity: DEFAULT_BACKGROUND_OPACITY, blur: 0 },
   });
 
   it("is as opaque as the interface, and not at all while a picture shows behind it", () => {

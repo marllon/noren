@@ -424,14 +424,17 @@ export const en = {
   "settings.windowEffectHint":
     "Mica and Acrylic are for Windows, vibrancy for macOS. Where the system cannot paint the effect, the window stays opaque.",
   "settings.windowOpacity": "Interface opacity (0.3 to 1)",
+  "settings.windowOpacitySlider": "Interface opacity",
   "settings.windowOpacityHint":
-    "Empty: solid, and the opacity of the theme while there is an effect.",
+    "Empty: solid, the opacity of the theme while there is an effect, and half see-through while a picture shows behind the window. The slider shows its effect at once; Save keeps it.",
   "settings.background": "Background",
   "settings.backgroundImage": "Background image (file)",
   "settings.backgroundOpacity": "Image opacity (0 to 1)",
+  "settings.backgroundOpacitySlider": "Image opacity",
   "settings.backgroundBlur": "Image blur (px)",
+  "settings.backgroundBlurSlider": "Image blur",
   "settings.backgroundHint":
-    "A picture file on this computer: a full path, or a path inside the config folder (backgrounds/sky.jpg). Web addresses are not accepted. Empty opacity and blur let the theme decide. A space can have a picture of its own, in its menu.",
+    "A picture file on this computer: a full path, or a path inside the config folder (backgrounds/sky.jpg). Web addresses are not accepted. Empty opacity and blur let the theme decide (0.6 and no blur in the built-in themes). A veil of the color of the theme keeps the text readable over the picture. The sliders show their effect at once; Save keeps it. A space can have a picture of its own, in its menu.",
   "settings.terminal": "Terminal",
   "settings.terminalSection": "Terminal options",
   "settings.fontList": "Font list",
@@ -858,7 +861,9 @@ export const en = {
     "A picture file on this computer for the space “{name}”: a full path, or a path inside the config folder (backgrounds/sky.jpg). Web addresses are not accepted. Empty opacity and blur take the ones of the settings or the theme.",
   "background.image": "Image file",
   "background.opacity": "Opacity (0 to 1)",
+  "background.opacitySlider": "Image opacity",
   "background.blur": "Blur (px)",
+  "background.blurSlider": "Image blur",
   "background.remove": "Remove image",
   "background.apply": "Apply",
   // The chooser of the picture, in the settings screen and in the dialog of a space
@@ -1151,12 +1156,12 @@ export const en = {
   "field.appearance.window.effect":
     'What the system paints behind the window: "mica" or "acrylic" on Windows 11, "vibrancy" on macOS, "none" for a plain opaque window. A system that cannot paint the effect keeps the window opaque.',
   "field.appearance.window.opacity":
-    "How opaque the interface is, from 0.3 (it lets most of what is behind the window through) to 1 (solid). Without a value (or null) the window is solid, and with an effect on it takes the opacity of the theme.",
+    "How opaque the interface is, from 0.3 (it lets most of what is behind the window through) to 1 (solid). Without a value (or null) the window is solid; with an effect on it takes the opacity of the theme; and with a picture behind it the panels are half see-through (0.55), so the picture shows through the sidebar and the terminals.",
   "field.appearance.background": "The picture behind the terminals.",
   "field.appearance.background.image":
     "A picture file on this computer shown behind the terminals: an absolute path, or a path inside the config folder of the app (such as backgrounds/sky.jpg). A web address is refused. null shows no picture, even where the theme has one. The picture of a space wins over this one.",
   "field.appearance.background.opacity":
-    "How much of the picture shows, from 0 (none) to 1 (solid). Without a value (or null) the theme says.",
+    "How much of the picture shows, from 0 (none) to 1 (solid). Without a value (or null) the theme says (0.6 in the built-in themes). A veil of the color of the theme is drawn over the picture, so the text stays readable even at 1.",
   "field.appearance.background.blur":
     "How much the picture is blurred, in pixels. Without a value (or null) the theme says (none).",
   "field.appearance.sidebar": "The sidebar.",

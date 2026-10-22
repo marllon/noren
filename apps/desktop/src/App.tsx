@@ -2658,6 +2658,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     overlayNode = (
       <SpaceBackgroundDialog
         space={overlaySpace}
+        active={overlaySpace.id === space.id}
         backend={backend}
         onCancel={close}
         onSubmit={(background) => {

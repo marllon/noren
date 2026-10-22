@@ -1,3 +1,5 @@
+import { PICTURE_PANEL_OPACITY } from "./background";
+
 // The look of the window itself: the effect the system paints behind it (Mica, Acrylic, vibrancy)
 // and how opaque the interface is on top of it. Pure: the effect is applied by the shell
 // (`Backend.setWindowEffect`), and the opacity reaches the page as the `--nr-opacity` variable.
@@ -69,16 +71,29 @@ export interface OpacitySources {
   applied: WindowEffect;
   /** `ui.opacity` of the theme in force. */
   themeOpacity: number;
+  /**
+   * A picture shows behind the window (it is on screen, not only wanted). The panels then let it
+   * through unless something says otherwise. Left out: no picture.
+   */
+  picture?: boolean | undefined;
 }
 
 /**
  * How opaque the interface is, from `MIN_WINDOW_OPACITY` to 1 (solid). A value in the settings
- * always counts. Without one the window is solid, except while it has an effect: then the theme says
- * (`ui.opacity`), since an effect is only seen through a window that lets some of it through.
+ * always counts. Without one the window is solid, except while it has an effect (then the theme says,
+ * `ui.opacity`, since an effect is only seen through a window that lets some of it through) or a
+ * picture shows behind it (then the panels are `PICTURE_PANEL_OPACITY`, which lets the picture
+ * through).
  */
-export function interfaceOpacity({ configured, applied, themeOpacity }: OpacitySources): number {
+export function interfaceOpacity({
+  configured,
+  applied,
+  themeOpacity,
+  picture = false,
+}: OpacitySources): number {
   if (typeof configured === "number") {
     return clampNumber(configured, MIN_WINDOW_OPACITY, 1, 1);
   }
+  if (picture) return PICTURE_PANEL_OPACITY;
   return applied === "none" ? 1 : clampNumber(themeOpacity, MIN_WINDOW_OPACITY, 1, 1);
 }

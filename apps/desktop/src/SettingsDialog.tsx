@@ -6,6 +6,8 @@ import {
   BELL_STYLES,
   CURSOR_STYLES,
   LANGUAGES,
+  MAX_BACKGROUND_BLUR,
+  MIN_WINDOW_OPACITY,
   RIGHT_CLICK_ACTIONS,
   WINDOW_EFFECTS,
   OLLAMA_PROVIDER_ID,
@@ -48,13 +50,20 @@ import { QUICK_TOGGLE_ACTION, quickShortcutLine } from "./quick-shortcut";
 import { useQuickShortcutStatus } from "./quick-shortcut-store";
 import { importSchemeFile } from "./scheme-import";
 import { NumberBox, SelectBox } from "./SettingsFields";
+import type { SliderSpec } from "./SettingsFields";
+import { appearancePreview, setAppearancePreview } from "./appearance-preview";
+import { useSettingsAppearance } from "./use-window";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { addUserThemes, getUserThemes } from "./user-themes-store";
 import {
   compactAvailable,
   hasProblems,
   keepOpenAvailable,
+  parseBackgroundBlur,
+  parseBackgroundOpacity,
+  parseWindowOpacity,
   planSave,
+  previewOf,
   shownSettings,
 } from "./settings-screen";
 import type { SettingsDraft } from "./settings-screen";
@@ -216,6 +225,9 @@ const keyPresetOptions = (): readonly { value: Preset; label: string }[] => [
   { value: "browser", label: t("settings.preset.browser") },
 ];
 
+/** An opacity as the percent a screen reader says: 0.55 is "55%". */
+const percent = (opacity: number): string => `${Math.round(opacity * 100)}%`;
+
 interface SettingsDialogProps {
   /** Where an imported color scheme is written (the themes folder), and the gallery. */
   backend: Pick<
@@ -321,6 +333,41 @@ export function SettingsDialog({
   }, [backend]);
 
   const shown = shownSettings(config, draft);
+  // The sliders (and the boxes next to them) show their effect in the window at once, as a preview:
+  // Save keeps it, and closing the screen any other way puts the window back as the file has it.
+  useEffect(() => {
+    setAppearancePreview(previewOf(draft, appearancePreview()));
+  }, [draft]);
+  useEffect(() => () => setAppearancePreview(undefined), []);
+  const inForce = useSettingsAppearance();
+  const sliders: Record<"windowOpacity" | "backgroundOpacity" | "backgroundBlur", SliderSpec> = {
+    windowOpacity: {
+      label: t("settings.windowOpacitySlider"),
+      min: MIN_WINDOW_OPACITY,
+      max: 1,
+      step: 0.01,
+      value: parseWindowOpacity(shown.windowOpacity) ?? inForce.opacity,
+      valueText: percent(parseWindowOpacity(shown.windowOpacity) ?? inForce.opacity),
+    },
+    backgroundOpacity: {
+      label: t("settings.backgroundOpacitySlider"),
+      min: 0,
+      max: 1,
+      step: 0.01,
+      value: parseBackgroundOpacity(shown.backgroundOpacity) ?? inForce.background.opacity,
+      valueText: percent(
+        parseBackgroundOpacity(shown.backgroundOpacity) ?? inForce.background.opacity,
+      ),
+    },
+    backgroundBlur: {
+      label: t("settings.backgroundBlurSlider"),
+      min: 0,
+      max: MAX_BACKGROUND_BLUR,
+      step: 1,
+      value: parseBackgroundBlur(shown.backgroundBlur) ?? inForce.background.blur,
+      valueText: `${parseBackgroundBlur(shown.backgroundBlur) ?? inForce.background.blur} px`,
+    },
+  };
   const modFiles = useModFiles();
   const modRows = settingsModRows(modFiles, shown.mods);
   const plan = planSave(config, draft, { takenProfileIds: takenProfileIds(config, profiles) });
@@ -512,6 +559,7 @@ export function SettingsDialog({
                   field="appearance.window.opacity"
                   value={shown.windowOpacity}
                   problem={plan.problems.windowOpacity}
+                  slider={sliders.windowOpacity}
                   onChange={(windowOpacity) => change({ windowOpacity })}
                 />
                 <p className="settings-hint">{t("settings.windowOpacityHint")}</p>
@@ -542,6 +590,7 @@ export function SettingsDialog({
                   field="appearance.background.opacity"
                   value={shown.backgroundOpacity}
                   problem={plan.problems.backgroundOpacity}
+                  slider={sliders.backgroundOpacity}
                   onChange={(backgroundOpacity) => change({ backgroundOpacity })}
                 />
                 <NumberBox
@@ -549,6 +598,7 @@ export function SettingsDialog({
                   field="appearance.background.blur"
                   value={shown.backgroundBlur}
                   problem={plan.problems.backgroundBlur}
+                  slider={sliders.backgroundBlur}
                   onChange={(backgroundBlur) => change({ backgroundBlur })}
                 />
                 <p className="settings-hint">{t("settings.backgroundHint")}</p>

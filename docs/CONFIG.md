@@ -71,11 +71,11 @@ Every setting is optional. Unknown settings are an error, so a typo does not go 
     "paneHeaders": false, // a header on every pane
     "window": {
       "effect": "none", // "none" | "mica" | "acrylic" | "vibrancy"
-      "opacity": null, // 0.3 to 1; null or missing: solid, or the opacity of the theme with an effect
+      "opacity": null, // 0.3 to 1; null or missing: solid; the theme's with an effect; 0.55 with a picture
     },
     "background": {
       "image": null, // a picture file on this computer; null: none
-      "opacity": null, // 0 to 1; null or missing: the theme says
+      "opacity": null, // 0 to 1; null or missing: the theme says (0.6 in the built-in themes)
       "blur": null, // pixels, 0 to 100; null or missing: the theme says
     },
   },
@@ -277,8 +277,9 @@ A space has its own switch, in its menu (right-click the space, or the **Space o
 `appearance.window` and `appearance.background` change how the window itself looks. What they do, the systems each effect works on, and how the layers of the picture are put together are in [THEMING.md](THEMING.md#the-window-effect-opacity-and-background); in short:
 
 - `appearance.window.effect` is `"none"` (the default), `"mica"`, `"acrylic"` or `"vibrancy"`. A system that cannot paint the effect keeps the window opaque, with no error of the file; the settings screen and a line in the log say why. The effect is painted dark or light like the theme you chose (and like the system while the theme follows the system).
-- `appearance.window.opacity` is a number from 0.3 to 1: how opaque the window, the title bar, the sidebar, the tab bar and the terminals are. Without a value the window is solid, and with an effect on it takes the `ui.opacity` of the theme. `null` is the same as no value.
-- `appearance.background.image` is a picture file on this computer (png, jpg, jpeg, webp, gif or bmp): an absolute path, or a path inside the folder of this file (`backgrounds/sky.jpg`). A web address, a network path, a path that climbs out of the folder with `..` and anything that is not a picture extension are errors of the file, with their line. `null` shows no picture, even where the theme has one. `opacity` (0 to 1) and `blur` (pixels, 0 to 100) say how much of it shows and how blurred it is; without them the theme says.
+- `appearance.window.opacity` is a number from 0.3 to 1: how opaque the window, the title bar, the sidebar, the tab bar and the terminals are. Without a value the window is solid; with an effect on it takes the `ui.opacity` of the theme; and while a picture shows behind it the panels are half see-through (0.55), so the picture shows through the sidebar and the terminals. `null` is the same as no value. A picture that could not be read does not count: the panels stay solid.
+- `appearance.background.image` is a picture file on this computer (png, jpg, jpeg, webp, gif or bmp): an absolute path, or a path inside the folder of this file (`backgrounds/sky.jpg`). A web address, a network path, a path that climbs out of the folder with `..` and anything that is not a picture extension are errors of the file, with their line. `null` shows no picture, even where the theme has one. `opacity` (0 to 1) and `blur` (pixels, 0 to 100) say how much of it shows and how blurred it is; without them the theme says, and the built-in themes say 0.6 and no blur (it was 0.15 before, which was hardly to be seen). A veil of the color of the theme (dark on a dark theme, light on a light one) is drawn over the picture whatever its opacity is, so the text stays readable; the sidebar blurs the picture it lets through.
+- **Sliders.** The **Window** section of the settings screen has a slider for `appearance.window.opacity` (the opacity of the interface: how see-through the sidebar and the terminals are), and the **Background** section one for `appearance.background.opacity` and one for `appearance.background.blur`, each next to the box of the same number (a number typed in the box moves the slider, and the other way round). They show their effect in the window **at once**, before **Save**; **Cancel** and closing the screen put the window back as the file has it, and **Save** writes the numbers (an emptied box is written as `null`, which goes back to the default). The dialog of a space has the same two sliders for the opacity and the blur of its picture, with the same preview on the space on screen, and **Apply** keeps them.
 
 The picture of one space is not a setting of this file: it is kept with the space in `state.json` (`background`), chosen in the menu of the space, and wins over this one for the parts it sets. The **Background image...** item of that menu opens a dialog with the same **Choose image...** button, preview and **Remove** button as the settings screen (**Remove** there takes the picture the preview shows away from the space at once, or, for a picture that was chosen in the dialog and not applied yet, lets it go), and the path box under them; **Apply** gives the space the picture.
 

@@ -1,4 +1,4 @@
-import { interfaceOpacity, resolveBackground } from "@noren/model";
+import { BACKGROUND_VEIL, interfaceOpacity, resolveBackground } from "@noren/model";
 import type {
   BackgroundLayer,
   Config,
@@ -7,6 +7,7 @@ import type {
   Theme,
   WindowEffect,
 } from "@noren/model";
+import type { AppearancePreview } from "./appearance-preview";
 
 // What the window looks like beyond the colors of the theme: how opaque the interface is, the
 // effect the system paints behind it, and the picture behind the terminals. Pure: the stores say
@@ -31,6 +32,10 @@ export interface WindowSources {
   applied: WindowEffect;
   /** The picture of the active space, if it has one. */
   spaceBackground?: SpaceBackground | undefined;
+  /** A picture is on screen (not only wanted): the panels let it through unless the settings say otherwise. */
+  pictureShown?: boolean | undefined;
+  /** The numbers a screen is trying out (the sliders), laid over the settings and the space. */
+  preview?: AppearancePreview | undefined;
 }
 
 /** What the theme says about the picture, as the lowest layer of the background. */
@@ -42,24 +47,48 @@ function themeLayer(theme: Theme): BackgroundLayer {
   };
 }
 
+/** `layer` with the numbers of the preview over its own; a number the preview does not try out stays. */
+function withPreview(
+  layer: BackgroundLayer | undefined,
+  opacity: number | null | undefined,
+  blur: number | null | undefined,
+): BackgroundLayer | undefined {
+  if (opacity === undefined && blur === undefined) return layer;
+  return {
+    ...layer,
+    ...(opacity !== undefined ? { opacity } : {}),
+    ...(blur !== undefined ? { blur } : {}),
+  };
+}
+
 export function windowAppearance({
   config,
   theme,
   applied,
   spaceBackground,
+  pictureShown = false,
+  preview,
 }: WindowSources): WindowAppearance {
   return {
     opacity: interfaceOpacity({
-      configured: config.appearance?.window?.opacity,
+      configured:
+        preview?.windowOpacity !== undefined
+          ? preview.windowOpacity
+          : config.appearance?.window?.opacity,
       applied,
       themeOpacity: theme.ui.opacity,
+      picture: pictureShown,
     }),
     effect: applied,
     // The theme, then the settings file, then the space: the last one that says something wins.
     background: resolveBackground([
       themeLayer(theme),
-      config.appearance?.background,
-      spaceBackground,
+      withPreview(
+        config.appearance?.background,
+        preview?.backgroundOpacity,
+        preview?.backgroundBlur,
+      ),
+      withPreview(spaceBackground, preview?.spaceOpacity, preview?.spaceBlur),
     ]),
   };
 }
@@ -83,8 +112,14 @@ export function withOpacity(color: string, opacity: number): string {
  * - `--nr-opacity`: the opacity of the interface, a number;
  * - `--nr-bg-glass` and `--nr-surface-glass`: `--nr-bg` and `--nr-surface` at that opacity, which the
  *   window, the title bar, the sidebar and the tab bar are painted with;
+ * - `--nr-terminal-glass`: the background of the terminal at that opacity, which the pane of a terminal
+ *   is painted with while a picture shows behind it (the terminal itself draws no background then);
  * - `--nr-background-image`, `--nr-background-opacity` and `--nr-background-blur`: the picture
- *   behind the terminals, how much of it shows and how blurred it is (with its unit).
+ *   behind the terminals, how much of it shows and how blurred it is (with its unit);
+ * - `--nr-background-veil`: how much of the background of the theme is drawn over the picture;
+ * - `--nr-background-backing`: what the picture is drawn on, the solid background of the theme (the
+ *   glass of the window while it has an effect, so the effect shows through);
+ * - `--nr-panel-blur`: how much the sidebar blurs the picture it lets through (`ui.blur` of the theme).
  */
 export function windowVariables(
   appearance: WindowAppearance,
@@ -95,9 +130,14 @@ export function windowVariables(
     "--nr-opacity": String(appearance.opacity),
     "--nr-bg-glass": withOpacity(theme.ui.bg, appearance.opacity),
     "--nr-surface-glass": withOpacity(theme.ui.surface, appearance.opacity),
+    "--nr-terminal-glass": withOpacity(theme.terminal.background, appearance.opacity),
     "--nr-background-image": imageUrl === null ? "none" : `url("${imageUrl}")`,
     "--nr-background-opacity": String(appearance.background.opacity),
     "--nr-background-blur": `${appearance.background.blur}px`,
+    "--nr-background-veil": String(BACKGROUND_VEIL),
+    "--nr-background-backing":
+      appearance.effect === "none" ? theme.ui.bg : withOpacity(theme.ui.bg, appearance.opacity),
+    "--nr-panel-blur": `${theme.ui.blur}px`,
   };
 }
 

@@ -8,6 +8,54 @@ import { fieldDescription } from "./i18n/names";
 const describe = (field: string | undefined): string | undefined =>
   field === undefined ? undefined : fieldDescription(field) || undefined;
 
+/** A slider that sets the same number as a box: its name, its range and where it stands now. */
+export interface SliderSpec {
+  /** The name of the slider for a screen reader (the box has its own label). */
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  /** Where the handle stands: the number in the box, or the value in force while the box is empty. */
+  value: number;
+  /** What a screen reader says for the value, such as "55%"; the number itself without it. */
+  valueText?: string;
+}
+
+/** The text a box holds for a number a slider chose: at most two decimals, no trailing zeros. */
+export function sliderText(value: number): string {
+  return String(Number(value.toFixed(2)));
+}
+
+/**
+ * A slider on its own: the handle moves a number in its range, and the window follows at once (the
+ * screens that use it show the number as a preview until it is saved).
+ */
+export function Slider({
+  label,
+  min,
+  max,
+  step,
+  value,
+  valueText,
+  onChange,
+}: SliderSpec & {
+  onChange(value: number): void;
+}) {
+  return (
+    <input
+      type="range"
+      className="settings-slider"
+      aria-label={label}
+      aria-valuetext={valueText}
+      min={min}
+      max={max}
+      step={step}
+      value={Math.min(max, Math.max(min, value))}
+      onChange={(event) => onChange(event.target.valueAsNumber)}
+    />
+  );
+}
+
 export interface NumberBoxProps {
   label: string;
   /** The path of the field in the schema, whose description is the tooltip of the box. */
@@ -20,6 +68,8 @@ export interface NumberBoxProps {
   wide?: boolean;
   /** A box for a secret (a token): the text is hidden, never completed or checked for spelling. */
   secret?: boolean;
+  /** A slider under the box that sets the same number (the box stays, for a number typed by hand). */
+  slider?: SliderSpec;
   onChange(text: string): void;
 }
 
@@ -31,6 +81,7 @@ export function NumberBox({
   text = false,
   wide = false,
   secret = false,
+  slider,
   onChange,
 }: NumberBoxProps) {
   const hintId = useId();
@@ -49,6 +100,9 @@ export function NumberBox({
           onChange={(event) => onChange(event.target.value)}
         />
       </label>
+      {slider !== undefined && (
+        <Slider {...slider} onChange={(chosen) => onChange(sliderText(chosen))} />
+      )}
       {problem !== undefined && (
         <span id={hintId} className="settings-hint" role="alert">
           {problem}

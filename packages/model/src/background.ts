@@ -16,9 +16,27 @@ export const MAX_BACKGROUND_BYTES = 32 * 1024 * 1024;
 /** The widest blur, in pixels. */
 export const MAX_BACKGROUND_BLUR = 100;
 
-/** How much of the picture shows, and how blurred it is, when nothing says. */
-export const DEFAULT_BACKGROUND_OPACITY = 0.15;
+/**
+ * How much of the picture shows, and how blurred it is, when nothing says. The picture is drawn
+ * over the solid background of the theme, with the veil (`BACKGROUND_VEIL`) over it, so even a
+ * picture at full opacity leaves the text readable.
+ */
+export const DEFAULT_BACKGROUND_OPACITY = 0.6;
 export const DEFAULT_BACKGROUND_BLUR = 0;
+
+/**
+ * The veil: the background of the theme (dark on a dark theme, light on a light one) drawn over the
+ * picture at this opacity, whatever the opacity of the picture is. It keeps the text readable on a
+ * bright or busy picture.
+ */
+export const BACKGROUND_VEIL = 0.4;
+
+/**
+ * How opaque the panels (the sidebar, the title bar, the tab bar and the terminals) are while a
+ * picture shows behind them and nothing says otherwise: they are translucent, so the picture shows
+ * through them, and the sidebar blurs what it lets through.
+ */
+export const PICTURE_PANEL_OPACITY = 0.55;
 
 const URL_SCHEME = /^[a-z][a-z0-9+.-]+:/i;
 const DRIVE_ABSOLUTE = /^[a-z]:[\\/]/i;

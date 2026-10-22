@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { NOREN_DUSK, THEMES } from "./builtin-themes";
 import {
   BACKGROUND_EXTENSIONS,
+  BACKGROUND_VEIL,
   DEFAULT_BACKGROUND_BLUR,
   DEFAULT_BACKGROUND_OPACITY,
   MAX_BACKGROUND_BLUR,
@@ -104,6 +106,23 @@ describe("sniffImageMime", () => {
     expect(sniffImageMime(ascii("<svg xmlns="))).toBeUndefined();
     expect(sniffImageMime(ascii("hello"))).toBeUndefined();
     expect(sniffImageMime(new Uint8Array())).toBeUndefined();
+  });
+});
+
+describe("the defaults of a picture", () => {
+  it("show far more of the picture than the 0.15 of before, and keep a veil over it", () => {
+    expect(DEFAULT_BACKGROUND_OPACITY).toBeGreaterThan(0.15);
+    expect(DEFAULT_BACKGROUND_OPACITY).toBeLessThan(1);
+    expect(BACKGROUND_VEIL).toBeGreaterThan(0);
+    expect(BACKGROUND_VEIL).toBeLessThan(1);
+    expect(DEFAULT_BACKGROUND_BLUR).toBe(0);
+  });
+
+  it("are the opacity the built-in themes say, so a theme and the settings file agree", () => {
+    for (const theme of THEMES) {
+      expect(theme.background.opacity, theme.id).toBe(DEFAULT_BACKGROUND_OPACITY);
+    }
+    expect(NOREN_DUSK.background).toEqual({ image: null, opacity: DEFAULT_BACKGROUND_OPACITY });
   });
 });
 

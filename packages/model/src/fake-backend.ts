@@ -92,6 +92,8 @@ import type { PluginFolder } from "./plugins-load";
 import { MAX_SCROLLBACK_BYTES, isScrollbackPaneId } from "./scrollback";
 import { fontNameList } from "./terminal-options";
 import { THEME_ID_PATTERN } from "./theme";
+import { reservedThemeIds } from "./theme-derive";
+import { exportedThemePath, themeExportProblem } from "./user-themes";
 import type { Id } from "./types";
 import { isSshProfile, profilesProblem } from "./user-profile-schema";
 import type { SshUserProfile, UserProfile } from "./user-profile-schema";
@@ -982,7 +984,11 @@ class FakeAi implements AiBackend {
  *   `watchConfig`
  * - the theme files of the user live in memory too: `saveUserTheme` writes one as the app does
  *   (an id that is not a theme id is refused, as the real one refuses it), `setUserTheme` puts a
- *   file there as if it had been placed by hand, `listUserThemes` answers them in the order of the ids
+ *   file there as if it had been placed by hand, `listUserThemes` answers them in the order of the ids;
+ *   `deleteUserTheme` removes one (the id checked as the real one checks it, a theme that ships with
+ *   the app refused); `exportUserTheme` is a fake save chooser: it answers the path `setThemeExportPick`
+ *   queued (`null` when none is: closed without a choice) and keeps the text written there, which
+ *   `exportedThemeFiles` shows by path
  * - the bench result files live in memory: `saveBenchResult` names and writes one as the app does
  *   (the name from the `startedAt` of the run, a suffix when the second is taken, nothing replaced,
  *   text that is no run of a known time refused), `setBenchResult` puts a file there as if it had
@@ -1110,6 +1116,10 @@ export class FakeBackend implements Backend {
   #pluginsListFailure: Error | undefined;
   #scrollbackFailure: Error | undefined;
   #userThemeSaveFailure: Error | undefined;
+  #userThemeDeleteFailure: Error | undefined;
+  /** What the fake save chooser answers, in order (see `setThemeExportPick`), and the files it wrote by path. */
+  readonly #themeExportPicks: (string | null | Error)[] = [];
+  readonly #exportedThemes = new Map<string, string>();
   #benchSaveFailure: Error | undefined;
   #benchListFailure: Error | undefined;
   #config: string | null;
@@ -1753,6 +1763,62 @@ export class FakeBackend implements Backend {
   /** Makes `saveUserTheme` reject with `error` (the disk refused); `undefined` undoes it. */
   setUserThemeSaveFailure(error: Error | undefined): void {
     this.#userThemeSaveFailure = error;
+  }
+
+  async deleteUserTheme(id: string): Promise<boolean> {
+    this.#record("deleteUserTheme", id);
+    if (!THEME_ID_PATTERN.test(id)) throw new Error(`'${id}' is not a valid theme id`);
+    if (reservedThemeIds().has(id)) {
+      throw new Error(`'${id}' is a theme that comes with Noren, so it has no file to delete`);
+    }
+    if (this.#userThemeDeleteFailure) throw this.#userThemeDeleteFailure;
+    const there = this.#userThemes.has(id);
+    this.putUserTheme(id, null);
+    return there;
+  }
+
+  /** Makes `deleteUserTheme` reject with `error` (the disk refused); `undefined` undoes it. */
+  setUserThemeDeleteFailure(error: Error | undefined): void {
+    this.#userThemeDeleteFailure = error;
+  }
+
+  /**
+   * The fake save chooser: it answers what `setThemeExportPick` queued, in order, and `null` (closed
+   * without a choice) when nothing is queued, so a test that does not drive the chooser never has a
+   * file written. The text is checked before the chooser is asked (as the real command does), the
+   * file name offered, the words on the chooser and the text are recorded, and the text is kept
+   * under the path chosen (`.json` added to a name without it), replacing a file of that path.
+   */
+  async exportUserTheme(options: {
+    fileName: string;
+    text: string;
+    title: string;
+    filter: string;
+  }): Promise<string | null> {
+    this.#record("exportUserTheme", options.fileName, options.title, options.filter, options.text);
+    const problem = themeExportProblem(options.text);
+    if (problem !== undefined) throw new Error(problem);
+    const next = this.#themeExportPicks.shift() ?? null;
+    if (next instanceof Error) throw next;
+    if (next === null) return null;
+    const path = exportedThemePath(next);
+    this.#exportedThemes.set(path, options.text);
+    return path;
+  }
+
+  /**
+   * Queues what the save chooser of an export answers the next time it is opened: the path the
+   * person chooses, `null` for closing it without a choice, or an `Error` for a chooser that cannot
+   * be opened or a file that cannot be written (the call rejects with it). One call, one opening.
+   * Not a `Backend` call, so it is not recorded.
+   */
+  setThemeExportPick(path: string | null | Error): void {
+    this.#themeExportPicks.push(path);
+  }
+
+  /** The files the fake save chooser wrote, the text of each by the path it was written to. */
+  get exportedThemeFiles(): Readonly<Record<string, string>> {
+    return Object.fromEntries(this.#exportedThemes);
   }
 
   async saveBenchResult(text: string): Promise<string> {

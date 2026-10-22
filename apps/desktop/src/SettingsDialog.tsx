@@ -54,6 +54,8 @@ import type { SliderSpec } from "./SettingsFields";
 import { appearancePreview, setAppearancePreview } from "./appearance-preview";
 import { useSettingsAppearance } from "./use-window";
 import { ShortcutsDialog } from "./ShortcutsDialog";
+import { ThemesPanel } from "./ThemesPanel";
+import type { ThemesSpace } from "./ThemesPanel";
 import { addUserThemes, getUserThemes } from "./user-themes-store";
 import {
   compactAvailable,
@@ -233,6 +235,8 @@ interface SettingsDialogProps {
   backend: Pick<
     Backend,
     | "saveUserTheme"
+    | "deleteUserTheme"
+    | "exportUserTheme"
     | "listMonospaceFonts"
     | "pickBackgroundImage"
     | "readBackgroundImage"
@@ -267,6 +271,13 @@ interface SettingsDialogProps {
   /** The update of the app (NOR-F20-02b); without it the screen has no Updates section. */
   updates?: UpdateController | undefined;
   /**
+   * The active space, for the "only this space" choice of the themes section; without it the
+   * section offers a theme for the whole app only.
+   */
+  space?: ThemesSpace | undefined;
+  /** Gives the active space the theme `themeId`, or (null) takes its own theme away. */
+  onSpaceTheme?: ((themeId: string | null) => void) | undefined;
+  /**
    * Puts text at the prompt of the focused terminal without Enter, for the install command of a
    * recommended model; false when there is no terminal.
    */
@@ -285,6 +296,8 @@ export function SettingsDialog({
   backend,
   spaceSync,
   updates,
+  space,
+  onSpaceTheme,
   onInsert,
   onClose,
 }: SettingsDialogProps) {
@@ -602,6 +615,14 @@ export function SettingsDialog({
                   onChange={(backgroundBlur) => change({ backgroundBlur })}
                 />
                 <p className="settings-hint">{t("settings.backgroundHint")}</p>
+              </section>
+              <section
+                className="settings-section settings-section-wide"
+                aria-label={t("themes.title")}
+                data-nr-part="settings-themes"
+              >
+                <h3>{t("themes.title")}</h3>
+                <ThemesPanel backend={backend} space={space} onSpaceTheme={onSpaceTheme} />
               </section>
               <section
                 className="settings-section"

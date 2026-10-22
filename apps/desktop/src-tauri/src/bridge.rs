@@ -951,6 +951,23 @@ impl ThemeState {
         }
         self.store.save(id, text).map_err(|e| e.to_string())
     }
+
+    /// Removes the theme file of `id` and says whether there was one (see [`ThemeStore::delete`]).
+    /// Only `<id>.json` of the themes folder can go: the id cannot name a path.
+    pub fn delete(&self, id: &str) -> Result<bool, String> {
+        if !self.writing_allowed {
+            return Err("this run does not write theme files".to_owned());
+        }
+        self.store.delete(id).map_err(|e| e.to_string())
+    }
+
+    /// Whether the smoke run left the files of the user as they are.
+    fn check_export(&self, text: &str) -> Result<(), String> {
+        if !self.writing_allowed {
+            return Err("this run does not write theme files".to_owned());
+        }
+        noren_core::check_export_text(text).map_err(|e| e.to_string())
+    }
 }
 
 /// Builds the store for the themes of the user: the `themes` folder inside the app config folder.
@@ -978,6 +995,73 @@ pub async fn theme_save(
     content: String,
 ) -> Result<(), String> {
     state.save(&id, &content)
+}
+
+/// Removes `themes/<id>.json`; `true` when there was a file, `false` when there was none. The id
+/// is checked to be a theme id before anything is touched, so nothing outside the themes folder
+/// can be removed, and the themes that ship with the app are not files at all.
+#[tauri::command]
+pub async fn theme_delete(state: State<'_, ThemeState>, id: String) -> Result<bool, String> {
+    state.delete(&id)
+}
+
+/// A name the person is offered in the save chooser: the characters of an ordinary file name, at
+/// most [`PICKER_TEXT_MAX`] of them; `theme.json` when nothing is left.
+fn export_file_name(name: &str) -> String {
+    let clean: String = name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ' '))
+        .take(PICKER_TEXT_MAX)
+        .collect();
+    let clean = clean.trim().trim_start_matches('.');
+    if clean.is_empty() {
+        "theme.json".to_owned()
+    } else {
+        clean.to_owned()
+    }
+}
+
+/// Hands a theme to the person as a file (the "Export" button of the themes section of the
+/// settings screen): the save chooser of the system opens over the window that asked, offering
+/// `file_name`, and `content` is written to the file the person chooses. Answers the path written,
+/// or `None` when the chooser was closed without a choice (nothing is written then). The text is
+/// checked before the chooser opens (a JSON object of at most [`noren_core::themes::MAX_THEME_BYTES`]),
+/// and what is written is that text and nothing else: the page cannot pick the path, and the
+/// chooser is the person's. `title` and `filter` are the words of the language in force.
+#[tauri::command]
+pub async fn theme_export(
+    window: tauri::Window,
+    state: State<'_, ThemeState>,
+    file_name: String,
+    title: String,
+    filter: String,
+    content: String,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    state.check_export(&content)?;
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    window
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .set_title(picker_text(&title, "Export theme"))
+        .set_file_name(export_file_name(&file_name))
+        .add_filter(picker_text(&filter, "Theme files"), &["json"])
+        .save_file(move |chosen| {
+            let _ = sender.send(chosen);
+        });
+    let Some(chosen) = receiver
+        .await
+        .map_err(|_| "the file chooser ended without an answer".to_string())?
+    else {
+        return Ok(None);
+    };
+    let path = chosen
+        .into_path()
+        .map_err(|e| format!("the file chooser gave a path that is not a file: {e}"))?;
+    noren_core::export_theme_file(&path, &content)
+        .map(|written| Some(written.to_string_lossy().into_owned()))
+        .map_err(|e| e.to_string())
 }
 
 /// One result of the bench as the interface sees it: the name of its file and its text.
@@ -3021,6 +3105,87 @@ mod tests {
         assert!(message.contains("does not write"));
         assert!(!folder.exists(), "the themes folder was created");
         assert_eq!(state.list(), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn theme_state_deletes_one_theme_file_and_nothing_else() {
+        let dir = TempDir::new("themes-delete");
+        let folder = dir.0.join(THEMES_DIR_NAME);
+        let state = ThemeState::new(ThemeStore::new(&folder));
+        state
+            .save("lagoon", "{ \"id\": \"lagoon\" }\n")
+            .expect("save");
+        state.save("bay", "{ \"id\": \"bay\" }\n").expect("save");
+        std::fs::write(dir.0.join("config.jsonc"), b"{}").expect("config");
+        assert_eq!(state.delete("lagoon"), Ok(true));
+        assert_eq!(state.delete("lagoon"), Ok(false));
+        assert_eq!(state.list(), Ok(vec!["{ \"id\": \"bay\" }\n".to_owned()]));
+        // An id that is a path is refused, and the files next to the folder are still there.
+        let message = state.delete("../config").expect_err("refused");
+        assert_eq!(message, "'../config' is not a valid theme id");
+        assert!(dir.0.join("config.jsonc").exists());
+        assert!(folder.join("bay.json").exists());
+    }
+
+    #[test]
+    fn theme_state_without_writing_does_not_delete_or_export() {
+        // The smoke run must leave the files of the user as they are.
+        let dir = TempDir::new("themes-no-delete");
+        let folder = dir.0.join(THEMES_DIR_NAME);
+        ThemeStore::new(&folder)
+            .save("lagoon", "{}")
+            .expect("the file of the user");
+        let state = ThemeState::new(ThemeStore::new(&folder)).without_writing();
+        assert!(
+            state
+                .delete("lagoon")
+                .expect_err("refused")
+                .contains("does not write")
+        );
+        assert!(folder.join("lagoon.json").exists());
+        assert!(
+            state
+                .check_export("{}")
+                .expect_err("refused")
+                .contains("does not write")
+        );
+    }
+
+    #[test]
+    fn an_export_is_checked_before_the_chooser_opens() {
+        let dir = TempDir::new("themes-export-check");
+        let state = ThemeState::new(ThemeStore::new(dir.0.join(THEMES_DIR_NAME)));
+        assert_eq!(state.check_export("{ \"id\": \"lagoon\" }\n"), Ok(()));
+        assert_eq!(
+            state.check_export("just words"),
+            Err("the text to export is not a theme file".to_owned())
+        );
+        let big = format!("{{\"pad\": \"{}\"}}", "x".repeat(300 * 1024));
+        assert!(
+            state
+                .check_export(&big)
+                .expect_err("too large")
+                .contains("a theme file is at most")
+        );
+    }
+
+    // The save chooser itself is the system's and is never opened by a test (D19); what is ours is
+    // the name it offers: the characters of an ordinary file name, never a path.
+    #[test]
+    fn the_file_name_the_save_chooser_offers_is_an_ordinary_one() {
+        assert_eq!(export_file_name("noren-dusk.json"), "noren-dusk.json");
+        assert_eq!(export_file_name("  my theme  "), "my theme");
+        assert_eq!(export_file_name("..\\..\\config.json"), "config.json");
+        assert_eq!(export_file_name("a/b:c*d?.json"), "abcd.json");
+        assert_eq!(export_file_name(""), "theme.json");
+        assert_eq!(export_file_name("..."), "theme.json");
+        assert_eq!(export_file_name("\u{0}\n"), "theme.json");
+        assert_eq!(
+            export_file_name(&"a".repeat(PICKER_TEXT_MAX + 50))
+                .chars()
+                .count(),
+            PICKER_TEXT_MAX
+        );
     }
 
     #[test]

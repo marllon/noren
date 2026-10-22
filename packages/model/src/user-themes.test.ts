@@ -110,3 +110,112 @@ describe("FakeBackend theme files", () => {
     expect(await backend.listUserThemes()).toEqual(["2"]);
   });
 });
+
+describe("FakeBackend deleteUserTheme", () => {
+  it("removes that file only and says whether there was one, twice is harmless", async () => {
+    const backend = new FakeBackend({ userThemes: { lagoon: "1", bay: "2" } });
+    await expect(backend.deleteUserTheme("lagoon")).resolves.toBe(true);
+    expect(backend.userThemeFiles).toEqual({ bay: "2" });
+    await expect(backend.deleteUserTheme("lagoon")).resolves.toBe(false);
+    await expect(backend.deleteUserTheme("never-saved")).resolves.toBe(false);
+    expect(await backend.listUserThemes()).toEqual(["2"]);
+    expect(backend.callsTo("deleteUserTheme").map((call) => call.args)).toEqual([
+      ["lagoon"],
+      ["lagoon"],
+      ["never-saved"],
+    ]);
+  });
+
+  it("refuses an id that is not a theme id, as the real one does (it names a file)", async () => {
+    const backend = new FakeBackend({ userThemes: { keep: "1" } });
+    for (const id of ["", "../keep", "a/b", "..", "A", "a b", "keep.json", "con"]) {
+      await expect(backend.deleteUserTheme(id), id).rejects.toThrow(/not a valid theme id/);
+    }
+    expect(backend.userThemeFiles).toEqual({ keep: "1" });
+  });
+
+  it("refuses the themes that ship with the app and the word system, which are not files", async () => {
+    const backend = new FakeBackend({ userThemes: { "noren-dusk": "x" } });
+    for (const id of ["noren-dusk", "noren-paper", "noren-oat", "system"]) {
+      await expect(backend.deleteUserTheme(id), id).rejects.toThrow(/comes with Noren/);
+    }
+    expect(backend.userThemeFiles).toEqual({ "noren-dusk": "x" });
+  });
+
+  it("rejects when the disk refuses, and removes nothing", async () => {
+    const backend = new FakeBackend({ userThemes: { lagoon: "1" } });
+    backend.setUserThemeDeleteFailure(new Error("access denied"));
+    await expect(backend.deleteUserTheme("lagoon")).rejects.toThrow("access denied");
+    expect(backend.userThemeFiles).toEqual({ lagoon: "1" });
+    backend.setUserThemeDeleteFailure(undefined);
+    await expect(backend.deleteUserTheme("lagoon")).resolves.toBe(true);
+  });
+});
+
+describe("FakeBackend exportUserTheme", () => {
+  const words = { title: "Export theme", filter: "Theme files" };
+  const text = serializeTheme(imported("Lagoon"));
+  const lagoon = "C:\\Downloads\\lagoon.json";
+  const again = "C:\\Downloads\\again.json";
+
+  it("is a fake save chooser: it answers what was queued, in order, and null when nothing is", async () => {
+    const backend = new FakeBackend();
+    const ask = () => backend.exportUserTheme({ fileName: "lagoon.json", text, ...words });
+    await expect(ask()).resolves.toBeNull();
+    backend.setThemeExportPick(lagoon);
+    backend.setThemeExportPick(null);
+    backend.setThemeExportPick(again);
+    await expect(ask()).resolves.toBe(lagoon);
+    await expect(ask()).resolves.toBeNull();
+    await expect(ask()).resolves.toBe(again);
+    await expect(ask()).resolves.toBeNull();
+    expect(Object.keys(backend.exportedThemeFiles)).toEqual([lagoon, again]);
+  });
+
+  it("keeps the text under the path chosen, adds .json to a name without it, and replaces a file", async () => {
+    const backend = new FakeBackend();
+    backend.setThemeExportPick("D:\\shared\\mine");
+    await expect(
+      backend.exportUserTheme({ fileName: "lagoon.json", text, ...words }),
+    ).resolves.toBe("D:\\shared\\mine.json");
+    expect(backend.exportedThemeFiles).toEqual({ "D:\\shared\\mine.json": text });
+    backend.setThemeExportPick("D:\\shared\\mine.JSON");
+    await backend.exportUserTheme({ fileName: "x.json", text: "{}", ...words });
+    backend.setThemeExportPick("D:\\shared\\mine.json");
+    await backend.exportUserTheme({ fileName: "x.json", text: "{ }", ...words });
+    expect(backend.exportedThemeFiles).toEqual({
+      "D:\\shared\\mine.json": "{ }",
+      "D:\\shared\\mine.JSON": "{}",
+    });
+  });
+
+  it("records the name offered, the words on the chooser and the text", async () => {
+    const backend = new FakeBackend();
+    await backend.exportUserTheme({ fileName: "lagoon.json", text, ...words });
+    expect(backend.callsTo("exportUserTheme").map((call) => call.args)).toEqual([
+      ["lagoon.json", "Export theme", "Theme files", text],
+    ]);
+  });
+
+  it("checks the text before the chooser is asked, so no queued answer is used up", async () => {
+    const backend = new FakeBackend();
+    backend.setThemeExportPick("C:\\out.json");
+    for (const bad of ["just words", "[1, 2]", "", "x".repeat(300 * 1024)]) {
+      await expect(
+        backend.exportUserTheme({ fileName: "a.json", text: bad, ...words }),
+      ).rejects.toThrow();
+    }
+    await expect(backend.exportUserTheme({ fileName: "a.json", text, ...words })).resolves.toBe(
+      "C:\\out.json",
+    );
+  });
+
+  it("rejects with the error queued, for a chooser that cannot open or a file that cannot be written", async () => {
+    const backend = new FakeBackend();
+    backend.setThemeExportPick(new Error("could not write the theme file"));
+    await expect(backend.exportUserTheme({ fileName: "a.json", text, ...words })).rejects.toThrow(
+      "could not write the theme file",
+    );
+    expect(backend.exportedThemeFiles).toEqual({});
+  });
+});

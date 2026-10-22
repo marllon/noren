@@ -33,6 +33,7 @@ const SECTIONS = [
   "Appearance",
   "Window",
   "Background",
+  "Themes",
   "Terminal options",
   "Profiles",
   "Shortcuts",

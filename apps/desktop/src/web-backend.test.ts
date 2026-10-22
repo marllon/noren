@@ -243,6 +243,26 @@ describe("WebBackend", () => {
       await backend.saveUserTheme("lagoon", "{}");
       expect(await backend.listUserThemes()).toEqual(["{}"]);
     });
+
+    it("keeps a deletion in the storage, so a reload does not bring the theme back", async () => {
+      const storage = memoryStorage();
+      const backend = new WebBackend(storage);
+      await backend.saveUserTheme("lagoon", "{ }");
+      await backend.saveUserTheme("bay", "{ }");
+      await expect(backend.deleteUserTheme("lagoon")).resolves.toBe(true);
+      expect(JSON.parse(storage.getItem(WEB_THEMES_KEY) ?? "null")).toEqual({ bay: "{ }" });
+      expect(await new WebBackend(storage).listUserThemes()).toEqual(["{ }"]);
+      await expect(backend.deleteUserTheme("lagoon")).resolves.toBe(false);
+    });
+
+    it("has the fake save chooser of the fake backend: a closed chooser unless a test answers it", async () => {
+      const backend = new WebBackend(memoryStorage());
+      const options = { fileName: "a.json", text: "{ }", title: "t", filter: "f" };
+      await expect(backend.exportUserTheme(options)).resolves.toBeNull();
+      backend.setThemeExportPick("C:\\out\\a.json");
+      await expect(backend.exportUserTheme(options)).resolves.toBe("C:\\out\\a.json");
+      expect(backend.exportedThemeFiles).toEqual({ "C:\\out\\a.json": "{ }" });
+    });
   });
 
   describe("fonts", () => {

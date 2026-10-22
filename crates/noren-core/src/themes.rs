@@ -13,6 +13,11 @@
 //!   text, is empty, is not shaped like a JSON object, or is larger than [`MAX_THEME_BYTES`]. A
 //!   file that survives this and is still not a valid theme is left out by the interface, which
 //!   validates it against the schema.
+//! - **Deleting** takes the same id and removes `<id>.json` of this folder and nothing else: the id
+//!   cannot name a path, a folder is never removed, and a link is removed as the link, never what it
+//!   points to.
+//! - **Exporting** ([`export_theme_file`]) writes the text of a theme to the file the person chose
+//!   in the save chooser of the system, outside this folder, to hand it to someone else.
 
 use std::fmt;
 use std::fs;
@@ -46,6 +51,10 @@ pub enum ThemeError {
     Read(io::Error),
     /// The file could not be written (see [`StoreError`] for the step).
     Write(StoreError),
+    /// The file could not be removed.
+    Delete(io::Error),
+    /// The text to export is not a theme file (a JSON object).
+    NotATheme,
 }
 
 impl fmt::Display for ThemeError {
@@ -58,6 +67,8 @@ impl fmt::Display for ThemeError {
             ),
             Self::Read(source) => write!(f, "could not read the themes folder: {source}"),
             Self::Write(source) => write!(f, "could not write the theme file: {source}"),
+            Self::Delete(source) => write!(f, "could not delete the theme file: {source}"),
+            Self::NotATheme => write!(f, "the text to export is not a theme file"),
         }
     }
 }
@@ -65,7 +76,7 @@ impl fmt::Display for ThemeError {
 impl std::error::Error for ThemeError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Read(source) => Some(source),
+            Self::Read(source) | Self::Delete(source) => Some(source),
             Self::Write(source) => Some(source),
             _ => None,
         }
@@ -171,6 +182,70 @@ impl ThemeStore {
         write_atomic(&self.dir.join(format!("{id}{EXTENSION}")), text.as_bytes())
             .map_err(ThemeError::Write)
     }
+
+    /// Removes `<id>.json` of this folder. Answers whether there was a file to remove: an id with
+    /// no file is `false`, not an error, so deleting twice is harmless. Refuses an id that is not a
+    /// theme id (so it can never name a path) before touching anything. A folder with that name is
+    /// left alone (`false`), and a link is removed as the link: what it points to stays.
+    pub fn delete(&self, id: &str) -> Result<bool, ThemeError> {
+        if !is_valid_theme_id(id) {
+            return Err(ThemeError::InvalidId(id.to_owned()));
+        }
+        let _guard = self.lock();
+        let path = self.dir.join(format!("{id}{EXTENSION}"));
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.file_type().is_dir() => Ok(false),
+            Ok(_) => fs::remove_file(&path)
+                .map(|()| true)
+                .map_err(ThemeError::Delete),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(ThemeError::Delete(error)),
+        }
+    }
+}
+
+/// Whether `text` can be exported: at most [`MAX_THEME_BYTES`] and shaped like a JSON object. The
+/// app asks before it opens the save chooser, so the person is never made to choose a file for a
+/// text that would be refused.
+pub fn check_export_text(text: &str) -> Result<(), ThemeError> {
+    if text.len() as u64 > MAX_THEME_BYTES {
+        return Err(ThemeError::TooLarge(text.len()));
+    }
+    if theme_text(text.as_bytes().to_vec()).is_none() {
+        return Err(ThemeError::NotATheme);
+    }
+    Ok(())
+}
+
+/// Writes `text`, the text of one theme, to `path`, the file the person chose in the save chooser
+/// to hand the theme to someone else (the folder of the themes is not involved). A name without
+/// the extension `.json` gets it added, so the file can be imported again. Atomic like the other
+/// writes. Answers the path written. Refuses, writing nothing, a text over [`MAX_THEME_BYTES`] and
+/// a text that is not shaped like a JSON object.
+pub fn export_theme_file(path: &Path, text: &str) -> Result<PathBuf, ThemeError> {
+    check_export_text(text)?;
+    let has_extension = path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("json"));
+    let target = if has_extension {
+        path.to_path_buf()
+    } else {
+        let mut name = path.as_os_str().to_owned();
+        name.push(EXTENSION);
+        PathBuf::from(name)
+    };
+    // The save chooser gives a file in a folder that exists; one that does not is not made here.
+    if !target
+        .parent()
+        .is_none_or(|parent| parent.as_os_str().is_empty() || parent.is_dir())
+    {
+        return Err(ThemeError::Write(StoreError::Io {
+            action: "find the folder to export to",
+            source: io::Error::new(io::ErrorKind::NotFound, "the folder does not exist"),
+        }));
+    }
+    write_atomic(&target, text.as_bytes()).map_err(ThemeError::Write)?;
+    Ok(target)
 }
 
 #[cfg(test)]
@@ -355,6 +430,137 @@ mod tests {
         fs::write(dir.themes(), b"a file where the folder should be").expect("write");
         let store = ThemeStore::new(dir.themes());
         let error = store.save("lagoon", "{}").expect_err("must fail");
+        assert!(matches!(error, ThemeError::Write(_)));
+        assert!(
+            error
+                .to_string()
+                .starts_with("could not write the theme file")
+        );
+    }
+
+    #[test]
+    fn delete_removes_that_file_only_and_says_whether_there_was_one() {
+        let dir = TempDir::new("delete");
+        let store = ThemeStore::new(dir.themes());
+        for id in ["lagoon", "bay"] {
+            store
+                .save(id, &format!("{{\"id\": \"{id}\"}}"))
+                .expect("save");
+        }
+        assert!(store.delete("lagoon").expect("delete"));
+        assert_eq!(dir.names(&dir.themes()), ["bay.json"]);
+        assert_eq!(store.list().expect("list"), ["{\"id\": \"bay\"}"]);
+        // Deleting again, or an id that was never saved, is no error.
+        assert!(!store.delete("lagoon").expect("again"));
+        assert!(!store.delete("never-saved").expect("missing"));
+        assert_eq!(dir.names(&dir.themes()), ["bay.json"]);
+    }
+
+    #[test]
+    fn delete_in_a_folder_that_does_not_exist_creates_nothing() {
+        let dir = TempDir::new("delete-missing");
+        let store = ThemeStore::new(dir.themes());
+        assert!(!store.delete("lagoon").expect("delete"));
+        assert!(!dir.themes().exists());
+    }
+
+    #[test]
+    fn delete_refuses_an_id_that_is_a_path_and_removes_nothing_outside_the_folder() {
+        let dir = TempDir::new("delete-bad-id");
+        let store = ThemeStore::new(dir.themes());
+        store.save("keep", "{}").expect("save");
+        // Files next to the folder, which a path in the id would reach.
+        fs::write(dir.0.join("config.json"), b"{}").expect("config");
+        fs::write(dir.0.join("outside.json"), b"{}").expect("outside");
+        for id in [
+            "",
+            "../config",
+            "../outside",
+            "..\\outside",
+            "a/b",
+            "..",
+            "keep.json",
+            "KEEP",
+            "con",
+            &"a".repeat(65),
+        ] {
+            assert!(
+                matches!(store.delete(id), Err(ThemeError::InvalidId(_))),
+                "{id:?} should be refused"
+            );
+        }
+        assert_eq!(dir.names(&dir.0), ["config.json", "outside.json", "themes"]);
+        assert_eq!(dir.names(&dir.themes()), ["keep.json"]);
+    }
+
+    #[test]
+    fn delete_leaves_a_folder_with_a_theme_name_alone() {
+        let dir = TempDir::new("delete-folder");
+        let folder = dir.themes();
+        fs::create_dir_all(folder.join("lagoon.json")).expect("subfolder");
+        fs::write(folder.join("lagoon.json").join("inside.txt"), b"x").expect("inside");
+        let store = ThemeStore::new(&folder);
+        assert!(!store.delete("lagoon").expect("delete"));
+        assert!(folder.join("lagoon.json").join("inside.txt").exists());
+    }
+
+    #[test]
+    fn export_writes_the_text_where_the_person_chose_and_adds_the_extension() {
+        let dir = TempDir::new("export");
+        let text = "{\n  \"id\": \"lagoon\"\n}\n";
+        let named = dir.0.join("lagoon.json");
+        assert_eq!(export_theme_file(&named, text).expect("export"), named);
+        assert_eq!(fs::read_to_string(&named).expect("read"), text);
+        // No extension, another extension, or the extension in capitals.
+        let bare = export_theme_file(&dir.0.join("shared"), text).expect("bare");
+        assert_eq!(bare, dir.0.join("shared.json"));
+        let other = export_theme_file(&dir.0.join("shared.theme"), text).expect("other");
+        assert_eq!(other, dir.0.join("shared.theme.json"));
+        let capitals = export_theme_file(&dir.0.join("LOUD.JSON"), text).expect("capitals");
+        assert_eq!(capitals, dir.0.join("LOUD.JSON"));
+        // Replaces a file of that name and leaves no temporary file.
+        export_theme_file(&named, "{\"id\": \"again\"}").expect("replace");
+        assert_eq!(
+            fs::read_to_string(&named).expect("read"),
+            "{\"id\": \"again\"}"
+        );
+        assert_eq!(
+            dir.names(&dir.0),
+            [
+                "LOUD.JSON",
+                "lagoon.json",
+                "shared.json",
+                "shared.theme.json"
+            ]
+        );
+    }
+
+    #[test]
+    fn export_refuses_a_text_that_is_not_a_theme_file_and_writes_nothing() {
+        let dir = TempDir::new("export-refused");
+        let target = dir.0.join("out.json");
+        assert!(matches!(
+            export_theme_file(&target, "just words"),
+            Err(ThemeError::NotATheme)
+        ));
+        assert!(matches!(
+            export_theme_file(&target, "[1, 2]"),
+            Err(ThemeError::NotATheme)
+        ));
+        let big = format!("{{\"pad\": \"{}\"}}", "x".repeat(300 * 1024));
+        assert!(matches!(
+            export_theme_file(&target, &big),
+            Err(ThemeError::TooLarge(_))
+        ));
+        assert!(!target.exists());
+        assert_eq!(dir.names(&dir.0), Vec::<String>::new());
+    }
+
+    #[test]
+    fn export_into_a_folder_that_is_not_there_fails_with_a_message() {
+        let dir = TempDir::new("export-nowhere");
+        let error =
+            export_theme_file(&dir.0.join("nowhere").join("a.json"), "{}").expect_err("must fail");
         assert!(matches!(error, ThemeError::Write(_)));
         assert!(
             error

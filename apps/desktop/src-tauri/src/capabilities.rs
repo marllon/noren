@@ -152,8 +152,9 @@ fn a_window_besides_the_main_one_is_granted_the_sessions_moved_to_it_and_nothing
 
 #[test]
 fn no_window_is_granted_a_command_of_the_dialog_or_file_plugins() {
-    // The app uses the file chooser from the Rust side only, through `background_image_pick`, which
-    // lists pictures and answers a path. The plugin's own commands (open, save, message, ask, and
+    // The app uses the file chooser from the Rust side only: `background_image_pick` lists pictures
+    // and answers a path, and `theme_export` opens the save chooser and writes the one theme text the
+    // page gave to the file the person chose. The plugin's own commands (open, save, message, ask, and
     // the file commands of the plugin it brings along) would let a page choose a file of any kind
     // or read it, so no window gets one, whatever the plugin registers.
     for (window, text) in [
@@ -182,6 +183,8 @@ fn only_the_main_window_may_call_what_owns_or_changes_the_workspace() {
         "config_save",
         "config_watch",
         "theme_save",
+        "theme_delete",
+        "theme_export",
         "bench_save",
         "scrollback_save",
         "scrollback_delete",

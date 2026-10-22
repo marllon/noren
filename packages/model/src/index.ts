@@ -97,8 +97,9 @@ export {
 } from "./theme";
 export type { AnsiPalette, ParseThemeResult, Theme } from "./theme";
 export { NOREN_DUSK, NOREN_PAPER, THEMES, findTheme } from "./builtin-themes";
-export { deriveTheme, normalizeColor, slugify } from "./theme-derive";
+export { deriveTheme, normalizeColor, reservedThemeIds, slugify } from "./theme-derive";
 export type { SchemeColors } from "./theme-derive";
+export { MAX_THEME_NAME, duplicateTheme, renameTheme } from "./theme-actions";
 export {
   MAX_IMPORT_CHARS,
   UNKNOWN_FORMAT_MESSAGE,
@@ -125,7 +126,13 @@ export {
 export type { ShellUserProfile, SshUserProfile, UserProfile } from "./user-profile-schema";
 export { commandLineOf, splitCommandLine, userProfilesFromImported } from "./user-profiles";
 export type { CommandLine, ProfilesFromImport, SkippedProfile } from "./user-profiles";
-export { parseUserThemes, serializeTheme } from "./user-themes";
+export {
+  MAX_THEME_BYTES,
+  exportedThemePath,
+  parseUserThemes,
+  serializeTheme,
+  themeExportProblem,
+} from "./user-themes";
 export type { UserThemesResult } from "./user-themes";
 export {
   AI_CHAT_ROLES,

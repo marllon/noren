@@ -41,6 +41,8 @@
     "allow-config-watch",
     "allow-theme-list",
     "allow-theme-save",
+    "allow-theme-delete",
+    "allow-theme-export",
     "allow-bench-list",
     "allow-bench-save",
     "allow-scrollback-load",

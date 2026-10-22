@@ -115,7 +115,10 @@ pub use sync_spaces::{
     SPACE_LINKS_FILE_NAME, SpaceFileInfo, SpaceFileLink, SpaceFileWrite, SpaceFiles, SpaceFolder,
     SpaceLink,
 };
-pub use themes::{THEMES_DIR_NAME, ThemeError, ThemeStore, is_valid_theme_id};
+pub use themes::{
+    THEMES_DIR_NAME, ThemeError, ThemeStore, check_export_text, export_theme_file,
+    is_valid_theme_id,
+};
 pub use tokio_util::sync::CancellationToken;
 pub use update::{
     FEED_TIMEOUT as UPDATE_FEED_TIMEOUT, Fetcher as UpdateFetcher, Limits as UpdateLimits,

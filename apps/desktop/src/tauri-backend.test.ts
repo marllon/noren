@@ -811,6 +811,63 @@ describe("TauriBackend", () => {
     ]);
   });
 
+  it("deletes a theme file through theme_delete and answers whether there was one", async () => {
+    const fake = fakeBridge({ theme_delete: true });
+    await expect(new TauriBackend(fake.bridge).deleteUserTheme("lagoon")).resolves.toBe(true);
+    expect(fake.invocations).toEqual([{ command: "theme_delete", args: { id: "lagoon" } }]);
+    for (const answer of [false, null, undefined, "yes", 1]) {
+      const other = fakeBridge({ theme_delete: answer });
+      await expect(new TauriBackend(other.bridge).deleteUserTheme("lagoon")).resolves.toBe(false);
+    }
+  });
+
+  it("never asks to delete a theme that ships with the app, or the word system", async () => {
+    const fake = fakeBridge({ theme_delete: true });
+    const backend = new TauriBackend(fake.bridge);
+    for (const id of ["noren-dusk", "noren-paper", "system"]) {
+      await expect(backend.deleteUserTheme(id), id).rejects.toThrow(/comes with Noren/);
+    }
+    expect(fake.invocations).toEqual([]);
+  });
+
+  it("exports a theme through theme_export with the name, the words of the chooser and the text untouched", async () => {
+    const text = '{\r\n  "id": "lagoon", "name": "Lagoon ação"\r\n}\r\n';
+    const fake = fakeBridge({ theme_export: "C:\\Users\\a\\lagoon.json" });
+    await expect(
+      new TauriBackend(fake.bridge).exportUserTheme({
+        fileName: "lagoon.json",
+        text,
+        title: "Export theme",
+        filter: "Theme files",
+      }),
+    ).resolves.toBe("C:\\Users\\a\\lagoon.json");
+    expect(fake.invocations).toEqual([
+      {
+        command: "theme_export",
+        args: {
+          fileName: "lagoon.json",
+          title: "Export theme",
+          filter: "Theme files",
+          content: text,
+        },
+      },
+    ]);
+  });
+
+  it("answers null when the save chooser was closed, and for an answer that is not a path", async () => {
+    for (const answer of [null, undefined, "", 7, { path: "a.json" }]) {
+      const fake = fakeBridge({ theme_export: answer });
+      await expect(
+        new TauriBackend(fake.bridge).exportUserTheme({
+          fileName: "a.json",
+          text: "{}",
+          title: "t",
+          filter: "f",
+        }),
+      ).resolves.toBeNull();
+    }
+  });
+
   it("saves a bench result through bench_save with the text untouched and resolves with the file name", async () => {
     const text = '{\r\n  "startedAt": "2026-10-20T14:05:09.000Z", "model": "café"\r\n}\r\n';
     const fake = fakeBridge({ bench_save: "2026-10-20-140509.json" });
@@ -884,6 +941,16 @@ describe("TauriBackend", () => {
     fake.failing.add("theme_list").add("theme_save");
     await expect(backend.listUserThemes()).rejects.toThrow("theme_list failed");
     await expect(backend.saveUserTheme("a", "{}")).rejects.toThrow("theme_save failed");
+  });
+
+  it("lets a theme_delete and a theme_export refusal reach the caller", async () => {
+    const fake = fakeBridge();
+    const backend = new TauriBackend(fake.bridge);
+    fake.failing.add("theme_delete").add("theme_export");
+    await expect(backend.deleteUserTheme("a")).rejects.toThrow("theme_delete failed");
+    await expect(
+      backend.exportUserTheme({ fileName: "a.json", text: "{}", title: "t", filter: "f" }),
+    ).rejects.toThrow("theme_export failed");
   });
 
   it("lists the monospaced fonts through fonts_list_monospace, as the names the Rust side sent", async () => {

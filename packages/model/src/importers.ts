@@ -4,6 +4,7 @@ import { keyValueSchemeColors, looksLikeKeyValue } from "./import-keyvalue";
 import { parsePlist, plistSchemeColors } from "./import-plist";
 import { claimIdentity, deriveTheme, reservedThemeIds } from "./theme-derive";
 import type { SchemeColors } from "./theme-derive";
+import { parseTheme } from "./theme";
 import type { Theme } from "./theme";
 
 // The importers: a file in one of the formats Noren reads becomes themes (or, for profiles, a
@@ -13,6 +14,8 @@ import type { Theme } from "./theme";
 // The formats are told apart by what is in the file, not by its name (a file may have no extension):
 //   - an XML property list (the `.itermcolors` files)
 //   - JSON with comments: `{ "schemes": [...] }`, a list of schemes, or one scheme
+//   - a theme of Noren itself, the JSON of a file of `themes/` (what "Export" writes), which is read
+//     back whole instead of being derived from colors
 //   - text with one `key = value` per line (`palette = 0=#1d1f21`, `background = #1d1f21`, ...)
 
 export type ImportFormat = "plist" | "json" | "key-value";
@@ -92,6 +95,42 @@ function readSchemes(
   return jsonSchemes(json.value);
 }
 
+/** A JSON object shaped like a file of `themes/`: it has the `ui` and `terminal` parts a color scheme of another program does not. */
+function looksLikeThemeFile(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const part = (key: string): unknown =>
+    Object.hasOwn(value, key) ? Reflect.get(value, key) : undefined;
+  const isObject = (x: unknown): boolean =>
+    typeof x === "object" && x !== null && !Array.isArray(x);
+  return isObject(part("ui")) && isObject(part("terminal"));
+}
+
+/**
+ * A theme exported from Noren (the file `themes/<id>.json` or the one "Export" writes) read back:
+ * it is held to the whole schema, one that is not valid is refused with where it is wrong, and it
+ * keeps everything it says (the font, the background, the radius). It keeps its id when no other
+ * theme has it; otherwise it takes a new id and name like a copy does (`-2`, ` (2)`), the name the
+ * notice then shows, so importing a file never replaces a theme of the person.
+ */
+function importThemeFile(value: Record<string, unknown>, taken: Set<string>): ImportResult {
+  const parsed = parseTheme(value);
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      errors: parsed.errors.slice(0, 5).map((error) => `This theme file is not valid: ${error}`),
+    };
+  }
+  const { theme } = parsed;
+  if (!taken.has(theme.id)) {
+    taken.add(theme.id);
+    return { ok: true, format: "json", themes: [theme], warnings: [] };
+  }
+  const identity = claimIdentity(theme.name, "imported theme", taken);
+  const renamed = parseTheme({ ...theme, id: identity.id, name: identity.name });
+  if (!renamed.ok) return { ok: false, errors: renamed.errors };
+  return { ok: true, format: "json", themes: [renamed.theme], warnings: [] };
+}
+
 function importSchemes(text: string, options: ImportOptions): ImportResult {
   if (text.length > MAX_IMPORT_CHARS) {
     return { ok: false, errors: ["This file is too large to be a color scheme"] };
@@ -104,11 +143,15 @@ function importSchemes(text: string, options: ImportOptions): ImportResult {
       errors: ["This is a binary property list; export the XML form of the file and import that"],
     };
   }
+  const taken = reservedThemeIds();
+  for (const id of options.takenIds ?? []) taken.add(id);
+  if (format === "json") {
+    const json = readJsonText(text);
+    if (json.ok && looksLikeThemeFile(json.value)) return importThemeFile(json.value, taken);
+  }
   const read = readSchemes(format, text);
   if (!read.ok) return read;
 
-  const taken = reservedThemeIds();
-  for (const id of options.takenIds ?? []) taken.add(id);
   const fallback = `Imported ${FORMAT_LABEL[format]} scheme`;
   const themes: Theme[] = [];
   const warnings = [...read.warnings];

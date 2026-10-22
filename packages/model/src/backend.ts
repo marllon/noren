@@ -304,6 +304,32 @@ export interface Backend {
    */
   saveUserTheme(id: string, text: string): Promise<void>;
   /**
+   * Removes the theme file `themes/<id>.json` and resolves with whether there was one (`false` for
+   * an id with no file, so deleting twice is harmless). Only that file goes: `id` must be a theme
+   * id (`THEME_ID_PATTERN`) and not one of the themes that ship with the app or `system`
+   * (`reservedThemeIds`), which are not files at all; anything else rejects and removes nothing.
+   * Rejects when the file cannot be removed.
+   */
+  deleteUserTheme(id: string): Promise<boolean>;
+  /**
+   * Hands a theme to the person as a file (the "Export" button of the themes section of the
+   * settings screen): the save chooser of the system opens offering `fileName`, with the words
+   * `title` and `filter` (the name of the kind of file) of the language in force, and `text` (the
+   * text of the theme, `serializeTheme`) is written to the file the person chooses, with `.json`
+   * added to a name that has no such extension. Resolves with the path written, or `null` when the
+   * chooser was closed without a choice (nothing is written). `text` must be a JSON object of at
+   * most `MAX_THEME_BYTES`; otherwise this rejects and the chooser is never opened. The page does
+   * not choose the path, and a path never reaches the page from anywhere else. The web build and
+   * `FakeBackend` have a fake chooser a test controls (`setThemeExportPick`). Rejects when the
+   * chooser cannot be opened or the file cannot be written.
+   */
+  exportUserTheme(options: {
+    fileName: string;
+    text: string;
+    title: string;
+    filter: string;
+  }): Promise<string | null>;
+  /**
    * Writes the result of a bench run, the JSON of a `BenchRun`, to `bench-results/<name>.json` in
    * the data folder of the app, atomically, and resolves with the name of the file. The caller does
    * not name the file: it is `<YYYY-MM-DD-HHmmss>.json` from the `startedAt` of the run (UTC), and

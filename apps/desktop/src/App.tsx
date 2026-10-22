@@ -322,6 +322,24 @@ export interface NorenTestHook {
   failImagePick(message: string): void;
   /** The title and the filter name of every time the page opened the file chooser, in order. */
   imagePickCalls(): { title: string; filter: string }[];
+  /**
+   * Queues what the fake save chooser of a theme export answers the next time the page opens it: the
+   * path the person chooses (`.json` is added to a name without it) or `null` for closing it without
+   * a choice. The system chooser is never opened.
+   */
+  setThemeExportPick(path: string | null): void;
+  /** Makes the next opening of the fake save chooser fail with this message. */
+  failThemeExport(message: string): void;
+  /** What every export asked of the chooser, in order: the name offered, the words on it and the text. */
+  themeExportCalls(): { fileName: string; title: string; filter: string; text: string }[];
+  /** The files the fake save chooser wrote, the text of each by the path it was written to. */
+  exportedThemes(): Record<string, string>;
+  /** The theme files of the user as the backend holds them, the text of each by theme id. */
+  themeFiles(): Record<string, string>;
+  /** Makes deleting a theme file fail with this message (the disk refused); without one, undoes it. */
+  failThemeDelete(message?: string): void;
+  /** Makes writing a theme file fail with this message (the disk refused); without one, undoes it. */
+  failThemeSave(message?: string): void;
   /** Every web address the backend was asked to open in the browser, in order. None is ever opened. */
   openedLinks(): string[];
   /**
@@ -2023,6 +2041,21 @@ function Shell({ store }: { store: WorkspaceStore }) {
             title: String(call.args[0]),
             filter: String(call.args[1]),
           })),
+        setThemeExportPick: (path) => fake.setThemeExportPick(path),
+        failThemeExport: (message) => fake.setThemeExportPick(new Error(message)),
+        themeExportCalls: () =>
+          fake.callsTo("exportUserTheme").map((call) => ({
+            fileName: String(call.args[0]),
+            title: String(call.args[1]),
+            filter: String(call.args[2]),
+            text: String(call.args[3]),
+          })),
+        exportedThemes: () => ({ ...fake.exportedThemeFiles }),
+        themeFiles: () => ({ ...fake.userThemeFiles }),
+        failThemeDelete: (message) =>
+          fake.setUserThemeDeleteFailure(message === undefined ? undefined : new Error(message)),
+        failThemeSave: (message) =>
+          fake.setUserThemeSaveFailure(message === undefined ? undefined : new Error(message)),
         openedLinks: () => [...fake.openedLinks],
         browserViews: () =>
           fake.browserPaneIds().flatMap((paneId) => {
@@ -2970,6 +3003,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
             backend={backend}
             spaceSync={spaceSync}
             updates={updates}
+            space={{ id: space.id, name: space.name, themeId: space.themeId }}
+            onSpaceTheme={(themeId) =>
+              dispatch({ type: "space/set-theme", spaceId: space.id, themeId })
+            }
             onInsert={(text) => focusedHandle()?.insert(text) ?? false}
             onClose={() => {
               closeSettings();

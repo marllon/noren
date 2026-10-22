@@ -17,6 +17,7 @@ import {
   parseUpdateCheck,
   parseUpdateProgress,
   parseUpdateStatus,
+  reservedThemeIds,
   sniffImageMime,
   syncGistTokenProblem,
   syncSpaceWriteProblem,
@@ -574,6 +575,31 @@ export class TauriBackend implements Backend {
 
   async saveUserTheme(id: string, text: string): Promise<void> {
     await this.#bridge.invoke("theme_save", { id, content: text });
+  }
+
+  async deleteUserTheme(id: string): Promise<boolean> {
+    // The themes that ship with the app are not files; the core refuses an id that is a path.
+    if (reservedThemeIds().has(id)) {
+      throw new Error(`'${id}' is a theme that comes with Noren, so it has no file to delete`);
+    }
+    return (await this.#bridge.invoke<boolean>("theme_delete", { id })) === true;
+  }
+
+  async exportUserTheme(options: {
+    fileName: string;
+    text: string;
+    title: string;
+    filter: string;
+  }): Promise<string | null> {
+    // The chooser is the system's; the page only says what to write on it and what to put in the
+    // file. A closed chooser answers `null`, and so does an answer that is not a path.
+    const path = await this.#bridge.invoke<string | null>("theme_export", {
+      fileName: options.fileName,
+      title: options.title,
+      filter: options.filter,
+      content: options.text,
+    });
+    return typeof path === "string" && path !== "" ? path : null;
   }
 
   saveBenchResult(text: string): Promise<string> {

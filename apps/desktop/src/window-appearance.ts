@@ -47,17 +47,22 @@ function themeLayer(theme: Theme): BackgroundLayer {
   };
 }
 
-/** `layer` with the numbers of the preview over its own; a number the preview does not try out stays. */
+/**
+ * `layer` with the numbers (and the picture) of the preview over its own; what the preview does not
+ * try out stays.
+ */
 function withPreview(
   layer: BackgroundLayer | undefined,
   opacity: number | null | undefined,
   blur: number | null | undefined,
+  image?: string | null,
 ): BackgroundLayer | undefined {
-  if (opacity === undefined && blur === undefined) return layer;
+  if (opacity === undefined && blur === undefined && image === undefined) return layer;
   return {
     ...layer,
     ...(opacity !== undefined ? { opacity } : {}),
     ...(blur !== undefined ? { blur } : {}),
+    ...(image !== undefined ? { image } : {}),
   };
 }
 
@@ -87,6 +92,7 @@ export function windowAppearance({
         config.appearance?.background,
         preview?.backgroundOpacity,
         preview?.backgroundBlur,
+        preview?.backgroundImage,
       ),
       withPreview(spaceBackground, preview?.spaceOpacity, preview?.spaceBlur),
     ]),

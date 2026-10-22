@@ -1,12 +1,19 @@
 import { useState } from "react";
 import type { Backend } from "@noren/model";
 import { useBackgroundThumbnail, reasonOf } from "./background-thumbnail";
+import type { ThumbnailState } from "./background-thumbnail";
 import { useT } from "./i18n";
 
 interface BackgroundPickerProps {
   backend: Pick<Backend, "pickBackgroundImage" | "readBackgroundImage">;
   /** The path the form holds now (empty: no picture). */
   path: string;
+  /**
+   * The reading of that path, when the screen that holds the picker already has it (the settings
+   * screen tries the picture out in the window as soon as it can be read); without it the picker
+   * reads the path itself.
+   */
+  reading?: ThumbnailState;
   /** The person chose a file in the chooser of the system. */
   onChoose(path: string): void;
   /** The person took away the picture the preview shows. */
@@ -19,9 +26,16 @@ interface BackgroundPickerProps {
  * a path typed by hand. Closing the chooser without a choice changes nothing; a chooser that cannot
  * be opened says why under the buttons.
  */
-export function BackgroundPicker({ backend, path, onChoose, onRemove }: BackgroundPickerProps) {
+export function BackgroundPicker({
+  backend,
+  path,
+  reading,
+  onChoose,
+  onRemove,
+}: BackgroundPickerProps) {
   const t = useT();
-  const preview = useBackgroundThumbnail(backend, path);
+  const own = useBackgroundThumbnail(backend, reading === undefined ? path : "");
+  const preview = reading ?? own;
   const [opening, setOpening] = useState(false);
   const [failure, setFailure] = useState<string>();
 

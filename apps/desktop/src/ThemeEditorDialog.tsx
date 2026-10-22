@@ -20,7 +20,7 @@ import type {
 import { BackgroundPicker } from "./BackgroundPicker";
 import { useBackgroundThumbnail } from "./background-thumbnail";
 import { useT } from "./i18n";
-import { NumberBox } from "./SettingsFields";
+import { NumberBox, Toggle } from "./SettingsFields";
 import { ThemePreview } from "./ThemePreview";
 import { nameProblem } from "./themes-section";
 import type { SaveMode } from "./themes-section";
@@ -317,14 +317,11 @@ export function ThemeEditorDialog({
               </div>
               {number("font.size", t("themeEditor.fontSize"))}
               {number("font.lineHeight", t("themeEditor.lineHeight"))}
-              <label className="settings-option">
-                <input
-                  type="checkbox"
-                  checked={theme.font.ligatures}
-                  onChange={(event) => setLigatures(event.target.checked)}
-                />
-                <span>{t("themeEditor.ligatures")}</span>
-              </label>
+              <Toggle
+                label={t("themeEditor.ligatures")}
+                checked={theme.font.ligatures}
+                onChange={setLigatures}
+              />
               <p className="settings-hint">{t("themeEditor.fontNote")}</p>
             </fieldset>
 

@@ -1,14 +1,17 @@
 import { useSyncExternalStore } from "react";
 import { nextZoom, terminalOptionsOf, zoomedFontSize } from "@noren/model";
 import type { TerminalOptions } from "@noren/model";
+import { appearancePreview, onAppearancePreview } from "./appearance-preview";
 import { configManager } from "./config-store";
 
 // The options every terminal of the window has: the `terminal` settings in force (config.jsonc),
 // with the zoom of the font put over the size. The settings follow the file, so a terminal that is
 // already running changes when the file does (`TerminalView` applies them to its xterm without
-// starting its session again). The zoom (Ctrl+= / Ctrl+- / Ctrl+0) is only a state of this
-// window: it is never written to the file, it is gone when the window closes, and it is a number of
-// pixels over the size of the settings, so a size the file changes later still counts.
+// starting its session again). The settings screen can lay the font and the cursor it is trying out
+// over the file before Save (`appearance-preview.ts`); closing it takes them back. The zoom
+// (Ctrl+= / Ctrl+- / Ctrl+0) is only a state of this window: it is never written to the file, it is
+// gone when the window closes, and it is a number of pixels over the size of the settings, so a size
+// the file changes later still counts.
 
 const listeners = new Set<() => void>();
 
@@ -36,9 +39,17 @@ function notify(): void {
   for (const listener of [...listeners]) listener();
 }
 
-/** What the settings say, before the zoom. */
+/** What the settings say (and what the settings screen is trying out over them), before the zoom. */
 function settingsOptions(): TerminalOptions {
-  return terminalOptionsOf(configManager.state.config.terminal);
+  const base = terminalOptionsOf(configManager.state.config.terminal);
+  const trial = appearancePreview()?.terminal;
+  if (trial === undefined) return base;
+  return {
+    ...base,
+    ...(Object.fromEntries(
+      Object.entries(trial).filter(([, value]) => value !== undefined),
+    ) as Partial<TerminalOptions>),
+  };
 }
 
 /**
@@ -56,9 +67,11 @@ export function getTerminalOptions(): TerminalOptions {
 export function subscribeTerminalOptions(onChange: () => void): () => void {
   listeners.add(onChange);
   const stopFollowingConfig = configManager.subscribe(onChange);
+  const stopFollowingPreview = onAppearancePreview(onChange);
   return () => {
     listeners.delete(onChange);
     stopFollowingConfig();
+    stopFollowingPreview();
   };
 }
 

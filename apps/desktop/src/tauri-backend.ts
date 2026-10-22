@@ -49,6 +49,7 @@ import type {
   ModFile,
   OllamaMemoryReading,
   OllamaModels,
+  PathKind,
   PluginFolder,
   SessionExit,
   SessionId,
@@ -814,6 +815,16 @@ export class TauriBackend implements Backend {
     const path = await this.#bridge.invoke<string | null>("background_image_pick", {
       title: options.title,
       filter: options.filter,
+    });
+    return typeof path === "string" && path !== "" ? path : null;
+  }
+
+  async pickPath(options: { kind: PathKind; title: string }): Promise<string | null> {
+    // The chooser is the system's, like the one of the picture: the page only says what it lists
+    // and what to write on it. A closed chooser answers `null`, and so does an answer that is not a path.
+    const path = await this.#bridge.invoke<string | null>("path_pick", {
+      kind: options.kind,
+      title: options.title,
     });
     return typeof path === "string" && path !== "" ? path : null;
   }

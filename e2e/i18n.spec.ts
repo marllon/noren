@@ -68,12 +68,12 @@ async function expectPortuguese(page: Page): Promise<void> {
   await expect(screen.getByRole("heading", { name: "Janela", exact: true })).toBeVisible();
   await expect(screen.getByRole("heading", { name: "Atalhos", exact: true })).toBeVisible();
   await expect(screen.getByRole("heading", { name: "Notificações", exact: true })).toBeVisible();
-  await expect(screen.getByRole("group", { name: "Idioma", exact: true })).toBeVisible();
+  await expect(screen.getByRole("combobox", { name: "Idioma", exact: true })).toBeVisible();
   await expect(screen.getByRole("radio", { name: "Esquerda", exact: true })).toBeVisible();
   await expect(
     screen.getByRole("textbox", { name: "Largura da barra lateral (px)" }),
   ).toBeVisible();
-  await expect(screen.getByRole("checkbox", { name: "Modo compacto", exact: true })).toBeVisible();
+  await expect(screen.getByRole("switch", { name: "Modo compacto", exact: true })).toBeVisible();
   await expect(screen.getByRole("button", { name: "Salvar", exact: true })).toBeVisible();
   await expect(screen.getByRole("button", { name: "Cancelar", exact: true })).toBeVisible();
 
@@ -98,9 +98,13 @@ test("changing the language to Portuguese in the settings translates the interfa
   await expect(page.getByRole("tree", { name: "Tabs", exact: true })).toBeVisible();
 
   const screen = await openSettings(page);
-  const system = screen.getByRole("radio", { name: "Same as the system", exact: true });
-  await expect(system).toBeChecked();
-  await screen.getByRole("radio", { name: "Português (Brasil)", exact: true }).check();
+  // The language is a drop-down list: four or more options would be a tall stack of radio buttons.
+  const language = screen.getByRole("combobox", { name: "Language", exact: true });
+  await expect(language).toHaveValue("system");
+  await expect(
+    language.getByRole("option", { name: "Same as the system", exact: true }),
+  ).toBeAttached();
+  await language.selectOption({ label: "Português (Brasil)" });
   await saveSettings(page);
 
   // No reload: the same page now speaks Portuguese.
@@ -118,7 +122,9 @@ test("the language chosen stays after a reload, and can go back to English", asy
   await seedConfig(page, COMMENTED);
   await openMain(page);
   const screen = await openSettings(page);
-  await screen.getByRole("radio", { name: "Português (Brasil)", exact: true }).check();
+  await screen
+    .getByRole("combobox", { name: "Language", exact: true })
+    .selectOption({ label: "Português (Brasil)" });
   await saveSettings(page);
   await expect(page.getByRole("tree", { name: "Abas", exact: true })).toBeVisible();
 
@@ -128,10 +134,9 @@ test("the language chosen stays after a reload, and can go back to English", asy
 
   await page.getByRole("button", { name: "Configurações", exact: true }).click();
   const portuguese = page.getByRole("dialog", { name: "Configurações", exact: true });
-  await expect(
-    portuguese.getByRole("radio", { name: "Português (Brasil)", exact: true }),
-  ).toBeChecked();
-  await portuguese.getByRole("radio", { name: "English", exact: true }).check();
+  const idioma = portuguese.getByRole("combobox", { name: "Idioma", exact: true });
+  await expect(idioma).toHaveValue("pt-BR");
+  await idioma.selectOption({ label: "English" });
   await portuguese.getByRole("button", { name: "Salvar", exact: true }).click();
   await expect(portuguese).toHaveCount(0);
 

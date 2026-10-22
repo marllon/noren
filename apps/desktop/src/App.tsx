@@ -323,6 +323,16 @@ export interface NorenTestHook {
   /** The title and the filter name of every time the page opened the file chooser, in order. */
   imagePickCalls(): { title: string; filter: string }[];
   /**
+   * Queues what the fake chooser of a path field (the key file of an ssh profile, the folder of a
+   * profile) answers the next time the page opens it: the path the person chooses or `null` for
+   * closing it without a choice. The system chooser is never opened.
+   */
+  setPathPick(path: string | null): void;
+  /** Makes the next opening of the fake chooser of a path field fail with this message. */
+  failPathPick(message: string): void;
+  /** What the chooser of a path field listed (`file` or `folder`) and its title, every time it was opened, in order. */
+  pathPickCalls(): { kind: string; title: string }[];
+  /**
    * Queues what the fake save chooser of a theme export answers the next time the page opens it: the
    * path the person chooses (`.json` is added to a name without it) or `null` for closing it without
    * a choice. The system chooser is never opened.
@@ -2040,6 +2050,13 @@ function Shell({ store }: { store: WorkspaceStore }) {
           fake.callsTo("pickBackgroundImage").map((call) => ({
             title: String(call.args[0]),
             filter: String(call.args[1]),
+          })),
+        setPathPick: (path) => fake.setPathPick(path),
+        failPathPick: (message) => fake.setPathPick(new Error(message)),
+        pathPickCalls: () =>
+          fake.callsTo("pickPath").map((call) => ({
+            kind: String(call.args[0]),
+            title: String(call.args[1]),
           })),
         setThemeExportPick: (path) => fake.setThemeExportPick(path),
         failThemeExport: (message) => fake.setThemeExportPick(new Error(message)),

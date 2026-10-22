@@ -619,7 +619,7 @@ test.describe("the push when Noren closes", () => {
 
     const { sync } = await openSync(page);
     await connectToGist(sync);
-    await sync.getByRole("checkbox", { name: "Push when Noren closes", exact: true }).uncheck();
+    await sync.getByRole("switch", { name: "Push when Noren closes", exact: true }).uncheck();
     await expect.poll(() => configText(page)).toContain('"pushOnClose": false');
     await cancelSettings(page);
     expect((await close(page)).outcome).toEqual({ kind: "skipped", reason: "off" });

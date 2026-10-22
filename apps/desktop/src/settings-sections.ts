@@ -23,6 +23,8 @@ import {
   MIN_MAX_PANES,
   MIN_SCROLLBACK,
   OLLAMA_PROVIDER_ID,
+  clampFontSize,
+  safeFontFamily,
 } from "@noren/model";
 import type {
   AiFunction,
@@ -33,6 +35,7 @@ import type {
   ConfigPath,
   CursorStyle,
   RightClickAction,
+  TerminalOptions,
 } from "@noren/model";
 
 // The pure part of the Terminal, Auto-archive and AI sections of the settings screen: where each
@@ -198,6 +201,37 @@ function terminalWanted(
   if (problem === undefined) return { value: wanted };
   // The words of the schema say it best for a list of fonts; a number gets its range in plain words.
   return { problem: friendly ?? problem };
+}
+
+/**
+ * What the Terminal draft tries out in the terminals at once, before Save: the font, the size, the
+ * line height, the ligatures and the cursor (what a person sees change). A box whose text is not a
+ * value the schema takes yet (half a number on the way) keeps what the terminals were already
+ * trying out, `kept`, so the text does not jump while someone types; the settings that have no
+ * effect to see (scrollback, bell, panes) are not tried out. `undefined` when there is nothing.
+ */
+export function previewTerminal(
+  draft: TerminalDraft | undefined,
+  kept?: Partial<TerminalOptions>,
+): Partial<TerminalOptions> | undefined {
+  if (draft === undefined) return undefined;
+  const tried: Partial<TerminalOptions> = {};
+  const text = (key: "fontFamily" | "fontSize" | "lineHeight") => {
+    const value = draft[key];
+    if (value === undefined) return undefined;
+    const wanted = terminalWanted(key, value);
+    return "value" in wanted ? wanted.value : kept?.[key];
+  };
+  const family = text("fontFamily");
+  if (typeof family === "string" && family !== "") tried.fontFamily = safeFontFamily(family);
+  const size = text("fontSize");
+  if (typeof size === "number") tried.fontSize = clampFontSize(size);
+  const lineHeight = text("lineHeight");
+  if (typeof lineHeight === "number") tried.lineHeight = lineHeight;
+  if (draft.ligatures !== undefined) tried.ligatures = draft.ligatures;
+  if (draft.cursorStyle !== undefined) tried.cursorStyle = draft.cursorStyle;
+  if (draft.cursorBlink !== undefined) tried.cursorBlink = draft.cursorBlink;
+  return Object.keys(tried).length === 0 ? undefined : tried;
 }
 
 /**

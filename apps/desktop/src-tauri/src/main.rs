@@ -169,7 +169,7 @@ fn main() {
     // installer, but only for `update.rs`: it makes no request of its own and its commands get no
     // capability. The key and the endpoint are `plugins > updater` of tauri.conf.json.
     builder = builder.plugin(update::plugin());
-    // The file chooser of the system, for `background_image_pick` and `theme_export` only: the
+    // The file chooser of the system, for `background_image_pick`, `path_pick` and `theme_export` only: the
     // plugin shows nothing until asked and its own commands get no capability. Present in the smoke
     // runs too, where nothing calls those commands, so no chooser ever opens there.
     builder = builder.plugin(tauri_plugin_dialog::init());
@@ -296,6 +296,7 @@ fn main() {
             bridge::window_effect_set,
             bridge::background_image_read,
             bridge::background_image_pick,
+            bridge::path_pick,
             bridge::file_preview_read,
             bridge::git_diff_read,
             bridge::fonts_list_monospace,

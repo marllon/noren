@@ -26,7 +26,7 @@ const tab = (page: Page, name: string) =>
     .getByRole("treeitem", { name, exact: true });
 const radio = (screen: Locator, name: string) => screen.getByRole("radio", { name, exact: true });
 const checkbox = (screen: Locator, name: string) =>
-  screen.getByRole("checkbox", { name, exact: true });
+  screen.getByRole("switch", { name, exact: true });
 
 /** A settings file with comments, as a person writes it. */
 const COMMENTED = `// My Noren settings, keep this line.

@@ -6,8 +6,6 @@ import {
   BELL_STYLES,
   CURSOR_STYLES,
   LANGUAGES,
-  MAX_BACKGROUND_BLUR,
-  MIN_WINDOW_OPACITY,
   RIGHT_CLICK_ACTIONS,
   WINDOW_EFFECTS,
   OLLAMA_PROVIDER_ID,
@@ -37,6 +35,7 @@ import { commitProfileImport, readProfileFile, takenProfileIds } from "./profile
 import type { ProfileImportPlan } from "./profile-import";
 import { ProfileImportDialog } from "./ProfileImportDialog";
 import { BackgroundPicker } from "./BackgroundPicker";
+import { useBackgroundThumbnail } from "./background-thumbnail";
 import { BenchPanel } from "./BenchPanel";
 import { GalleryPanel } from "./GalleryPanel";
 import { SyncPanel } from "./SyncPanel";
@@ -49,8 +48,16 @@ import { useProfiles } from "./profiles-store";
 import { QUICK_TOGGLE_ACTION, quickShortcutLine } from "./quick-shortcut";
 import { useQuickShortcutStatus } from "./quick-shortcut-store";
 import { importSchemeFile } from "./scheme-import";
-import { ActionRow, Choice, NumberBox, SelectBox, TextArea, Toggle } from "./SettingsFields";
-import type { SliderSpec } from "./SettingsFields";
+import {
+  ActionRow,
+  Choice,
+  NumberBox,
+  PathBox,
+  SelectBox,
+  TextArea,
+  Toggle,
+} from "./SettingsFields";
+import { CHOICE_CONTROLS, asPercent, asPixels, sliderFor } from "./settings-controls";
 import { appearancePreview, setAppearancePreview } from "./appearance-preview";
 import { useSettingsAppearance } from "./use-window";
 import { ShortcutsDialog } from "./ShortcutsDialog";
@@ -61,11 +68,9 @@ import {
   compactAvailable,
   hasProblems,
   keepOpenAvailable,
-  parseBackgroundBlur,
-  parseBackgroundOpacity,
-  parseWindowOpacity,
   planSave,
   previewOf,
+  settingsOf,
   shownSettings,
 } from "./settings-screen";
 import type { SettingsDraft } from "./settings-screen";
@@ -81,7 +86,7 @@ import {
 import type { SettingsSection } from "./settings-nav";
 import { isSshRow, withNewProfile, withProfileEdited, withoutProfile } from "./settings-profiles";
 import type { ProfileField, ProfileRow } from "./settings-profiles";
-import { aiProviderIds, fontChoice } from "./settings-sections";
+import { aiProviderIds, fontChoice, terminalValuesOf } from "./settings-sections";
 import type { AiTargetDraft } from "./settings-sections";
 import { useWindowEffectReport, windowEffectNote } from "./window-effect-store";
 
@@ -141,9 +146,6 @@ const keyPresetOptions = (): readonly { value: Preset; label: string }[] => [
   { value: "browser", label: t("settings.preset.browser") },
 ];
 
-/** An opacity as the percent a screen reader says: 0.55 is "55%". */
-const percent = (opacity: number): string => `${Math.round(opacity * 100)}%`;
-
 /**
  * Scrolls the content so that a section stands at its top, under the padding. False when the
  * section is not on screen at all (a search hid it), and then nothing is scrolled.
@@ -201,6 +203,7 @@ interface SettingsDialogProps {
     | "exportUserTheme"
     | "listMonospaceFonts"
     | "pickBackgroundImage"
+    | "pickPath"
     | "readBackgroundImage"
     | "ai"
     | "listBenchResults"
@@ -316,40 +319,74 @@ export function SettingsDialog({
   }, [backend]);
 
   const shown = shownSettings(config, draft);
-  // The sliders (and the boxes next to them) show their effect in the window at once, as a preview:
-  // Save keeps it, and closing the screen any other way puts the window back as the file has it.
+  // What has an effect a person can see (the sliders and their boxes, the picture, the sidebar, the
+  // tabs, the font and the cursor of the terminal) shows in the window at once, as a preview: Save
+  // keeps it, and closing the screen any other way puts the window back as the file has it. A
+  // picture is shown once it can be read, which the thumbnail under the box already finds out.
+  const picture = useBackgroundThumbnail(backend, shown.backgroundImage);
   useEffect(() => {
-    setAppearancePreview(previewOf(draft, appearancePreview()));
-  }, [draft]);
+    setAppearancePreview(
+      previewOf(draft, appearancePreview(), { config, picture: picture.status }),
+    );
+  }, [draft, config, picture.status]);
   useEffect(() => () => setAppearancePreview(undefined), []);
   const inForce = useSettingsAppearance();
-  const sliders: Record<"windowOpacity" | "backgroundOpacity" | "backgroundBlur", SliderSpec> = {
-    windowOpacity: {
-      label: t("settings.windowOpacitySlider"),
-      min: MIN_WINDOW_OPACITY,
-      max: 1,
-      step: 0.01,
-      value: parseWindowOpacity(shown.windowOpacity) ?? inForce.opacity,
-      valueText: percent(parseWindowOpacity(shown.windowOpacity) ?? inForce.opacity),
-    },
-    backgroundOpacity: {
-      label: t("settings.backgroundOpacitySlider"),
-      min: 0,
-      max: 1,
-      step: 0.01,
-      value: parseBackgroundOpacity(shown.backgroundOpacity) ?? inForce.background.opacity,
-      valueText: percent(
-        parseBackgroundOpacity(shown.backgroundOpacity) ?? inForce.background.opacity,
-      ),
-    },
-    backgroundBlur: {
-      label: t("settings.backgroundBlurSlider"),
-      min: 0,
-      max: MAX_BACKGROUND_BLUR,
-      step: 1,
-      value: parseBackgroundBlur(shown.backgroundBlur) ?? inForce.background.blur,
-      valueText: `${parseBackgroundBlur(shown.backgroundBlur) ?? inForce.background.blur} px`,
-    },
+  // The sliders stand where their boxes say, inside the range of the schema; an empty box or half a
+  // number leaves the handle at the value in force.
+  const sliders = {
+    width: sliderFor(
+      "width",
+      t("settings.sidebarWidthSlider"),
+      shown.width,
+      settingsOf(config).width,
+      asPixels,
+    ),
+    windowOpacity: sliderFor(
+      "windowOpacity",
+      t("settings.windowOpacitySlider"),
+      shown.windowOpacity,
+      inForce.opacity,
+      asPercent,
+    ),
+    backgroundOpacity: sliderFor(
+      "backgroundOpacity",
+      t("settings.backgroundOpacitySlider"),
+      shown.backgroundOpacity,
+      inForce.background.opacity,
+      asPercent,
+    ),
+    backgroundBlur: sliderFor(
+      "backgroundBlur",
+      t("settings.backgroundBlurSlider"),
+      shown.backgroundBlur,
+      inForce.background.blur,
+      asPixels,
+    ),
+    fontSize: sliderFor(
+      "fontSize",
+      t("settings.fontSizeSlider"),
+      shown.terminal.fontSize,
+      terminalValuesOf(config).fontSize,
+      asPixels,
+    ),
+    lineHeight: sliderFor(
+      "lineHeight",
+      t("settings.lineHeightSlider"),
+      shown.terminal.lineHeight,
+      terminalValuesOf(config).lineHeight,
+    ),
+    scrollback: sliderFor(
+      "scrollback",
+      t("settings.scrollbackSlider"),
+      shown.terminal.scrollback,
+      terminalValuesOf(config).scrollback,
+    ),
+    maxPanes: sliderFor(
+      "maxPanes",
+      t("settings.maxPanesSlider"),
+      shown.terminal.maxPanes,
+      terminalValuesOf(config).maxPanes,
+    ),
   };
   const modFiles = useModFiles();
   const modRows = settingsModRows(modFiles, shown.mods);
@@ -470,6 +507,7 @@ export function SettingsDialog({
             ...labelsOf(sectionOptions.language),
           ],
           <Choice
+            control={CHOICE_CONTROLS.language}
             legend={t("settings.language")}
             field="language"
             hint={t("settings.language.hint")}
@@ -486,6 +524,7 @@ export function SettingsDialog({
             legend={t("settings.sidebarSide")}
             field="appearance.sidebar.position"
             name="settings-side"
+            control={CHOICE_CONTROLS.sidebarSide}
             value={shown.side}
             options={sectionOptions.side}
             onChange={(side) => change({ side })}
@@ -499,6 +538,7 @@ export function SettingsDialog({
             field="appearance.sidebar.width"
             value={shown.width}
             problem={plan.problems.width}
+            slider={sliders.width}
             onChange={(width) => change({ width })}
           />,
         ),
@@ -509,6 +549,7 @@ export function SettingsDialog({
             legend={t("settings.tabPosition")}
             field="appearance.tabs"
             name="settings-tabs"
+            control={CHOICE_CONTROLS.tabPosition}
             value={shown.tabs}
             options={sectionOptions.tabs}
             onChange={(tabs) => change({ tabs })}
@@ -521,6 +562,7 @@ export function SettingsDialog({
             legend={t("settings.density")}
             field="appearance.density"
             name="settings-density"
+            control={CHOICE_CONTROLS.density}
             value={shown.density}
             options={sectionOptions.density}
             onChange={(density) => change({ density })}
@@ -592,6 +634,7 @@ export function SettingsDialog({
           ],
           <>
             <Choice
+              control={CHOICE_CONTROLS.windowEffect}
               legend={t("settings.windowEffect")}
               field="appearance.window.effect"
               hint={t("settings.windowEffectHint")}
@@ -646,6 +689,7 @@ export function SettingsDialog({
             <BackgroundPicker
               backend={backend}
               path={shown.backgroundImage}
+              reading={picture}
               onChoose={(backgroundImage) => change({ backgroundImage })}
               onRemove={() => change({ backgroundImage: "" })}
             />
@@ -729,6 +773,7 @@ export function SettingsDialog({
             field="terminal.font.size"
             value={shown.terminal.fontSize}
             problem={plan.terminalProblems.fontSize}
+            slider={sliders.fontSize}
             onChange={(fontSize) => changeTerminal({ fontSize })}
           />,
         ),
@@ -740,6 +785,7 @@ export function SettingsDialog({
             field="terminal.font.lineHeight"
             value={shown.terminal.lineHeight}
             problem={plan.terminalProblems.lineHeight}
+            slider={sliders.lineHeight}
             onChange={(lineHeight) => changeTerminal({ lineHeight })}
           />,
         ),
@@ -758,6 +804,7 @@ export function SettingsDialog({
           "cursorShape",
           [t("settings.cursorShape"), ...labelsOf(sectionOptions.cursor)],
           <Choice
+            control={CHOICE_CONTROLS.cursorShape}
             legend={t("settings.cursorShape")}
             field="terminal.cursor.style"
             name="settings-cursor"
@@ -784,6 +831,7 @@ export function SettingsDialog({
             field="terminal.scrollback"
             value={shown.terminal.scrollback}
             problem={plan.terminalProblems.scrollback}
+            slider={sliders.scrollback}
             onChange={(scrollback) => changeTerminal({ scrollback })}
           />,
         ),
@@ -791,6 +839,7 @@ export function SettingsDialog({
           "bell",
           [t("settings.bell"), ...labelsOf(sectionOptions.bell)],
           <Choice
+            control={CHOICE_CONTROLS.bell}
             legend={t("settings.bell")}
             field="terminal.bell"
             name="settings-bell"
@@ -803,6 +852,7 @@ export function SettingsDialog({
           "rightClick",
           [t("settings.rightClick"), ...labelsOf(sectionOptions.rightClick)],
           <Choice
+            control={CHOICE_CONTROLS.rightClick}
             legend={t("settings.rightClick")}
             field="terminal.rightClick"
             name="settings-right-click"
@@ -819,6 +869,7 @@ export function SettingsDialog({
             field="terminal.maxPanes"
             value={shown.terminal.maxPanes}
             problem={plan.terminalProblems.maxPanes}
+            slider={sliders.maxPanes}
             onChange={(maxPanes) => changeTerminal({ maxPanes })}
           />,
         ),
@@ -906,43 +957,53 @@ export function SettingsDialog({
                             problem={problems?.port}
                             onChange={(port) => editProfile(profileRow.key, { port })}
                           />
-                          <NumberBox
+                          <PathBox
+                            kind="file"
+                            backend={backend}
                             label={t("settings.profileIdentityFile")}
                             field="profiles.item.identityFile"
                             value={profileRow.identityFile ?? ""}
                             problem={problems?.identityFile}
-                            text
-                            wide
                             onChange={(identityFile) =>
                               editProfile(profileRow.key, { identityFile })
                             }
                           />
-                          <NumberBox
+                          <PathBox
+                            kind="file"
+                            backend={backend}
                             label={t("settings.profileKnownHostsFile")}
                             field="profiles.item.knownHostsFile"
                             value={profileRow.knownHostsFile ?? ""}
                             problem={problems?.knownHostsFile}
-                            text
-                            wide
                             onChange={(knownHostsFile) =>
                               editProfile(profileRow.key, { knownHostsFile })
                             }
                           />
                         </>
                       )}
-                      <NumberBox
-                        label={t(
-                          isSshRow(profileRow)
-                            ? "settings.profileRemoteProgram"
-                            : "settings.profileProgram",
-                        )}
-                        field="profiles.item.program"
-                        value={profileRow.program}
-                        problem={problems?.program}
-                        text
-                        wide
-                        onChange={(program) => editProfile(profileRow.key, { program })}
-                      />
+                      {/* The program and the folder of a shell profile are paths of this computer, so a
+                          chooser helps; on an ssh profile they are on the other machine, which no chooser here can see. */}
+                      {isSshRow(profileRow) ? (
+                        <NumberBox
+                          label={t("settings.profileRemoteProgram")}
+                          field="profiles.item.program"
+                          value={profileRow.program}
+                          problem={problems?.program}
+                          text
+                          wide
+                          onChange={(program) => editProfile(profileRow.key, { program })}
+                        />
+                      ) : (
+                        <PathBox
+                          kind="file"
+                          backend={backend}
+                          label={t("settings.profileProgram")}
+                          field="profiles.item.program"
+                          value={profileRow.program}
+                          problem={problems?.program}
+                          onChange={(program) => editProfile(profileRow.key, { program })}
+                        />
+                      )}
                       <TextArea
                         label={t("settings.profileArgs")}
                         field="profiles.item.args"
@@ -950,19 +1011,27 @@ export function SettingsDialog({
                         problem={problems?.args}
                         onChange={(args) => editProfile(profileRow.key, { args })}
                       />
-                      <NumberBox
-                        label={t(
-                          isSshRow(profileRow)
-                            ? "settings.profileRemoteCwd"
-                            : "settings.profileCwd",
-                        )}
-                        field="profiles.item.cwd"
-                        value={profileRow.cwd}
-                        problem={problems?.cwd}
-                        text
-                        wide
-                        onChange={(cwd) => editProfile(profileRow.key, { cwd })}
-                      />
+                      {isSshRow(profileRow) ? (
+                        <NumberBox
+                          label={t("settings.profileRemoteCwd")}
+                          field="profiles.item.cwd"
+                          value={profileRow.cwd}
+                          problem={problems?.cwd}
+                          text
+                          wide
+                          onChange={(cwd) => editProfile(profileRow.key, { cwd })}
+                        />
+                      ) : (
+                        <PathBox
+                          kind="folder"
+                          backend={backend}
+                          label={t("settings.profileCwd")}
+                          field="profiles.item.cwd"
+                          value={profileRow.cwd}
+                          problem={problems?.cwd}
+                          onChange={(cwd) => editProfile(profileRow.key, { cwd })}
+                        />
+                      )}
                       <button
                         type="button"
                         className="settings-link"
@@ -1018,6 +1087,7 @@ export function SettingsDialog({
           "preset",
           [t("settings.preset"), ...labelsOf(sectionOptions.preset)],
           <Choice
+            control={CHOICE_CONTROLS.keyPreset}
             legend={t("settings.preset")}
             field="keybindings.preset"
             name="settings-preset"

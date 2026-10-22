@@ -2511,9 +2511,69 @@ body:has(.settings-dialog) .config-notice {
   grid-row: 1;
   align-self: center;
   justify-self: start;
+}
+
+/*
+ * A switch (NOR-F20-10b): a native check box with the role of a switch, drawn as a track with a knob
+ * (40 by 24 px, the knob 16 px). Off, the knob sits on the left and the track is the muted color of
+ * the theme; on, it sits on the right and the track is the accent. The check box itself is what takes
+ * the click, the Space key and the focus, so it works as one, in the settings screen and in the
+ * theme editor.
+ */
+.settings-switch {
+  appearance: none;
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  width: calc(var(--su) * 5);
+  height: calc(var(--su) * 3);
+  margin: 0;
+  border: 1px solid var(--nr-muted);
+  border-radius: calc(var(--su) * 1.5);
+  background: color-mix(in srgb, var(--nr-text) 10%, var(--nr-bg));
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.settings-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
   width: calc(var(--su) * 2);
   height: calc(var(--su) * 2);
-  margin: 0;
+  border-radius: 50%;
+  background: var(--nr-muted);
+  transition:
+    transform 120ms ease,
+    background-color 120ms ease;
+}
+
+.settings-switch:checked {
+  border-color: var(--nr-accent);
+  background: var(--nr-accent);
+}
+
+.settings-switch:checked::after {
+  background: var(--nr-bg);
+  transform: translateX(calc(var(--su) * 2));
+}
+
+.settings-switch:focus-visible {
+  outline: 2px solid var(--nr-accent);
+  outline-offset: 2px;
+}
+
+.settings-switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-switch,
+  .settings-switch::after {
+    transition: none;
+  }
 }
 
 /* The explanation of a field, in gray under its label (the box is described by it). */
@@ -2525,12 +2585,41 @@ body:has(.settings-dialog) .config-notice {
   overflow-wrap: anywhere;
 }
 
+/*
+ * A number with a range: the box (112 px) and, beside it, the slider that takes the rest of the control
+ * column (200 px of 320), both in the first row, the box first as it is in the page. The explanation
+ * stays under the label.
+ */
+.settings-content .settings-number:has(> .settings-slider) > .settings-option > input {
+  grid-row: 1;
+  justify-self: start;
+  width: calc(var(--su) * 14);
+}
+
 .settings-content .settings-number > .settings-slider {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 1;
   align-self: center;
+  justify-self: end;
+  box-sizing: border-box;
+  width: calc(100% - var(--su) * 15);
   margin: 0;
   min-width: 0;
+}
+
+/* The chooser of a path: its button under the box, in the control column; what it says when it fails goes under the row. */
+.settings-content .settings-number > .settings-path-choose {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: stretch;
+  box-sizing: border-box;
+  min-height: calc(var(--su) * 4);
+  padding: 0 var(--su);
+}
+
+.settings-content .settings-number > .settings-path-failure {
+  grid-column: 1 / -1;
+  grid-row: 4;
 }
 
 .settings-content .settings-number > [role="alert"] {
@@ -2563,6 +2652,57 @@ body:has(.settings-dialog) .config-notice {
 .settings-content .settings-choices input {
   flex: none;
   margin: 0;
+}
+
+/*
+ * A choice of two or three short options (NOR-F20-10b): the radio buttons side by side as a row of
+ * buttons, one marked. The radio button is still the control (it takes the click, the arrow keys
+ * and the focus, and a screen reader says "radio button, 1 of 2"); it lies over its button with
+ * no opacity, and the button around it shows the state.
+ */
+.settings-content .settings-choices.settings-segmented {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  box-sizing: border-box;
+  height: calc(var(--su) * 4);
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-bg);
+  overflow: hidden;
+}
+
+.settings-content .settings-segmented > .settings-option {
+  position: relative;
+  justify-content: center;
+  min-height: 0;
+  padding: 0 var(--su);
+  text-align: center;
+}
+
+.settings-content .settings-segmented > .settings-option + .settings-option {
+  border-left: 1px solid var(--nr-border);
+}
+
+.settings-content .settings-segmented > .settings-option > input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.settings-content .settings-segmented > .settings-option:has(input:checked) {
+  background: color-mix(in srgb, var(--nr-accent) 18%, var(--nr-surface));
+  box-shadow: inset 0 -2px 0 var(--nr-accent);
+  font-weight: 600;
+}
+
+.settings-content .settings-segmented > .settings-option:has(input:focus-visible) {
+  outline: 2px solid var(--nr-accent);
+  outline-offset: -2px;
 }
 
 .settings-content .settings-action > .settings-explain-text {

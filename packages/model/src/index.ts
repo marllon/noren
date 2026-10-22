@@ -11,6 +11,7 @@ export type {
   BenchResultFile,
   GitInfo,
   ModFile,
+  PathKind,
   SessionExit,
   SessionId,
   SessionLink,

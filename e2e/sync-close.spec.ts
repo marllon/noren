@@ -133,7 +133,7 @@ test.describe("the check box in the Sync section", () => {
   const box = (screen: Locator): Locator =>
     screen
       .getByRole("region", { name: "Sync", exact: true })
-      .getByRole("checkbox", { name: "Push when Noren closes", exact: true });
+      .getByRole("switch", { name: "Push when Noren closes", exact: true });
 
   test("is off by default, and turning it on writes sync.pushOnClose to config.jsonc", async ({
     page,

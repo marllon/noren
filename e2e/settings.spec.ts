@@ -45,7 +45,7 @@ const tab = (page: Page, name: string) =>
     .getByRole("treeitem", { name, exact: true });
 const radio = (screen: Locator, name: string) => screen.getByRole("radio", { name, exact: true });
 const checkbox = (screen: Locator, name: string) =>
-  screen.getByRole("checkbox", { name, exact: true });
+  screen.getByRole("switch", { name, exact: true });
 const saveButton = (screen: Locator) => screen.getByRole("button", { name: "Save", exact: true });
 const widthBox = (screen: Locator) => screen.getByRole("textbox", { name: "Sidebar width (px)" });
 
@@ -319,7 +319,9 @@ test.describe("when the file cannot be written", () => {
     );
     await expect(screen).toBeVisible();
     await expect(radio(screen, "Right")).toBeChecked();
-    await expect(body(page)).toHaveAttribute("data-nr-side", "left");
+    // The window shows the draft as a preview while the screen is open (NOR-F20-10b); the file, which is
+    // what failed to be written, still has what it had.
+    await expect(body(page)).toHaveAttribute("data-nr-side", "right");
     expect(await configText(page)).toBe(COMMENTED);
 
     await page.evaluate(() => (window as HookWindow).__norenTest?.failConfigSaves(null));
@@ -387,13 +389,19 @@ test.describe("the Terminal section", () => {
     await expect(textbox(terminal, "Font size (px)")).toHaveValue("16");
     await expect(radio(terminal, "Bar")).toBeChecked();
     await expect(textbox(terminal, "Scrollback (lines)")).toHaveValue("10000");
-    await expect(radio(terminal, "Only mark the tab")).toBeChecked();
+    // Four ways to react to the bell are a drop-down list, with the chosen one showing.
+    const bell = terminal.getByRole("combobox", {
+      name: "When a program rings the bell",
+      exact: true,
+    });
+    await expect(bell).toHaveValue("none");
+    await expect(bell.locator("option:checked")).toHaveText("Only mark the tab");
 
     await textbox(terminal, "Font size (px)").fill("20");
     await radio(terminal, "Underline").check();
     await checkbox(terminal, "Cursor blinks").uncheck();
     await textbox(terminal, "Scrollback (lines)").fill("500");
-    await radio(terminal, "Flash and beep").check();
+    await bell.selectOption({ label: "Flash and beep" });
     // The font comes from the list of monospaced fonts the backend has.
     await terminal
       .getByRole("combobox", { name: "Installed font", exact: true })

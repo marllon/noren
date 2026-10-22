@@ -1,11 +1,17 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import type { ReactNode } from "react";
+import type { Backend, PathKind } from "@noren/model";
+import { useT } from "./i18n";
 import { fieldDescription } from "./i18n/names";
 
-// The boxes of the settings screen that hold a line of text or a choice, each with its label and, under
-// it, the explanation of the field (in gray) and the reason a value is refused. In the settings screen
-// every one is a row of its grid (the label and the explanation on the left, the control on the right,
-// see `.settings-content` in the style sheet); the other dialogs that use the boxes keep them stacked.
+// The controls of the settings screen, each the right one for its field (NOR-F20-10b): a switch for a
+// yes or no (`Toggle`), a box with a slider beside it for a number that has a range (`NumberBox` with
+// `slider`), a box with a chooser of the system for a path (`PathBox`), a row of buttons for a choice
+// of two or three short ones and a drop-down list for the rest (`Choice` and `SelectBox`), and the
+// color picker of the theme editor (`ThemeEditorDialog`). Each has its label and, under it, the
+// explanation of the field (in gray) and the reason a value is refused. In the settings screen every
+// one is a row of its grid (the label and the explanation on the left, the control on the right, see
+// `.settings-content` in the style sheet); the other dialogs that use the boxes keep them stacked.
 
 /** The description of a field in the language in force, for the `title` of its control. */
 const describe = (field: string | undefined): string | undefined =>
@@ -33,6 +39,13 @@ export interface SliderSpec {
 /** The text a box holds for a number a slider chose: at most two decimals, no trailing zeros. */
 export function sliderText(value: number): string {
   return String(Number(value.toFixed(2)));
+}
+
+/** The range of a number the schema bounds on both ends, and the step its slider moves by. */
+export interface RangeSpec {
+  min: number;
+  max: number;
+  step: number;
 }
 
 /**
@@ -79,8 +92,10 @@ export interface NumberBoxProps {
   wide?: boolean;
   /** A box for a secret (a token): the text is hidden, never completed or checked for spelling. */
   secret?: boolean;
-  /** A slider under the box that sets the same number (the box stays, for a number typed by hand). */
+  /** A slider beside the box that sets the same number (the box stays, for a number typed by hand). */
   slider?: SliderSpec;
+  /** What goes after the box in its row: the button that opens a chooser, and what it says when it fails. */
+  extra?: ReactNode;
   onChange(text: string): void;
 }
 
@@ -94,6 +109,7 @@ export function NumberBox({
   wide = false,
   secret = false,
   slider,
+  extra,
   onChange,
 }: NumberBoxProps) {
   const hintId = useId();
@@ -107,6 +123,8 @@ export function NumberBox({
           inputMode={text || secret ? "text" : "decimal"}
           spellCheck={text || secret ? false : undefined}
           autoComplete={text || secret ? "off" : undefined}
+          // An empty box beside a slider (a setting that is not set) shows the number the handle is at.
+          placeholder={slider !== undefined && value === "" ? sliderText(slider.value) : undefined}
           value={value}
           aria-invalid={problem !== undefined ? true : undefined}
           aria-describedby={describedBy(
@@ -124,12 +142,90 @@ export function NumberBox({
       {slider !== undefined && (
         <Slider {...slider} onChange={(chosen) => onChange(sliderText(chosen))} />
       )}
+      {extra}
       {problem !== undefined && (
         <span id={hintId} className="settings-hint" role="alert">
           {problem}
         </span>
       )}
     </div>
+  );
+}
+
+export interface PathBoxProps extends Omit<
+  NumberBoxProps,
+  "text" | "wide" | "secret" | "slider" | "extra"
+> {
+  /** What the chooser lists: files of any kind, or folders. */
+  kind: PathKind;
+  /** The chooser of the system (the Rust side only; the tests answer a fake one). */
+  backend: Pick<Backend, "pickPath">;
+}
+
+/**
+ * A path: a box that takes it typed by hand and, under it, a button that opens the chooser of the
+ * system for a file or a folder and puts what was chosen in the box (where it is checked like any
+ * other text). Closing the chooser without a choice changes nothing; a chooser that cannot be opened
+ * says why under the row.
+ */
+export function PathBox({ kind, backend, onChange, ...box }: PathBoxProps) {
+  const t = useT();
+  const [opening, setOpening] = useState(false);
+  const [failure, setFailure] = useState<string>();
+  const choose = () => {
+    setOpening(true);
+    setFailure(undefined);
+    backend
+      .pickPath({
+        kind,
+        title: t(kind === "file" ? "settings.pathPickFileTitle" : "settings.pathPickFolderTitle"),
+      })
+      .then(
+        (chosen) => {
+          setOpening(false);
+          if (chosen !== null) onChange(chosen);
+        },
+        (error: unknown) => {
+          setOpening(false);
+          setFailure(
+            t("settings.pathPickFailed", {
+              reason: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        },
+      );
+  };
+  return (
+    <NumberBox
+      {...box}
+      text
+      wide
+      onChange={onChange}
+      extra={
+        <>
+          <button
+            type="button"
+            className="settings-link settings-path-choose"
+            data-nr-part="path-choose"
+            disabled={opening}
+            aria-label={t(
+              kind === "file" ? "settings.pathChooseFile" : "settings.pathChooseFolder",
+              {
+                name: box.label,
+              },
+            )}
+            onClick={choose}
+          >
+            {t("settings.pathChoose")}
+          </button>
+          {failure !== undefined && (
+            <p className="settings-hint settings-path-failure" role="alert">
+              {failure}
+            </p>
+          )}
+        </>
+      }
+    />
   );
 }
 
@@ -164,6 +260,7 @@ export function SelectBox({
         </label>
         <select
           id={selectId}
+          title={describe(field)}
           value={value}
           aria-invalid={problem !== undefined ? true : undefined}
           aria-describedby={describedBy(
@@ -202,13 +299,20 @@ export interface ChoiceProps<T extends string> {
   name: string;
   value: T;
   options: readonly { value: T; label: string }[];
+  /**
+   * What draws it: a row of buttons with the chosen one marked (two or three short options), or a
+   * drop-down list (four or more, or long ones). `CHOICE_CONTROLS` says which for each choice.
+   */
+  control: "segmented" | "list";
   onChange(value: T): void;
 }
 
 /**
- * One choice among a few, as a group of radio buttons: its name and explanation on the left and the
- * options, one to a line, on the right. The group is named by its label, as a fieldset is by its
- * legend; a fieldset cannot be laid out beside its legend, which the grid of the screen needs.
+ * One choice among several, with its name and explanation on the left and its control on the right:
+ * a row of radio buttons drawn as buttons with the chosen one marked (`segmented`: everything in
+ * view, one click chooses) or a drop-down list (`list`). The row is a group named by its label, as a
+ * fieldset is by its legend; a fieldset cannot be laid out beside its legend, which the grid of the
+ * screen needs.
  */
 export function Choice<T extends string>({
   legend,
@@ -217,10 +321,24 @@ export function Choice<T extends string>({
   name,
   value,
   options,
+  control,
   onChange,
 }: ChoiceProps<T>) {
   const labelId = useId();
   const explainId = useId();
+  if (control === "list") {
+    return (
+      <SelectBox
+        label={legend}
+        {...(field !== undefined ? { field } : {})}
+        {...(hint !== undefined ? { hint } : {})}
+        value={value}
+        options={options}
+        problem={undefined}
+        onChange={(chosen) => onChange(chosen as T)}
+      />
+    );
+  }
   return (
     <div
       className="settings-choice"
@@ -239,7 +357,7 @@ export function Choice<T extends string>({
           </p>
         )}
       </div>
-      <div className="settings-choices">
+      <div className="settings-choices settings-segmented">
         {options.map((option) => (
           <label key={option.value} className="settings-option">
             <input
@@ -265,7 +383,12 @@ export interface ToggleProps {
   onChange(checked: boolean): void;
 }
 
-/** A yes or no: its label and explanation on the left and the box on the right. */
+/**
+ * A yes or no, as a switch: its label and explanation on the left and the switch on the right. It
+ * is a native check box with the role of a switch, so a click and the Space key turn it, a screen
+ * reader says "on" or "off", and the browser keeps its state; the style sheet draws the track and
+ * the knob.
+ */
 export function Toggle({ label, field, hint, checked, disabled = false, onChange }: ToggleProps) {
   const explainId = useId();
   return (
@@ -273,6 +396,8 @@ export function Toggle({ label, field, hint, checked, disabled = false, onChange
       <label className="settings-option" title={describe(field)}>
         <input
           type="checkbox"
+          role="switch"
+          className="settings-switch"
           checked={checked}
           disabled={disabled}
           aria-describedby={hint !== undefined ? explainId : undefined}

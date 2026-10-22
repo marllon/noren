@@ -162,8 +162,11 @@ test.describe("on a dark system", () => {
       await expect(thumbnail(section)).toHaveAttribute("alt", "Preview of the image");
       await expect(imageBox(section)).toHaveValue(PICTURE);
       await expect(remove).toBeEnabled();
-      // It is a draft until Save: the window has no picture yet.
-      await expect(layer(page)).toHaveCount(0);
+      // The window tries the picture out as soon as it is chosen (NOR-F20-10b), but nothing is
+      // written until Save.
+      await expect(layer(page)).toHaveCount(1);
+      expect(await layerStyle(page, "background-image")).toMatch(/^url\("blob:/);
+      expect((await configText(page)) ?? "").not.toContain('"image"');
 
       await saveSettings(page);
       expect(await configText(page)).toContain(`"image": "${PICTURE}"`);

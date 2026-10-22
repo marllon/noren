@@ -49,7 +49,7 @@ export async function changeSettings(
 /** Turns the "Pane headers" preference on or off, through the settings screen. */
 export async function setPaneHeaders(page: Page, on: boolean): Promise<void> {
   await changeSettings(page, (screen) =>
-    screen.getByRole("checkbox", { name: "Pane headers", exact: true }).setChecked(on),
+    screen.getByRole("switch", { name: "Pane headers", exact: true }).setChecked(on),
   );
 }
 

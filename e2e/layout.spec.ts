@@ -1,7 +1,13 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { seedSidebarState } from "./sidebar-fixture";
-import { changeSettings, openSettings, saveSettings, settingsScreen } from "./settings-fixture";
+import {
+  changeSettings,
+  configText,
+  openSettings,
+  saveSettings,
+  settingsScreen,
+} from "./settings-fixture";
 
 // The layout preferences (side, width, density, compact mode) are settings of `config.jsonc`,
 // chosen in the settings screen; a new test context starts with no file, which is every default.
@@ -15,7 +21,7 @@ const tab = (page: Page, name: string) =>
     .getByRole("treeitem", { name, exact: true });
 const radio = (screen: Locator, name: string) => screen.getByRole("radio", { name, exact: true });
 const checkbox = (screen: Locator, name: string) =>
-  screen.getByRole("checkbox", { name, exact: true });
+  screen.getByRole("switch", { name, exact: true });
 
 /** Box of an element on screen; fails the test when it is not rendered. */
 async function box(locator: ReturnType<typeof sidebar>) {
@@ -102,13 +108,14 @@ test("moving the sidebar to the right puts it right of the terminal, and it stay
   expect((await box(sidebar(page))).x).toBe(0);
 });
 
-test("a change in the settings screen is a draft until Save, and Cancel drops it", async ({
+test("a change in the settings screen is a draft until Save: the window shows it as a preview, and Cancel drops it", async ({
   page,
 }) => {
   const screen = await openSettings(page);
   await radio(screen, "Right").check();
-  // Nothing moved yet: the interface follows the file, not the draft.
-  expect((await box(sidebar(page))).x).toBe(0);
+  // The window already shows the draft (a preview; the file is not written), so the sidebar is on the right.
+  await expect.poll(async () => (await box(sidebar(page))).x).toBeGreaterThan(500);
+  expect((await configText(page)) ?? "").not.toContain('"position"');
   await screen.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(settingsScreen(page)).toHaveCount(0);
   expect((await box(sidebar(page))).x).toBe(0);

@@ -265,16 +265,14 @@ test.describe("the search", () => {
   test("finds a field by a word of its explanation or of one of its choices", async ({ page }) => {
     const screen = await start(page);
     await searchBox(screen).fill("ligatures");
-    await expect(
-      screen.getByRole("checkbox", { name: "Font ligatures", exact: true }),
-    ).toBeVisible();
+    await expect(screen.getByRole("switch", { name: "Font ligatures", exact: true })).toBeVisible();
     await searchBox(screen).fill("underline");
     await expect(screen.getByRole("group", { name: "Cursor shape", exact: true })).toBeVisible();
     await expect(screen.getByRole("radio", { name: "Underline", exact: true })).toBeVisible();
-    await expect(screen.getByRole("checkbox", { name: "Cursor blinks", exact: true })).toBeHidden();
+    await expect(screen.getByRole("switch", { name: "Cursor blinks", exact: true })).toBeHidden();
     await searchBox(screen).fill("beep");
     await expect(
-      screen.getByRole("group", { name: "When a program rings the bell", exact: true }),
+      screen.getByRole("combobox", { name: "When a program rings the bell", exact: true }),
     ).toBeVisible();
     expect(await columnNames(screen)).toEqual(["Terminal"]);
   });
@@ -293,9 +291,7 @@ test.describe("the search", () => {
     ).toBeVisible();
     await searchBox(screen).fill("terminal cursor");
     await expect(screen.getByRole("group", { name: "Cursor shape", exact: true })).toBeVisible();
-    await expect(
-      screen.getByRole("checkbox", { name: "Cursor blinks", exact: true }),
-    ).toBeVisible();
+    await expect(screen.getByRole("switch", { name: "Cursor blinks", exact: true })).toBeVisible();
     await expect(screen.getByRole("textbox", { name: "Font size (px)", exact: true })).toBeHidden();
   });
 
@@ -399,7 +395,7 @@ test.describe("the search", () => {
   test("a control that a search brought to the top works as it did", async ({ page }) => {
     const screen = await start(page);
     await searchBox(screen).fill("pane headers");
-    await screen.getByRole("checkbox", { name: "Pane headers", exact: true }).check();
+    await screen.getByRole("switch", { name: "Pane headers", exact: true }).check();
     await saveSettings(page);
     const text =
       (await page.evaluate((key) => window.localStorage.getItem(key), WEB_CONFIG_KEY)) ?? "";
@@ -510,7 +506,7 @@ test.describe("the grid", () => {
         controls: lefts(
           [
             ".settings-number > .settings-option > :is(input, select, textarea)",
-            ".settings-number > .settings-slider",
+            ".settings-number > .settings-path-choose",
             ".settings-toggle > .settings-option > input",
             ".settings-choices",
             ".settings-action-buttons",
@@ -572,7 +568,10 @@ test.describe("the grid", () => {
         rowPaddingTop: px(style(".settings-row").paddingTop),
         rowPaddingBottom: px(style(".settings-row").paddingBottom),
         inputHeight: box(".settings-number > .settings-option > input").height,
-        controlWidth: box(".settings-number > .settings-option > input").width,
+        // A box with a slider beside it is narrower (112 px); the width of the column is the one of a box on its own.
+        controlWidth: box(
+          ".settings-number:not(:has(> .settings-slider)) > .settings-option > input",
+        ).width,
         labelLeft: box(".settings-number > .settings-option > span").left - form.left,
         controlLeft: box(".settings-number > .settings-option > input").left - form.left,
         footerPaddingTop: px(style(".settings-footer").paddingTop),
@@ -595,7 +594,7 @@ test.describe("the grid", () => {
     await row.scrollIntoViewIfNeeded();
     const label = await row.locator(".settings-option > span").boundingBox();
     const hint = await row.locator(".settings-explain").boundingBox();
-    const box = await row.getByRole("checkbox").boundingBox();
+    const box = await row.getByRole("switch").boundingBox();
     if (label === null || hint === null || box === null)
       throw new Error("a part of the row has no box");
     // The explanation is under the label (same left edge, lower), in gray, and the box is beside the label.
@@ -605,7 +604,7 @@ test.describe("the grid", () => {
     expect(box.y).toBeLessThan(hint.y);
     await expect(row.locator(".settings-explain")).toHaveCSS("color", /rgb/);
     // And the box is described by the explanation, for a screen reader.
-    await expect(row.getByRole("checkbox")).toHaveAccessibleDescription(
+    await expect(row.getByRole("switch")).toHaveAccessibleDescription(
       "Ligatures are accepted, but the terminal does not draw them yet.",
     );
   });
@@ -758,7 +757,7 @@ test("a screen that was opened with its controls working still saves from any se
 }) => {
   const screen = await start(page);
   await navItem(screen, "Notifications").click();
-  await screen.getByRole("checkbox", { name: "System notifications", exact: true }).uncheck();
+  await screen.getByRole("switch", { name: "System notifications", exact: true }).uncheck();
   await navItem(screen, "Terminal").click();
   await screen.getByRole("radio", { name: "Bar", exact: true }).check();
   await saveSettings(page);

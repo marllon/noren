@@ -77,6 +77,7 @@
     "allow-window-effect-set",
     "allow-background-image-read",
     "allow-background-image-pick",
+    "allow-path-pick",
     "allow-file-preview-read",
     "allow-git-diff-read",
     "allow-fonts-list-monospace",

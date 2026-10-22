@@ -1319,6 +1319,66 @@ pub async fn background_image_pick(
         .map_err(|e| format!("the file chooser gave a path that is not a file: {e}"))
 }
 
+/// What the chooser of a path field lists (the `kind` the page sends): files of any kind, or folders.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PathPickKind {
+    File,
+    Folder,
+}
+
+/// The kind of chooser a page asked for: `"file"` or `"folder"`, nothing else.
+fn path_pick_kind(kind: &str) -> Result<PathPickKind, String> {
+    match kind {
+        "file" => Ok(PathPickKind::File),
+        "folder" => Ok(PathPickKind::Folder),
+        other => Err(format!(
+            "the chooser lists \"file\" or \"folder\", not \"{}\"",
+            picker_text(other, "")
+        )),
+    }
+}
+
+/// The file or the folder the person chooses in the chooser of the system for a path field of the
+/// settings screen (the "Choose..." buttons of the key file and the known-hosts file of an ssh
+/// profile, and of the folder and the program of a shell profile): its path, or `None` when the
+/// chooser was closed without a choice. The chooser opens over the window that asked and lists
+/// files of any kind (`kind` is `"file"`) or folders (`"folder"`); the path is put in the box of
+/// the field, where it is checked like any other text. `title` is the word on the window, in the
+/// language in force, which only the page knows. Nothing is read or written here: the page cannot
+/// pick a path of its own, and nothing it is told leads to a file being opened.
+#[tauri::command]
+pub async fn path_pick(
+    window: tauri::Window,
+    kind: String,
+    title: String,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let kind = path_pick_kind(&kind)?;
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let dialog = window
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .set_title(picker_text(&title, "Choose"));
+    let answer = move |chosen| {
+        let _ = sender.send(chosen);
+    };
+    match kind {
+        PathPickKind::File => dialog.pick_file(answer),
+        PathPickKind::Folder => dialog.pick_folder(answer),
+    }
+    let Some(chosen) = receiver
+        .await
+        .map_err(|_| "the file chooser ended without an answer".to_string())?
+    else {
+        return Ok(None);
+    };
+    chosen
+        .into_path()
+        .map(|path| Some(path.to_string_lossy().into_owned()))
+        .map_err(|e| format!("the file chooser gave a path that is not a file: {e}"))
+}
+
 /// The bytes of the picture at `path`, as a raw response (not JSON, since a picture is megabytes).
 /// The path and the file are checked by [`BackgroundStore::read`]: only a picture file of a
 /// bounded size is ever returned, and nothing is fetched from the network.
@@ -3909,6 +3969,21 @@ mod tests {
             picker_text("Escolher imagem de fundo…", "x"),
             "Escolher imagem de fundo…"
         );
+    }
+
+    // The chooser of a path field lists files or folders and nothing else: any other word from the
+    // page is refused with a sentence, before a chooser opens, and the sentence cannot carry a
+    // control character or a long text of the page's making.
+    #[test]
+    fn the_chooser_of_a_path_field_lists_files_or_folders_only() {
+        assert_eq!(path_pick_kind("file"), Ok(PathPickKind::File));
+        assert_eq!(path_pick_kind("folder"), Ok(PathPickKind::Folder));
+        for other in ["", "File", "folders", "image", " file"] {
+            assert!(path_pick_kind(other).is_err(), "{other:?} is not a kind");
+        }
+        let refusal = path_pick_kind(&format!("ba\u{0}d{}", "x".repeat(500))).unwrap_err();
+        assert!(!refusal.contains('\u{0}'), "{refusal}");
+        assert!(refusal.chars().count() < PICKER_TEXT_MAX + 80, "{refusal}");
     }
 
     #[test]

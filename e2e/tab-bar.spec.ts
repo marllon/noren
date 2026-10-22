@@ -325,8 +325,8 @@ test("the settings screen disables compact mode with top tabs, and the bar follo
   // The bar takes the whole width whichever side the sidebar is on.
   expect((await box(bar(page))).x).toBeLessThan(40);
   const screen = await openSettings(page);
-  await expect(screen.getByRole("checkbox", { name: "Compact mode", exact: true })).toBeDisabled();
+  await expect(screen.getByRole("switch", { name: "Compact mode", exact: true })).toBeDisabled();
   await expect(
-    screen.getByRole("checkbox", { name: "Keep sidebar open", exact: true }),
+    screen.getByRole("switch", { name: "Keep sidebar open", exact: true }),
   ).toBeDisabled();
 });

@@ -92,7 +92,7 @@ const modStyle = (page: Page, name: string): Promise<string | null> =>
 const savedConfig = async (page: Page): Promise<string> => (await configText(page)) ?? "";
 
 const modRow = (screen: Locator, name: string): Locator =>
-  screen.getByRole("checkbox", { name, exact: true });
+  screen.getByRole("switch", { name, exact: true });
 
 /** Opens the settings screen, lets `change` touch the Mods section, and saves. */
 async function changeMods(page: Page, change: (screen: Locator) => Promise<void>): Promise<void> {
@@ -156,7 +156,7 @@ test.describe("the Mods section of the settings screen", () => {
     await start(page, examples());
     const screen = await openSettings(page);
     const section = screen.getByRole("region", { name: "Mods", exact: true });
-    await expect(section.getByRole("checkbox")).toHaveCount(3);
+    await expect(section.getByRole("switch")).toHaveCount(3);
     for (const name of [ACCENT, DIM, TINTED]) await expect(modRow(section, name)).not.toBeChecked();
     // In the order of the file names.
     await expect(section.locator('[data-nr-part="settings-mod"]')).toHaveText([

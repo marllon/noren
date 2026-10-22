@@ -26,6 +26,7 @@ import type {
   CreateSessionOptions,
   GitInfo,
   ModFile,
+  PathKind,
   SessionExit,
   SessionId,
   SessionLink,
@@ -1079,6 +1080,8 @@ export class FakeBackend implements Backend {
   readonly #images = new Map<string, Uint8Array>();
   /** What the fake file chooser answers next, one entry for each time it is opened. */
   readonly #imagePicks: (string | null | Error)[] = [];
+  /** What the fake chooser of a path field answers next, one entry for each time it is opened. */
+  readonly #pathPicks: (string | null | Error)[] = [];
   readonly #files = new Map<string, Uint8Array | "directory">();
   readonly #gitDiffs = new Map<string, string | GitDiffRefusal>();
   #monospaceFonts: readonly string[];
@@ -2468,6 +2471,27 @@ export class FakeBackend implements Backend {
    */
   setImagePick(path: string | null | Error): void {
     this.#imagePicks.push(path);
+  }
+
+  /**
+   * The fake chooser of a path field: it answers what `setPathPick` queued, in order, and `null`
+   * (closed without a choice) when nothing is queued. The kind it lists and its title are recorded.
+   */
+  async pickPath(options: { kind: PathKind; title: string }): Promise<string | null> {
+    this.#record("pickPath", options.kind, options.title);
+    const next = this.#pathPicks.shift() ?? null;
+    if (next instanceof Error) throw next;
+    return next;
+  }
+
+  /**
+   * Queues what the chooser of a path field answers the next time it is opened: the path the
+   * person chooses, `null` for closing it without a choice, or an `Error` for a chooser that cannot
+   * be opened (the call rejects with it). One call, one opening. Not a `Backend` call, so it is not
+   * recorded.
+   */
+  setPathPick(path: string | null | Error): void {
+    this.#pathPicks.push(path);
   }
 
   /**

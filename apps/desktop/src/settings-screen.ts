@@ -20,6 +20,7 @@ import {
   planAi,
   planArchive,
   planTerminal,
+  previewTerminal,
   shownAi,
   shownArchive,
   shownTerminal,
@@ -271,11 +272,81 @@ export function previewNumber(
   return text.trim() === "" ? null : (parse(text) ?? kept);
 }
 
+/** How the read of the picture the box holds is going (the thumbnail of the picker has the answer). */
+export type PictureReading = "none" | "loading" | "ready" | "failed";
+
 /**
- * What a draft tries out in the window at once, before it is saved: the numbers of the sliders.
- * `previous` is what the window was trying out until now, kept for a box whose text is not a number.
+ * The picture a draft tries out behind the terminals: the path of a picture the window can read, so
+ * the window shows it as soon as it is chosen. A path being read keeps `kept` (the picture shown
+ * until now); one that cannot be read, or that is not a usable path at all, tries out nothing (the box
+ * and the thumbnail tell why). An emptied box takes away the picture the file has (`null`), and has
+ * nothing to try out where the file has none. `undefined` is "not tried out".
  */
-export function previewOf(draft: SettingsDraft, previous?: AppearancePreview): AppearancePreview {
+export function previewPicture(
+  text: string | undefined,
+  reading: PictureReading,
+  config: Config,
+  kept?: string | null,
+): string | null | undefined {
+  if (text === undefined) return undefined;
+  const path = text.trim();
+  if (path === "") return optionalValueOf(config, "backgroundImage") === null ? undefined : null;
+  if (backgroundImageProblem(path) !== undefined) return undefined;
+  if (reading === "ready") return path;
+  return reading === "loading" ? kept : undefined;
+}
+
+/**
+ * The layout a draft tries out in the window at once: which side the sidebar is on, how wide it is,
+ * the density, compact mode, the tabs and the pane headers. A width that is not whole pixels in range
+ * yet keeps `kept`. `undefined` when the draft changed none of them.
+ */
+export function previewLayout(
+  draft: SettingsDraft,
+  kept?: Partial<Layout>,
+): Partial<Layout> | undefined {
+  const width = draft.width === undefined ? undefined : (parseWidth(draft.width) ?? kept?.width);
+  const tried: Partial<Layout> = {
+    ...(draft.side !== undefined ? { side: draft.side } : {}),
+    ...(width !== undefined ? { width } : {}),
+    ...(draft.density !== undefined ? { density: draft.density } : {}),
+    ...(draft.compact !== undefined ? { compact: draft.compact } : {}),
+    ...(draft.keepOpen !== undefined ? { keepOpen: draft.keepOpen } : {}),
+    ...(draft.tabs !== undefined ? { tabs: draft.tabs } : {}),
+    ...(draft.paneHeaders !== undefined ? { paneHeaders: draft.paneHeaders } : {}),
+  };
+  return Object.keys(tried).length === 0 ? undefined : tried;
+}
+
+/** What `previewOf` needs to know besides the draft. */
+export interface PreviewContext {
+  /** The settings in force. */
+  config: Config;
+  /** How the read of the picture of the box is going. */
+  picture: PictureReading;
+}
+
+/**
+ * What a draft tries out in the window at once, before it is saved: the numbers of the sliders, the
+ * picture, the layout and the look of the terminal. `previous` is what the window was trying out
+ * until now, kept for a box whose text is not a usable value yet.
+ */
+export function previewOf(
+  draft: SettingsDraft,
+  previous?: AppearancePreview,
+  context?: PreviewContext,
+): AppearancePreview {
+  const picture =
+    context === undefined
+      ? undefined
+      : previewPicture(
+          draft.backgroundImage,
+          context.picture,
+          context.config,
+          previous?.backgroundImage,
+        );
+  const layout = previewLayout(draft, previous?.layout);
+  const terminal = previewTerminal(draft.terminal, previous?.terminal);
   return {
     windowOpacity: previewNumber(draft.windowOpacity, parseWindowOpacity, previous?.windowOpacity),
     backgroundOpacity: previewNumber(
@@ -288,6 +359,9 @@ export function previewOf(draft: SettingsDraft, previous?: AppearancePreview): A
       parseBackgroundBlur,
       previous?.backgroundBlur,
     ),
+    ...(picture !== undefined ? { backgroundImage: picture } : {}),
+    ...(layout !== undefined ? { layout } : {}),
+    ...(terminal !== undefined ? { terminal } : {}),
   };
 }
 

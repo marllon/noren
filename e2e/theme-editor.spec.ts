@@ -173,7 +173,7 @@ test.describe("opening the editor", () => {
     await expect(box(page, "Size (px)")).toHaveValue(String(NOREN_DUSK.font.size));
     await expect(box(page, "Line height")).toHaveValue(String(NOREN_DUSK.font.lineHeight));
     await expect(
-      editor(page).getByRole("checkbox", { name: "Ligatures", exact: true }),
+      editor(page).getByRole("switch", { name: "Ligatures", exact: true }),
     ).toBeChecked();
     await expect(box(page, "Corner radius (px)")).toHaveValue(String(ui.radius));
     await expect(box(page, "Panel opacity")).toHaveValue(String(ui.opacity));
@@ -351,12 +351,12 @@ test.describe("the preview follows every group at once", () => {
     await box(page, "Font names").fill("Fira Code, Consolas, monospace");
     await box(page, "Size (px)").fill("20");
     await box(page, "Line height").fill("1.5");
-    await editor(page).getByRole("checkbox", { name: "Ligatures", exact: true }).uncheck();
+    await editor(page).getByRole("switch", { name: "Ligatures", exact: true }).uncheck();
     expect(await previewStyle(page, ".tp-terminal", "font-family")).toContain("Fira Code");
     expect(await previewStyle(page, ".tp-terminal", "font-size")).toBe("20px");
     expect(await previewStyle(page, ".tp-terminal", "line-height")).toBe("30px");
     expect(await previewStyle(page, ".tp-terminal", "font-variant-ligatures")).toBe("none");
-    await editor(page).getByRole("checkbox", { name: "Ligatures", exact: true }).check();
+    await editor(page).getByRole("switch", { name: "Ligatures", exact: true }).check();
     expect(await previewStyle(page, ".tp-terminal", "font-variant-ligatures")).toBe("normal");
     // The slider of the size moves the same number.
     await editor(page).getByRole("slider", { name: "Size (px), slider", exact: true }).fill("30");
@@ -706,7 +706,7 @@ test.describe("saving", () => {
     await box(page, "Font names").fill("Fira Code, Consolas, monospace");
     await box(page, "Size (px)").fill("17");
     await box(page, "Line height").fill("1.35");
-    await editor(page).getByRole("checkbox", { name: "Ligatures", exact: true }).uncheck();
+    await editor(page).getByRole("switch", { name: "Ligatures", exact: true }).uncheck();
     await box(page, "Corner radius (px)").fill("0");
     await box(page, "Panel opacity").fill("0.5");
     await box(page, "Panel blur (px)").fill("40");

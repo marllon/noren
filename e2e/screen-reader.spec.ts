@@ -100,7 +100,7 @@ test.describe("the screen reader mode of the terminal", () => {
     expect(session).toBeDefined();
 
     await changeSettings(page, (screen) =>
-      screen.getByRole("checkbox", { name: "Screen reader mode", exact: true }).check(),
+      screen.getByRole("switch", { name: "Screen reader mode", exact: true }).check(),
     );
     await expect(accessibilityTrees(page).first()).toBeAttached();
     // The same shell goes on: same session, same history.
@@ -110,7 +110,7 @@ test.describe("the screen reader mode of the terminal", () => {
     ).toContain("before");
 
     await changeSettings(page, (screen) =>
-      screen.getByRole("checkbox", { name: "Screen reader mode", exact: true }).uncheck(),
+      screen.getByRole("switch", { name: "Screen reader mode", exact: true }).uncheck(),
     );
     await expect(accessibilityTrees(page)).toHaveCount(0);
     expect(await sessionId(page)).toBe(session);
@@ -120,7 +120,7 @@ test.describe("the screen reader mode of the terminal", () => {
     await openApp(page, { terminal: { screenReaderMode: true } });
     const screen = await openSettings(page);
     await expect(
-      screen.getByRole("checkbox", { name: "Screen reader mode", exact: true }),
+      screen.getByRole("switch", { name: "Screen reader mode", exact: true }),
     ).toBeChecked();
     await expect(screen).toContainText("Gives a screen reader the text of the terminal");
     await cancelSettings(page);

@@ -459,7 +459,7 @@ test.describe("notifications from the file", () => {
       '// my notifications\n{\n  "notifications": { "longCommandSeconds": 90 }, // slow\n}\n',
     );
     await changeSettings(page, async (screen) => {
-      await screen.getByRole("checkbox", { name: "System notifications", exact: true }).uncheck();
+      await screen.getByRole("switch", { name: "System notifications", exact: true }).uncheck();
       await screen
         .getByRole("textbox", { name: "Long command limit (seconds)", exact: true })
         .fill("12.5");

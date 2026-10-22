@@ -150,6 +150,9 @@ export interface BenchResultFile {
   text: string;
 }
 
+/** What the chooser of a path field lists: files of any kind, or folders (`Backend.pickPath`). */
+export type PathKind = "file" | "folder";
+
 export interface Backend {
   /** The AI providers: which ones there are, their keys, Ollama's models and the connection test. */
   readonly ai: AiBackend;
@@ -548,6 +551,17 @@ export interface Backend {
    * a person, only when the chooser could not be opened.
    */
   pickBackgroundImage(options: { title: string; filter: string }): Promise<string | null>;
+  /**
+   * Opens the chooser of the system for a path field of the settings screen (the key file and the
+   * known-hosts file of an ssh profile, the folder and the program of a shell profile) and answers
+   * the path the person chose, or `null` when the chooser was closed without a choice (the same
+   * answer a computer with no chooser gives, such as a plain browser). `kind` is what it lists: files
+   * of any kind, or folders. `title` is the window title, in the language in force. The path is an
+   * absolute path of this computer, put in the box of the field and checked there like any other
+   * text; nothing is read, written or sent anywhere. Rejects, with a sentence for a person, only
+   * when the chooser could not be opened.
+   */
+  pickPath(options: { kind: PathKind; title: string }): Promise<string | null>;
   /**
    * The names of the font families installed on this computer that are monospaced, without
    * repeats, in alphabetical order (upper and lower case alike). A name is only a family name: one

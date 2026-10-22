@@ -668,12 +668,12 @@ test.describe("the descriptions of the fields of config.jsonc", () => {
       screen.getByRole("group", { name: "Lado da barra lateral", exact: true }),
     ).toHaveAttribute("title", "Em que lado da janela fica a barra lateral.");
     await expect(
-      screen.getByRole("checkbox", { name: "Modo compacto", exact: true }).locator(".."),
+      screen.getByRole("switch", { name: "Modo compacto", exact: true }).locator(".."),
     ).toHaveAttribute(
       "title",
       "Modo compacto: a barra lateral sai do layout e aparece sobre ele quando o ponteiro toca a borda da janela.",
     );
-    await expect(screen.getByRole("group", { name: "Idioma", exact: true })).toHaveAttribute(
+    await expect(screen.getByRole("combobox", { name: "Idioma", exact: true })).toHaveAttribute(
       "title",
       /^O idioma da interface: "en" \(inglês\)/,
     );

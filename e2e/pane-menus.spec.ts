@@ -407,13 +407,18 @@ test.describe("copy and paste straight from the right click", () => {
     await open(page);
     const screen = await openSettings(page);
     const terminal = screen.getByRole("region", { name: "Terminal options", exact: true });
-    await expect(terminal.getByRole("radio", { name: "Open a menu", exact: true })).toBeChecked();
-    await expect(
-      terminal.getByRole("radio", { name: "Copy the selection, or paste", exact: true }),
-    ).not.toBeChecked();
-    await expect(
-      terminal.getByRole("radio", { name: "Always paste", exact: true }),
-    ).not.toBeChecked();
+    // Three long names are a drop-down list: the menu is the value chosen, the others are its options.
+    const rightClick = terminal.getByRole("combobox", {
+      name: "Right click in the terminal",
+      exact: true,
+    });
+    await expect(rightClick).toHaveValue("menu");
+    await expect(rightClick.locator("option:checked")).toHaveText("Open a menu");
+    await expect(rightClick.locator("option")).toHaveText([
+      "Open a menu",
+      "Copy the selection, or paste",
+      "Always paste",
+    ]);
     await page.keyboard.press("Escape");
   });
 
@@ -456,8 +461,8 @@ test.describe("copy and paste straight from the right click", () => {
     await changeSettings(page, async (screen) => {
       const terminal = screen.getByRole("region", { name: "Terminal options", exact: true });
       await terminal
-        .getByRole("radio", { name: "Copy the selection, or paste", exact: true })
-        .check();
+        .getByRole("combobox", { name: "Right click in the terminal", exact: true })
+        .selectOption({ label: "Copy the selection, or paste" });
     });
     expect(await configText(page)).toContain('"rightClick": "copy-or-paste"');
 
@@ -469,7 +474,9 @@ test.describe("copy and paste straight from the right click", () => {
     // And back to the menu.
     await changeSettings(page, async (screen) => {
       const terminal = screen.getByRole("region", { name: "Terminal options", exact: true });
-      await terminal.getByRole("radio", { name: "Open a menu", exact: true }).check();
+      await terminal
+        .getByRole("combobox", { name: "Right click in the terminal", exact: true })
+        .selectOption({ label: "Open a menu" });
     });
     await rightClick(page, first);
   });

@@ -177,7 +177,9 @@ test.describe("on a dark system", () => {
       "Mica was not applied, so the window stays opaque.",
     );
     await expect(effectNote(page)).toContainText("a browser window has no window effects");
-    await expect(screen.getByRole("radio", { name: "Mica", exact: true })).toBeChecked();
+    await expect(screen.getByRole("combobox", { name: "Window effect", exact: true })).toHaveValue(
+      "mica",
+    );
   });
 
   test("an opacity in the settings works with no effect: the surfaces and the terminal are see-through", async ({
@@ -299,7 +301,7 @@ test.describe("on a dark system", () => {
     await start(page);
 
     const screen = await openSettings(page);
-    await screen.getByRole("radio", { name: "Mica", exact: true }).check();
+    await screen.getByRole("combobox", { name: "Window effect", exact: true }).selectOption("mica");
     await opacityBox(screen).fill("0.8");
     await saveSettings(page);
 
@@ -316,7 +318,9 @@ test.describe("on a dark system", () => {
     await page.reload();
     await expect.poll(() => effectOf(page)).toBe("mica");
     const again = await openSettings(page);
-    await expect(again.getByRole("radio", { name: "Mica", exact: true })).toBeChecked();
+    await expect(again.getByRole("combobox", { name: "Window effect", exact: true })).toHaveValue(
+      "mica",
+    );
     await expect(opacityBox(again)).toHaveValue("0.8");
   });
 

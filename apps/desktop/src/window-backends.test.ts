@@ -136,6 +136,39 @@ describe("TauriBackend.pickBackgroundImage", () => {
   });
 });
 
+describe("TauriBackend.pickPath", () => {
+  it("asks path_pick for a file or a folder, with the title of the chooser, and answers the path", async () => {
+    const { bridge, calls } = bridgeAnswering(() => "C:\\Users\\a\\.ssh\\id_ed25519");
+    const backend = new TauriBackend(bridge);
+    await expect(backend.pickPath({ kind: "file", title: "Choose a key file" })).resolves.toBe(
+      "C:\\Users\\a\\.ssh\\id_ed25519",
+    );
+    await backend.pickPath({ kind: "folder", title: "Choose a folder" });
+    expect(calls).toEqual([
+      { command: "path_pick", args: { kind: "file", title: "Choose a key file" } },
+      { command: "path_pick", args: { kind: "folder", title: "Choose a folder" } },
+    ]);
+  });
+
+  it("answers null when the chooser was closed, and for an answer that is not a path", async () => {
+    for (const answer of [null, undefined, "", 7, { path: "a" }]) {
+      const { bridge } = bridgeAnswering(() => answer);
+      await expect(
+        new TauriBackend(bridge).pickPath({ kind: "file", title: "Choose" }),
+      ).resolves.toBeNull();
+    }
+  });
+
+  it("passes on the sentence of the Rust side when the chooser cannot be opened", async () => {
+    const { bridge } = bridgeAnswering(() => {
+      throw "the file chooser ended without an answer";
+    });
+    await expect(
+      new TauriBackend(bridge).pickPath({ kind: "folder", title: "Choose" }),
+    ).rejects.toBe("the file chooser ended without an answer");
+  });
+});
+
 function memoryStorage(initial: Record<string, string> = {}): StateStorage {
   const values = new Map(Object.entries(initial));
   return {

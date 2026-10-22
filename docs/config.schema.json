@@ -146,6 +146,12 @@
           "type": "string",
           "enum": ["sidebar", "top"]
         },
+        "favorites": {
+          "description": "Where the favorites bar is: at the top of the sidebar, or in a bar at the top of the window, above the terminal (under the tabs when they are on top too).",
+          "default": "sidebar",
+          "type": "string",
+          "enum": ["sidebar", "top"]
+        },
         "paneHeaders": {
           "description": "Shows a header with the title and the buttons on every pane of a tab.",
           "default": false,

@@ -48,6 +48,7 @@ describe("layout store", () => {
         "sidebar": { "position": "right", "width": 333, "compact": true, "keepOpen": true },
         "density": "compact",
         "tabs": "top",
+        "favorites": "top",
         "paneHeaders": true,
       },
     }`);
@@ -58,6 +59,7 @@ describe("layout store", () => {
       keepOpen: true,
       density: "compact",
       tabs: "top",
+      favorites: "top",
       paneHeaders: true,
     });
   });

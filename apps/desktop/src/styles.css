@@ -311,7 +311,8 @@ body {
 
 /* With a picture behind it the sidebar is frosted glass: what it lets through is blurred. */
 .app[data-nr-picture="shown"] .sidebar,
-.app[data-nr-picture="shown"] .tab-bar {
+.app[data-nr-picture="shown"] .tab-bar,
+.app[data-nr-picture="shown"] .favorites[data-nr-placement="top"] {
   backdrop-filter: blur(var(--nr-panel-blur, 18px));
 }
 
@@ -1122,6 +1123,23 @@ body {
 
 .favorite-button[data-nr-state="unavailable"]:hover {
   background: color-mix(in srgb, var(--nr-favorite-color) 18%, var(--nr-surface));
+}
+
+/* The bar at the top of the window (appearance.favorites "top"): the same tiles and the same hint in a bar of the width of the column, edge to edge like the tab bar above it. The tiles wrap onto another row in a narrow window, so none is hidden. It comes before the "over" frame so a tab dragged onto it still lights it up. */
+.favorites[data-nr-placement="top"] {
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--nr-border);
+  border-radius: 0;
+  background: var(--nr-surface-glass, var(--nr-surface));
+}
+
+.favorites[data-nr-placement="top"] .favorites-hint {
+  padding: 6px 8px;
+}
+
+.app-body[data-nr-density="compact"] .favorites[data-nr-placement="top"] {
+  padding: 2px 8px;
 }
 
 .favorites[data-nr-state="over"],

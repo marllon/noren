@@ -171,6 +171,11 @@ const appearanceSchema = z
       "Where the tabs are: the tree in the sidebar, or a bar above the terminal.",
       "sidebar",
     ),
+    favorites: setting(
+      z.enum(["sidebar", "top"]),
+      "Where the favorites bar is: at the top of the sidebar, or in a bar at the top of the window, above the terminal (under the tabs when they are on top too).",
+      "sidebar",
+    ),
     paneHeaders: setting(
       z.boolean(),
       "Shows a header with the title and the buttons on every pane of a tab.",

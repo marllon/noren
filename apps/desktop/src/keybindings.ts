@@ -155,6 +155,14 @@ const LAYOUT_ACTIONS: readonly ActionDef[] = [
     repeat: false,
     chords: NO_CHORD,
   },
+  {
+    id: "layout.favorites-bar",
+    title: "Toggle favorites bar on top",
+    category: "Layout",
+    command: { kind: "layout", toggle: "favorites" },
+    repeat: false,
+    chords: NO_CHORD,
+  },
 ];
 
 /**

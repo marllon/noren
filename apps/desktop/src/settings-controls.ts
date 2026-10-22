@@ -99,6 +99,7 @@ export const CHOICE_CONTROLS = {
   language: "list",
   sidebarSide: "segmented",
   tabPosition: "segmented",
+  favoritesPosition: "segmented",
   density: "segmented",
   windowEffect: "list",
   cursorShape: "segmented",

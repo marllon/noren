@@ -43,6 +43,7 @@ const EVERYTHING: Config = {
     sidebar: { position: "right", width: 333, compact: true, keepOpen: true },
     density: "compact",
     tabs: "top",
+    favorites: "top",
     paneHeaders: true,
     window: { effect: "mica", opacity: 0.8 },
     background: { image: "backgrounds/sky.png", opacity: 0.4, blur: 6 },
@@ -72,6 +73,7 @@ describe("settingsOf", () => {
       keepOpen: true,
       density: "compact",
       tabs: "top",
+      favorites: "top",
       paneHeaders: true,
       preset: "browser",
       notifications: false,
@@ -156,6 +158,18 @@ describe("shownSettings", () => {
       density: "comfortable",
     });
   });
+
+  it("shows the favorites bar where the file puts it, in the sidebar when it says nothing", () => {
+    expect(shownSettings({}, {}).favorites).toBe("sidebar");
+    expect(shownSettings({ appearance: { favorites: "top" } }, {}).favorites).toBe("top");
+    // A draft that moved it wins over the file; one that did not follows the file.
+    expect(
+      shownSettings({ appearance: { favorites: "top" } }, { favorites: "sidebar" }),
+    ).toMatchObject({ favorites: "sidebar" });
+    expect(
+      shownSettings({ appearance: { favorites: "top" } }, { density: "compact" }),
+    ).toMatchObject({ favorites: "top" });
+  });
 });
 
 describe("compact mode boxes", () => {
@@ -211,6 +225,23 @@ describe("planSave", () => {
     expect(plan.changes).toEqual([
       { path: ["appearance", "density"], value: "compact" },
       { path: ["appearance", "paneHeaders"], value: true },
+    ]);
+  });
+
+  it("writes the favorites bar at its own place, and only when it differs from the one in force", () => {
+    expect(planSave({}, { favorites: "top" }).changes).toEqual([
+      { path: ["appearance", "favorites"], value: "top" },
+    ]);
+    expect(planSave({ appearance: { favorites: "top" } }, { favorites: "top" }).changes).toEqual(
+      [],
+    );
+    expect(
+      planSave({ appearance: { favorites: "top" } }, { favorites: "sidebar" }).changes,
+    ).toEqual([{ path: ["appearance", "favorites"], value: "sidebar" }]);
+    // It is not the setting of the tabs, which a draft can hold at the same time.
+    expect(planSave({}, { tabs: "top", favorites: "top" }).changes).toEqual([
+      { path: ["appearance", "tabs"], value: "top" },
+      { path: ["appearance", "favorites"], value: "top" },
     ]);
   });
 

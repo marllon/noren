@@ -65,6 +65,7 @@ describe("the layout actions of the registry", () => {
       "layout.compact-mode",
       "layout.keep-sidebar-open",
       "layout.top-tabs",
+      "layout.favorites-bar",
     ]);
     for (const action of layoutActions) {
       expect(action.chords).toEqual({ safe: undefined, browser: undefined });
@@ -111,6 +112,25 @@ describe("planLayoutCommand", () => {
     expect(
       planLayoutCommand({ appearance: { tabs: "top" } }, commandOf("layout.top-tabs")),
     ).toEqual({ changes: [{ path: ["appearance", "tabs"], value: "sidebar" }] });
+  });
+
+  it("flips the favorites bar between the sidebar and the top of the window, and only that setting", () => {
+    expect(planLayoutCommand({}, commandOf("layout.favorites-bar"))).toEqual({
+      changes: [{ path: ["appearance", "favorites"], value: "top" }],
+    });
+    expect(
+      planLayoutCommand({ appearance: { favorites: "top" } }, commandOf("layout.favorites-bar")),
+    ).toEqual({ changes: [{ path: ["appearance", "favorites"], value: "sidebar" }] });
+    // Top tabs and compact mode do not stop it: the bar on top is a bar of its own.
+    for (const appearance of [
+      { tabs: "top" as const },
+      { sidebar: { compact: true } },
+      { tabs: "top" as const, sidebar: { compact: true } },
+    ]) {
+      expect(planLayoutCommand({ appearance }, commandOf("layout.favorites-bar"))).toEqual({
+        changes: [{ path: ["appearance", "favorites"], value: "top" }],
+      });
+    }
   });
 
   it("flips compact mode, and keeping the sidebar open only while compact mode is on", () => {
@@ -186,6 +206,7 @@ describe("runLayoutCommand", () => {
       ["layout.density", (c) => c.appearance?.density],
       ["layout.compact-mode", (c) => c.appearance?.sidebar?.compact],
       ["layout.top-tabs", (c) => c.appearance?.tabs],
+      ["layout.favorites-bar", (c) => c.appearance?.favorites],
     ];
     for (const [id, pick] of ids) {
       const { backend, manager } = await started(COMMENTED);
@@ -205,7 +226,8 @@ describe("runLayoutCommand", () => {
             key === "width" ||
             key === "density" ||
             key === "compact" ||
-            key === "tabs"
+            key === "tabs" ||
+            key === "favorites"
               ? undefined
               : value,
           ),
@@ -223,6 +245,15 @@ describe("runLayoutCommand", () => {
     expect(layoutOf(manager.state.config).tabs).toBe("top");
     await runLayoutCommand(manager, flip);
     expect(layoutOf(manager.state.config).tabs).toBe("sidebar");
+  });
+
+  it("flips the favorites bar back and forth through the file, leaving the tabs alone", async () => {
+    const { manager } = await started(null);
+    const flip = commandOf("layout.favorites-bar");
+    expect(await runLayoutCommand(manager, flip)).toBeUndefined();
+    expect(layoutOf(manager.state.config)).toMatchObject({ favorites: "top", tabs: "sidebar" });
+    expect(await runLayoutCommand(manager, flip)).toBeUndefined();
+    expect(layoutOf(manager.state.config)).toMatchObject({ favorites: "sidebar", tabs: "sidebar" });
   });
 
   it("creates the file when there is none", async () => {

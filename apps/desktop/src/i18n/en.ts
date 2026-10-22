@@ -322,6 +322,7 @@ export const en = {
   "action.layout.compact-mode": "Toggle compact mode",
   "action.layout.keep-sidebar-open": "Toggle keep sidebar open",
   "action.layout.top-tabs": "Toggle tabs on top",
+  "action.layout.favorites-bar": "Toggle favorites bar on top",
   "action.palette.open": "Open palette",
   "action.tab.new": "New tab",
   "action.tab.reopen-closed": "Reopen closed tab",
@@ -414,6 +415,9 @@ export const en = {
   "settings.tabPosition": "Tab position",
   "settings.inSidebar": "In the sidebar",
   "settings.onTop": "On top",
+  "settings.favoritesBar": "Favorites bar",
+  "settings.favoritesSidebar": "Sidebar",
+  "settings.favoritesTop": "Top of window",
   "settings.density": "Density",
   "settings.comfortable": "Comfortable",
   "settings.compact": "Compact",
@@ -1345,6 +1349,8 @@ export const en = {
   "field.appearance.density": "How much room the rows of the sidebar take.",
   "field.appearance.tabs":
     "Where the tabs are: the tree in the sidebar, or a bar above the terminal.",
+  "field.appearance.favorites":
+    "Where the favorites bar is: at the top of the sidebar, or in a bar at the top of the window, above the terminal (under the tabs when they are on top too).",
   "field.appearance.paneHeaders":
     "Shows a header with the title and the buttons on every pane of a tab.",
   "field.terminal":

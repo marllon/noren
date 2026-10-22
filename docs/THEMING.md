@@ -209,7 +209,7 @@ The picture is read by the app (the page is never given a path or an address to 
 1. **What the picture is drawn on**: the solid background of the theme (`--nr-background-backing`). While the window has an effect it is the glass of the window instead, so Mica or Acrylic still shows through.
 2. **The picture**, at its opacity and blur.
 3. **The veil**: the background of the theme again, drawn over the picture at 0.4 (`--nr-background-veil`), whatever the opacity of the picture is. It is dark on a dark theme and light on a light one, and keeps the text readable on a bright or busy picture even with the opacity at 1.
-4. **The panels**, painted over all of it at the opacity of the interface (0.55 while a picture shows and the settings say nothing): the title bar, the sidebar and the tab bar with the `--nr-surface-glass` color, and each terminal with a pane of glass of its own, the background of the terminal at that opacity (`--nr-terminal-glass`). The picture shows through all of them, and **the sidebar and the tab bar blur what they let through** (`ui.blur` of the theme, 18 px for the built-in ones). The terminal does not blur: it repaints all the time, and a blur behind it would be redone for every frame.
+4. **The panels**, painted over all of it at the opacity of the interface (0.55 while a picture shows and the settings say nothing): the title bar, the sidebar, the tab bar and the favorites bar when it is at the top of the window (`appearance.favorites`) with the `--nr-surface-glass` color, and each terminal with a pane of glass of its own, the background of the terminal at that opacity (`--nr-terminal-glass`). The picture shows through all of them, and **the sidebar, the tab bar and the favorites bar on top blur what they let through** (`ui.blur` of the theme, 18 px for the built-in ones). The terminal does not blur: it repaints all the time, and a blur behind it would be redone for every frame.
 
 The terminal itself draws no background while a picture shows (xterm.js gets a see-through theme), and the opacity of its pane is a CSS color, so moving the opacity of the interface never repaints a terminal. The **Background** section of the settings screen has a slider for the opacity of the picture and one for its blur, and the dialog of a space (**Background image...**) has the same two: they show their effect at once on the window, before **Save** or **Apply**, and **Cancel** takes it back. Typing in the box next to a slider moves the slider and the window too (half a number on the way, such as `0.`, leaves the window as it was).
 
@@ -297,7 +297,7 @@ Set on the root element of the page by the active theme (and the active space, f
 | `--nr-space-color`        | The color of the active space, or the accent when it has none.                                          |
 | `--nr-opacity`            | How opaque the interface is, a number from 0.3 to 1 (see [the opacity](#the-opacity-of-the-interface)). |
 | `--nr-bg-glass`           | `--nr-bg` at that opacity: what the window itself is painted with.                                      |
-| `--nr-surface-glass`      | `--nr-surface` at that opacity: what the title bar, the sidebar and the tab bar are painted with.       |
+| `--nr-surface-glass`      | `--nr-surface` at that opacity: what the title bar, the sidebar and the bars on top are painted with.   |
 | `--nr-background-image`   | The picture behind the terminals as `url(...)`, or `none`.                                              |
 | `--nr-background-opacity` | How much of the picture shows, a number from 0 to 1.                                                    |
 | `--nr-background-blur`    | How blurred the picture is, with its unit (`6px`).                                                      |
@@ -341,6 +341,7 @@ Set on the root element of the page by the active theme (and the active space, f
 | `data-nr-selected`      | `item`                                          | `true` while the tab is part of a selection                        |
 | `data-nr-pinned`        | `item`                                          | `true` for a pinned tab                                            |
 | `data-nr-kind`          | `favorite`                                      | `tab`, `profile` or `action`: what the tile stands for             |
+| `data-nr-placement`     | `favorites`                                     | `sidebar` or `top`: where the bar is (`appearance.favorites`)      |
 | `data-nr-indicator`     | the marks on a tab                              | `running`, `failed`, `unread` or `bell`                            |
 | `data-nr-side`          | the area that holds the sidebar and the content | `left` or `right`: the side of the sidebar                         |
 | `data-nr-density`       | the area that holds the sidebar and the content | `comfortable` or `compact`                                         |

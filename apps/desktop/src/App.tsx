@@ -2857,17 +2857,40 @@ function Shell({ store }: { store: WorkspaceStore }) {
   );
   const autoHide = sidebarMode(layout) === "auto-hide";
   const tabsOnTop = layout.tabs === "top";
+  const favoritesOnTop = layout.favorites === "top";
   // A menu or dialog opened from the sidebar keeps it shown, even though the pointer left it. The
   // tab and group menus of the top bar do not: they do not come from the sidebar.
   const fromTabBar = tabsOnTop && (overlay?.kind === "item-menu" || overlay?.kind === "group-menu");
+  // Nor does the menu of a tile of the favorites bar when the bar is at the top of the window.
+  const fromFavoritesBar = favoritesOnTop && overlay?.kind === "favorite-menu";
+  // The question before the first run of an action is asked from a tile of that bar or from the
+  // Start button of the sidebar; with the bar on top it is no longer the sidebar's to keep shown.
   // A pane menu and the menu of a terminal do not come from the sidebar either.
   const shown =
     reveal.revealed ||
-    pending !== null ||
+    (pending !== null && !favoritesOnTop) ||
     (overlay !== null &&
       !fromTabBar &&
+      !fromFavoritesBar &&
       overlay.kind !== "pane-menu" &&
       overlay.kind !== "terminal-menu");
+  // The favorites bar is one element wherever it goes: the top of the sidebar, or the top of the
+  // window (above the terminal, under the tab bar when the tabs are on top too).
+  const favoritesBar = (
+    <FavoritesGrid
+      placement={layout.favorites}
+      tiles={barTiles}
+      active={{ spaceId: space.id, itemId: activeId }}
+      onOpen={onOpenTile}
+      onMenu={(tile, point) =>
+        setOverlay({
+          kind: "favorite-menu",
+          target: tile.kind === "tab" ? { kind: "tab", itemId: tile.favorite.id } : tile.ref,
+          point,
+        })
+      }
+    />
+  );
   return (
     <ExplainContext.Provider value={explainCommand}>
       <div
@@ -2911,19 +2934,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
               onCommit={(width) => void saveSidebarWidth(width)}
               disabled={settingsFileBroken}
             />
-            <FavoritesGrid
-              tiles={barTiles}
-              active={{ spaceId: space.id, itemId: activeId }}
-              onOpen={onOpenTile}
-              onMenu={(tile, point) =>
-                setOverlay({
-                  kind: "favorite-menu",
-                  target:
-                    tile.kind === "tab" ? { kind: "tab", itemId: tile.favorite.id } : tile.ref,
-                  point,
-                })
-              }
-            />
+            {!favoritesOnTop && favoritesBar}
             <ActionsHeader
               spaceName={space.name}
               ui={projectActions}
@@ -2972,6 +2983,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
           </aside>
           <div className="main">
             {tabsOnTop && <TabBar {...treeProps} onNewTab={() => newTab()} />}
+            {favoritesOnTop && favoritesBar}
             <section className="content" aria-label={t("window.content")}>
               {/* A space another window shows is drawn by that window's page, not here: a terminal
                   mounted in two pages would take the output of its session back. */}

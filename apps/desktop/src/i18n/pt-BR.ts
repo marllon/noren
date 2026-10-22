@@ -327,6 +327,7 @@ export const ptBR: Dictionary = {
   "action.layout.compact-mode": "Alternar o modo compacto",
   "action.layout.keep-sidebar-open": "Alternar manter a barra lateral aberta",
   "action.layout.top-tabs": "Alternar abas no topo",
+  "action.layout.favorites-bar": "Alternar a barra de favoritos no topo",
   "action.palette.open": "Abrir a paleta",
   "action.tab.new": "Nova aba",
   "action.tab.reopen-closed": "Reabrir a aba fechada",
@@ -419,6 +420,9 @@ export const ptBR: Dictionary = {
   "settings.tabPosition": "Posição das abas",
   "settings.inSidebar": "Na barra lateral",
   "settings.onTop": "No topo",
+  "settings.favoritesBar": "Barra de favoritos",
+  "settings.favoritesSidebar": "Barra lateral",
+  "settings.favoritesTop": "Topo da janela",
   "settings.density": "Densidade",
   "settings.comfortable": "Confortável",
   "settings.compact": "Compacta",
@@ -1360,6 +1364,8 @@ export const ptBR: Dictionary = {
   "field.appearance.density": "Quanto espaço as linhas da barra lateral ocupam.",
   "field.appearance.tabs":
     "Onde ficam as abas: a árvore na barra lateral ou uma barra acima do terminal.",
+  "field.appearance.favorites":
+    "Onde fica a barra de favoritos: no alto da barra lateral ou numa barra no alto da janela, acima do terminal (sob as abas quando elas também estão no topo).",
   "field.appearance.paneHeaders":
     "Mostra um cabeçalho com o título e os botões em cada painel de uma aba.",
   "field.terminal":

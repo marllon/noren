@@ -37,6 +37,7 @@ describe("previewLayout: what a draft tries out of the layout", () => {
         compact: true,
         keepOpen: true,
         tabs: "top",
+        favorites: "top",
         paneHeaders: true,
       }),
     ).toEqual({
@@ -45,8 +46,11 @@ describe("previewLayout: what a draft tries out of the layout", () => {
       compact: true,
       keepOpen: true,
       tabs: "top",
+      favorites: "top",
       paneHeaders: true,
     });
+    // Moving the favorites bar back to the sidebar is something to try out too.
+    expect(previewLayout({ favorites: "sidebar" })).toEqual({ favorites: "sidebar" });
     // A switch turned off is something to try out too (the file may have it on).
     expect(previewLayout({ compact: false })).toEqual({ compact: false });
   });

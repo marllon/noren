@@ -39,6 +39,14 @@ describe("layoutFromConfig", () => {
       paneHeaders: true,
     });
   });
+
+  it("maps the place of the favorites bar, and says nothing when the file does not", () => {
+    expect(layoutFromConfig({ appearance: { favorites: "top" } })).toEqual({ favorites: "top" });
+    expect(layoutFromConfig({ appearance: { favorites: "sidebar" } })).toEqual({
+      favorites: "sidebar",
+    });
+    expect(layoutFromConfig({ appearance: { tabs: "top" } })).toEqual({ tabs: "top" });
+  });
 });
 
 describe("layoutOf", () => {
@@ -54,6 +62,21 @@ describe("layoutOf", () => {
         notifications: { enabled: false },
       }),
     ).toEqual({ ...DEFAULT_LAYOUT, side: "right", width: 260, tabs: "top" });
+  });
+
+  it("keeps the favorites bar in the sidebar unless the file puts it on top, whatever the tabs do", () => {
+    expect(DEFAULT_LAYOUT.favorites).toBe("sidebar");
+    expect(layoutOf({}).favorites).toBe("sidebar");
+    expect(layoutOf({ appearance: { tabs: "top" } }).favorites).toBe("sidebar");
+    expect(layoutOf({ appearance: { favorites: "top" } })).toEqual({
+      ...DEFAULT_LAYOUT,
+      favorites: "top",
+    });
+    expect(layoutOf({ appearance: { favorites: "top", tabs: "top" } })).toEqual({
+      ...DEFAULT_LAYOUT,
+      favorites: "top",
+      tabs: "top",
+    });
   });
 
   it("keeps a preference that is off: false is a choice, not a gap", () => {
@@ -124,9 +147,16 @@ describe("parseLayout", () => {
       compact: true,
       keepOpen: true,
       tabs: "top",
+      favorites: "sidebar",
       paneHeaders: true,
     };
     expect(parseLayout(JSON.stringify(layout))).toEqual(layout);
+  });
+
+  it("never reads the place of the favorites bar from the old storage: only the file sets it", () => {
+    for (const favorites of ["top", "sidebar", 3, null, true]) {
+      expect(parseLayout(JSON.stringify({ favorites })).favorites).toBe("sidebar");
+    }
   });
 
   it("keeps the tabs in the sidebar by default and when the saved value is invalid", () => {
@@ -153,6 +183,7 @@ describe("parseLayout", () => {
       compact: true,
       keepOpen: false,
       tabs: "sidebar",
+      favorites: "sidebar",
       paneHeaders: false,
     });
   });
@@ -191,6 +222,12 @@ describe("sidebarMode", () => {
     expect(sidebarMode({ ...DEFAULT_LAYOUT, tabs: "top", compact: true, keepOpen: true })).toBe(
       "auto-hide",
     );
+  });
+
+  it("does not depend on where the favorites bar is: the bar on top leaves the sidebar's mode alone", () => {
+    expect(sidebarMode({ ...DEFAULT_LAYOUT, favorites: "top" })).toBe("docked");
+    expect(sidebarMode({ ...DEFAULT_LAYOUT, favorites: "top", compact: true })).toBe("auto-hide");
+    expect(sidebarMode({ ...DEFAULT_LAYOUT, favorites: "top", tabs: "top" })).toBe("auto-hide");
   });
 });
 

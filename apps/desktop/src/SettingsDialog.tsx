@@ -29,7 +29,7 @@ import { effectName } from "./i18n/names";
 import { resolveBindings } from "./keybindings";
 import type { Preset } from "./keybindings";
 import { useKeybindings } from "./keybindings-store";
-import type { Density, SidebarSide, TabsPlacement } from "./layout";
+import type { Density, FavoritesPlacement, SidebarSide, TabsPlacement } from "./layout";
 import { settingsModRows } from "./mod-options";
 import { useModFiles } from "./mods-store";
 import { commitProfileImport, readProfileFile, takenProfileIds } from "./profile-import";
@@ -100,6 +100,11 @@ const sideOptions = (): readonly { value: SidebarSide; label: string }[] => [
 const tabPlacementOptions = (): readonly { value: TabsPlacement; label: string }[] => [
   { value: "sidebar", label: t("settings.inSidebar") },
   { value: "top", label: t("settings.onTop") },
+];
+
+const favoritesPlacementOptions = (): readonly { value: FavoritesPlacement; label: string }[] => [
+  { value: "sidebar", label: t("settings.favoritesSidebar") },
+  { value: "top", label: t("settings.favoritesTop") },
 ];
 
 const densityOptions = (): readonly { value: Density; label: string }[] => [
@@ -558,6 +563,7 @@ export function SettingsDialog({
   const sectionOptions = {
     side: sideOptions(),
     tabs: tabPlacementOptions(),
+    favorites: favoritesPlacementOptions(),
     density: densityOptions(),
     language: languageOptions(),
     effect: windowEffectOptions(),
@@ -626,6 +632,19 @@ export function SettingsDialog({
             value={shown.tabs}
             options={sectionOptions.tabs}
             onChange={(tabs) => change({ tabs })}
+          />,
+        ),
+        row(
+          "favorites",
+          [t("settings.favoritesBar"), ...labelsOf(sectionOptions.favorites)],
+          <Choice
+            legend={t("settings.favoritesBar")}
+            field="appearance.favorites"
+            name="settings-favorites"
+            control={CHOICE_CONTROLS.favoritesPosition}
+            value={shown.favorites}
+            options={sectionOptions.favorites}
+            onChange={(favorites) => change({ favorites })}
           />,
         ),
         row(

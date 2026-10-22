@@ -5,10 +5,17 @@ import type { Id } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
 import { useT } from "./i18n";
 import type { BarTile } from "./favorites";
+import type { FavoritesPlacement } from "./layout";
 import type { MenuPoint } from "./SpaceMenu";
 import { useOutsideDrop } from "./TreeDnd";
 
 interface FavoritesGridProps {
+  /**
+   * Where the bar is drawn: at the top of the sidebar (a grid of tiles that wraps to the width of the
+   * sidebar) or in a bar of its own at the top of the window (one row of tiles). The same bar, the
+   * same tiles, menus and drop place: only the box around the tiles changes.
+   */
+  placement?: FavoritesPlacement;
   /** The tiles to show; with none, the bar is still there and says how to add one. */
   tiles: readonly BarTile[];
   /** The tab on screen, as `spaceId` and `itemId`, which lights its tile. */
@@ -23,13 +30,19 @@ interface FavoritesGridProps {
 }
 
 /**
- * The global favorites as a bar of tiles at the top of the sidebar, shown in every space and always
- * on screen: the favorite tabs (the first letter of the title), then the shell profiles (a terminal)
+ * The global favorites as a bar of tiles at the top of the sidebar (or, with `placement` "top", at the
+ * top of the window), shown in every space and always on screen: the favorite tabs (the first letter of the title), then the shell profiles (a terminal)
  * and the project actions (a play mark) kept next to them. With nothing in it the bar holds a line
  * that says how to add one, so the place is there to be found. It is also where a tab dragged from
  * the tree becomes a favorite, empty or not. It must sit inside the `TreeDnd`.
  */
-export function FavoritesGrid({ tiles, active, onOpen, onMenu }: FavoritesGridProps) {
+export function FavoritesGrid({
+  placement = "sidebar",
+  tiles,
+  active,
+  onOpen,
+  onMenu,
+}: FavoritesGridProps) {
   const t = useT();
   const drop = useOutsideDrop({ kind: "favorites" });
   const reasonId = useId();
@@ -38,6 +51,7 @@ export function FavoritesGrid({ tiles, active, onOpen, onMenu }: FavoritesGridPr
       ref={drop.ref}
       className="favorites"
       data-nr-part="favorites"
+      data-nr-placement={placement}
       data-nr-state={drop.over ? "over" : undefined}
       aria-label={t("favorites.label")}
     >

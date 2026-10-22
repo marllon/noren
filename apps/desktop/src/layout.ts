@@ -23,6 +23,8 @@ export type SidebarSide = "left" | "right";
 export type Density = "comfortable" | "compact";
 /** Where the tabs live: the tree in the sidebar, or a horizontal bar above the terminal. */
 export type TabsPlacement = "sidebar" | "top";
+/** Where the favorites bar lives: at the top of the sidebar, or in a bar at the top of the window. */
+export type FavoritesPlacement = "sidebar" | "top";
 
 export interface Layout {
   side: SidebarSide;
@@ -35,6 +37,11 @@ export interface Layout {
   keepOpen: boolean;
   /** Top tabs mode: the tabs move to a bar above the terminal and the sidebar leaves the layout. */
   tabs: TabsPlacement;
+  /**
+   * The favorites bar at the top of the window: it leaves the sidebar and takes a bar of its own above
+   * the terminal (under the tab bar when the tabs are on top too), whatever the sidebar does.
+   */
+  favorites: FavoritesPlacement;
   /** Every pane of a tab shows a header with its title and the zoom and close buttons. */
   paneHeaders: boolean;
 }
@@ -46,6 +53,7 @@ export const DEFAULT_LAYOUT: Layout = {
   compact: false,
   keepOpen: false,
   tabs: "sidebar",
+  favorites: "sidebar",
   paneHeaders: false,
 };
 
@@ -89,6 +97,8 @@ export function parseLayout(raw: string | null): Layout {
     keepOpen: typeof keepOpen === "boolean" ? keepOpen : DEFAULT_LAYOUT.keepOpen,
     // Preferences saved before top tabs existed have no such field: they keep the sidebar.
     tabs: tabs === "sidebar" || tabs === "top" ? tabs : DEFAULT_LAYOUT.tabs,
+    // The favorites bar never had a home in the browser storage: only the file sets it.
+    favorites: DEFAULT_LAYOUT.favorites,
     // Preferences saved before pane headers existed have no such field: the headers stay off.
     paneHeaders: typeof paneHeaders === "boolean" ? paneHeaders : DEFAULT_LAYOUT.paneHeaders,
   };
@@ -108,6 +118,7 @@ export function layoutFromConfig(config: Config): Partial<Layout> {
   if (sidebar?.keepOpen !== undefined) set.keepOpen = sidebar.keepOpen;
   if (appearance?.density !== undefined) set.density = appearance.density;
   if (appearance?.tabs !== undefined) set.tabs = appearance.tabs;
+  if (appearance?.favorites !== undefined) set.favorites = appearance.favorites;
   if (appearance?.paneHeaders !== undefined) set.paneHeaders = appearance.paneHeaders;
   return set;
 }

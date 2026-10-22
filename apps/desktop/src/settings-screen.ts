@@ -66,6 +66,7 @@ export const SETTING_PATHS: Readonly<Record<SettingKey, readonly string[]>> = {
   keepOpen: ["appearance", "sidebar", "keepOpen"],
   density: ["appearance", "density"],
   tabs: ["appearance", "tabs"],
+  favorites: ["appearance", "favorites"],
   paneHeaders: ["appearance", "paneHeaders"],
   preset: ["keybindings", "preset"],
   notifications: ["notifications", "enabled"],
@@ -299,7 +300,7 @@ export function previewPicture(
 
 /**
  * The layout a draft tries out in the window at once: which side the sidebar is on, how wide it is,
- * the density, compact mode, the tabs and the pane headers. A width that is not whole pixels in range
+ * the density, compact mode, the tabs, the favorites bar and the pane headers. A width that is not whole pixels in range
  * yet keeps `kept`. `undefined` when the draft changed none of them.
  */
 export function previewLayout(
@@ -314,6 +315,7 @@ export function previewLayout(
     ...(draft.compact !== undefined ? { compact: draft.compact } : {}),
     ...(draft.keepOpen !== undefined ? { keepOpen: draft.keepOpen } : {}),
     ...(draft.tabs !== undefined ? { tabs: draft.tabs } : {}),
+    ...(draft.favorites !== undefined ? { favorites: draft.favorites } : {}),
     ...(draft.paneHeaders !== undefined ? { paneHeaders: draft.paneHeaders } : {}),
   };
   return Object.keys(tried).length === 0 ? undefined : tried;

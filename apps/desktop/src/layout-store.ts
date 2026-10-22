@@ -57,6 +57,7 @@ function sameLayout(a: Layout, b: Layout): boolean {
     a.compact === b.compact &&
     a.keepOpen === b.keepOpen &&
     a.tabs === b.tabs &&
+    a.favorites === b.favorites &&
     a.paneHeaders === b.paneHeaders
   );
 }

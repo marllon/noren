@@ -30,6 +30,14 @@ export const ptBR: Dictionary = {
   "window.content": "Conteúdo",
   "window.newTab": "Nova aba",
   "window.resizeSidebar": "Redimensionar a barra lateral",
+
+  // The head and the search of the glass sidebar
+  "sidebar.collapse": "Recolher a barra lateral",
+  "sidebar.dock": "Manter a barra lateral aberta",
+  "sidebar.search": "Buscar ou rodar comando",
+  "sidebar.searchShort": "Buscar",
+  "sidebar.actionsNote": "ações do projeto",
+
   "window.resizeBlocked": "A largura não pode ser salva enquanto o config.jsonc tiver um problema",
   "window.schemeFile": "Arquivo de esquema de cores",
   "window.spaceFile": "Arquivo de espaço",
@@ -894,6 +902,10 @@ export const ptBR: Dictionary = {
   "spaceColor.teal": "Verde-azulado",
   "spaceColor.rose": "Rosa",
   "spaceColor.slate": "Ardósia",
+  "spaceColor.mint": "Menta",
+  "spaceColor.lilac": "Lilás",
+  "spaceColor.gold": "Dourado",
+  "spaceColor.blush": "Rosado",
   "spaceIcon.terminal": "Terminal",
   "spaceIcon.folder": "Pasta",
   "spaceIcon.code": "Código",

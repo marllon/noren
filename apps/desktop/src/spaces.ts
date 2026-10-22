@@ -10,6 +10,11 @@ export const SPACE_COLORS: readonly { name: string; value: string }[] = [
   { name: "Teal", value: "#3fb5b0" },
   { name: "Rose", value: "#e0679a" },
   { name: "Slate", value: "#8a93a6" },
+  // The four highlight colors of the glass design, after the older ones so the default stays Blue.
+  { name: "Mint", value: "#5ee6c8" },
+  { name: "Lilac", value: "#a99bff" },
+  { name: "Gold", value: "#f5b84b" },
+  { name: "Blush", value: "#ff8fa3" },
 ];
 
 /** Lucide icons the new-space dialog offers (their kebab-case names); the first is the default. */

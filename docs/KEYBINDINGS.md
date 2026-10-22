@@ -82,7 +82,7 @@ If an override would bind a chord that another action holds, the override is not
 
 ## Storage
 
-The chosen preset is a setting of `config.jsonc`: `"keybindings": { "preset": "safe" | "browser" }` (see [CONFIG.md](CONFIG.md)). It is chosen in the **Shortcuts** section of the settings screen (the gear in the title bar, or **Open settings** in the palette), which also holds the button that opens the shortcuts screen. A file without the setting means the safe preset; an unknown preset is an error in the file, which keeps the last valid settings and shows the notice.
+The chosen preset is a setting of `config.jsonc`: `"keybindings": { "preset": "safe" | "browser" }` (see [CONFIG.md](CONFIG.md)). It is chosen in the **Shortcuts** section of the settings screen (the gear at the foot of the sidebar or in the title bar, or **Open settings** in the palette), which also holds the button that opens the shortcuts screen. A file without the setting means the safe preset; an unknown preset is an error in the file, which keeps the last valid settings and shows the notice.
 
 The user's own chords (the overrides) are still provisional: they live in the browser storage under `noren.ui.keybindings`, as `{"overrides": {"<action id>": "<chord>" | null}}`, until the file gets a place for them. A value that is missing, not JSON or not an object falls back to no overrides; an override for an unknown action, or with a chord that cannot match, is dropped. Earlier builds kept the preset here too (`{"preset": ..., "overrides": ...}`): it is moved into the file once, at the first start, and removed from this key.
 

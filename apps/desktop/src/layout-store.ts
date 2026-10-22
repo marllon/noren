@@ -119,7 +119,12 @@ export function useLayout(): Layout {
  * changes, not at every move of the sidebar handle.
  */
 export function useInterfaceStyle(): InterfaceStyle {
-  return useSyncExternalStore(subscribe, () => getLayout().style);
+  // The third argument is what a tree rendered to a string (the tests of the sidebar do) reads.
+  return useSyncExternalStore(
+    subscribe,
+    () => getLayout().style,
+    () => getLayout().style,
+  );
 }
 
 /** Forgets what was read, so a test starts from nothing. */

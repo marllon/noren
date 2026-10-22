@@ -1,12 +1,18 @@
 import { Play, Terminal } from "lucide-react";
 import { useId } from "react";
 import type { CSSProperties } from "react";
-import type { Id } from "@noren/model";
+import type { Id, Space } from "@noren/model";
+import { useAgentStateOfPane } from "./agent-state-store";
+import { useAgentOfPane } from "./agent-store";
 import { menuPoint } from "./ContextMenu";
 import { useT } from "./i18n";
+import { useInterfaceStyle } from "./layout-store";
+import { indicatorLabels, summarizeItem } from "./pane-info";
 import type { BarTile } from "./favorites";
 import type { FavoritesPlacement } from "./layout";
 import type { MenuPoint } from "./SpaceMenu";
+import { tabDotOf } from "./tab-dot";
+import type { TabDot } from "./tab-dot";
 import { useOutsideDrop } from "./TreeDnd";
 
 interface FavoritesGridProps {
@@ -20,6 +26,8 @@ interface FavoritesGridProps {
   tiles: readonly BarTile[];
   /** The tab on screen, as `spaceId` and `itemId`, which lights its tile. */
   active: { spaceId: Id; itemId: Id | undefined };
+  /** The spaces, to read the state of a favorite tab (the glass style shows it as a dot on its tile). */
+  spaces?: readonly Space[];
   /**
    * Click or Enter on a tile: show the tab, open a tab with the profile, or run the action. A tile
    * that is unavailable is clicked too, so the page can say why it does nothing.
@@ -40,12 +48,16 @@ export function FavoritesGrid({
   placement = "sidebar",
   tiles,
   active,
+  spaces = [],
   onOpen,
   onMenu,
 }: FavoritesGridProps) {
   const t = useT();
   const drop = useOutsideDrop({ kind: "favorites" });
   const reasonId = useId();
+  const glass = useInterfaceStyle() === "glass";
+  const agentOf = useAgentOfPane();
+  const agentStateOf = useAgentStateOfPane();
   return (
     <section
       ref={drop.ref}
@@ -89,6 +101,29 @@ export function FavoritesGrid({
                   ? "running"
                   : undefined;
             const reason = `${reasonId}-${index}`;
+            // The glass style puts a dot on the corner of a tile that needs the person (an agent
+            // waiting) or is busy (a command or an agent working, a project action running).
+            let dot: TabDot | undefined;
+            let dotWords = "";
+            if (glass && tile.kind === "tab") {
+              const owner = spaces.find((space) => space.id === tile.favorite.spaceId);
+              const item = owner?.items[tile.favorite.id];
+              if (owner !== undefined && item !== undefined) {
+                const summary = summarizeItem(item, owner.defaults.cwd, agentOf, agentStateOf);
+                dot = tabDotOf(summary);
+                dotWords = indicatorLabels(summary).join(". ");
+              }
+            } else if (glass && tile.kind === "action" && tile.running) {
+              dot = "running";
+            }
+            const shownDot = dot === "running" || dot === "waiting" ? dot : undefined;
+            const stateId = `${reasonId}-state-${index}`;
+            const describedBy =
+              unavailable !== undefined
+                ? reason
+                : shownDot !== undefined && dotWords !== ""
+                  ? stateId
+                  : undefined;
             return (
               <li key={tile.key}>
                 <button
@@ -105,7 +140,7 @@ export function FavoritesGrid({
                   aria-label={name}
                   aria-current={isActive ? "true" : undefined}
                   aria-disabled={unavailable !== undefined ? "true" : undefined}
-                  aria-describedby={unavailable !== undefined ? reason : undefined}
+                  aria-describedby={describedBy}
                   title={unavailable ?? name}
                   style={{ "--nr-favorite-color": color } as CSSProperties}
                   onClick={() => onOpen(tile)}
@@ -123,10 +158,23 @@ export function FavoritesGrid({
                   ) : (
                     <Play size={16} aria-hidden="true" />
                   )}
+                  {shownDot !== undefined && (
+                    <span
+                      className="favorite-dot"
+                      data-nr-part="favorite-dot"
+                      data-nr-dot={shownDot}
+                      aria-hidden="true"
+                    />
+                  )}
                 </button>
                 {unavailable !== undefined && (
                   <span id={reason} hidden>
                     {unavailable}
+                  </span>
+                )}
+                {unavailable === undefined && shownDot !== undefined && dotWords !== "" && (
+                  <span id={stateId} hidden>
+                    {dotWords}
                   </span>
                 )}
               </li>

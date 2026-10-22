@@ -29,6 +29,14 @@ export const en = {
   "window.content": "Content",
   "window.newTab": "New tab",
   "window.resizeSidebar": "Resize sidebar",
+
+  // The head and the search of the glass sidebar
+  "sidebar.collapse": "Collapse the sidebar",
+  "sidebar.dock": "Keep the sidebar open",
+  "sidebar.search": "Search or run a command",
+  "sidebar.searchShort": "Search",
+  "sidebar.actionsNote": "project actions",
+
   "window.resizeBlocked": "The width cannot be saved while config.jsonc has a problem",
   "window.schemeFile": "Color scheme file",
   "window.spaceFile": "Space file",
@@ -880,6 +888,10 @@ export const en = {
   "spaceColor.teal": "Teal",
   "spaceColor.rose": "Rose",
   "spaceColor.slate": "Slate",
+  "spaceColor.mint": "Mint",
+  "spaceColor.lilac": "Lilac",
+  "spaceColor.gold": "Gold",
+  "spaceColor.blush": "Blush",
   "spaceIcon.terminal": "Terminal",
   "spaceIcon.folder": "Folder",
   "spaceIcon.code": "Code",

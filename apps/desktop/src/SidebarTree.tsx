@@ -17,6 +17,7 @@ import { useAgentStateOfPane } from "./agent-state-store";
 import { useLinkOfPane } from "./session-link-store";
 import type { GroupNode, Id, Item, Space } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
+import { useInterfaceStyle } from "./layout-store";
 import { PeekPopover, peekId, usePeek } from "./Peek";
 import { layoutThumbnail, paneEntries } from "./item-panes";
 import type { PaneEntry } from "./item-panes";
@@ -52,6 +53,7 @@ import {
   treeKeyAction,
 } from "./tree-keys";
 import type { NavEntry } from "./tree-keys";
+import { tabDotOf } from "./tab-dot";
 import { spaceItemIds } from "./workspace-store";
 import { liveEntriesOf, liveErrorOf, useLiveGroupsVersion } from "./live-groups-service";
 import { LiveEntryRows } from "./LiveEntries";
@@ -412,6 +414,8 @@ export function SidebarTree({
   onLiveEntryClick,
 }: SidebarTreeProps) {
   const t = useT();
+  // The glass style gives each tab a state dot at the start of its row.
+  const glass = useInterfaceStyle() === "glass";
   // The entries of the live groups come from the updater; this draws again when it tells a list changed.
   useLiveGroupsVersion();
   const agentOf = useAgentOfPane();
@@ -684,6 +688,14 @@ export function SidebarTree({
             onItemMenu(row.id, menuPoint(event));
           }}
         >
+          {glass && (
+            <span
+              className="tab-dot"
+              data-nr-part="item-dot"
+              data-nr-dot={tabDotOf(summary)}
+              aria-hidden="true"
+            />
+          )}
           <span className="tab-line">
             {row.pinned && <Pin size={12} aria-hidden="true" />}
             <span className="tab-title" data-nr-part="item-title">

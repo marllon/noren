@@ -1,4 +1,5 @@
 import { emit } from "@tauri-apps/api/event";
+import { Plus } from "lucide-react";
 import {
   FakeBackend,
   ManualClock,
@@ -131,6 +132,7 @@ import {
 import { applyColorScheme, applyInterfaceStyle } from "./interface-style";
 import { SettingsDialog } from "./SettingsDialog";
 import { closeSettings, openSettings, useSettingsOpen } from "./settings-ui";
+import { SidebarHead, SidebarSearch, SidebarSettings, Keycap } from "./SidebarGlass";
 import { SidebarResizer } from "./SidebarResizer";
 import { SidebarTree } from "./SidebarTree";
 import { TabBar } from "./TabBar";
@@ -2899,11 +2901,27 @@ function Shell({ store }: { store: WorkspaceStore }) {
       overlay.kind !== "terminal-menu");
   // The favorites bar is one element wherever it goes: the top of the sidebar, or the top of the
   // window (above the terminal, under the tab bar when the tabs are on top too).
+  const switcher = (
+    <SpaceSwitcher
+      spaces={listedSpaces}
+      activeSpaceId={space.id}
+      onActivate={activateSpace}
+      onNewSpace={() => setOverlay({ kind: "new" })}
+      onMenu={(spaceId, point) => setOverlay({ kind: "menu", spaceId, point })}
+    />
+  );
+  /** The search button of the glass sidebar does what the palette shortcut does. */
+  const openPalette = () => {
+    setSearchText(null);
+    setPaletteMode("all");
+    setPaletteOpen(true);
+  };
   const favoritesBar = (
     <FavoritesGrid
       placement={layout.favorites}
       tiles={barTiles}
       active={{ spaceId: space.id, itemId: activeId }}
+      spaces={workspace.spaces}
       onOpen={onOpenTile}
       onMenu={(tile, point) =>
         setOverlay({
@@ -2957,6 +2975,16 @@ function Shell({ store }: { store: WorkspaceStore }) {
               onCommit={(width) => void saveSidebarWidth(width)}
               disabled={settingsFileBroken}
             />
+            {glassOn && (
+              <>
+                <SidebarHead
+                  compact={layout.compact}
+                  canToggle={!tabsOnTop}
+                  onToggle={() => runLayout({ kind: "layout", toggle: "compact" })}
+                />
+                <SidebarSearch roomy={layout.width >= 320} onOpen={openPalette} />
+              </>
+            )}
             {!favoritesOnTop && favoritesBar}
             <ActionsHeader
               spaceName={space.name}
@@ -2992,17 +3020,20 @@ function Shell({ store }: { store: WorkspaceStore }) {
             )}
             <div className="sidebar-foot">
               <button type="button" className="new-tab" onClick={() => newTab()}>
+                {glassOn && <Plus size={16} aria-hidden="true" />}
                 {t("window.newTab")}
+                {glassOn && <Keycap actionId="tab.new" />}
               </button>
               <DropZones pinned={space.pinned.length === 0} />
             </div>
-            <SpaceSwitcher
-              spaces={listedSpaces}
-              activeSpaceId={space.id}
-              onActivate={activateSpace}
-              onNewSpace={() => setOverlay({ kind: "new" })}
-              onMenu={(spaceId, point) => setOverlay({ kind: "menu", spaceId, point })}
-            />
+            {glassOn && !autoHide ? (
+              <div className="sidebar-base" data-nr-part="sidebar-base">
+                {switcher}
+                <SidebarSettings onOpen={openSettings} />
+              </div>
+            ) : (
+              switcher
+            )}
           </aside>
           <div className="main">
             {tabsOnTop && <TabBar {...treeProps} onNewTab={() => newTab()} />}
@@ -3222,6 +3253,9 @@ export function App() {
   // that picks the token set (fonts, corners, gaps) and the one token it shares with the theme, the
   // radius, so the theme is applied again when the style changes.
   const style = useInterfaceStyle();
+  // Under glass a docked sidebar has the settings button at its foot; otherwise the title bar has it.
+  const sidebar = sidebarMode(useLayout());
+  const settingsInTitleBar = !(style === "glass" && sidebar === "docked");
   useLayoutEffect(() => {
     applyInterfaceStyle(document.documentElement, style);
   }, [style]);
@@ -3262,7 +3296,7 @@ export function App() {
       {style === "glass" && pictureAddress === null && appearance.effect === "none" && (
         <GlassBackdrop kind={theme.kind} />
       )}
-      <TitleBar />
+      <TitleBar settings={settingsInTitleBar} />
       {import.meta.env.VITE_NOREN_DEMO === "1" && <DemoBanner />}
       <ConfigErrorNotice />
       <BackgroundNotice picture={picture} />

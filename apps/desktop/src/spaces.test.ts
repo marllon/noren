@@ -40,6 +40,14 @@ describe("space choices", () => {
     expect(new Set(SPACE_COLORS.map((c) => c.value)).size).toBe(SPACE_COLORS.length);
     expect(new Set(SPACE_ICON_NAMES).size).toBe(SPACE_ICON_NAMES.length);
   });
+
+  it("offer the four highlight colors of the glass design, and the default stays the first, Blue", () => {
+    const values = SPACE_COLORS.map((color) => color.value);
+    for (const design of ["#5ee6c8", "#a99bff", "#f5b84b", "#ff8fa3"]) {
+      expect(values, design).toContain(design);
+    }
+    expect(SPACE_COLORS[0]).toEqual({ name: "Blue", value: "#6b8afd" });
+  });
 });
 
 describe("formatEnvLines", () => {

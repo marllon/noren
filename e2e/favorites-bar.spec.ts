@@ -119,8 +119,13 @@ test("the bar is the first thing at the top of the sidebar, empty or not, and it
     const first = await page.getByRole("group", { name: "Pinned", exact: true }).boundingBox();
     if (!side || !box || !first) throw new Error("not on screen");
     // Inside the sidebar, at its padding from the top and from both edges, above the pinned list.
+    // The glass sidebar has the brand and the search above the bar (the bar is the first of the
+    // content under them, at the gap of the sidebar from the search); the dense one has nothing.
+    const search = page.locator('[data-nr-part="sidebar-search"]');
+    const searchBox = (await search.count()) > 0 ? await search.boundingBox() : null;
+    const top = searchBox !== null ? searchBox.y + searchBox.height : side.y;
     expect(box.y).toBeGreaterThanOrEqual(side.y);
-    expect(box.y - side.y).toBeLessThanOrEqual(16);
+    expect(box.y - top).toBeLessThanOrEqual(16);
     expect(box.x).toBeGreaterThanOrEqual(side.x);
     expect(box.x + box.width).toBeLessThanOrEqual(side.x + side.width);
     expect(box.y + box.height).toBeLessThanOrEqual(first.y);

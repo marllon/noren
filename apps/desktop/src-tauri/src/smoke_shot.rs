@@ -871,7 +871,8 @@ const STEP_PRELUDE: &str = r#"const until = async (find, ms) => {
     new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));"#;
 
 /// The script that opens the settings screen and shows the section `section` the way a person does
-/// it: it calls `click()` on the settings button of the title bar and then on the button of the
+/// it: it calls `click()` on the settings button (the one at the foot of the glass sidebar, else the
+/// one of the title bar) and then on the button of the
 /// section in the column on the left of the screen (NOR-F20-10a). Both are DOM calls inside the page
 /// that the page's own listeners answer as they answer a click of the mouse; nothing reaches the
 /// mouse of the system, and the window is disabled anyway. The step fails unless the column marks the
@@ -881,8 +882,8 @@ fn settings_expression(section: &str) -> String {
     format!(
         r#"(async () => {{
   {STEP_PRELUDE}
-  const button = document.querySelector(".settings-button");
-  if (!button) return fail("the title bar has no settings button");
+  const button = document.querySelector(".sidebar-settings, .settings-button");
+  if (!button) return fail("the page has no settings button");
   button.click();
   const screen = await until(() => document.querySelector('[data-nr-part="settings"]'), {STEP_WAIT_MS});
   if (!screen) return fail("the settings screen did not open");
@@ -2032,7 +2033,8 @@ mod tests {
     fn the_scripts_of_the_steps_name_what_they_open_and_nothing_reaches_the_system() {
         let settings = settings_expression("themes");
         assert_script_is_whole(&settings);
-        assert!(settings.contains(".settings-button"));
+        // The settings button is at the foot of the glass sidebar, or in the title bar.
+        assert!(settings.contains(".sidebar-settings, .settings-button"));
         assert!(settings.contains(".click()"));
         assert!(settings.contains(r#"[data-nr-part="settings"]"#));
         assert!(settings.contains(r#"[data-nr-part="settings-themes"]"#));

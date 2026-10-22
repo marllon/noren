@@ -75,23 +75,28 @@ function WindowControls() {
   );
 }
 
-/** Own title bar: the window has no native frame. The empty area drags the window. */
-export function TitleBar() {
+/**
+ * Own title bar: the window has no native frame. The empty area drags the window. `settings` is the
+ * settings button: in the title bar so it is reachable even when the sidebar is hidden, and left out
+ * when a docked glass sidebar has its own at the foot (one button of that name on the page).
+ */
+export function TitleBar({ settings = true }: { settings?: boolean }) {
   const t = useT();
   return (
     <header className={onMac ? "titlebar titlebar-mac" : "titlebar"} data-tauri-drag-region>
       <span className="titlebar-title" role="heading" aria-level={1} data-tauri-drag-region>
         Noren
       </span>
-      {/* In the title bar so it is reachable even when the sidebar is hidden. */}
-      <button
-        type="button"
-        className="window-button settings-button"
-        aria-label={t("titleBar.settings")}
-        onClick={openSettings}
-      >
-        <Settings size={14} aria-hidden="true" />
-      </button>
+      {settings && (
+        <button
+          type="button"
+          className="window-button settings-button"
+          aria-label={t("titleBar.settings")}
+          onClick={openSettings}
+        >
+          <Settings size={14} aria-hidden="true" />
+        </button>
+      )}
       {onMac ? null : <WindowControls />}
     </header>
   );

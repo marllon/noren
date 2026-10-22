@@ -274,7 +274,7 @@ theme editor of Noren Dusk with two boxes typed into (see the next list).
   did not go up by exactly one; it prints `SMOKE SHOT shortcut ... : 1 -> 2 pane(s)` for each and
   `SMOKE SHOT split keys: panes 1 -> 2 -> 3`, and the picture is of the tab as they left it.
 - **The settings screen and the theme editor are opened by calls inside the page.** `--open-settings
-  <section>` calls `click()` on the settings button of the title bar (a DOM call that the page answers
+  <section>` calls `click()` on the settings button (at the foot of the glass sidebar, else in the title bar; a DOM call that the page answers
   as it answers a click of the mouse, in the page and nowhere else: the window is disabled and nothing
   reaches the mouse of the system), waits for the screen and clicks the button of the section whose `data-nr-part`
   is `settings-<section>` in the column of sections on its left (`appearance`, `themes`, `terminal`,

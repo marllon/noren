@@ -312,6 +312,16 @@ export interface NorenTestHook {
   notifications(): { title: string; body: string }[];
   /** Makes the fake window have the keyboard focus (it starts with it) or lose it. */
   setWindowFocused(focused: boolean): void;
+  /**
+   * Queues what the fake file chooser answers the next time the page opens it: the path the person
+   * chooses (a picture the web build holds, such as the fixture) or `null` for closing it without a
+   * choice. The system chooser is never opened.
+   */
+  setImagePick(path: string | null): void;
+  /** Makes the next opening of the fake file chooser fail with this message (the system could not open it). */
+  failImagePick(message: string): void;
+  /** The title and the filter name of every time the page opened the file chooser, in order. */
+  imagePickCalls(): { title: string; filter: string }[];
   /** Every web address the backend was asked to open in the browser, in order. None is ever opened. */
   openedLinks(): string[];
   /**
@@ -2006,6 +2016,13 @@ function Shell({ store }: { store: WorkspaceStore }) {
         pluginStatus: () => currentPluginHost()?.status() ?? [],
         notifications: () => fake.notifications.map(({ title, body }) => ({ title, body })),
         setWindowFocused: (focused) => fake.setWindowFocused(focused),
+        setImagePick: (path) => fake.setImagePick(path),
+        failImagePick: (message) => fake.setImagePick(new Error(message)),
+        imagePickCalls: () =>
+          fake.callsTo("pickBackgroundImage").map((call) => ({
+            title: String(call.args[0]),
+            filter: String(call.args[1]),
+          })),
         openedLinks: () => [...fake.openedLinks],
         browserViews: () =>
           fake.browserPaneIds().flatMap((paneId) => {
@@ -2641,6 +2658,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
     overlayNode = (
       <SpaceBackgroundDialog
         space={overlaySpace}
+        backend={backend}
         onCancel={close}
         onSubmit={(background) => {
           dispatch({ type: "space/set-background", spaceId: overlaySpace.id, background });

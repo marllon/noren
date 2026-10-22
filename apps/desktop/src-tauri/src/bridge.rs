@@ -1176,6 +1176,65 @@ pub fn background_store(app: &AppHandle) -> Result<BackgroundStore, String> {
     Ok(BackgroundStore::new(dir))
 }
 
+/// The longest title or filter name the page may put on the file chooser, in characters.
+const PICKER_TEXT_MAX: usize = 80;
+
+/// A line of text for the file chooser, as the page said it: trimmed, without control characters
+/// and no longer than [`PICKER_TEXT_MAX`]; `fallback` when nothing is left.
+fn picker_text(text: &str, fallback: &str) -> String {
+    let clean: String = text
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(PICKER_TEXT_MAX)
+        .collect();
+    let clean = clean.trim();
+    if clean.is_empty() {
+        fallback.to_owned()
+    } else {
+        clean.to_owned()
+    }
+}
+
+/// The picture the person chooses in the file chooser of the system (the "Choose image..." buttons
+/// of the settings screen and of the background dialog of a space): its path, or `None` when the
+/// chooser was closed without a choice. The chooser opens over the window that asked and lists the
+/// picture kinds a background can be ([`noren_core::background::BACKGROUND_EXTENSIONS`]); a file
+/// of another kind can still be typed into it, and `background_image_read` refuses it later, with
+/// a sentence, like any other path. `title` and `filter` are the words of the language in force,
+/// which only the page knows. Nothing is read or written here: the file is opened only when the
+/// page asks for its bytes.
+#[tauri::command]
+pub async fn background_image_pick(
+    window: tauri::Window,
+    title: String,
+    filter: String,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    window
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .set_title(picker_text(&title, "Choose a background image"))
+        .add_filter(
+            picker_text(&filter, "Pictures"),
+            &noren_core::background::BACKGROUND_EXTENSIONS,
+        )
+        .pick_file(move |chosen| {
+            let _ = sender.send(chosen);
+        });
+    let Some(chosen) = receiver
+        .await
+        .map_err(|_| "the file chooser ended without an answer".to_string())?
+    else {
+        return Ok(None);
+    };
+    chosen
+        .into_path()
+        .map(|path| Some(path.to_string_lossy().into_owned()))
+        .map_err(|e| format!("the file chooser gave a path that is not a file: {e}"))
+}
+
 /// The bytes of the picture at `path`, as a raw response (not JSON, since a picture is megabytes).
 /// The path and the file are checked by [`BackgroundStore::read`]: only a picture file of a
 /// bounded size is ever returned, and nothing is fetched from the network.
@@ -3667,6 +3726,39 @@ mod tests {
                 InvokeResponseBody::Raw(bytes) => assert_eq!(bytes, PNG_BYTES, "{path}"),
                 InvokeResponseBody::Json(json) => panic!("a JSON answer for a picture: {json}"),
             }
+        }
+    }
+
+    // The file chooser itself is the system's and is never opened by a test (D19); what is ours is
+    // the text the page puts on it and the kinds of file it lists.
+    #[test]
+    fn the_text_on_the_file_chooser_is_clean_and_short() {
+        assert_eq!(picker_text("  Choose a picture  ", "x"), "Choose a picture");
+        assert_eq!(picker_text("Pic\u{0}tures\n", "x"), "Pictures");
+        assert_eq!(picker_text("", "Pictures"), "Pictures");
+        assert_eq!(picker_text(" \t\r\n ", "Pictures"), "Pictures");
+        let long = "a".repeat(PICKER_TEXT_MAX + 50);
+        assert_eq!(picker_text(&long, "x").chars().count(), PICKER_TEXT_MAX);
+        // Words of another language stay whole (a character is not a byte).
+        assert_eq!(
+            picker_text("Escolher imagem de fundo…", "x"),
+            "Escolher imagem de fundo…"
+        );
+    }
+
+    #[test]
+    fn the_file_chooser_lists_the_kinds_of_picture_a_background_can_be() {
+        let kinds = noren_core::background::BACKGROUND_EXTENSIONS;
+        for kind in ["png", "jpg", "jpeg", "webp", "gif", "bmp"] {
+            assert!(kinds.contains(&kind), "{kind}");
+        }
+        // Every one of them is accepted by the check the read applies to the path it gets back.
+        for kind in kinds {
+            assert_eq!(
+                noren_core::background::path_problem(&format!("C:\\Pictures\\sky.{kind}")),
+                None,
+                "{kind}"
+            );
         }
     }
 

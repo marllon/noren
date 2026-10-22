@@ -2384,6 +2384,55 @@ body {
   cursor: pointer;
 }
 
+/* The chooser of a picture (settings screen and background dialog of a space): a preview of the file and the buttons that choose and remove it. */
+.background-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-self: stretch;
+  gap: 8px;
+}
+
+.background-thumb {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 96px;
+  height: 60px;
+  overflow: hidden;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-bg);
+  color: var(--nr-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.background-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.background-picker-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.background-picker-buttons .settings-link:disabled {
+  color: var(--nr-muted);
+  cursor: default;
+}
+
+.background-picker-note {
+  flex-basis: 100%;
+}
+
 /* The mods in the settings screen: a row for each file, a switch and, for the ones that are on, the order. */
 .settings-mods {
   display: flex;

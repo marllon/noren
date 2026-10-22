@@ -1071,6 +1071,8 @@ export class FakeBackend implements Backend {
   readonly #windowEffects: Set<WindowEffect>;
   #appliedEffect: WindowEffect = "none";
   readonly #images = new Map<string, Uint8Array>();
+  /** What the fake file chooser answers next, one entry for each time it is opened. */
+  readonly #imagePicks: (string | null | Error)[] = [];
   readonly #files = new Map<string, Uint8Array | "directory">();
   readonly #gitDiffs = new Map<string, string | GitDiffRefusal>();
   #monospaceFonts: readonly string[];
@@ -2379,6 +2381,27 @@ export class FakeBackend implements Backend {
     const mime = sniffImageMime(bytes);
     if (mime === undefined) throw new Error(`${path} is not a picture Noren can show.`);
     return { mime, bytes: bytes.slice() };
+  }
+
+  /**
+   * The fake file chooser: it answers what `setImagePick` queued, in order, and `null` (closed
+   * without a choice) when nothing is queued, so a test that does not drive the chooser never gets
+   * a path out of it. The title and the filter name it was opened with are recorded.
+   */
+  async pickBackgroundImage(options: { title: string; filter: string }): Promise<string | null> {
+    this.#record("pickBackgroundImage", options.title, options.filter);
+    const next = this.#imagePicks.shift() ?? null;
+    if (next instanceof Error) throw next;
+    return next;
+  }
+
+  /**
+   * Queues what the file chooser answers the next time it is opened: the path the person chooses,
+   * `null` for closing it without a choice, or an `Error` for a chooser that cannot be opened (the
+   * call rejects with it). One call, one opening. Not a `Backend` call, so it is not recorded.
+   */
+  setImagePick(path: string | null | Error): void {
+    this.#imagePicks.push(path);
   }
 
   /**

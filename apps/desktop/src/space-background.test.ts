@@ -1,6 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { BACKGROUND_IMAGE_REQUIRED, backgroundFormOf, planBackground } from "./space-background";
+import {
+  BACKGROUND_IMAGE_REQUIRED,
+  backgroundFormOf,
+  planBackground,
+  removalOf,
+} from "./space-background";
 import { BACKGROUND_BLUR_PROBLEM, BACKGROUND_OPACITY_PROBLEM } from "./settings-screen";
+
+describe("removalOf (the Remove button of the picker)", () => {
+  it("takes the picture away from the space when the preview shows the one the space has", () => {
+    const space = { background: { image: "C:\\Pictures\\sky.png", opacity: 0.4 } };
+    expect(removalOf(space, { image: "C:\\Pictures\\sky.png" })).toEqual({ kind: "clear" });
+  });
+
+  it("lets go of a picture that was only chosen, back to the one of the space", () => {
+    const space = { background: { image: "C:\\Pictures\\sky.png" } };
+    expect(removalOf(space, { image: "D:\\other.jpg" })).toEqual({
+      kind: "reset",
+      image: "C:\\Pictures\\sky.png",
+    });
+  });
+
+  it("lets go of a picture that was only chosen, back to empty, for a space with no picture", () => {
+    expect(removalOf({}, { image: "D:\\other.jpg" })).toEqual({ kind: "reset", image: "" });
+    expect(removalOf({}, { image: "" })).toEqual({ kind: "reset", image: "" });
+  });
+});
 
 describe("backgroundFormOf", () => {
   it("is empty for a space with no picture", () => {

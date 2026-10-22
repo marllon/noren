@@ -782,6 +782,16 @@ export class TauriBackend implements Backend {
     return { mime, bytes };
   }
 
+  async pickBackgroundImage(options: { title: string; filter: string }): Promise<string | null> {
+    // The chooser is the system's; the page only says what to write on it. A closed chooser answers
+    // `null`, and so does an answer that is not a path.
+    const path = await this.#bridge.invoke<string | null>("background_image_pick", {
+      title: options.title,
+      filter: options.filter,
+    });
+    return typeof path === "string" && path !== "" ? path : null;
+  }
+
   async readHardware(): Promise<BenchHardware | null> {
     // The Rust side already keeps only whole numbers above 0 that a JavaScript number holds
     // exactly; a page that is handed something else is not handed a measurement. A RAM that is

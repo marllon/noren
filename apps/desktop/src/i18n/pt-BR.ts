@@ -874,6 +874,16 @@ export const ptBR: Dictionary = {
   "background.blur": "Desfoque (px)",
   "background.remove": "Remover imagem",
   "background.apply": "Aplicar",
+  // O seletor da imagem, na tela de configurações e no diálogo de um espaço
+  "background.choose": "Escolher imagem…",
+  "background.removeChosen": "Remover",
+  "background.pickTitle": "Escolher uma imagem de fundo",
+  "background.pickFilter": "Imagens",
+  "background.pickFailed": "Não foi possível abrir o seletor de arquivos: {reason}",
+  "background.thumbnailAlt": "Prévia da imagem",
+  "background.thumbnailNone": "Sem imagem",
+  "background.thumbnailLoading": "Carregando…",
+  "background.thumbnailFailed": "Não foi possível mostrar a imagem: {reason}",
 
   // Importar os perfis de um arquivo de configurações
   "count.profile.one": "1 perfil",

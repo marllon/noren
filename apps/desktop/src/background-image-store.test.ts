@@ -81,9 +81,53 @@ describe("the picture behind the terminals", () => {
     expect(pictureUrl(getPicture())).toBeNull();
   });
 
-  it("fails without a backend", () => {
+  // Finding 309: in the app the window asks for the picture the settings name as soon as the
+  // settings are read, and the backend reaches the store a moment after that. The ask used to fail
+  // with "No backend is available" and never be made again, so the picture of the settings file
+  // never showed at the start. The ask now waits, and is made when the backend is handed over.
+  it("waits for the backend when the window asks first, and shows the picture once it is there", async () => {
     showBackgroundImage("a.png");
-    expect(getPicture()).toMatchObject({ status: "failed", path: "a.png" });
+    expect(getPicture()).toEqual({ status: "loading", path: "a.png" });
+    await settle();
+    expect(getPicture()).toEqual({ status: "loading", path: "a.png" });
+
+    const backend = new FakeBackend({ images: { "a.png": PNG } });
+    startBackgroundImages(backend);
+    expect(getPicture()).toEqual({ status: "loading", path: "a.png" });
+    await settle();
+    expect(getPicture()).toEqual({ status: "ready", path: "a.png", url: "blob:test/1" });
+    expect(backend.callsTo("readBackgroundImage").map((call) => call.args)).toEqual([["a.png"]]);
+  });
+
+  it("reads only the last picture the window asked for before the backend came", async () => {
+    showBackgroundImage("a.png");
+    showBackgroundImage("b.png");
+    const backend = new FakeBackend({ images: { "a.png": PNG, "b.png": PNG } });
+    startBackgroundImages(backend);
+    await settle();
+    expect(getPicture()).toMatchObject({ status: "ready", path: "b.png" });
+    expect(backend.callsTo("readBackgroundImage").map((call) => call.args)).toEqual([["b.png"]]);
+  });
+
+  it("does not read what the window gave up before the backend came", async () => {
+    showBackgroundImage("a.png");
+    showBackgroundImage(null);
+    const backend = new FakeBackend({ images: { "a.png": PNG } });
+    startBackgroundImages(backend);
+    await settle();
+    expect(getPicture()).toEqual({ status: "none" });
+    expect(backend.callsTo("readBackgroundImage")).toEqual([]);
+  });
+
+  it("tells why when the backend that came cannot read the picture the window asked for first", async () => {
+    showBackgroundImage("missing.png");
+    startBackgroundImages(new FakeBackend());
+    await settle();
+    expect(getPicture()).toEqual({
+      status: "failed",
+      path: "missing.png",
+      message: "The image missing.png was not found.",
+    });
   });
 
   it("does not read the file again for a path it holds, and not twice for the same wish", async () => {

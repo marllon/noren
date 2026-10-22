@@ -23,6 +23,8 @@ let backend: Pick<Backend, "readBackgroundImage"> | undefined;
 let state: PictureState = NONE;
 /** The path the window wants; an answer for another path is for a request that is out of date. */
 let wanted: string | null = null;
+/** Whether `wanted` is waiting for the backend, which the app hands over a little after the window starts. */
+let waiting = false;
 /** `blob:` addresses by path, oldest first. */
 const kept = new Map<string, string>();
 
@@ -51,20 +53,27 @@ function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Gives the store the backend that reads the files. */
+/**
+ * Gives the store the backend that reads the files. A picture the window already asked for (the
+ * settings are read first, and the window asks for the picture they name as soon as it has them,
+ * which can be before the app gets here) is read now.
+ */
 export function startBackgroundImages(source: Pick<Backend, "readBackgroundImage">): void {
   backend = source;
+  if (waiting && wanted !== null) read(wanted);
 }
 
 /**
  * Makes `path` (`null`: no picture) the picture of the window. A picture already read shows at
- * once; otherwise the state is `loading` until the backend answers, and `failed` with a sentence
- * when it cannot (the file is gone, it is not a picture, the path is refused). Asking for the path
- * that is already wanted changes nothing.
+ * once; otherwise the state is `loading` until the backend answers (and until the app hands the
+ * store its backend, for a path asked for before that), and `failed` with a sentence when it cannot
+ * (the file is gone, it is not a picture, the path is refused). Asking for the path that is already
+ * wanted changes nothing.
  */
 export function showBackgroundImage(path: string | null): void {
   if (path === wanted) return;
   wanted = path;
+  waiting = false;
   if (path === null) {
     set(NONE);
     return;
@@ -75,11 +84,17 @@ export function showBackgroundImage(path: string | null): void {
     set({ status: "ready", path, url });
     return;
   }
+  read(path);
+}
+
+/** Asks the backend for `path`, or waits for it (`startBackgroundImages`) when the app has none yet. */
+function read(path: string): void {
+  set({ status: "loading", path });
   if (backend === undefined) {
-    set({ status: "failed", path, message: "No backend is available to read the image." });
+    waiting = true;
     return;
   }
-  set({ status: "loading", path });
+  waiting = false;
   backend.readBackgroundImage(path).then(
     (file) => {
       const address = URL.createObjectURL(new Blob([file.bytes.slice()], { type: file.mime }));
@@ -114,5 +129,6 @@ export function resetBackgroundImages(): void {
   kept.clear();
   backend = undefined;
   wanted = null;
+  waiting = false;
   set(NONE);
 }

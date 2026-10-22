@@ -71,6 +71,18 @@ tauri-plugin-global-shortcut = "2"
 # (Zlib OR Apache-2.0 OR MIT), the last two for macOS only. 2.14.0, Apache-2.0 OR MIT.
 tauri-plugin-updater = { version = "2.14", default-features = false, features = ["native-tls"] }
 
+# The file chooser of the system (the Windows one on Windows) for the background picture: the
+# "Choose image..." buttons of the settings screen and of the background dialog of a space ask for
+# it through `background_image_pick` (`bridge.rs`). Only the Rust side is used; the JavaScript
+# package is not added and the plugin's own commands get no capability, so the page can ask for
+# this one command, which lists pictures and answers a path, and nothing else (no save, message or
+# read-a-file command). The chosen path goes back through `background_image_read`, which checks it
+# again. Defaults kept: on Linux the chooser needs GTK, which the web view already needs. New in the
+# tree with it: rfd 0.16.0 (MIT, the chooser itself) and tauri-plugin-fs 2.7.1 (Apache-2.0 OR MIT,
+# which the plugin needs to scope what it hands over; it is not added to the app, so the page gets
+# no file command from it). 2.8.3, Apache-2.0 OR MIT.
+tauri-plugin-dialog = "2"
+
 # Hands an http or https address the person confirmed to the browser of the system (`link.rs`, the
 # only caller, which checks the address first). Chosen over the Tauri opener plugin because it has
 # no commands for the page to be granted: the page can ask for this one command and nothing else.

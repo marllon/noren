@@ -861,6 +861,16 @@ export const en = {
   "background.blur": "Blur (px)",
   "background.remove": "Remove image",
   "background.apply": "Apply",
+  // The chooser of the picture, in the settings screen and in the dialog of a space
+  "background.choose": "Choose image…",
+  "background.removeChosen": "Remove",
+  "background.pickTitle": "Choose a background image",
+  "background.pickFilter": "Pictures",
+  "background.pickFailed": "The file chooser could not be opened: {reason}",
+  "background.thumbnailAlt": "Preview of the image",
+  "background.thumbnailNone": "No image",
+  "background.thumbnailLoading": "Loading…",
+  "background.thumbnailFailed": "The image cannot be shown: {reason}",
 
   // Importing the profiles of a settings file
   "count.profile.one": "1 profile",

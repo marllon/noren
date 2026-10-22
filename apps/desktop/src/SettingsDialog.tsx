@@ -34,6 +34,7 @@ import { useModFiles } from "./mods-store";
 import { commitProfileImport, readProfileFile, takenProfileIds } from "./profile-import";
 import type { ProfileImportPlan } from "./profile-import";
 import { ProfileImportDialog } from "./ProfileImportDialog";
+import { BackgroundPicker } from "./BackgroundPicker";
 import { BenchPanel } from "./BenchPanel";
 import { GalleryPanel } from "./GalleryPanel";
 import { SyncPanel } from "./SyncPanel";
@@ -221,6 +222,8 @@ interface SettingsDialogProps {
     Backend,
     | "saveUserTheme"
     | "listMonospaceFonts"
+    | "pickBackgroundImage"
+    | "readBackgroundImage"
     | "ai"
     | "listBenchResults"
     | "readHardware"
@@ -519,12 +522,19 @@ export function SettingsDialog({
                 data-nr-part="settings-background"
               >
                 <h3>{t("settings.background")}</h3>
+                <BackgroundPicker
+                  backend={backend}
+                  path={shown.backgroundImage}
+                  onChoose={(backgroundImage) => change({ backgroundImage })}
+                  onRemove={() => change({ backgroundImage: "" })}
+                />
                 <NumberBox
                   label={t("settings.backgroundImage")}
                   field="appearance.background.image"
                   value={shown.backgroundImage}
                   problem={plan.problems.backgroundImage}
                   text
+                  wide
                   onChange={(backgroundImage) => change({ backgroundImage })}
                 />
                 <NumberBox

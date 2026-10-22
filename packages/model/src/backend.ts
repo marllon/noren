@@ -512,6 +512,17 @@ export interface Backend {
    */
   readBackgroundImage(path: string): Promise<BackgroundImageFile>;
   /**
+   * Opens the file chooser of the system for a picture and answers the path the person chose, or
+   * `null` when the chooser was closed without a choice (the same answer a computer with no chooser
+   * gives, such as a plain browser). `title` and `filter` are the words the chooser shows, in the
+   * language in force: the window title and the name of the list of picture kinds. The path is an
+   * absolute path of this computer, for `readBackgroundImage` to read; the chooser lists the kinds
+   * of `BACKGROUND_EXTENSIONS`, and a file of another kind that was typed into it is refused by the
+   * read with a sentence. Nothing is read, written or sent anywhere. Rejects, with a sentence for
+   * a person, only when the chooser could not be opened.
+   */
+  pickBackgroundImage(options: { title: string; filter: string }): Promise<string | null>;
+  /**
    * The names of the font families installed on this computer that are monospaced, without
    * repeats, in alphabetical order (upper and lower case alike). A name is only a family name: one
    * that has a quote, a backslash, a semicolon or another sign a family name does not have is left

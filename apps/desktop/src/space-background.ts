@@ -24,6 +24,24 @@ export function backgroundFormOf(space: Pick<Space, "background">): BackgroundFo
   };
 }
 
+/**
+ * What "Remove" of the picker does in the dialog of a space: it takes away the picture the preview
+ * shows. The one the space has goes at once (`clear`: the space goes back to the settings and the
+ * theme); one that was only chosen in the dialog and not applied yet is let go (`reset`: the box goes
+ * back to the picture of the space, or to empty when it has none).
+ */
+export type Removal = { kind: "clear" } | { kind: "reset"; image: string };
+
+export function removalOf(
+  space: Pick<Space, "background">,
+  form: Pick<BackgroundForm, "image">,
+): Removal {
+  const saved = space.background?.image;
+  return saved !== undefined && form.image === saved
+    ? { kind: "clear" }
+    : { kind: "reset", image: saved ?? "" };
+}
+
 /** What is wrong with each box; a box that is fine has no entry. */
 export type BackgroundProblems = Partial<Record<keyof BackgroundForm, string>>;
 

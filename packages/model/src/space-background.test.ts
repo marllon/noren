@@ -177,6 +177,43 @@ describe("FakeBackend.setWindowEffect", () => {
   });
 });
 
+describe("FakeBackend.pickBackgroundImage", () => {
+  const words = { title: "Choose a background image", filter: "Pictures" };
+
+  it("is closed without a choice (null) until a test queues what the person chooses", async () => {
+    const backend = new FakeBackend();
+    await expect(backend.pickBackgroundImage(words)).resolves.toBeNull();
+  });
+
+  it("answers what was queued, one answer for each time it is opened, in order", async () => {
+    const backend = new FakeBackend();
+    backend.setImagePick("C:\\Pictures\\a.png");
+    backend.setImagePick(null);
+    backend.setImagePick("C:\\Pictures\\b.png");
+    await expect(backend.pickBackgroundImage(words)).resolves.toBe("C:\\Pictures\\a.png");
+    await expect(backend.pickBackgroundImage(words)).resolves.toBeNull();
+    await expect(backend.pickBackgroundImage(words)).resolves.toBe("C:\\Pictures\\b.png");
+    await expect(backend.pickBackgroundImage(words)).resolves.toBeNull();
+  });
+
+  it("rejects when what was queued is an error, once, and then it is closed again", async () => {
+    const backend = new FakeBackend();
+    backend.setImagePick(new Error("no window to open it over"));
+    await expect(backend.pickBackgroundImage(words)).rejects.toThrow("no window to open it over");
+    await expect(backend.pickBackgroundImage(words)).resolves.toBeNull();
+  });
+
+  it("records the words the chooser was opened with, and queueing is not a call", async () => {
+    const backend = new FakeBackend();
+    backend.setImagePick("a.png");
+    expect(backend.callsTo("pickBackgroundImage")).toEqual([]);
+    await backend.pickBackgroundImage({ title: "Escolher uma imagem de fundo", filter: "Imagens" });
+    expect(backend.callsTo("pickBackgroundImage").map((call) => call.args)).toEqual([
+      ["Escolher uma imagem de fundo", "Imagens"],
+    ]);
+  });
+});
+
 describe("FakeBackend.readBackgroundImage", () => {
   const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 

@@ -19,6 +19,7 @@ Noren is licensed under the [MIT License](LICENSE). It directly depends on the f
 | [`portable-pty`](https://github.com/wezterm/wezterm)                              | 0.9.0   | MIT               | Pseudo terminal sessions (ConPTY)                                         |
 | [`tauri-plugin-deep-link`](https://github.com/tauri-apps/plugins-workspace)       | 2.6.2   | Apache-2.0 OR MIT | Declares the `noren://` scheme for the installer; delivers links on macOS |
 | [`tauri-plugin-single-instance`](https://github.com/tauri-apps/plugins-workspace) | 2.5.4   | Apache-2.0 OR MIT | A second launch hands its links to the running app                        |
+| [`tauri-plugin-dialog`](https://github.com/tauri-apps/plugins-workspace)          | 2.8.3   | Apache-2.0 OR MIT | The file chooser of the system for the background picture                 |
 | [`serde_json`](https://github.com/serde-rs/json)                                  | 1.0.154 | MIT OR Apache-2.0 | Needed by the Tauri context macro for the plugin configuration            |
 | [`fontdb`](https://github.com/RazrFalcon/fontdb)                                  | 0.24.0  | MIT               | Lists the monospaced fonts installed on the machine                       |
 

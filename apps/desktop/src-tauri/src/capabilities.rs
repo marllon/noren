@@ -151,6 +151,26 @@ fn a_window_besides_the_main_one_is_granted_the_sessions_moved_to_it_and_nothing
 }
 
 #[test]
+fn no_window_is_granted_a_command_of_the_dialog_or_file_plugins() {
+    // The app uses the file chooser from the Rust side only, through `background_image_pick`, which
+    // lists pictures and answers a path. The plugin's own commands (open, save, message, ask, and
+    // the file commands of the plugin it brings along) would let a page choose a file of any kind
+    // or read it, so no window gets one, whatever the plugin registers.
+    for (window, text) in [
+        ("main", MAIN_CAPABILITY),
+        ("quick", QUICK_CAPABILITY),
+        ("window", WINDOW_CAPABILITY),
+    ] {
+        for granted in permissions_of(&capability(text)) {
+            assert!(
+                !granted.starts_with("dialog:") && !granted.starts_with("fs:"),
+                "{window} is granted {granted}"
+            );
+        }
+    }
+}
+
+#[test]
 fn only_the_main_window_may_call_what_owns_or_changes_the_workspace() {
     // The state and the files of the app, and the commands that make, close and fill the other
     // windows: the main window owns the workspace and is the only page that writes `state.json`.

@@ -169,6 +169,10 @@ fn main() {
     // installer, but only for `update.rs`: it makes no request of its own and its commands get no
     // capability. The key and the endpoint are `plugins > updater` of tauri.conf.json.
     builder = builder.plugin(update::plugin());
+    // The file chooser of the system, for `background_image_pick` only: the plugin shows nothing
+    // until asked and its own commands get no capability. Present in the smoke runs too, where
+    // nothing calls the command, so no chooser ever opens there.
+    builder = builder.plugin(tauri_plugin_dialog::init());
 
     // The keys of the AI providers live in the keychain of the system. The smoke runs get a vault
     // in memory: they never touch the keychain of the person, and call no AI command.
@@ -289,6 +293,7 @@ fn main() {
             update::update_install,
             bridge::window_effect_set,
             bridge::background_image_read,
+            bridge::background_image_pick,
             bridge::file_preview_read,
             bridge::git_diff_read,
             bridge::fonts_list_monospace,

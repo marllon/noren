@@ -108,6 +108,34 @@ describe("TauriBackend.readBackgroundImage", () => {
   });
 });
 
+describe("TauriBackend.pickBackgroundImage", () => {
+  const words = { title: "Choose a background image", filter: "Pictures" };
+
+  it("asks background_image_pick with the words for the chooser and answers the path", async () => {
+    const { bridge, calls } = bridgeAnswering(() => "C:\\Pictures\\sky.png");
+    await expect(new TauriBackend(bridge).pickBackgroundImage(words)).resolves.toBe(
+      "C:\\Pictures\\sky.png",
+    );
+    expect(calls).toEqual([{ command: "background_image_pick", args: words }]);
+  });
+
+  it("answers null when the chooser was closed, and for an answer that is not a path", async () => {
+    for (const answer of [null, undefined, "", 7, { path: "a.png" }]) {
+      const { bridge } = bridgeAnswering(() => answer);
+      await expect(new TauriBackend(bridge).pickBackgroundImage(words)).resolves.toBeNull();
+    }
+  });
+
+  it("passes on the sentence of the Rust side when the chooser cannot be opened", async () => {
+    const { bridge } = bridgeAnswering(() => {
+      throw "the file chooser ended without an answer";
+    });
+    await expect(new TauriBackend(bridge).pickBackgroundImage(words)).rejects.toBe(
+      "the file chooser ended without an answer",
+    );
+  });
+});
+
 function memoryStorage(initial: Record<string, string> = {}): StateStorage {
   const values = new Map(Object.entries(initial));
   return {

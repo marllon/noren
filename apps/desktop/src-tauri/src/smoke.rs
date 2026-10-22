@@ -29,6 +29,7 @@ use crate::deeplink::{self, Links};
 use crate::quick;
 use crate::shortcut;
 use crate::smoke_browser;
+use crate::smoke_focus;
 use crate::update::UpdateState;
 use crate::window_effect;
 use tauri_plugin_updater::UpdaterExt;
@@ -594,7 +595,8 @@ pub fn arm(app: &tauri::App) {
                 .and_then(|()| check_no_global_shortcut(&handle))
                 .and_then(|()| check_api_listening(&handle))
                 .and_then(|()| check_window_hidden(&handle))
-                .and_then(|()| check_daemon_stopped(&handle.state::<AppState>()));
+                .and_then(|()| check_daemon_stopped(&handle.state::<AppState>()))
+                .and_then(|()| smoke_focus::check_never_taken());
             match result {
                 Ok(()) => {
                     print_line("SMOKE window hidden");
@@ -778,7 +780,8 @@ pub fn arm_deeplink(app: &tauri::App, target: DeepLinkTarget) {
             .and_then(|()| check_session(&handle, started + SMOKE_TIMEOUT))
             .and_then(|()| check_no_global_shortcut(&handle))
             .and_then(|()| check_window_hidden(&handle))
-            .and_then(|()| check_daemon_stopped(&handle.state::<AppState>()));
+            .and_then(|()| check_daemon_stopped(&handle.state::<AppState>()))
+            .and_then(|()| smoke_focus::check_never_taken());
         match result {
             Ok(()) => {
                 print_line("SMOKE window hidden");
@@ -1098,7 +1101,9 @@ pub fn arm_quick(app: &tauri::App, sandbox: QuickSandbox) {
             rx,
             kept: Vec::new(),
         };
-        match run_quick(&handle, &mut inbox, started + SMOKE_QUICK_TIMEOUT) {
+        match run_quick(&handle, &mut inbox, started + SMOKE_QUICK_TIMEOUT)
+            .and_then(|id| smoke_focus::check_never_taken().map(|()| id))
+        {
             Ok(id) => {
                 print_line("SMOKE window hidden");
                 print_line(&format!("SMOKE QUICK OK session {id}"));

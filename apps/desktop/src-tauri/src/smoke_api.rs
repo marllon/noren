@@ -49,6 +49,7 @@ use crate::smoke::{
     Heard, Inbox, check_api_listening, check_daemon_stopped, check_no_global_shortcut,
     check_runs_in_daemon, check_window_hidden, fresh_dir, print_line,
 };
+use crate::smoke_focus;
 
 pub const SMOKE_API_FLAG: &str = "--smoke-api";
 
@@ -544,7 +545,9 @@ pub fn arm(app: &tauri::App, sandbox: ApiSandbox) {
             rx,
             kept: Vec::new(),
         };
-        match run(&handle, &mut inbox, started + TIMEOUT) {
+        match run(&handle, &mut inbox, started + TIMEOUT)
+            .and_then(|()| smoke_focus::check_never_taken())
+        {
             Ok(()) => {
                 print_line("SMOKE window hidden");
                 print_line("SMOKE API OK");

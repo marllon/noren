@@ -42,6 +42,7 @@ use crate::smoke::{
     check_no_global_shortcut, check_shell_runs_in, check_window_hidden, has_line, locate_in_daemon,
     print_line, visible_tail,
 };
+use crate::smoke_focus;
 
 pub const SMOKE_PERSIST_FLAG: &str = "--smoke-persist";
 /// The pane the run gives its shell to. The interface does not know this id: it is only a name in
@@ -376,6 +377,7 @@ fn run_first(app: &AppHandle, run: &PersistRun, deadline: Instant) -> Result<(),
             orphan_session: orphan,
         },
     )?;
+    smoke_focus::check_never_taken()?;
     print_line(&format!(
         "SMOKE PERSIST first run: shell pid {} (session {id}) in norend pid {}, leaving without ending it (the app is pid {})",
         found.shell,
@@ -558,6 +560,7 @@ fn run_second(app: &AppHandle, run: &PersistRun, deadline: Instant) -> Result<()
         "SMOKE PERSIST stopped norend pid {}, endpoint closed",
         marker.norend
     ));
+    smoke_focus::check_never_taken()?;
     print_line(&format!(
         "SMOKE PERSIST OK shell pid {} then {shell}",
         marker.shell

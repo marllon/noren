@@ -16,13 +16,13 @@
 //!    (`D:/Projetos/.modo-jogo`; `NOREN_MODO_JOGO_ARQUIVO` points it elsewhere for the tests),
 //!    whatever its age: the person is playing, and even a window out of sight costs a game a frame;
 //! 3. the windows of `tauri.conf.json` are created for this run without asking for the focus and
-//!    not focusable (see [`quiet_windows`]): a window that is hidden can still become the foreground
+//!    not focusable (see [`smoke_focus::quiet_windows`]): a window that is hidden can still become the foreground
 //!    window of the system while the app starts, which was measured here (the foreground window was
 //!    the hidden main window about 100 ms after the program started, in roughly one run in five),
 //!    and the interface inside asks for the focus of its page when it starts;
 //! 4. from the first instruction of the program a thread looks at the foreground window of the
 //!    system (read only, `GetForegroundWindow`) every few milliseconds and keeps the first look that
-//!    finds a window of this program there, with when it was ([`Watch`]);
+//!    finds a window of this program there, with when it was ([`Watch`], shared with every smoke mode in `smoke_focus.rs`);
 //! 5. when the page says `app-ready`, the window (hidden) is taken off the taskbar and out of Alt+Tab
 //!    (`WS_EX_TOOLWINDOW`, `WS_EX_NOACTIVATE`), disabled (it takes no focus from anything, not even the
 //!    web view asking for the focus of its page), moved to the right of the union of every monitor, and
@@ -46,8 +46,8 @@
 
 use std::path::{Path, PathBuf};
 use std::process;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -60,6 +60,7 @@ use crate::lifecycle::MAIN_LABEL;
 use crate::smoke::{
     Heard, Inbox, check_daemon_stopped, check_no_global_shortcut, fresh_dir, print_line,
 };
+use crate::smoke_focus::{self, Watch};
 
 pub const SMOKE_SHOT_FLAG: &str = "--smoke-shot";
 const SETTINGS_FLAG: &str = "--settings";
@@ -76,8 +77,6 @@ const PAGE_WAIT: Duration = Duration::from_secs(30);
 const POLL: Duration = Duration::from_millis(250);
 /// After the page is up: the first prompt of the shell and the picture are drawn in this time.
 const SETTLE: Duration = Duration::from_millis(2500);
-/// Pause between two looks at the foreground window of the system.
-const WATCH: Duration = Duration::from_millis(20);
 /// The exit code of a run that was refused because the person is playing.
 pub const REFUSED_EXIT_CODE: i32 = 3;
 
@@ -254,7 +253,7 @@ pub struct ShotRun {
 impl ShotRun {
     /// Makes the folder of the run with the settings and the picture it was given.
     pub fn prepare(args: ShotArgs) -> Result<Self, String> {
-        let watch = Watch::start();
+        let watch = smoke_focus::begin();
         let foreground_before = platform::foreground();
         let state_dir = fresh_dir("noren-smoke-shot");
         let live_text = match &args.live_settings {
@@ -322,20 +321,6 @@ impl ShotRun {
 }
 
 // ---- the window the run is made with ----------------------------------------------------------------
-
-/// Makes the windows of `tauri.conf.json` ones that never ask for the focus, for this run only:
-/// created without it (`focus`, which the web view inside also follows, so it does not ask for the
-/// focus of its page when it starts) and not focusable at all, off the taskbar, and hidden. The
-/// window of a normal start keeps its configuration; a window that is hidden can still be the
-/// foreground window of the system, and this run is held to never being it.
-pub fn quiet_windows(config: &mut tauri::Config) {
-    for window in &mut config.app.windows {
-        window.focus = false;
-        window.focusable = false;
-        window.skip_taskbar = true;
-        window.visible = false;
-    }
-}
 
 // ---- where the window goes ------------------------------------------------------------------------
 
@@ -613,10 +598,10 @@ mod platform {
     use windows::Win32::Foundation::{HWND, RECT};
     use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, IsWindowEnabled};
     use windows::Win32::UI::WindowsAndMessaging::{
-        GWL_EXSTYLE, GetClassNameW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect,
-        GetWindowTextW, GetWindowThreadProcessId, SW_HIDE, SW_SHOWNOACTIVATE, SWP_FRAMECHANGED,
-        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowLongPtrW, SetWindowPos,
-        ShowWindow, WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        GWL_EXSTYLE, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, SW_HIDE,
+        SW_SHOWNOACTIVATE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+        SetWindowLongPtrW, SetWindowPos, ShowWindow, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
+        WS_EX_TOOLWINDOW,
     };
     use windows::core::HSTRING;
 
@@ -630,33 +615,6 @@ mod platform {
     pub fn foreground() -> isize {
         // SAFETY: a read of the state of the system, with no argument.
         unsafe { GetForegroundWindow() }.0 as isize
-    }
-
-    /// What the window in front of the others (read only) is when it belongs to this program: its
-    /// handle, class and title. `None` when it is another program's, or there is none.
-    pub fn foreground_ours() -> Option<String> {
-        // SAFETY: reads of the state of the system; `process`, `class` and `title` are ours to write.
-        unsafe {
-            let front = GetForegroundWindow();
-            if front.0.is_null() {
-                return None;
-            }
-            let mut process = 0u32;
-            GetWindowThreadProcessId(front, Some(&mut process));
-            if process != std::process::id() {
-                return None;
-            }
-            let mut class = [0u16; 128];
-            let mut title = [0u16; 128];
-            let class_len = usize::try_from(GetClassNameW(front, &mut class)).unwrap_or(0);
-            let title_len = usize::try_from(GetWindowTextW(front, &mut title)).unwrap_or(0);
-            Some(format!(
-                "window {:#x}, class {:?}, title {:?}",
-                front.0 as isize,
-                String::from_utf16_lossy(&class[..class_len]),
-                String::from_utf16_lossy(&title[..title_len])
-            ))
-        }
     }
 
     /// The system handle of the window.
@@ -818,10 +776,6 @@ mod platform {
         0
     }
 
-    pub fn foreground_ours() -> Option<String> {
-        None
-    }
-
     pub fn hwnd_of(_window: &WebviewWindow) -> Result<isize, String> {
         Err(NOT_WINDOWS.to_owned())
     }
@@ -905,124 +859,16 @@ fn wait_for_page(
     }
 }
 
-/// What the looks at the foreground window found.
-#[derive(Clone, Debug)]
-pub struct Looks {
-    /// How many looks were made.
-    pub count: u64,
-    /// The first window of this program any of them found in front of the others, with when.
-    pub ours: Option<String>,
-}
-
 /// What the program is doing, told to the looks at the foreground window so one that finds a
 /// window of this program in front says when.
-#[derive(Clone, Copy)]
-#[repr(u8)]
-enum Phase {
-    Starting = 0,
-    PageUp = 1,
-    Showing = 2,
-    PageLoading = 3,
-    SettingsWritten = 4,
-    Settling = 5,
-    Capturing = 6,
-    Checking = 7,
-}
-
-impl Phase {
-    fn name(code: u8) -> &'static str {
-        match code {
-            0 => "the program was starting (the window was still hidden)",
-            1 => "the page was up (the window was still hidden)",
-            2 => "the window was being shown",
-            3 => "the page was loading",
-            4 => "the settings were being applied",
-            5 => "the page was settling",
-            6 => "the picture was being taken",
-            _ => "the run was checking",
-        }
-    }
-}
-
-struct WatchInner {
-    began: Instant,
-    stop: AtomicBool,
-    phase: AtomicU8,
-    looks: Mutex<Looks>,
-}
-
-impl WatchInner {
-    /// One look at the foreground window (read only), kept in `looks`.
-    fn look(&self) {
-        let mut looks = self.looks.lock().unwrap_or_else(|e| e.into_inner());
-        looks.count += 1;
-        if looks.ours.is_none()
-            && let Some(window) = platform::foreground_ours()
-        {
-            looks.ours = Some(format!(
-                "{window}, {} ms after the program started, while {}",
-                self.began.elapsed().as_millis(),
-                Phase::name(self.phase.load(Ordering::SeqCst))
-            ));
-        }
-    }
-}
-
-/// Looks at the foreground window of the system (read only) every few milliseconds, on a thread of
-/// its own, from the first moment of the program: the window is hidden through the start and a
-/// hidden window can be in front of the others too, so the whole life of the program is looked at,
-/// and a look that finds a window of this program in front says what the program was doing.
-#[derive(Clone)]
-pub struct Watch {
-    inner: Arc<WatchInner>,
-}
-
-impl std::fmt::Debug for Watch {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Watch")
-    }
-}
-
-impl Watch {
-    /// Starts looking. The thread ends when the last copy of the watch is gone, or at `finish`.
-    pub fn start() -> Self {
-        let inner = Arc::new(WatchInner {
-            began: Instant::now(),
-            stop: AtomicBool::new(false),
-            phase: AtomicU8::new(Phase::Starting as u8),
-            looks: Mutex::new(Looks {
-                count: 0,
-                ours: None,
-            }),
-        });
-        let weak = Arc::downgrade(&inner);
-        thread::spawn(move || {
-            while let Some(inner) = weak.upgrade() {
-                if inner.stop.load(Ordering::SeqCst) {
-                    return;
-                }
-                inner.look();
-                drop(inner);
-                thread::sleep(WATCH);
-            }
-        });
-        Self { inner }
-    }
-
-    fn phase(&self, phase: Phase) {
-        self.inner.phase.store(phase as u8, Ordering::SeqCst);
-    }
-
-    /// One last look, then the answer; the looks stop.
-    fn finish(&self) -> Looks {
-        self.inner.look();
-        self.inner.stop.store(true, Ordering::SeqCst);
-        self.inner
-            .looks
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
-    }
+mod phase {
+    pub const PAGE_UP: &str = "the page was up (the window was still hidden)";
+    pub const SHOWING: &str = "the window was being shown";
+    pub const PAGE_LOADING: &str = "the page was loading";
+    pub const SETTINGS_WRITTEN: &str = "the settings were being applied";
+    pub const SETTLING: &str = "the page was settling";
+    pub const CAPTURING: &str = "the picture was being taken";
+    pub const CHECKING: &str = "the run was checking";
 }
 
 /// The checks, in order. The page is up once it says `app-ready`.
@@ -1033,7 +879,7 @@ fn run(
     deadline: Instant,
 ) -> Result<(), String> {
     inbox.wait("app-ready", "app-ready", deadline, |_| Some(()))?;
-    shot.watch.phase(Phase::PageUp);
+    shot.watch.phase(phase::PAGE_UP);
     print_line("SMOKE app-ready received");
 
     let window = app
@@ -1070,10 +916,10 @@ fn run(
     // From here until the picture is taken the foreground window of the system is looked at, many
     // times a second: not only at the end, where a window that took the focus and gave it back
     // would go unseen.
-    shot.watch.phase(Phase::Showing);
+    shot.watch.phase(phase::SHOWING);
     let foreground_before = platform::foreground();
     platform::show_no_activate(hwnd);
-    shot.watch.phase(Phase::PageLoading);
+    shot.watch.phase(phase::PAGE_LOADING);
     // A picture the settings name when the app starts has to be on screen by itself.
     let at_start = shot.wants_picture() && shot.live_text.is_none();
     wait_for_page(
@@ -1083,7 +929,7 @@ fn run(
     )?;
     // Settings written while the app runs are applied at once, as the settings screen's writes are.
     if shot.apply_live_settings()? {
-        shot.watch.phase(Phase::SettingsWritten);
+        shot.watch.phase(phase::SETTINGS_WRITTEN);
         print_line("SMOKE SHOT settings written while the app runs");
         wait_for_page(
             &window,
@@ -1092,7 +938,7 @@ fn run(
         )?;
     }
     // The first prompt of the shell, the picture and the fade of the interface are drawn in this time.
-    shot.watch.phase(Phase::Settling);
+    shot.watch.phase(phase::SETTLING);
     thread::sleep(SETTLE);
     let state = look_at_page(&window)?;
     print_line(&format!(
@@ -1107,19 +953,19 @@ fn run(
             .map_or(String::new(), |notice| format!(", notice {notice:?}"))
     ));
 
-    shot.watch.phase(Phase::Capturing);
+    shot.watch.phase(phase::CAPTURING);
     let params = json!({ "format": "png", "fromSurface": true, "captureBeyondViewport": false });
     let answer = platform::devtools(&window, "Page.captureScreenshot", &params.to_string(), CALL)?;
     let png = png_of_answer(&answer)?;
 
-    shot.watch.phase(Phase::Checking);
+    shot.watch.phase(phase::CHECKING);
     let looks = shot.watch.finish();
     let facts = Facts {
         window: platform::rect_of(hwnd)?,
         monitors,
         ex_style: platform::ex_style(hwnd),
         window_enabled: platform::is_enabled(hwnd),
-        foreground_ours: looks.ours,
+        foreground_ours: looks.ours.clone(),
         foreground_before,
         foreground_after: platform::foreground(),
     };
@@ -1128,6 +974,7 @@ fn run(
         "SMOKE SHOT window never had the focus of the system: none of {} look(s) at the foreground window found one of this program",
         looks.count
     ));
+    smoke_focus::conclude(&looks)?;
     // The focus inside the input queue of the window is the web view's own (it focuses the page).
     // It is told, so a reader knows what the answer of the window to "do you have the focus" is.
     print_line(&format!(
@@ -1270,34 +1117,6 @@ mod tests {
                 rect(3840, 600, 1920, 1080),
             ],
         ]
-    }
-
-    #[test]
-    fn the_windows_of_a_shot_run_are_made_without_asking_for_the_focus() {
-        let mut config: tauri::Config = serde_json::from_value(json!({
-            "identifier": "test.shot",
-            "app": { "windows": [
-                { "label": "main", "title": "Noren", "visible": true },
-                { "label": "other" }
-            ] }
-        }))
-        .unwrap();
-        // The defaults of Tauri ask for the focus, can be focused and sit on the taskbar.
-        assert!(
-            config
-                .app
-                .windows
-                .iter()
-                .all(|w| w.focus && w.focusable && !w.skip_taskbar)
-        );
-        quiet_windows(&mut config);
-        assert_eq!(config.app.windows.len(), 2);
-        for window in &config.app.windows {
-            assert!(!window.focus, "{}", window.label);
-            assert!(!window.focusable, "{}", window.label);
-            assert!(window.skip_taskbar, "{}", window.label);
-            assert!(!window.visible, "{}", window.label);
-        }
     }
 
     #[test]

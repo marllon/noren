@@ -390,7 +390,15 @@ pub fn arm(app: &tauri::App, run: PerfRun) {
     thread::spawn(move || {
         let result = wait_for_prompts(&handle, &run, &rx)
             .and_then(|result| smoke::check_no_global_shortcut(&handle).map(|()| result))
-            .and_then(|result| smoke::check_window_hidden(&handle).map(|()| result));
+            .and_then(|result| smoke::check_window_hidden(&handle).map(|()| result))
+            .and_then(|mut result| {
+                // The looks at the foreground window, in the result the script reads: it has no
+                // output of the app to read, and requires the count.
+                crate::smoke_focus::check_looks().map(|looks| {
+                    result["focusLooks"] = Value::from(looks);
+                    result
+                })
+            });
         let result = match result {
             Ok(result) => result,
             Err(message) => fail(&handle, &run, &message),

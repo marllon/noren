@@ -241,7 +241,7 @@ WebView2). The two pictures made by default are the window as it starts and one 
 the terminals and an interface that lets it through (`appearance.window.opacity` 0.7, a picture at 0.6).
 
 - **The window never shows on a monitor, and never has the focus.** The window of the run is created
-  without asking for the focus and not focusable (`smoke_shot::quiet_windows`; the configuration of a
+  without asking for the focus and not focusable (`smoke_focus::quiet_windows`; the configuration of a
   normal start is untouched), off the taskbar and out of Alt+Tab (`WS_EX_TOOLWINDOW`,
   `WS_EX_NOACTIVATE`), and disabled, so nothing (not even the web view asking for the focus of its
   page) can make it the foreground window. It is moved to the right of the union of every monitor, and
@@ -275,13 +275,31 @@ the terminals and an interface that lets it through (`appearance.window.opacity`
 - **It ends by itself**: 60 s for the whole run, and the daemon of the run is stopped and checked like
   in every smoke run.
 
-### The hidden window
+### The hidden window, and the focus in every smoke run
 
 A window made hidden (`"visible": false`) is not enough to keep a program from taking the focus: in
 runs of `--smoke-shot` the hidden main window was the foreground window of the system about 100 ms after
-the program started in roughly one run in five, before any code of the mode touched it. The other
-smoke runs create the same window and only check that it is not visible, so they may do the same;
-`quiet_windows` would apply to them, but it has not been tried there.
+the program started in roughly one run in five (8 in 43), before any code of the mode touched it. A
+person playing a game in full screen loses the game when that happens, and `pnpm smoke` opens about
+eight apps. So no mode with a `--smoke*` flag (`--smoke`, `--smoke-deeplink`, `--smoke-quick`,
+`--smoke-window`, `--smoke-api`, `--smoke-persist`, `--smoke-perf`, `--smoke-shot`) takes the focus,
+and each one proves it in its output (`apps/desktop/src-tauri/src/smoke_focus.rs`):
+
+- **Every window of the run is quiet.** The windows of `tauri.conf.json` are made without the focus at
+  birth, not focusable, off the taskbar and hidden (`smoke_focus::quiet_windows`), and so are the ones
+  made later: the second window of `--smoke-window`, the quick window, and the web view of a browser
+  pane (`quiet_builder`, `WindowBook`). A normal start keeps the configuration as it is: the window
+  is shown and focused. No smoke code calls `set_focus` or `show` (a test reads the sources).
+- **A watch looks at the foreground window from the first instruction.** A thread calls
+  `GetForegroundWindow` (read only) every 20 ms and keeps the first look that finds a window of the
+  program there, with when it was and what the program was doing. Each mode ends with
+  `SMOKE focus never taken: <n> look(s) at the foreground window, none found a window of this program`
+  before its OK line (`--smoke-persist` prints it in each of its two runs, `--smoke-perf` also puts
+  the count in its result file as `focusLooks`), or fails with `a window of this program was the
+foreground window of the system (...)`. `scripts/smoke.mjs` requires the line in every run, before the
+  OK line, and `scripts/perf.mjs` requires `focusLooks`.
+- **It does not measure by taking the focus.** The numbers above were measured with the shot mode
+  before the fix; the check now is the 0 violations in a series of `pnpm smoke` runs, and the watch.
 
 ## Security audits
 

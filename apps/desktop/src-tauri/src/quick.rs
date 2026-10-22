@@ -105,15 +105,19 @@ pub fn create_hidden<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<WebviewWin
     if let Some(window) = app.get_webview_window(QUICK_LABEL) {
         return Ok(window);
     }
-    let window = WebviewWindowBuilder::new(app, QUICK_LABEL, WebviewUrl::App("index.html".into()))
-        .title("Noren quick terminal")
-        .decorations(false)
-        .resizable(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .visible(false)
-        .focused(false)
-        .build()?;
+    // A smoke run's quick window is not focusable either: it must never take the focus.
+    let window = crate::smoke_focus::quiet_builder(
+        WebviewWindowBuilder::new(app, QUICK_LABEL, WebviewUrl::App("index.html".into()))
+            .title("Noren quick terminal")
+            .decorations(false)
+            .resizable(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .visible(false)
+            .focused(false),
+        crate::smoke_focus::quiet_app(app),
+    )
+    .build()?;
     place_on_top(&window)?;
     Ok(window)
 }

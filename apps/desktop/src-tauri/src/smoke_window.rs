@@ -49,6 +49,7 @@ use crate::smoke::{
     check_window_hidden, fresh_dir, locate_in_daemon, print_line, wait_for_route_line,
 };
 use crate::smoke_browser;
+use crate::smoke_focus;
 use crate::windows::{self, ACTION_EVENT, CLOSED_EVENT, READY_WAIT, STATE_EVENT, TAKE_WAIT};
 
 pub const SMOKE_WINDOW_FLAG: &str = "--smoke-window";
@@ -636,7 +637,9 @@ pub fn arm(app: &tauri::App, sandbox: WindowSandbox) {
             rx,
             kept: Vec::new(),
         };
-        match run(&handle, &mut inbox, started + TIMEOUT) {
+        match run(&handle, &mut inbox, started + TIMEOUT)
+            .and_then(|id| smoke_focus::check_never_taken().map(|()| id))
+        {
             Ok(id) => {
                 print_line("SMOKE window hidden");
                 print_line(&format!("SMOKE WINDOW OK session {id}"));

@@ -42,6 +42,11 @@
 // (the session of the run was a child of that process, not of the app) and "SMOKE DAEMON stopped
 // norend pid <n> ..." (the run asked it to stop and it ended with code 0). After each run the pid
 // is checked here too, and a daemon of the run that is still alive is ended and fails the smoke.
+// Every run, of every mode, must also print "SMOKE focus never taken: <n> look(s) ..." before its OK
+// line (NOR-F1-08-b): a thread looks at the foreground window of the system from the first
+// instruction of the program and the run fails if a window of the program was ever in front, so a
+// smoke run never takes the focus from whoever is playing. The windows of a run are made quiet (no
+// focus at birth, not focusable, off the taskbar); `docs/DEV.md` has the details.
 // The persistence run (`--smoke-persist`, NOR-F14-02b) is two runs of the app on one daemon and one
 // folder of their own: the first starts a shell for a pane and leaves without ending it, the second
 // takes the shell back and must find the same process, still answering. This script checks from the
@@ -147,6 +152,21 @@ function leftoverDaemons(stdout) {
   return left;
 }
 
+const FOCUS_LINE = "SMOKE focus never taken:";
+
+/**
+ * Requires the line of the watch on the foreground window in the output of a run, and before the OK
+ * line of the run when it has one: the proof that the run never took the focus of the system.
+ */
+function requireFocusLine(stdout, mode) {
+  const at = stdout.indexOf(FOCUS_LINE);
+  if (at < 0) fail(`${FOCUS_LINE} not found in the output of noren ${mode}`);
+  const ok = /^SMOKE (?:[A-Z]+ )?OK\b/m.exec(stdout);
+  if (ok !== null && ok.index < at) {
+    fail(`${FOCUS_LINE} came after the OK line in the output of noren ${mode}`);
+  }
+}
+
 /** Runs the binary in a hidden smoke mode and requires every text in `required` on stdout. */
 function runSmoke(args, required) {
   const run = spawnSync(binary, args, {
@@ -168,6 +188,7 @@ function runSmoke(args, required) {
   for (const text of [...required, "SMOKE DAEMON norend pid", "SMOKE DAEMON stopped norend pid"]) {
     if (!stdout.includes(text)) fail(`${text} not found in the output of noren ${args[0]}`);
   }
+  requireFocusLine(stdout, args[0]);
 }
 
 // The effect asked for is the one of the system the run is on (see smoke_effect in smoke.rs).
@@ -301,10 +322,13 @@ function runPersist(role, endpoint, folder, logFile, required) {
   process.stdout.write(text);
   if (run.error) problem(`could not run ${binary}: ${run.error.message}`);
   if (run.status !== 0) problem(`noren --smoke-persist ${role} exited with code ${run.status}`);
-  for (const wanted of required) {
+  for (const wanted of [...required, FOCUS_LINE]) {
     if (!text.includes(wanted))
       problem(`${wanted} not found in the output of noren --smoke-persist ${role}`);
   }
+  const ok = /^SMOKE (?:[A-Z]+ )?OK\b/m.exec(text);
+  if (ok !== null && ok.index < text.indexOf(FOCUS_LINE))
+    problem(`${FOCUS_LINE} came after the OK line in the output of noren --smoke-persist ${role}`);
   return text;
 }
 

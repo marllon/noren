@@ -44,6 +44,7 @@ use tauri::webview::{
 };
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, Runtime, Url, WebviewUrl, Window};
 
+use crate::smoke_focus;
 use crate::windows::{self, WindowBook};
 
 /// The start of the label of every web view of a browser pane. The interface chooses only what
@@ -235,6 +236,10 @@ pub fn open_in<R: Runtime>(
         .on_new_window(|_url, _features| NewWindowResponse::Deny)
         .on_download(|_webview, event| !matches!(event, DownloadEvent::Requested { .. }))
         .on_permission_request(|_webview, _kind| PermissionResponse::Deny);
+    // A smoke run's web view is made without the focus too: it must never take the focus.
+    if smoke_focus::quiet_app(app) {
+        builder = builder.focused(false);
+    }
     if let Some(hook) = on_load {
         builder = builder.on_page_load(move |_webview, payload| {
             if matches!(payload.event(), PageLoadEvent::Finished) {

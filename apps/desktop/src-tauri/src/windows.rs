@@ -36,6 +36,7 @@ use tauri::{
 use crate::bridge::AppState;
 use crate::browser_pane;
 use crate::lifecycle::MAIN_LABEL;
+use crate::smoke_focus;
 
 /// The start of the label of the native window of every window of the workspace. The interface
 /// chooses only what follows, so a window can never be named `main`, `quick` or the web view of a
@@ -247,12 +248,16 @@ pub fn open_window<R: Runtime>(
     }
     let book = app.state::<WindowBook>();
     book.add(window_id, space_id)?;
-    let built = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html".into()))
-        .title("Noren")
-        .inner_size(960.0, 640.0)
-        .visible(false)
-        .focused(false)
-        .build();
+    // A smoke run's window is also not focusable and off the taskbar: it must never take the focus.
+    let built = smoke_focus::quiet_builder(
+        WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html".into()))
+            .title("Noren")
+            .inner_size(960.0, 640.0)
+            .visible(false)
+            .focused(false),
+        !book.shows_new_windows(),
+    )
+    .build();
     let window = match built {
         Ok(window) => window,
         Err(error) => {
@@ -689,6 +694,22 @@ mod tests {
         assert_eq!(app.state::<WindowBook>().ids(), ["w1", "w2"]);
         // The window of the main page and the two others, nothing else.
         assert_eq!(app.webview_windows().len(), 3);
+    }
+
+    #[test]
+    fn the_windows_of_a_smoke_run_are_quiet_and_those_of_a_normal_start_are_not() {
+        // The book of a smoke run is the one that never shows a window; it is also what makes the
+        // windows made from then on ones that never ask for the focus (NOR-F1-08-b).
+        let smoke = app_with_book(false);
+        assert!(smoke_focus::quiet_app(smoke.handle()));
+        open_window(smoke.handle(), "w1", "s2").expect("a quiet window");
+        let normal = app_with_book(true);
+        assert!(!smoke_focus::quiet_app(normal.handle()));
+        // An app with no book of windows (a test app) is a normal start too.
+        let bare = mock_builder()
+            .build(mock_context(noop_assets()))
+            .expect("a mock app");
+        assert!(!smoke_focus::quiet_app(bare.handle()));
     }
 
     #[test]

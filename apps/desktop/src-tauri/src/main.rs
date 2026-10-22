@@ -29,6 +29,7 @@ mod shortcut;
 mod smoke;
 mod smoke_api;
 mod smoke_browser;
+mod smoke_focus;
 mod smoke_persist;
 mod smoke_shot;
 mod smoke_window;
@@ -49,6 +50,11 @@ use pane_sessions::PaneBook;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    // The very first thing a smoke run does: the looks at the foreground window of the system start,
+    // so a window of this program taking the focus at any moment of the run is seen (NOR-F1-08-b).
+    if smoke_focus::is_smoke_run(&args) {
+        smoke_focus::begin();
+    }
     // The shot run draws the real window out of sight and writes a picture of it (NOR-F20-05). It
     // is looked at first of all: while the signal of game mode exists the run is refused before it
     // reads an argument, makes a folder or starts anything, and the window in front of the others is
@@ -129,11 +135,12 @@ fn main() {
         || persist_run.is_some()
         || shot_run.is_some();
 
-    // The configuration of the windows, as it was built in. The shot run asks for windows that never
-    // ask for the focus (see `smoke_shot::quiet_windows`); every other start keeps it as it is.
+    // The configuration of the windows, as it was built in. Every smoke run asks for windows that
+    // never ask for the focus (see `smoke_focus::quiet_windows`); a normal start keeps it as it is.
+    debug_assert_eq!(any_smoke, smoke_focus::is_smoke_run(&args));
     let mut context = tauri::generate_context!();
-    if shot_run.is_some() {
-        smoke_shot::quiet_windows(context.config_mut());
+    if any_smoke {
+        smoke_focus::quiet_windows(context.config_mut());
     }
     let mut builder = tauri::Builder::default();
     // First of all, so a second instance is detected before the rest of the setup runs. Not in a
@@ -505,6 +512,10 @@ fn main() {
                     }
                 }
             });
+            // A look that finds a window of this program in front says what the program was doing.
+            if any_smoke {
+                app.listen("app-ready", |_| smoke_focus::phase(smoke_focus::PAGE_UP));
+            }
             if smoke {
                 smoke::arm(app);
             }

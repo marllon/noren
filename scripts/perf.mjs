@@ -175,6 +175,9 @@ async function runApp(binary, tabs) {
   try {
     const result = await waitForResult(out, child, resultWaitSeconds(tabs));
     if (result.error) stop(`the app reported: ${result.error}`);
+    // The run prints "SMOKE focus never taken: <n> look(s)" (stdout is not read here); the count of
+    // looks is in the result, and a result without it is a run that did not prove it (NOR-F1-08-b).
+    if (!(result.focusLooks > 0)) stop("the app did not report that the focus was never taken");
     const prompts = result.promptsUnixMs.map((at) => launchTo(launched, at));
     await sleep(SETTLE_MS);
     const samples = [];

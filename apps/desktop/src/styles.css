@@ -2142,43 +2142,204 @@ body {
   outline: 2px solid var(--nr-accent);
 }
 
-/* The settings screen: a dialog of sections side by side, one form, Save and Cancel under it. */
+/*
+ * The settings screen (NOR-F20-10a): the title and the search on top, the column of sections on the
+ * left, the sections in one column of rows on the right (the label and the explanation of a field on
+ * the left, its control on the right) and Save and Cancel under it all. Every size of the layout is a
+ * multiple of --su (8 px): the column, the padding, the gaps, the height of a control, the width of
+ * the controls, so the labels start at one line and the controls at another in every section.
+ */
 .space-dialog.settings-dialog {
-  gap: 8px;
-  width: min(720px, 92%);
-  max-height: 84vh;
-  overflow: auto;
+  --su: 8px;
+  --settings-nav: calc(var(--su) * 24);
+  --settings-control: calc(var(--su) * 40);
+  --settings-gap: calc(var(--su) * 3);
+  gap: 0;
+  width: min(calc(var(--su) * 120), 94%);
+  height: min(calc(var(--su) * 90), 90vh);
+  padding: 0;
+  overflow: hidden;
+  /* The frame is drawn outside the box, so the inside of the screen is exactly 960 px wide and its columns fall on the grid. */
+  border: 0;
+  box-shadow: 0 0 0 1px var(--nr-border);
+}
+
+.settings-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--su) * 2);
+  padding: calc(var(--su) * 2) calc(var(--su) * 3);
+  border-bottom: 1px solid var(--nr-border);
+}
+
+.settings-header h2 {
+  margin: 0;
+  font-size: 16px;
+  line-height: calc(var(--su) * 3);
+}
+
+.settings-search {
+  box-sizing: border-box;
+  width: var(--settings-control);
+  max-width: 60%;
+  height: calc(var(--su) * 4);
+  padding: 0 var(--su);
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-bg);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
 }
 
 .settings-form {
+  display: grid;
+  flex: 1;
+  grid-template-columns: var(--settings-nav) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+/* The column of sections: one button each, the current one marked; it scrolls on its own in a small window. */
+.settings-nav {
+  grid-column: 1;
+  grid-row: 1;
+  min-height: 0;
+  padding: var(--su);
+  overflow-y: auto;
+  border-right: 1px solid var(--nr-border);
+}
+
+.settings-nav ul {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: calc(var(--su) * 4);
+  padding: 0 var(--su);
+  border: 0;
+  border-radius: calc(var(--nr-radius) / 2);
+  background: transparent;
+  color: var(--nr-text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-nav-item:hover {
+  background: color-mix(in srgb, var(--nr-text) 8%, transparent);
+}
+
+.settings-nav-item[aria-current="true"] {
+  background: color-mix(in srgb, var(--nr-accent) 14%, var(--nr-surface));
+  box-shadow: inset 2px 0 0 var(--nr-accent);
+}
+
+/* The content scrolls, the column and the buttons under it do not; it is also the container the rows are measured against. */
+.settings-content {
+  grid-column: 2;
+  grid-row: 1;
+  container: settings-content / size;
+  min-width: 0;
+  min-height: 0;
+  padding: calc(var(--su) * 3);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* The scroll bars of the column and of the content are 8 px wide, a step of the grid, so the controls stand on the same line whether the content scrolls or not. */
+.settings-nav::-webkit-scrollbar,
+.settings-content::-webkit-scrollbar {
+  width: var(--su);
+}
+
+.settings-nav::-webkit-scrollbar-thumb,
+.settings-content::-webkit-scrollbar-thumb {
+  border-radius: calc(var(--su) / 2);
+  background: color-mix(in srgb, var(--nr-text) 30%, transparent);
 }
 
 .settings-sections {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--su) * 4);
 }
 
 .settings-section {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
+  gap: var(--su);
+  min-width: 0;
   font-size: 13px;
+}
+
+.settings-section[hidden],
+.settings-row[hidden] {
+  display: none;
+}
+
+/* The last section stands as tall as the content, so a click on it can scroll it to the top like the others. */
+.settings-section-last {
+  min-height: 100cqh;
 }
 
 .settings-section h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: 16px;
+  line-height: calc(var(--su) * 3);
   font-weight: 600;
 }
 
-/* A section that takes the whole width of the grid of sections (the gallery of themes needs it). */
-.settings-section-wide {
+.settings-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--su);
+  min-width: 0;
+  padding: var(--su) 0;
+}
+
+:where(.settings-row:not([hidden]) ~ .settings-row:not([hidden])) {
+  border-top: 1px solid color-mix(in srgb, var(--nr-border) 60%, transparent);
+}
+
+.settings-note {
+  border-top: 0;
+}
+
+/* While the settings screen is open the notices of the window sit under it: it says the same about the file in its own footer, and a notice must not cover its search or its buttons. */
+body:has(.settings-dialog) .config-notice {
+  z-index: 10;
+}
+
+.settings-footer {
+  display: flex;
   grid-column: 1 / -1;
+  grid-row: 2;
+  flex-direction: column;
+  gap: var(--su);
+  padding: calc(var(--su) * 2) calc(var(--su) * 3);
+  border-top: 1px solid var(--nr-border);
+}
+
+.settings-feedback:empty {
+  display: none;
 }
 
 .settings-field {
@@ -2280,6 +2441,216 @@ body {
   font: inherit;
 }
 
+/*
+ * The fields of the settings screen as rows of one grid: the label and, under it, the explanation in
+ * gray on the left; the control on the right. All the rows of all the sections share the two columns
+ * (a text box, a drop-down list, the radio buttons and the check boxes start at the same line), so
+ * nothing is a label with no control beside it or a control that sits off the column. The boxes are
+ * also used stacked by other dialogs, which these rules do not touch. In a narrow window the control
+ * column gives way to the labels (at most 55% of the content, never more than 320 px).
+ */
+.settings-content .settings-number,
+.settings-content .settings-choice,
+.settings-content .settings-toggle,
+.settings-content .settings-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) min(var(--settings-control), 55cqw);
+  align-items: start;
+  align-self: stretch;
+  gap: calc(var(--su) / 2) var(--settings-gap);
+}
+
+.settings-content .settings-number > .settings-option,
+.settings-content .settings-toggle > .settings-option {
+  display: contents;
+}
+
+.settings-content .settings-number > .settings-option > :is(span, label),
+.settings-content .settings-toggle > .settings-option > span,
+.settings-content .settings-choice-head > .settings-label {
+  display: flex;
+  grid-column: 1;
+  grid-row: 1;
+  align-items: center;
+  min-height: calc(var(--su) * 4);
+  overflow-wrap: anywhere;
+}
+
+.settings-content .settings-choice-head > .settings-label {
+  min-height: calc(var(--su) * 3);
+}
+
+.settings-content .settings-number > .settings-option > :is(input, select, textarea) {
+  grid-column: 2;
+  grid-row: 1;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: calc(var(--su) * 4);
+  padding: 0 var(--su);
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) / 2);
+  background: var(--nr-bg);
+  color: inherit;
+  font: inherit;
+  resize: none;
+}
+
+.settings-content .settings-number > .settings-option > textarea {
+  height: calc(var(--su) * 8);
+  padding: var(--su);
+  resize: vertical;
+}
+
+.settings-content .settings-number > .settings-option > select {
+  max-width: 100%;
+}
+
+.settings-content .settings-toggle > .settings-option > input {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  justify-self: start;
+  width: calc(var(--su) * 2);
+  height: calc(var(--su) * 2);
+  margin: 0;
+}
+
+/* The explanation of a field, in gray under its label (the box is described by it). */
+.settings-content .settings-explain {
+  grid-column: 1;
+  grid-row: 2;
+  margin: 0;
+  line-height: calc(var(--su) * 2);
+  overflow-wrap: anywhere;
+}
+
+.settings-content .settings-number > .settings-slider {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: center;
+  margin: 0;
+  min-width: 0;
+}
+
+.settings-content .settings-number > [role="alert"] {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
+.settings-content .settings-choice-head {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--su) / 2);
+  min-width: 0;
+}
+
+.settings-content .settings-choice-head > .settings-explain {
+  grid-row: auto;
+}
+
+.settings-content .settings-choices {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-content .settings-choices > .settings-option {
+  min-height: calc(var(--su) * 3);
+  gap: var(--su);
+}
+
+.settings-content .settings-choices input {
+  flex: none;
+  margin: 0;
+}
+
+.settings-content .settings-action > .settings-explain-text {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--su);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-content .settings-action > .settings-action-buttons {
+  display: flex;
+  grid-column: 2;
+  grid-row: 1;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--su);
+  min-width: 0;
+}
+
+.settings-action-buttons .settings-link {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: calc(var(--su) * 4);
+  padding: 0 var(--su);
+}
+
+/* The text box of a path and the chooser of a picture under it: the picture is in the control column. */
+.settings-content .background-picker {
+  align-self: flex-end;
+  width: min(var(--settings-control), 55cqw);
+}
+
+/* The boxes of a profile or a provider are drawn in a frame that reaches into the padding of the content, so their rows sit in the same two columns as every other row. */
+.settings-content .settings-profile {
+  align-self: stretch;
+  margin-inline: -17px;
+}
+
+/* An item of the gallery: its name, kind and state on the left, its button in the control column. */
+.settings-content .settings-gallery-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) min(var(--settings-control), 55cqw);
+  gap: 0 var(--settings-gap);
+  align-items: center;
+  min-height: calc(var(--su) * 5);
+}
+
+.settings-gallery-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+  min-width: 0;
+}
+
+.settings-content .settings-gallery-item > .settings-link {
+  justify-self: start;
+}
+
+.settings-content .settings-gallery-item > p {
+  grid-column: 1 / -1;
+}
+
+/* The buttons of a panel (Connect, Pull and Push; Check for updates) start where the controls do. */
+.settings-content .settings-sync-buttons {
+  align-self: flex-end;
+  width: min(var(--settings-control), 55cqw);
+}
+
+.settings-content .settings-update {
+  align-self: stretch;
+}
+
+/* Their buttons are as tall as the other controls (4 steps of the grid); a button on its own fills the column. */
+.settings-content .settings-sync-buttons .settings-link {
+  box-sizing: border-box;
+  min-height: calc(var(--su) * 4);
+  padding: 0 var(--su);
+}
+
+.settings-content .settings-sync-buttons .settings-link:only-child {
+  width: 100%;
+}
+
 /* The profiles of the file in the settings screen: a box of fields for each one. */
 .settings-profiles {
   display: flex;
@@ -2295,12 +2666,25 @@ body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
   margin: 0;
-  padding: 8px;
+  padding: 8px 16px;
   border: 1px solid var(--nr-border);
   border-radius: calc(var(--nr-radius) / 2);
+}
+
+/* A group of fields with a title of its own (a function of the AI) inside a row of the settings screen. */
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-group + .settings-group {
+  margin-top: 8px;
 }
 
 .settings-hint {
@@ -2338,7 +2722,8 @@ body {
   margin-top: 4px;
 }
 
-.settings-models {
+/* The list of the models Ollama has. (The panel of the recommended models has this class too and is not a list: it starts at the column like every other block.) */
+ul.settings-models {
   margin: 0;
   padding-left: 18px;
   font-size: 12px;
@@ -2512,8 +2897,8 @@ body {
 
 .theme-gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(152px, 1fr));
+  gap: 16px;
   width: 100%;
   margin: 0;
   padding: 0;
@@ -3003,7 +3388,7 @@ body {
 .settings-mods {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
   width: 100%;
   margin: 0;
   padding: 0;
@@ -3016,6 +3401,27 @@ body {
   align-items: center;
   gap: 4px 8px;
   overflow-wrap: anywhere;
+}
+
+/* In the settings screen a mod is a row of the grid: its name on the left, its box and its order buttons in the control column. */
+.settings-content .settings-mod {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) min(var(--settings-control), 55cqw);
+  gap: 0 var(--settings-gap);
+}
+
+.settings-content .settings-mod > .settings-toggle {
+  display: contents;
+}
+
+.settings-content .settings-mod > .settings-hint {
+  grid-column: 1 / -1;
+}
+
+.settings-content .settings-mod > .settings-mod-move {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
 }
 
 /* The gallery in the settings screen: a row for each item, with its versions, its state and its button. */
@@ -3058,7 +3464,7 @@ body {
   overflow-wrap: anywhere;
 }
 
-[data-nr-part="settings-sync"] > p {
+[data-nr-part="settings-sync"] p {
   overflow-wrap: anywhere;
 }
 

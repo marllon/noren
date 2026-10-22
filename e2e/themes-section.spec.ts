@@ -225,7 +225,7 @@ test.describe("the gallery", () => {
     }
   });
 
-  test("the section is the whole width of the screen, between Background and Terminal options", async ({
+  test("the section is second in the column of sections and as wide as the content", async ({
     page,
   }) => {
     await start(page);
@@ -234,7 +234,8 @@ test.describe("the gallery", () => {
       .locator("section.settings-section")
       .evaluateAll((all) => all.map((s) => s.getAttribute("aria-label")));
     const at = regions.indexOf("Themes");
-    expect(regions.slice(at - 1, at + 2)).toEqual(["Background", "Themes", "Terminal options"]);
+    // The screen of NOR-F20-10a lists the sections as the column does: Appearance, Themes, Window...
+    expect(regions.slice(at - 1, at + 2)).toEqual(["Appearance", "Themes", "Window"]);
     const widths = await screen
       .locator("section.settings-section")
       .evaluateAll((all) => all.map((s) => Math.round(s.getBoundingClientRect().width)));

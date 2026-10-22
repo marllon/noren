@@ -40,8 +40,10 @@
 //!    the picture is of the tab as they left it;
 //!    With `--open-settings <section>` (NOR-F20-09b, finding 326) the run opens the settings screen in
 //!    the page by calling `click()` on the settings button of the title bar (a DOM call inside the
-//!    page, like the key events above, never a mouse click of the system) and scrolls the section
-//!    to the top, failing if the screen or the section is not there; `--theme-editor <theme id>`
+//!    page, like the key events above, never a mouse click of the system) and then on the button of
+//!    the section in the column of sections (NOR-F20-10a), failing if the screen, the section or its
+//!    button is not there, if the column does not mark the section as the current one or if the
+//!    section is not at the top of the content; `--theme-editor <theme id>`
 //!    opens the theme editor of that theme from its card in the Themes section the same way,
 //!    `--editor-group <group>` scrolls the editor to a group, and `--editor-set <field>=<value>`
 //!    types a value into a box of the editor (the page's own `input` event, as the keyboard would
@@ -857,10 +859,13 @@ const STEP_PRELUDE: &str = r#"const until = async (find, ms) => {
   const frames = () =>
     new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));"#;
 
-/// The script that opens the settings screen and scrolls the section `section` to the top. It calls
-/// `click()` on the settings button of the title bar, a DOM call inside the page that the page's own
-/// listener answers as it answers a click of the mouse; nothing reaches the mouse of the system, and
-/// the window is disabled anyway. `section` is a word (see [`is_word`]), never other text.
+/// The script that opens the settings screen and shows the section `section` the way a person does
+/// it: it calls `click()` on the settings button of the title bar and then on the button of the
+/// section in the column on the left of the screen (NOR-F20-10a). Both are DOM calls inside the page
+/// that the page's own listeners answer as they answer a click of the mouse; nothing reaches the
+/// mouse of the system, and the window is disabled anyway. The step fails unless the column marks the
+/// section as the current one and the section ends up at the top of the content. `section` is a word
+/// (see [`is_word`]), never other text.
 fn settings_expression(section: &str) -> String {
     format!(
         r#"(async () => {{
@@ -872,7 +877,26 @@ fn settings_expression(section: &str) -> String {
   if (!screen) return fail("the settings screen did not open");
   const section = await until(() => screen.querySelector('[data-nr-part="settings-{section}"]'), {STEP_WAIT_MS});
   if (!section) return fail("the settings screen has no section '{section}'");
-  section.scrollIntoView({{ block: "start" }});
+  const item = screen.querySelector('[data-nr-part="settings-nav-{section}"]');
+  if (!item) return fail("the column of sections has no button for '{section}'");
+  item.click();
+  const content = screen.querySelector('[data-nr-part="settings-content"]');
+  if (!content) return fail("the settings screen has no content column");
+  const offset = () => {{
+    const pad = parseFloat(getComputedStyle(content).paddingTop) || 0;
+    return Math.round(section.getBoundingClientRect().top - content.getBoundingClientRect().top - pad);
+  }};
+  const settled = await until(
+    () => (item.getAttribute("aria-current") === "true" && Math.abs(offset()) <= 2 ? true : null),
+    {STEP_WAIT_MS},
+  );
+  if (!settled) {{
+    return fail(
+      item.getAttribute("aria-current") === "true"
+        ? "the section '{section}' is " + offset() + " px from the top of the content after the click"
+        : "the column does not mark '{section}' as the current section after the click",
+    );
+  }}
   await frames();
   const heading = section.querySelector("h3");
   return JSON.stringify({{
@@ -1977,9 +2001,14 @@ mod tests {
         assert!(settings.contains(".click()"));
         assert!(settings.contains(r#"[data-nr-part="settings"]"#));
         assert!(settings.contains(r#"[data-nr-part="settings-themes"]"#));
-        assert!(settings.contains("scrollIntoView"));
+        // The section is shown by a click on its button in the column of sections, which must mark it.
+        assert!(settings.contains(r#"[data-nr-part="settings-nav-themes"]"#));
+        assert!(settings.contains("item.click()"));
+        assert!(settings.contains(r#"getAttribute("aria-current") === "true""#));
+        assert!(!settings.contains("scrollIntoView"));
         // The reason a section is missing is a string of the page: no quote of Rust's Debug inside it.
         assert!(settings.contains("has no section 'themes'"));
+        assert!(settings.contains("has no button for 'themes'"));
 
         let editor = editor_expression("noren-dusk", Some("terminal"));
         assert_script_is_whole(&editor);

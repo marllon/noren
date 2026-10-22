@@ -402,6 +402,9 @@ export const ptBR: Dictionary = {
 
   // The settings screen
   "settings.title": "Configurações",
+  "settings.search": "Buscar nas configurações",
+  "settings.searchNone": "Nenhuma configuração corresponde a “{query}”.",
+  "settings.sections": "Seções das configurações",
   "settings.appearance": "Aparência",
   "settings.language": "Idioma",
   "settings.language.system": "Igual ao do sistema",

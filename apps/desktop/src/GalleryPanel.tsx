@@ -137,16 +137,18 @@ export function GalleryPanel({ backend }: { backend: GalleryBackend }) {
           const said = notes[row.id];
           return (
             <li key={row.id} className="settings-gallery-item" data-nr-part="settings-gallery-item">
-              <span className="settings-gallery-name">{row.name}</span>
-              <span className="settings-hint">
-                {t(`settings.galleryKind.${row.kind}`)} · {t("settings.galleryVersion")}{" "}
-                {row.indexVersion}
-                {row.installedVersion !== undefined &&
-                  ` · ${t("settings.galleryInstalledVersion")} ${row.installedVersion}`}
-              </span>
-              <span className="settings-hint" data-nr-part="settings-gallery-state">
-                {t(`settings.galleryState.${row.status}`)}
-              </span>
+              <div className="settings-gallery-text">
+                <span className="settings-gallery-name">{row.name}</span>
+                <span className="settings-hint">
+                  {t(`settings.galleryKind.${row.kind}`)} · {t("settings.galleryVersion")}{" "}
+                  {row.indexVersion}
+                  {row.installedVersion !== undefined &&
+                    ` · ${t("settings.galleryInstalledVersion")} ${row.installedVersion}`}
+                </span>
+                <span className="settings-hint" data-nr-part="settings-gallery-state">
+                  {t(`settings.galleryState.${row.status}`)}
+                </span>
+              </div>
               {row.action !== undefined && (
                 <button
                   type="button"

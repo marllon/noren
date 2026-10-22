@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import type { ChangeEvent, FormEvent, KeyboardEvent } from "react";
+import type { ChangeEvent, FormEvent, KeyboardEvent, ReactNode } from "react";
 import {
   AI_FUNCTIONS,
   BELL_STYLES,
@@ -26,7 +26,7 @@ import type {
 } from "@noren/model";
 import { useConfigState, configManager } from "./config-store";
 import { LANGUAGE_NAMES, t, useT } from "./i18n";
-import { effectName, fieldDescription } from "./i18n/names";
+import { effectName } from "./i18n/names";
 import { resolveBindings } from "./keybindings";
 import type { Preset } from "./keybindings";
 import { useKeybindings } from "./keybindings-store";
@@ -49,7 +49,7 @@ import { useProfiles } from "./profiles-store";
 import { QUICK_TOGGLE_ACTION, quickShortcutLine } from "./quick-shortcut";
 import { useQuickShortcutStatus } from "./quick-shortcut-store";
 import { importSchemeFile } from "./scheme-import";
-import { NumberBox, SelectBox } from "./SettingsFields";
+import { ActionRow, Choice, NumberBox, SelectBox, TextArea, Toggle } from "./SettingsFields";
 import type { SliderSpec } from "./SettingsFields";
 import { appearancePreview, setAppearancePreview } from "./appearance-preview";
 import { useSettingsAppearance } from "./use-window";
@@ -69,107 +69,21 @@ import {
   shownSettings,
 } from "./settings-screen";
 import type { SettingsDraft } from "./settings-screen";
+import {
+  columnMove,
+  currentSection,
+  isSettingsSection,
+  navPart,
+  searchWords,
+  sectionPart,
+  visibleRows,
+} from "./settings-nav";
+import type { SettingsSection } from "./settings-nav";
 import { isSshRow, withNewProfile, withProfileEdited, withoutProfile } from "./settings-profiles";
 import type { ProfileField, ProfileRow } from "./settings-profiles";
 import { aiProviderIds, fontChoice } from "./settings-sections";
 import type { AiTargetDraft } from "./settings-sections";
 import { useWindowEffectReport, windowEffectNote } from "./window-effect-store";
-
-/** The description of a field in the language in force, for the `title` of its control. */
-const describe = (field: string | undefined): string | undefined =>
-  field === undefined ? undefined : fieldDescription(field) || undefined;
-
-interface ChoiceProps<T extends string> {
-  legend: string;
-  /** The path of the field in the schema, whose description is the tooltip of the group. */
-  field?: string;
-  name: string;
-  value: T;
-  options: readonly { value: T; label: string }[];
-  onChange(value: T): void;
-}
-
-function Choice<T extends string>({
-  legend,
-  field,
-  name,
-  value,
-  options,
-  onChange,
-}: ChoiceProps<T>) {
-  return (
-    <fieldset className="settings-field" title={describe(field)}>
-      <legend>{legend}</legend>
-      {options.map((option) => (
-        <label key={option.value} className="settings-option">
-          <input
-            type="radio"
-            name={name}
-            checked={option.value === value}
-            onChange={() => onChange(option.value)}
-          />
-          <span>{option.label}</span>
-        </label>
-      ))}
-    </fieldset>
-  );
-}
-
-interface ToggleProps {
-  label: string;
-  field?: string;
-  checked: boolean;
-  disabled?: boolean;
-  onChange(checked: boolean): void;
-}
-
-function Toggle({ label, field, checked, disabled = false, onChange }: ToggleProps) {
-  return (
-    <label className="settings-option" title={describe(field)}>
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-      <span>{label}</span>
-    </label>
-  );
-}
-
-interface TextAreaProps {
-  label: string;
-  field?: string;
-  value: string;
-  problem: string | undefined;
-  onChange(text: string): void;
-}
-
-/** A box of several lines, such as the arguments of a program, one to a line. */
-function TextArea({ label, field, value, problem, onChange }: TextAreaProps) {
-  const hintId = useId();
-  return (
-    <div className="settings-number settings-wide">
-      <label className="settings-option" title={describe(field)}>
-        <span>{label}</span>
-        <textarea
-          rows={2}
-          spellCheck={false}
-          autoComplete="off"
-          value={value}
-          aria-invalid={problem !== undefined ? true : undefined}
-          aria-describedby={problem !== undefined ? hintId : undefined}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      </label>
-      {problem !== undefined && (
-        <span id={hintId} className="settings-hint" role="alert">
-          {problem}
-        </span>
-      )}
-    </div>
-  );
-}
 
 // The choices of the screen, made when it draws so they say the words of the language in force.
 const sideOptions = (): readonly { value: SidebarSide; label: string }[] => [
@@ -230,6 +144,54 @@ const keyPresetOptions = (): readonly { value: Preset; label: string }[] => [
 /** An opacity as the percent a screen reader says: 0.55 is "55%". */
 const percent = (opacity: number): string => `${Math.round(opacity * 100)}%`;
 
+/**
+ * Scrolls the content so that a section stands at its top, under the padding. False when the
+ * section is not on screen at all (a search hid it), and then nothing is scrolled.
+ */
+function alignSection(content: HTMLElement, id: SettingsSection): boolean {
+  const section = content.querySelector<HTMLElement>(`[data-nr-part="${sectionPart(id)}"]`);
+  if (section === null || section.getClientRects().length === 0) return false;
+  const padTop = Number.parseFloat(getComputedStyle(content).paddingTop) || 0;
+  const top = section.getBoundingClientRect().top - content.getBoundingClientRect().top;
+  content.scrollTop = Math.max(0, content.scrollTop + top - padTop);
+  return true;
+}
+
+/** One row of a section: what the search looks at, and what is drawn. */
+interface RowDef {
+  key: string;
+  /** The words of the row (its label, its explanation, the names of its choices) for the search. */
+  texts: readonly string[];
+  node: ReactNode;
+  /** A note under the rows of the section, which has no line above it. */
+  note: boolean;
+}
+
+/** One section of the screen: the title (also what the search compares first) and its rows. */
+interface SectionDef {
+  id: SettingsSection;
+  title: string;
+  /** The name of the region when it is not the title (Terminal is named "Terminal options"). */
+  label?: string;
+  rows: RowDef[];
+}
+
+/** A row of a section; the texts are the ones the row says (left out when it says none). */
+const row = (
+  key: string,
+  texts: readonly (string | undefined)[],
+  node: ReactNode,
+  note = false,
+): RowDef => ({
+  key,
+  texts: texts.filter((text): text is string => text !== undefined),
+  node,
+  note,
+});
+
+const labelsOf = (options: readonly { label: string }[]): string[] =>
+  options.map((option) => option.label);
+
 interface SettingsDialogProps {
   /** Where an imported color scheme is written (the themes folder), and the gallery. */
   backend: Pick<
@@ -286,9 +248,14 @@ interface SettingsDialogProps {
 }
 
 /**
- * The settings screen: appearance and layout, shortcuts, notifications and importing. What is
- * changed in the first three is a draft until Save, which writes only the settings that differ from
- * the ones in force into `config.jsonc` (its comments stay) and closes the screen; the interface
+ * The settings screen (NOR-F20-10a): a search on top, the column of sections on the left and, on the
+ * right, every section in one column of rows (label and explanation on the left, control on the
+ * right, on a grid of 8 px). A click in the column scrolls the section to the top and the column
+ * follows the scroll; the search keeps the sections and rows that have its words. Hidden rows stay
+ * in the page, so what a panel was told or a box holds is not lost by a search.
+ *
+ * What is changed in the sections is a draft until Save, which writes only the settings that differ
+ * from the ones in force into `config.jsonc` (its comments stay) and closes the screen; the interface
  * follows the file, so the change shows without a reload. A file with a problem of its own is not
  * edited: Save waits until it is fixed. Importing is not part of the draft (see the Import section).
  */
@@ -304,12 +271,15 @@ export function SettingsDialog({
   const t = useT();
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const shortcutsButtonRef = useRef<HTMLButtonElement>(null);
   const { config, errors } = useConfigState();
   const [draft, setDraft] = useState<SettingsDraft>({});
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState<SettingsSection>("appearance");
   const keybindings = useKeybindings();
   const quickChord = resolveBindings(keybindings).chords[QUICK_TOGGLE_ACTION];
   const quickStatus = useQuickShortcutStatus();
@@ -464,6 +434,1009 @@ export function SettingsDialog({
     onClose();
   };
 
+  // Escape in the search first empties it; the next one closes the screen like anywhere else.
+  const onSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape" && query !== "") {
+      event.preventDefault();
+      event.stopPropagation();
+      setQuery("");
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+    }
+  };
+
+  const sectionOptions = {
+    side: sideOptions(),
+    tabs: tabPlacementOptions(),
+    density: densityOptions(),
+    language: languageOptions(),
+    effect: windowEffectOptions(),
+    cursor: cursorOptions(),
+    bell: bellOptions(),
+    rightClick: rightClickOptions(),
+    preset: keyPresetOptions(),
+  };
+
+  const sections: SectionDef[] = [
+    {
+      id: "appearance",
+      title: t("settings.appearance"),
+      rows: [
+        row(
+          "language",
+          [
+            t("settings.language"),
+            t("settings.language.hint"),
+            ...labelsOf(sectionOptions.language),
+          ],
+          <Choice
+            legend={t("settings.language")}
+            field="language"
+            hint={t("settings.language.hint")}
+            name="settings-language"
+            value={shown.language}
+            options={sectionOptions.language}
+            onChange={(language) => change({ language })}
+          />,
+        ),
+        row(
+          "side",
+          [t("settings.sidebarSide"), ...labelsOf(sectionOptions.side)],
+          <Choice
+            legend={t("settings.sidebarSide")}
+            field="appearance.sidebar.position"
+            name="settings-side"
+            value={shown.side}
+            options={sectionOptions.side}
+            onChange={(side) => change({ side })}
+          />,
+        ),
+        row(
+          "width",
+          [t("settings.sidebarWidth")],
+          <NumberBox
+            label={t("settings.sidebarWidth")}
+            field="appearance.sidebar.width"
+            value={shown.width}
+            problem={plan.problems.width}
+            onChange={(width) => change({ width })}
+          />,
+        ),
+        row(
+          "tabs",
+          [t("settings.tabPosition"), ...labelsOf(sectionOptions.tabs)],
+          <Choice
+            legend={t("settings.tabPosition")}
+            field="appearance.tabs"
+            name="settings-tabs"
+            value={shown.tabs}
+            options={sectionOptions.tabs}
+            onChange={(tabs) => change({ tabs })}
+          />,
+        ),
+        row(
+          "density",
+          [t("settings.density"), ...labelsOf(sectionOptions.density)],
+          <Choice
+            legend={t("settings.density")}
+            field="appearance.density"
+            name="settings-density"
+            value={shown.density}
+            options={sectionOptions.density}
+            onChange={(density) => change({ density })}
+          />,
+        ),
+        // With top tabs the sidebar always hides (it holds the spaces and favorites).
+        row(
+          "compact",
+          [t("settings.compactMode")],
+          <Toggle
+            label={t("settings.compactMode")}
+            field="appearance.sidebar.compact"
+            checked={shown.compact}
+            disabled={!compactAvailable(shown)}
+            onChange={(compact) => change({ compact })}
+          />,
+        ),
+        row(
+          "keepOpen",
+          [t("settings.keepOpen")],
+          <Toggle
+            label={t("settings.keepOpen")}
+            field="appearance.sidebar.keepOpen"
+            checked={shown.keepOpen}
+            disabled={!keepOpenAvailable(shown)}
+            onChange={(keepOpen) => change({ keepOpen })}
+          />,
+        ),
+        row(
+          "paneHeaders",
+          [t("settings.paneHeaders")],
+          <Toggle
+            label={t("settings.paneHeaders")}
+            field="appearance.paneHeaders"
+            checked={shown.paneHeaders}
+            onChange={(paneHeaders) => change({ paneHeaders })}
+          />,
+        ),
+      ],
+    },
+    {
+      id: "themes",
+      title: t("themes.title"),
+      rows: [
+        row(
+          "themes",
+          [
+            t("themes.hint"),
+            t("themes.scope"),
+            t("themes.import"),
+            t("themes.customize"),
+            t("themes.duplicate"),
+            t("themes.followSystem"),
+          ],
+          <ThemesPanel backend={backend} space={space} onSpaceTheme={onSpaceTheme} />,
+        ),
+      ],
+    },
+    {
+      id: "window",
+      title: t("settings.window"),
+      rows: [
+        row(
+          "effect",
+          [
+            t("settings.windowEffect"),
+            t("settings.windowEffectHint"),
+            ...labelsOf(sectionOptions.effect),
+          ],
+          <>
+            <Choice
+              legend={t("settings.windowEffect")}
+              field="appearance.window.effect"
+              hint={t("settings.windowEffectHint")}
+              name="settings-window-effect"
+              value={shown.windowEffect}
+              options={sectionOptions.effect}
+              onChange={(windowEffect) => change({ windowEffect })}
+            />
+            {effectNote !== "" && (
+              <p
+                role="status"
+                className="settings-hint settings-row-note"
+                data-nr-part="settings-window-effect-note"
+              >
+                {effectNote}
+              </p>
+            )}
+          </>,
+        ),
+        row(
+          "opacity",
+          [t("settings.windowOpacity"), t("settings.windowOpacityHint")],
+          <NumberBox
+            label={t("settings.windowOpacity")}
+            field="appearance.window.opacity"
+            hint={t("settings.windowOpacityHint")}
+            value={shown.windowOpacity}
+            problem={plan.problems.windowOpacity}
+            slider={sliders.windowOpacity}
+            onChange={(windowOpacity) => change({ windowOpacity })}
+          />,
+        ),
+      ],
+    },
+    {
+      id: "background",
+      title: t("settings.background"),
+      rows: [
+        row(
+          "image",
+          [t("settings.backgroundImage"), t("background.choose"), t("background.removeChosen")],
+          <>
+            <NumberBox
+              label={t("settings.backgroundImage")}
+              field="appearance.background.image"
+              value={shown.backgroundImage}
+              problem={plan.problems.backgroundImage}
+              text
+              wide
+              onChange={(backgroundImage) => change({ backgroundImage })}
+            />
+            <BackgroundPicker
+              backend={backend}
+              path={shown.backgroundImage}
+              onChoose={(backgroundImage) => change({ backgroundImage })}
+              onRemove={() => change({ backgroundImage: "" })}
+            />
+          </>,
+        ),
+        row(
+          "opacity",
+          [t("settings.backgroundOpacity")],
+          <NumberBox
+            label={t("settings.backgroundOpacity")}
+            field="appearance.background.opacity"
+            value={shown.backgroundOpacity}
+            problem={plan.problems.backgroundOpacity}
+            slider={sliders.backgroundOpacity}
+            onChange={(backgroundOpacity) => change({ backgroundOpacity })}
+          />,
+        ),
+        row(
+          "blur",
+          [t("settings.backgroundBlur")],
+          <NumberBox
+            label={t("settings.backgroundBlur")}
+            field="appearance.background.blur"
+            value={shown.backgroundBlur}
+            problem={plan.problems.backgroundBlur}
+            slider={sliders.backgroundBlur}
+            onChange={(backgroundBlur) => change({ backgroundBlur })}
+          />,
+        ),
+        row(
+          "hint",
+          [t("settings.backgroundHint")],
+          <p className="settings-hint">{t("settings.backgroundHint")}</p>,
+          true,
+        ),
+      ],
+    },
+    {
+      id: "terminal",
+      title: t("settings.terminal"),
+      label: t("settings.terminalSection"),
+      rows: [
+        row(
+          "fontList",
+          [t("settings.fontList")],
+          <NumberBox
+            label={t("settings.fontList")}
+            field="terminal.font.family"
+            value={shown.terminal.fontFamily}
+            problem={plan.terminalProblems.fontFamily}
+            text
+            wide
+            onChange={(fontFamily) => changeTerminal({ fontFamily })}
+          />,
+        ),
+        ...(fonts.length > 0
+          ? [
+              row(
+                "installedFont",
+                [t("settings.installedFont")],
+                <SelectBox
+                  label={t("settings.installedFont")}
+                  value=""
+                  options={[
+                    { value: "", label: t("settings.chooseOne") },
+                    ...fonts.map((name) => ({ value: name, label: name })),
+                  ]}
+                  problem={undefined}
+                  onChange={(name) => {
+                    if (name !== "") changeTerminal({ fontFamily: fontChoice(name) });
+                  }}
+                />,
+              ),
+            ]
+          : []),
+        row(
+          "fontSize",
+          [t("settings.fontSize")],
+          <NumberBox
+            label={t("settings.fontSize")}
+            field="terminal.font.size"
+            value={shown.terminal.fontSize}
+            problem={plan.terminalProblems.fontSize}
+            onChange={(fontSize) => changeTerminal({ fontSize })}
+          />,
+        ),
+        row(
+          "lineHeight",
+          [t("settings.lineHeight")],
+          <NumberBox
+            label={t("settings.lineHeight")}
+            field="terminal.font.lineHeight"
+            value={shown.terminal.lineHeight}
+            problem={plan.terminalProblems.lineHeight}
+            onChange={(lineHeight) => changeTerminal({ lineHeight })}
+          />,
+        ),
+        row(
+          "ligatures",
+          [t("settings.ligatures"), t("settings.ligaturesHint")],
+          <Toggle
+            label={t("settings.ligatures")}
+            field="terminal.font.ligatures"
+            hint={t("settings.ligaturesHint")}
+            checked={shown.terminal.ligatures}
+            onChange={(ligatures) => changeTerminal({ ligatures })}
+          />,
+        ),
+        row(
+          "cursorShape",
+          [t("settings.cursorShape"), ...labelsOf(sectionOptions.cursor)],
+          <Choice
+            legend={t("settings.cursorShape")}
+            field="terminal.cursor.style"
+            name="settings-cursor"
+            value={shown.terminal.cursorStyle}
+            options={sectionOptions.cursor}
+            onChange={(cursorStyle) => changeTerminal({ cursorStyle })}
+          />,
+        ),
+        row(
+          "cursorBlinks",
+          [t("settings.cursorBlinks")],
+          <Toggle
+            label={t("settings.cursorBlinks")}
+            field="terminal.cursor.blink"
+            checked={shown.terminal.cursorBlink}
+            onChange={(cursorBlink) => changeTerminal({ cursorBlink })}
+          />,
+        ),
+        row(
+          "scrollback",
+          [t("settings.scrollback")],
+          <NumberBox
+            label={t("settings.scrollback")}
+            field="terminal.scrollback"
+            value={shown.terminal.scrollback}
+            problem={plan.terminalProblems.scrollback}
+            onChange={(scrollback) => changeTerminal({ scrollback })}
+          />,
+        ),
+        row(
+          "bell",
+          [t("settings.bell"), ...labelsOf(sectionOptions.bell)],
+          <Choice
+            legend={t("settings.bell")}
+            field="terminal.bell"
+            name="settings-bell"
+            value={shown.terminal.bell}
+            options={sectionOptions.bell}
+            onChange={(bell) => changeTerminal({ bell })}
+          />,
+        ),
+        row(
+          "rightClick",
+          [t("settings.rightClick"), ...labelsOf(sectionOptions.rightClick)],
+          <Choice
+            legend={t("settings.rightClick")}
+            field="terminal.rightClick"
+            name="settings-right-click"
+            value={shown.terminal.rightClick}
+            options={sectionOptions.rightClick}
+            onChange={(rightClick) => changeTerminal({ rightClick })}
+          />,
+        ),
+        row(
+          "maxPanes",
+          [t("settings.maxPanes")],
+          <NumberBox
+            label={t("settings.maxPanes")}
+            field="terminal.maxPanes"
+            value={shown.terminal.maxPanes}
+            problem={plan.terminalProblems.maxPanes}
+            onChange={(maxPanes) => changeTerminal({ maxPanes })}
+          />,
+        ),
+        row(
+          "screenReader",
+          [t("settings.screenReader"), t("settings.screenReaderHint")],
+          <Toggle
+            label={t("settings.screenReader")}
+            field="terminal.screenReaderMode"
+            hint={t("settings.screenReaderHint")}
+            checked={shown.terminal.screenReaderMode}
+            onChange={(screenReaderMode) => changeTerminal({ screenReaderMode })}
+          />,
+        ),
+      ],
+    },
+    {
+      id: "profiles",
+      title: t("settings.profiles"),
+      rows: [
+        row(
+          "list",
+          [
+            t("settings.profilesNone"),
+            t("settings.profileName"),
+            t("settings.profileProgram"),
+            t("settings.profileArgs"),
+            t("settings.profileCwd"),
+            t("settings.profileHost"),
+            t("settings.profileUser"),
+            t("settings.profilePort"),
+            t("settings.profileIdentityFile"),
+            ...shown.profiles.map((profile) => profile.name),
+          ],
+          shown.profiles.length === 0 ? (
+            <p className="settings-hint">{t("settings.profilesNone")}</p>
+          ) : (
+            <ul className="settings-profiles">
+              {shown.profiles.map((profileRow, index) => {
+                const problems = plan.profileProblems[profileRow.key];
+                const heading = profileRow.saved
+                  ? (config.profiles?.find((profile) => profile.id === profileRow.key)?.name ??
+                    profileRow.key)
+                  : t("settings.profileNew", { n: index + 1 });
+                return (
+                  <li key={profileRow.key}>
+                    <fieldset
+                      className="settings-profile"
+                      aria-label={heading}
+                      data-nr-part="settings-profile"
+                    >
+                      <NumberBox
+                        label={t("settings.profileName")}
+                        field="profiles.item.name"
+                        value={profileRow.name}
+                        problem={problems?.name}
+                        text
+                        wide
+                        onChange={(name) => editProfile(profileRow.key, { name })}
+                      />
+                      {isSshRow(profileRow) && (
+                        <>
+                          <NumberBox
+                            label={t("settings.profileHost")}
+                            field="profiles.item.host"
+                            value={profileRow.host ?? ""}
+                            problem={problems?.host}
+                            text
+                            wide
+                            onChange={(host) => editProfile(profileRow.key, { host })}
+                          />
+                          <NumberBox
+                            label={t("settings.profileUser")}
+                            field="profiles.item.user"
+                            value={profileRow.user ?? ""}
+                            problem={problems?.user}
+                            text
+                            wide
+                            onChange={(user) => editProfile(profileRow.key, { user })}
+                          />
+                          <NumberBox
+                            label={t("settings.profilePort")}
+                            field="profiles.item.port"
+                            value={profileRow.port ?? ""}
+                            problem={problems?.port}
+                            onChange={(port) => editProfile(profileRow.key, { port })}
+                          />
+                          <NumberBox
+                            label={t("settings.profileIdentityFile")}
+                            field="profiles.item.identityFile"
+                            value={profileRow.identityFile ?? ""}
+                            problem={problems?.identityFile}
+                            text
+                            wide
+                            onChange={(identityFile) =>
+                              editProfile(profileRow.key, { identityFile })
+                            }
+                          />
+                          <NumberBox
+                            label={t("settings.profileKnownHostsFile")}
+                            field="profiles.item.knownHostsFile"
+                            value={profileRow.knownHostsFile ?? ""}
+                            problem={problems?.knownHostsFile}
+                            text
+                            wide
+                            onChange={(knownHostsFile) =>
+                              editProfile(profileRow.key, { knownHostsFile })
+                            }
+                          />
+                        </>
+                      )}
+                      <NumberBox
+                        label={t(
+                          isSshRow(profileRow)
+                            ? "settings.profileRemoteProgram"
+                            : "settings.profileProgram",
+                        )}
+                        field="profiles.item.program"
+                        value={profileRow.program}
+                        problem={problems?.program}
+                        text
+                        wide
+                        onChange={(program) => editProfile(profileRow.key, { program })}
+                      />
+                      <TextArea
+                        label={t("settings.profileArgs")}
+                        field="profiles.item.args"
+                        value={profileRow.args}
+                        problem={problems?.args}
+                        onChange={(args) => editProfile(profileRow.key, { args })}
+                      />
+                      <NumberBox
+                        label={t(
+                          isSshRow(profileRow)
+                            ? "settings.profileRemoteCwd"
+                            : "settings.profileCwd",
+                        )}
+                        field="profiles.item.cwd"
+                        value={profileRow.cwd}
+                        problem={problems?.cwd}
+                        text
+                        wide
+                        onChange={(cwd) => editProfile(profileRow.key, { cwd })}
+                      />
+                      <button
+                        type="button"
+                        className="settings-link"
+                        onClick={() =>
+                          changeProfiles((rows) => withoutProfile(rows, profileRow.key))
+                        }
+                      >
+                        {t("settings.profileRemove")}
+                      </button>
+                    </fieldset>
+                  </li>
+                );
+              })}
+            </ul>
+          ),
+        ),
+        row(
+          "add",
+          [t("settings.profileAdd"), t("settings.profileAddSsh"), t("settings.profilesHint")],
+          <ActionRow
+            hint={
+              <>
+                <p className="settings-hint">{t("settings.profilesHint")}</p>
+                {shown.profiles.some(isSshRow) && (
+                  <p className="settings-hint">{t("settings.profilesSshHint")}</p>
+                )}
+              </>
+            }
+          >
+            <button
+              type="button"
+              className="settings-link"
+              onClick={() => changeProfiles((rows) => withNewProfile(rows))}
+            >
+              {t("settings.profileAdd")}
+            </button>
+            <button
+              type="button"
+              className="settings-link"
+              onClick={() => changeProfiles((rows) => withNewProfile(rows, "ssh"))}
+            >
+              {t("settings.profileAddSsh")}
+            </button>
+          </ActionRow>,
+        ),
+      ],
+    },
+    {
+      id: "shortcuts",
+      title: t("settings.shortcuts"),
+      rows: [
+        row(
+          "preset",
+          [t("settings.preset"), ...labelsOf(sectionOptions.preset)],
+          <Choice
+            legend={t("settings.preset")}
+            field="keybindings.preset"
+            name="settings-preset"
+            value={shown.preset}
+            options={sectionOptions.preset}
+            onChange={(preset) => change({ preset })}
+          />,
+        ),
+        row(
+          "keys",
+          [t("settings.keyboardShortcuts"), quickShortcutLine(quickChord, quickStatus)],
+          <ActionRow
+            hint={
+              <p className="settings-hint" data-nr-part="quick-shortcut">
+                {quickShortcutLine(quickChord, quickStatus)}
+              </p>
+            }
+          >
+            <button
+              ref={shortcutsButtonRef}
+              type="button"
+              className="settings-link"
+              onClick={() => setShortcutsOpen(true)}
+            >
+              {t("settings.keyboardShortcuts")}
+            </button>
+          </ActionRow>,
+        ),
+      ],
+    },
+    {
+      id: "notifications",
+      title: t("settings.notifications"),
+      rows: [
+        row(
+          "enabled",
+          [t("settings.systemNotifications")],
+          <Toggle
+            label={t("settings.systemNotifications")}
+            field="notifications.enabled"
+            checked={shown.notifications}
+            onChange={(notifications) => change({ notifications })}
+          />,
+        ),
+        row(
+          "longCommand",
+          [t("settings.longCommand")],
+          <NumberBox
+            label={t("settings.longCommand")}
+            field="notifications.longCommandSeconds"
+            value={shown.longCommandSeconds}
+            problem={plan.problems.longCommandSeconds}
+            onChange={(longCommandSeconds) => change({ longCommandSeconds })}
+          />,
+        ),
+      ],
+    },
+    {
+      id: "archive",
+      title: t("settings.archive"),
+      rows: [
+        row(
+          "enabled",
+          [t("settings.archiveIdle")],
+          <Toggle
+            label={t("settings.archiveIdle")}
+            field="archive.enabled"
+            checked={shown.archive.enabled}
+            onChange={(enabled) => changeArchive({ enabled })}
+          />,
+        ),
+        row(
+          "after",
+          [t("settings.archiveAfter"), t("settings.archiveHint")],
+          <NumberBox
+            label={t("settings.archiveAfter")}
+            field="archive.afterHours"
+            hint={t("settings.archiveHint")}
+            value={shown.archive.afterHours}
+            problem={plan.archiveProblems.afterHours}
+            onChange={(afterHours) => changeArchive({ afterHours })}
+          />,
+        ),
+      ],
+    },
+    {
+      id: "ai",
+      title: t("settings.ai"),
+      rows: [
+        row(
+          "on",
+          [t("settings.aiOn")],
+          <Toggle
+            label={t("settings.aiOn")}
+            field="ai.enabled"
+            checked={shown.ai.enabled}
+            onChange={(enabled) => changeAi({ enabled })}
+          />,
+        ),
+        row(
+          "providers",
+          [t("providers.title"), t("providers.addGroup"), "Ollama"],
+          <ProvidersPanel backend={backend} />,
+        ),
+        row(
+          "models",
+          [t("models.title"), t("models.install")],
+          <ModelsPanel backend={backend} onInsert={onInsert} />,
+        ),
+        row("bench", [t("bench.title")], <BenchPanel backend={backend} />),
+        row(
+          "defaults",
+          [
+            t("settings.aiDefaults"),
+            ...AI_FUNCTIONS.flatMap((fn) => [
+              aiFunctionLabel(fn),
+              aiFunctionHint(fn),
+              t("settings.aiProvider", { function: aiFunctionLabel(fn) }),
+              t("settings.aiModel", { function: aiFunctionLabel(fn) }),
+            ]),
+          ],
+          <>
+            <h4>{t("settings.aiDefaults")}</h4>
+            {AI_FUNCTIONS.map((fn) => {
+              const problem = plan.aiProblems[fn];
+              return (
+                <fieldset
+                  key={fn}
+                  className="settings-field settings-group"
+                  data-nr-part="settings-ai-function"
+                >
+                  <legend>{aiFunctionLabel(fn)}</legend>
+                  <SelectBox
+                    label={t("settings.aiProvider", { function: aiFunctionLabel(fn) })}
+                    field={`ai.defaults.${fn}.provider`}
+                    value={shown.ai[fn].provider}
+                    options={providerOptions(aiProviderIds(config), shown.ai[fn].provider)}
+                    problem={problem?.field === "provider" ? problem.message : undefined}
+                    onChange={(provider) => changeAiTarget(fn, { provider })}
+                  />
+                  <NumberBox
+                    label={t("settings.aiModel", { function: aiFunctionLabel(fn) })}
+                    field={`ai.defaults.${fn}.model`}
+                    hint={aiFunctionHint(fn)}
+                    value={shown.ai[fn].model}
+                    problem={problem?.field === "model" ? problem.message : undefined}
+                    text
+                    wide
+                    onChange={(model) => changeAiTarget(fn, { model })}
+                  />
+                </fieldset>
+              );
+            })}
+          </>,
+        ),
+        row(
+          "footnote",
+          [t("settings.aiFootnote")],
+          <p className="settings-hint">{t("settings.aiFootnote")}</p>,
+          true,
+        ),
+      ],
+    },
+    {
+      id: "mods",
+      title: t("settings.mods"),
+      rows: [
+        row(
+          "list",
+          [
+            modRows.length === 0 ? t("settings.modsNone") : t("settings.modsHint"),
+            ...modRows.map((modRow) => modRow.name),
+          ],
+          modRows.length === 0 ? (
+            <p className="settings-hint">{t("settings.modsNone")}</p>
+          ) : (
+            <>
+              <p className="settings-hint">{t("settings.modsHint")}</p>
+              <ul className="settings-mods">
+                {modRows.map((modRow, index) => (
+                  <li key={modRow.name} className="settings-mod" data-nr-part="settings-mod">
+                    <Toggle
+                      label={modRow.name}
+                      checked={modRow.on}
+                      onChange={(on) => change({ mods: withMod(shown.mods, modRow.name, on) })}
+                    />
+                    {modRow.missing && (
+                      <span className="settings-hint">{t("settings.modMissing")}</span>
+                    )}
+                    {modRow.on && (
+                      <span className="settings-mod-move">
+                        <button
+                          type="button"
+                          className="settings-link"
+                          aria-label={t("settings.modEarlier", { name: modRow.name })}
+                          disabled={index === 0}
+                          onClick={() => change({ mods: movedMod(shown.mods, modRow.name, -1) })}
+                        >
+                          <ArrowUp size={12} aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className="settings-link"
+                          aria-label={t("settings.modLater", { name: modRow.name })}
+                          disabled={index === shown.mods.length - 1}
+                          onClick={() => change({ mods: movedMod(shown.mods, modRow.name, 1) })}
+                        >
+                          <ArrowDown size={12} aria-hidden="true" />
+                        </button>
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ),
+        ),
+      ],
+    },
+    {
+      id: "gallery",
+      title: t("settings.gallery"),
+      rows: [
+        row(
+          "gallery",
+          [t("settings.galleryHint"), t("settings.galleryInstall")],
+          <GalleryPanel backend={backend} />,
+        ),
+      ],
+    },
+    {
+      id: "sync",
+      title: t("settings.sync"),
+      rows: [
+        row(
+          "sync",
+          [
+            t("settings.syncMethod"),
+            t("settings.syncMethod.git"),
+            t("settings.syncMethod.gist"),
+            t("settings.syncHint"),
+            t("settings.syncRemote"),
+            t("settings.syncConnect"),
+            t("settings.syncPull"),
+            t("settings.syncPush"),
+            t("settings.syncPushOnClose"),
+            t("settings.gistToken"),
+            t("settings.gistId"),
+          ],
+          <SyncPanel backend={backend} spaces={spaceSync} />,
+        ),
+      ],
+    },
+    ...(updates !== undefined
+      ? [
+          {
+            id: "updates" as const,
+            title: t("settings.updates"),
+            rows: [
+              row(
+                "updates",
+                [t("update.hint"), t("update.check"), t("update.install")],
+                <UpdatePanel controller={updates} />,
+              ),
+            ],
+          },
+        ]
+      : []),
+    {
+      id: "import",
+      title: t("settings.import"),
+      rows: [
+        row(
+          "import",
+          [t("settings.importScheme"), t("settings.importProfiles")],
+          <>
+            <ActionRow
+              hint={
+                <p role="status" className="settings-hint" data-nr-part="settings-import-status">
+                  {importStatus}
+                </p>
+              }
+            >
+              <button
+                type="button"
+                className="settings-link"
+                onClick={() => schemeInputRef.current?.click()}
+              >
+                {t("settings.importScheme")}
+              </button>
+              <button
+                ref={profilesButtonRef}
+                type="button"
+                className="settings-link"
+                onClick={() => profilesInputRef.current?.click()}
+              >
+                {t("settings.importProfiles")}
+              </button>
+            </ActionRow>
+            <input
+              ref={schemeInputRef}
+              type="file"
+              hidden
+              tabIndex={-1}
+              aria-label={t("window.schemeFile")}
+              data-nr-part="settings-scheme-file"
+              onChange={onSchemeFile}
+            />
+            <input
+              ref={profilesInputRef}
+              type="file"
+              hidden
+              tabIndex={-1}
+              aria-label={t("settings.profilesFile")}
+              data-nr-part="settings-profiles-file"
+              onChange={onProfilesFile}
+            />
+          </>,
+        ),
+      ],
+    },
+  ];
+
+  // What the search keeps: the rows that have its words, and the sections that keep any. The rest
+  // stays in the page, hidden, so what it holds survives the search.
+  const words = searchWords(query);
+  const filtered = sections.map((section) => {
+    const flags = visibleRows(
+      words,
+      section.title,
+      section.rows.map((r) => r.texts),
+    );
+    return { section, flags, shown: flags.some(Boolean) };
+  });
+  const shownSections = filtered.filter((entry) => entry.shown);
+  const shownIds = shownSections.map((entry) => entry.section.id);
+  const nothingFound = words.length > 0 && shownSections.length === 0;
+
+  // The column follows the scroll: the section at the top of the content is the current one.
+  const shownKey = shownIds.join(",");
+  useEffect(() => {
+    const content = contentRef.current;
+    if (content === null) return;
+    const update = () => {
+      const visible = [
+        ...content.querySelectorAll<HTMLElement>("section.settings-section:not([hidden])"),
+      ];
+      if (visible.length === 0) return;
+      const padTop = Number.parseFloat(getComputedStyle(content).paddingTop) || 0;
+      const origin = content.getBoundingClientRect().top - content.scrollTop;
+      const tops = visible.map((section) => section.getBoundingClientRect().top - origin - padTop);
+      const id = visible[currentSection(tops, content.scrollTop)]?.dataset["nrSection"];
+      if (isSettingsSection(id)) setActive(id);
+    };
+    update();
+    content.addEventListener("scroll", update, { passive: true });
+    return () => content.removeEventListener("scroll", update);
+  }, [shownKey]);
+
+  // The section the person asked for stays at the top while the page settles (a panel that finishes
+  // loading above it, like the gallery or the models, would push it down); the person's own scroll,
+  // a key or a click in the content lets go of it.
+  const pinned = useRef<SettingsSection | null>(null);
+  useEffect(() => {
+    const content = contentRef.current;
+    const sectionsBox = content?.querySelector(".settings-sections");
+    if (
+      content === null ||
+      content === undefined ||
+      sectionsBox === null ||
+      sectionsBox === undefined
+    ) {
+      return;
+    }
+    const keep = () => {
+      if (pinned.current !== null && !alignSection(content, pinned.current)) pinned.current = null;
+    };
+    const release = () => {
+      pinned.current = null;
+    };
+    const observer = new ResizeObserver(keep);
+    observer.observe(sectionsBox);
+    const letGo = ["wheel", "pointerdown", "keydown", "touchstart"];
+    for (const type of letGo) content.addEventListener(type, release, { passive: true });
+    return () => {
+      observer.disconnect();
+      for (const type of letGo) content.removeEventListener(type, release);
+    };
+  }, []);
+
+  // A search starts at the top of what it kept, not where the content happened to be scrolled.
+  useEffect(() => {
+    pinned.current = null;
+    if (contentRef.current !== null) contentRef.current.scrollTop = 0;
+  }, [query]);
+
+  // A click (or Enter) on a section of the column scrolls it to the top of the content and takes the
+  // keyboard there, so the next Tab is the first control of the section and not one far above it.
+  const goTo = (id: SettingsSection) => {
+    const content = contentRef.current;
+    if (content === null) return;
+    pinned.current = alignSection(content, id) ? id : null;
+    setActive(id);
+    content
+      .querySelector<HTMLElement>(`[data-nr-part="${sectionPart(id)}"] h3`)
+      ?.focus({ preventScroll: true });
+  };
+
+  const onColumnKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
+    const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
+    const from = buttons.findIndex((button) => button === document.activeElement);
+    const next = columnMove(Math.max(0, from), event.key, buttons.length);
+    if (next === undefined) return;
+    event.preventDefault();
+    buttons[next]?.focus();
+  };
+
+  const activeShown = shownIds.includes(active) ? active : shownIds[0];
+
   return (
     <>
       <div className="dialog-backdrop">
@@ -476,651 +1449,102 @@ export function SettingsDialog({
           aria-labelledby={titleId}
           onKeyDown={onKeyDown}
         >
-          <h2 id={titleId}>{t("settings.title")}</h2>
+          <div className="settings-header">
+            <h2 id={titleId}>{t("settings.title")}</h2>
+            <input
+              type="search"
+              className="settings-search"
+              data-nr-part="settings-search"
+              aria-label={t("settings.search")}
+              placeholder={t("settings.search")}
+              autoComplete="off"
+              spellCheck={false}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={onSearchKeyDown}
+            />
+          </div>
           <form className="settings-form" onSubmit={onSubmit}>
-            <div className="settings-sections">
-              <section className="settings-section" aria-label={t("settings.appearance")}>
-                <h3>{t("settings.appearance")}</h3>
-                <Choice
-                  legend={t("settings.language")}
-                  field="language"
-                  name="settings-language"
-                  value={shown.language}
-                  options={languageOptions()}
-                  onChange={(language) => change({ language })}
-                />
-                <p className="settings-hint">{t("settings.language.hint")}</p>
-                <Choice
-                  legend={t("settings.sidebarSide")}
-                  field="appearance.sidebar.position"
-                  name="settings-side"
-                  value={shown.side}
-                  options={sideOptions()}
-                  onChange={(side) => change({ side })}
-                />
-                <NumberBox
-                  label={t("settings.sidebarWidth")}
-                  field="appearance.sidebar.width"
-                  value={shown.width}
-                  problem={plan.problems.width}
-                  onChange={(width) => change({ width })}
-                />
-                <Choice
-                  legend={t("settings.tabPosition")}
-                  field="appearance.tabs"
-                  name="settings-tabs"
-                  value={shown.tabs}
-                  options={tabPlacementOptions()}
-                  onChange={(tabs) => change({ tabs })}
-                />
-                <Choice
-                  legend={t("settings.density")}
-                  field="appearance.density"
-                  name="settings-density"
-                  value={shown.density}
-                  options={densityOptions()}
-                  onChange={(density) => change({ density })}
-                />
-                {/* With top tabs the sidebar always hides (it holds the spaces and favorites). */}
-                <Toggle
-                  label={t("settings.compactMode")}
-                  field="appearance.sidebar.compact"
-                  checked={shown.compact}
-                  disabled={!compactAvailable(shown)}
-                  onChange={(compact) => change({ compact })}
-                />
-                <Toggle
-                  label={t("settings.keepOpen")}
-                  field="appearance.sidebar.keepOpen"
-                  checked={shown.keepOpen}
-                  disabled={!keepOpenAvailable(shown)}
-                  onChange={(keepOpen) => change({ keepOpen })}
-                />
-                <Toggle
-                  label={t("settings.paneHeaders")}
-                  field="appearance.paneHeaders"
-                  checked={shown.paneHeaders}
-                  onChange={(paneHeaders) => change({ paneHeaders })}
-                />
-              </section>
-              <section
-                className="settings-section"
-                aria-label={t("settings.window")}
-                data-nr-part="settings-window"
-              >
-                <h3>{t("settings.window")}</h3>
-                <Choice
-                  legend={t("settings.windowEffect")}
-                  field="appearance.window.effect"
-                  name="settings-window-effect"
-                  value={shown.windowEffect}
-                  options={windowEffectOptions()}
-                  onChange={(windowEffect) => change({ windowEffect })}
-                />
-                <p className="settings-hint">{t("settings.windowEffectHint")}</p>
-                {effectNote !== "" && (
-                  <p
-                    role="status"
-                    className="settings-hint"
-                    data-nr-part="settings-window-effect-note"
+            <nav
+              className="settings-nav"
+              aria-label={t("settings.sections")}
+              data-nr-part="settings-nav"
+            >
+              <ul onKeyDown={onColumnKeyDown}>
+                {shownSections.map(({ section }) => (
+                  <li key={section.id}>
+                    <button
+                      type="button"
+                      className="settings-nav-item"
+                      data-nr-part={navPart(section.id)}
+                      aria-current={section.id === activeShown ? "true" : undefined}
+                      tabIndex={section.id === activeShown ? 0 : -1}
+                      onClick={() => goTo(section.id)}
+                    >
+                      {section.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+            <div className="settings-content" ref={contentRef} data-nr-part="settings-content">
+              <div className="settings-sections">
+                {filtered.map(({ section, flags, shown: sectionShown }) => (
+                  <section
+                    key={section.id}
+                    className={
+                      section.id === shownIds[shownIds.length - 1]
+                        ? "settings-section settings-section-last"
+                        : "settings-section"
+                    }
+                    aria-label={section.label ?? section.title}
+                    data-nr-part={sectionPart(section.id)}
+                    data-nr-section={section.id}
+                    hidden={!sectionShown}
                   >
-                    {effectNote}
+                    <h3 tabIndex={-1}>{section.title}</h3>
+                    <div className="settings-rows">
+                      {section.rows.map((rowDef, index) => (
+                        <div
+                          key={rowDef.key}
+                          className={rowDef.note ? "settings-row settings-note" : "settings-row"}
+                          data-nr-row={`${section.id}.${rowDef.key}`}
+                          hidden={!flags[index]}
+                        >
+                          {rowDef.node}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+              {nothingFound && (
+                <p role="status" className="settings-hint" data-nr-part="settings-search-none">
+                  {t("settings.searchNone", { query: query.trim() })}
+                </p>
+              )}
+            </div>
+            <div className="settings-footer">
+              <div className="settings-feedback">
+                {firstError !== undefined && (
+                  <p role="alert" className="settings-warning" data-nr-part="settings-file-problem">
+                    {t("settings.fileProblem")} {describeConfigError(firstError)}
                   </p>
                 )}
-                <NumberBox
-                  label={t("settings.windowOpacity")}
-                  field="appearance.window.opacity"
-                  value={shown.windowOpacity}
-                  problem={plan.problems.windowOpacity}
-                  slider={sliders.windowOpacity}
-                  onChange={(windowOpacity) => change({ windowOpacity })}
-                />
-                <p className="settings-hint">{t("settings.windowOpacityHint")}</p>
-              </section>
-              <section
-                className="settings-section"
-                aria-label={t("settings.background")}
-                data-nr-part="settings-background"
-              >
-                <h3>{t("settings.background")}</h3>
-                <BackgroundPicker
-                  backend={backend}
-                  path={shown.backgroundImage}
-                  onChoose={(backgroundImage) => change({ backgroundImage })}
-                  onRemove={() => change({ backgroundImage: "" })}
-                />
-                <NumberBox
-                  label={t("settings.backgroundImage")}
-                  field="appearance.background.image"
-                  value={shown.backgroundImage}
-                  problem={plan.problems.backgroundImage}
-                  text
-                  wide
-                  onChange={(backgroundImage) => change({ backgroundImage })}
-                />
-                <NumberBox
-                  label={t("settings.backgroundOpacity")}
-                  field="appearance.background.opacity"
-                  value={shown.backgroundOpacity}
-                  problem={plan.problems.backgroundOpacity}
-                  slider={sliders.backgroundOpacity}
-                  onChange={(backgroundOpacity) => change({ backgroundOpacity })}
-                />
-                <NumberBox
-                  label={t("settings.backgroundBlur")}
-                  field="appearance.background.blur"
-                  value={shown.backgroundBlur}
-                  problem={plan.problems.backgroundBlur}
-                  slider={sliders.backgroundBlur}
-                  onChange={(backgroundBlur) => change({ backgroundBlur })}
-                />
-                <p className="settings-hint">{t("settings.backgroundHint")}</p>
-              </section>
-              <section
-                className="settings-section settings-section-wide"
-                aria-label={t("themes.title")}
-                data-nr-part="settings-themes"
-              >
-                <h3>{t("themes.title")}</h3>
-                <ThemesPanel backend={backend} space={space} onSpaceTheme={onSpaceTheme} />
-              </section>
-              <section
-                className="settings-section"
-                aria-label={t("settings.terminalSection")}
-                data-nr-part="settings-terminal"
-              >
-                <h3>{t("settings.terminal")}</h3>
-                <NumberBox
-                  label={t("settings.fontList")}
-                  field="terminal.font.family"
-                  value={shown.terminal.fontFamily}
-                  problem={plan.terminalProblems.fontFamily}
-                  text
-                  wide
-                  onChange={(fontFamily) => changeTerminal({ fontFamily })}
-                />
-                {fonts.length > 0 && (
-                  <label className="settings-option">
-                    <span>{t("settings.installedFont")}</span>
-                    <select
-                      value=""
-                      onChange={(event) => {
-                        const name = event.target.value;
-                        if (name !== "") changeTerminal({ fontFamily: fontChoice(name) });
-                      }}
-                    >
-                      <option value="">{t("settings.chooseOne")}</option>
-                      {fonts.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                {failure !== undefined && (
+                  <p role="alert" className="settings-warning" data-nr-part="settings-failure">
+                    {failure}
+                  </p>
                 )}
-                <NumberBox
-                  label={t("settings.fontSize")}
-                  field="terminal.font.size"
-                  value={shown.terminal.fontSize}
-                  problem={plan.terminalProblems.fontSize}
-                  onChange={(fontSize) => changeTerminal({ fontSize })}
-                />
-                <NumberBox
-                  label={t("settings.lineHeight")}
-                  field="terminal.font.lineHeight"
-                  value={shown.terminal.lineHeight}
-                  problem={plan.terminalProblems.lineHeight}
-                  onChange={(lineHeight) => changeTerminal({ lineHeight })}
-                />
-                <Toggle
-                  label={t("settings.ligatures")}
-                  field="terminal.font.ligatures"
-                  checked={shown.terminal.ligatures}
-                  onChange={(ligatures) => changeTerminal({ ligatures })}
-                />
-                <p className="settings-hint">{t("settings.ligaturesHint")}</p>
-                <Choice
-                  legend={t("settings.cursorShape")}
-                  field="terminal.cursor.style"
-                  name="settings-cursor"
-                  value={shown.terminal.cursorStyle}
-                  options={cursorOptions()}
-                  onChange={(cursorStyle) => changeTerminal({ cursorStyle })}
-                />
-                <Toggle
-                  label={t("settings.cursorBlinks")}
-                  field="terminal.cursor.blink"
-                  checked={shown.terminal.cursorBlink}
-                  onChange={(cursorBlink) => changeTerminal({ cursorBlink })}
-                />
-                <NumberBox
-                  label={t("settings.scrollback")}
-                  field="terminal.scrollback"
-                  value={shown.terminal.scrollback}
-                  problem={plan.terminalProblems.scrollback}
-                  onChange={(scrollback) => changeTerminal({ scrollback })}
-                />
-                <Choice
-                  legend={t("settings.bell")}
-                  field="terminal.bell"
-                  name="settings-bell"
-                  value={shown.terminal.bell}
-                  options={bellOptions()}
-                  onChange={(bell) => changeTerminal({ bell })}
-                />
-                <Choice
-                  legend={t("settings.rightClick")}
-                  field="terminal.rightClick"
-                  name="settings-right-click"
-                  value={shown.terminal.rightClick}
-                  options={rightClickOptions()}
-                  onChange={(rightClick) => changeTerminal({ rightClick })}
-                />
-                <NumberBox
-                  label={t("settings.maxPanes")}
-                  field="terminal.maxPanes"
-                  value={shown.terminal.maxPanes}
-                  problem={plan.terminalProblems.maxPanes}
-                  onChange={(maxPanes) => changeTerminal({ maxPanes })}
-                />
-                <Toggle
-                  label={t("settings.screenReader")}
-                  field="terminal.screenReaderMode"
-                  checked={shown.terminal.screenReaderMode}
-                  onChange={(screenReaderMode) => changeTerminal({ screenReaderMode })}
-                />
-                <p className="settings-hint">{t("settings.screenReaderHint")}</p>
-              </section>
-              <section
-                className="settings-section"
-                aria-label={t("settings.profiles")}
-                data-nr-part="settings-profiles"
-              >
-                <h3>{t("settings.profiles")}</h3>
-                {shown.profiles.length === 0 ? (
-                  <p className="settings-hint">{t("settings.profilesNone")}</p>
-                ) : (
-                  <ul className="settings-profiles">
-                    {shown.profiles.map((row, index) => {
-                      const problems = plan.profileProblems[row.key];
-                      const heading = row.saved
-                        ? (config.profiles?.find((profile) => profile.id === row.key)?.name ??
-                          row.key)
-                        : t("settings.profileNew", { n: index + 1 });
-                      return (
-                        <li key={row.key}>
-                          <fieldset
-                            className="settings-profile"
-                            aria-label={heading}
-                            data-nr-part="settings-profile"
-                          >
-                            <NumberBox
-                              label={t("settings.profileName")}
-                              field="profiles.item.name"
-                              value={row.name}
-                              problem={problems?.name}
-                              text
-                              wide
-                              onChange={(name) => editProfile(row.key, { name })}
-                            />
-                            {isSshRow(row) && (
-                              <>
-                                <NumberBox
-                                  label={t("settings.profileHost")}
-                                  field="profiles.item.host"
-                                  value={row.host ?? ""}
-                                  problem={problems?.host}
-                                  text
-                                  wide
-                                  onChange={(host) => editProfile(row.key, { host })}
-                                />
-                                <NumberBox
-                                  label={t("settings.profileUser")}
-                                  field="profiles.item.user"
-                                  value={row.user ?? ""}
-                                  problem={problems?.user}
-                                  text
-                                  wide
-                                  onChange={(user) => editProfile(row.key, { user })}
-                                />
-                                <NumberBox
-                                  label={t("settings.profilePort")}
-                                  field="profiles.item.port"
-                                  value={row.port ?? ""}
-                                  problem={problems?.port}
-                                  onChange={(port) => editProfile(row.key, { port })}
-                                />
-                                <NumberBox
-                                  label={t("settings.profileIdentityFile")}
-                                  field="profiles.item.identityFile"
-                                  value={row.identityFile ?? ""}
-                                  problem={problems?.identityFile}
-                                  text
-                                  wide
-                                  onChange={(identityFile) =>
-                                    editProfile(row.key, { identityFile })
-                                  }
-                                />
-                                <NumberBox
-                                  label={t("settings.profileKnownHostsFile")}
-                                  field="profiles.item.knownHostsFile"
-                                  value={row.knownHostsFile ?? ""}
-                                  problem={problems?.knownHostsFile}
-                                  text
-                                  wide
-                                  onChange={(knownHostsFile) =>
-                                    editProfile(row.key, { knownHostsFile })
-                                  }
-                                />
-                              </>
-                            )}
-                            <NumberBox
-                              label={t(
-                                isSshRow(row)
-                                  ? "settings.profileRemoteProgram"
-                                  : "settings.profileProgram",
-                              )}
-                              field="profiles.item.program"
-                              value={row.program}
-                              problem={problems?.program}
-                              text
-                              wide
-                              onChange={(program) => editProfile(row.key, { program })}
-                            />
-                            <TextArea
-                              label={t("settings.profileArgs")}
-                              field="profiles.item.args"
-                              value={row.args}
-                              problem={problems?.args}
-                              onChange={(args) => editProfile(row.key, { args })}
-                            />
-                            <NumberBox
-                              label={t(
-                                isSshRow(row) ? "settings.profileRemoteCwd" : "settings.profileCwd",
-                              )}
-                              field="profiles.item.cwd"
-                              value={row.cwd}
-                              problem={problems?.cwd}
-                              text
-                              wide
-                              onChange={(cwd) => editProfile(row.key, { cwd })}
-                            />
-                            <button
-                              type="button"
-                              className="settings-link"
-                              onClick={() =>
-                                changeProfiles((rows) => withoutProfile(rows, row.key))
-                              }
-                            >
-                              {t("settings.profileRemove")}
-                            </button>
-                          </fieldset>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-                <button
-                  type="button"
-                  className="settings-link"
-                  onClick={() => changeProfiles((rows) => withNewProfile(rows))}
-                >
-                  {t("settings.profileAdd")}
+              </div>
+              <div className="dialog-actions">
+                <button type="button" onClick={onClose}>
+                  {t("common.cancel")}
                 </button>
-                <button
-                  type="button"
-                  className="settings-link"
-                  onClick={() => changeProfiles((rows) => withNewProfile(rows, "ssh"))}
-                >
-                  {t("settings.profileAddSsh")}
+                <button type="submit" className="primary" disabled={!canSave}>
+                  {t("common.save")}
                 </button>
-                <p className="settings-hint">{t("settings.profilesHint")}</p>
-                {shown.profiles.some(isSshRow) && (
-                  <p className="settings-hint">{t("settings.profilesSshHint")}</p>
-                )}
-              </section>
-              <section className="settings-section" aria-label={t("settings.shortcuts")}>
-                <h3>{t("settings.shortcuts")}</h3>
-                <Choice
-                  legend={t("settings.preset")}
-                  field="keybindings.preset"
-                  name="settings-preset"
-                  value={shown.preset}
-                  options={keyPresetOptions()}
-                  onChange={(preset) => change({ preset })}
-                />
-                <button
-                  ref={shortcutsButtonRef}
-                  type="button"
-                  className="settings-link"
-                  onClick={() => setShortcutsOpen(true)}
-                >
-                  {t("settings.keyboardShortcuts")}
-                </button>
-                <p className="settings-hint" data-nr-part="quick-shortcut">
-                  {quickShortcutLine(quickChord, quickStatus)}
-                </p>
-              </section>
-              <section className="settings-section" aria-label={t("settings.notifications")}>
-                <h3>{t("settings.notifications")}</h3>
-                <Toggle
-                  label={t("settings.systemNotifications")}
-                  field="notifications.enabled"
-                  checked={shown.notifications}
-                  onChange={(notifications) => change({ notifications })}
-                />
-                <NumberBox
-                  label={t("settings.longCommand")}
-                  field="notifications.longCommandSeconds"
-                  value={shown.longCommandSeconds}
-                  problem={plan.problems.longCommandSeconds}
-                  onChange={(longCommandSeconds) => change({ longCommandSeconds })}
-                />
-              </section>
-              <section
-                className="settings-section"
-                aria-label={t("settings.archive")}
-                data-nr-part="settings-archive"
-              >
-                <h3>{t("settings.archive")}</h3>
-                <Toggle
-                  label={t("settings.archiveIdle")}
-                  field="archive.enabled"
-                  checked={shown.archive.enabled}
-                  onChange={(enabled) => changeArchive({ enabled })}
-                />
-                <NumberBox
-                  label={t("settings.archiveAfter")}
-                  field="archive.afterHours"
-                  value={shown.archive.afterHours}
-                  problem={plan.archiveProblems.afterHours}
-                  onChange={(afterHours) => changeArchive({ afterHours })}
-                />
-                <p className="settings-hint">{t("settings.archiveHint")}</p>
-              </section>
-              <section
-                className="settings-section"
-                aria-label={t("settings.ai")}
-                data-nr-part="settings-ai"
-              >
-                <h3>{t("settings.ai")}</h3>
-                <Toggle
-                  label={t("settings.aiOn")}
-                  field="ai.enabled"
-                  checked={shown.ai.enabled}
-                  onChange={(enabled) => changeAi({ enabled })}
-                />
-                <ProvidersPanel backend={backend} />
-                <ModelsPanel backend={backend} onInsert={onInsert} />
-                <BenchPanel backend={backend} />
-                <h4>{t("settings.aiDefaults")}</h4>
-                {AI_FUNCTIONS.map((fn) => {
-                  const problem = plan.aiProblems[fn];
-                  return (
-                    <fieldset
-                      key={fn}
-                      className="settings-field"
-                      data-nr-part="settings-ai-function"
-                    >
-                      <legend>{aiFunctionLabel(fn)}</legend>
-                      <SelectBox
-                        label={t("settings.aiProvider", { function: aiFunctionLabel(fn) })}
-                        field={`ai.defaults.${fn}.provider`}
-                        value={shown.ai[fn].provider}
-                        options={providerOptions(aiProviderIds(config), shown.ai[fn].provider)}
-                        problem={problem?.field === "provider" ? problem.message : undefined}
-                        onChange={(provider) => changeAiTarget(fn, { provider })}
-                      />
-                      <NumberBox
-                        label={t("settings.aiModel", { function: aiFunctionLabel(fn) })}
-                        field={`ai.defaults.${fn}.model`}
-                        value={shown.ai[fn].model}
-                        problem={problem?.field === "model" ? problem.message : undefined}
-                        text
-                        wide
-                        onChange={(model) => changeAiTarget(fn, { model })}
-                      />
-                      <p className="settings-hint">{aiFunctionHint(fn)}</p>
-                    </fieldset>
-                  );
-                })}
-                <p className="settings-hint">{t("settings.aiFootnote")}</p>
-              </section>
-              <section
-                className="settings-section"
-                aria-label={t("settings.mods")}
-                data-nr-part="settings-mods"
-              >
-                <h3>{t("settings.mods")}</h3>
-                {modRows.length === 0 ? (
-                  <p className="settings-hint">{t("settings.modsNone")}</p>
-                ) : (
-                  <>
-                    <p className="settings-hint">{t("settings.modsHint")}</p>
-                    <ul className="settings-mods">
-                      {modRows.map((row, index) => (
-                        <li key={row.name} className="settings-mod" data-nr-part="settings-mod">
-                          <Toggle
-                            label={row.name}
-                            checked={row.on}
-                            onChange={(on) => change({ mods: withMod(shown.mods, row.name, on) })}
-                          />
-                          {row.missing && (
-                            <span className="settings-hint">{t("settings.modMissing")}</span>
-                          )}
-                          {row.on && (
-                            <span className="settings-mod-move">
-                              <button
-                                type="button"
-                                className="settings-link"
-                                aria-label={t("settings.modEarlier", { name: row.name })}
-                                disabled={index === 0}
-                                onClick={() => change({ mods: movedMod(shown.mods, row.name, -1) })}
-                              >
-                                <ArrowUp size={12} aria-hidden="true" />
-                              </button>
-                              <button
-                                type="button"
-                                className="settings-link"
-                                aria-label={t("settings.modLater", { name: row.name })}
-                                disabled={index === shown.mods.length - 1}
-                                onClick={() => change({ mods: movedMod(shown.mods, row.name, 1) })}
-                              >
-                                <ArrowDown size={12} aria-hidden="true" />
-                              </button>
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-              </section>
-              <section
-                className="settings-section"
-                aria-label={t("settings.gallery")}
-                data-nr-part="settings-gallery"
-              >
-                <h3>{t("settings.gallery")}</h3>
-                <GalleryPanel backend={backend} />
-              </section>
-              <section
-                className="settings-section"
-                aria-label={t("settings.sync")}
-                data-nr-part="settings-sync"
-              >
-                <h3>{t("settings.sync")}</h3>
-                <SyncPanel backend={backend} spaces={spaceSync} />
-              </section>
-              {updates !== undefined && (
-                <section
-                  className="settings-section"
-                  aria-label={t("settings.updates")}
-                  data-nr-part="settings-updates"
-                >
-                  <h3>{t("settings.updates")}</h3>
-                  <UpdatePanel controller={updates} />
-                </section>
-              )}
-              <section className="settings-section" aria-label={t("settings.import")}>
-                <h3>{t("settings.import")}</h3>
-                <button
-                  type="button"
-                  className="settings-link"
-                  onClick={() => schemeInputRef.current?.click()}
-                >
-                  {t("settings.importScheme")}
-                </button>
-                <button
-                  ref={profilesButtonRef}
-                  type="button"
-                  className="settings-link"
-                  onClick={() => profilesInputRef.current?.click()}
-                >
-                  {t("settings.importProfiles")}
-                </button>
-                <p role="status" className="settings-hint" data-nr-part="settings-import-status">
-                  {importStatus}
-                </p>
-                <input
-                  ref={schemeInputRef}
-                  type="file"
-                  hidden
-                  tabIndex={-1}
-                  aria-label={t("window.schemeFile")}
-                  data-nr-part="settings-scheme-file"
-                  onChange={onSchemeFile}
-                />
-                <input
-                  ref={profilesInputRef}
-                  type="file"
-                  hidden
-                  tabIndex={-1}
-                  aria-label={t("settings.profilesFile")}
-                  data-nr-part="settings-profiles-file"
-                  onChange={onProfilesFile}
-                />
-              </section>
-            </div>
-            <div className="settings-feedback">
-              {firstError !== undefined && (
-                <p role="alert" className="settings-warning" data-nr-part="settings-file-problem">
-                  {t("settings.fileProblem")} {describeConfigError(firstError)}
-                </p>
-              )}
-              {failure !== undefined && (
-                <p role="alert" className="settings-warning" data-nr-part="settings-failure">
-                  {failure}
-                </p>
-              )}
-            </div>
-            <div className="dialog-actions">
-              <button type="button" onClick={onClose}>
-                {t("common.cancel")}
-              </button>
-              <button type="submit" className="primary" disabled={!canSave}>
-                {t("common.save")}
-              </button>
+              </div>
             </div>
           </form>
         </div>

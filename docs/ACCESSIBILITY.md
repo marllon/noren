@@ -23,20 +23,21 @@ rule of axe-core on the whole page, disables no rule and excludes nothing, and f
 nodes and the reason of each violation. Each test opens the surface the way a user does (shortcut,
 palette, click or menu) and runs it:
 
-| Surface                                                        | Test file                                                                                          |
-| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| The five screens, the palette, the shortcuts screen            | `accessibility.spec.ts`                                                                            |
-| Each section of the settings                                   | `accessibility-settings.spec.ts`                                                                   |
-| Menus, dialogs, search, switchers, peek, quick panel           | `accessibility-overlays.spec.ts`                                                                   |
-| Ask panel (empty, preview, answer, failure, no provider)       | `ask-panel.spec.ts`                                                                                |
-| Agents panel                                                   | `agents-panel.spec.ts`                                                                             |
-| Bench scoreboard, recommended models, providers, gallery, Sync | `bench.spec.ts`, `models.spec.ts`, `ai-providers.spec.ts`, `settings-gallery.spec.ts`              |
-| Sync (git and Gist)                                            | `settings-sync.spec.ts`, `sync-gist.spec.ts`                                                       |
-| Plugin panel                                                   | `plugin-panel.spec.ts`                                                                             |
-| Library                                                        | `library.spec.ts`                                                                                  |
-| Browser, diff and preview panes                                | `browser-pane.spec.ts`, `diff-pane.spec.ts`, `preview-pane.spec.ts`, `preview-output.spec.ts`      |
-| Favorites grid, project actions header, live groups            | `favorites.spec.ts`, `project-actions.spec.ts`, `live-groups*.spec.ts`                             |
-| Quick terminal window, other windows                           | `quick-window.spec.ts`, `window-sidebar.spec.ts`, `window-panes.spec.ts`, `window-browser.spec.ts` |
+| Surface                                                                                                                      | Test file                                                                                          |
+| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| The five screens, the palette, the shortcuts screen                                                                          | `accessibility.spec.ts`                                                                            |
+| Each section of the settings                                                                                                 | `accessibility-settings.spec.ts`                                                                   |
+| The column of sections and the search of the settings, in each section, the dark and the light theme, English and Portuguese | `settings-nav.spec.ts`                                                                             |
+| Menus, dialogs, search, switchers, peek, quick panel                                                                         | `accessibility-overlays.spec.ts`                                                                   |
+| Ask panel (empty, preview, answer, failure, no provider)                                                                     | `ask-panel.spec.ts`                                                                                |
+| Agents panel                                                                                                                 | `agents-panel.spec.ts`                                                                             |
+| Bench scoreboard, recommended models, providers, gallery, Sync                                                               | `bench.spec.ts`, `models.spec.ts`, `ai-providers.spec.ts`, `settings-gallery.spec.ts`              |
+| Sync (git and Gist)                                                                                                          | `settings-sync.spec.ts`, `sync-gist.spec.ts`                                                       |
+| Plugin panel                                                                                                                 | `plugin-panel.spec.ts`                                                                             |
+| Library                                                                                                                      | `library.spec.ts`                                                                                  |
+| Browser, diff and preview panes                                                                                              | `browser-pane.spec.ts`, `diff-pane.spec.ts`, `preview-pane.spec.ts`, `preview-output.spec.ts`      |
+| Favorites grid, project actions header, live groups                                                                          | `favorites.spec.ts`, `project-actions.spec.ts`, `live-groups*.spec.ts`                             |
+| Quick terminal window, other windows                                                                                         | `quick-window.spec.ts`, `window-sidebar.spec.ts`, `window-panes.spec.ts`, `window-browser.spec.ts` |
 
 Run them with `pnpm e2e` (all) or `pnpm exec playwright test -c e2e/playwright.config.ts -g axe`
 (only the axe tests, after `pnpm --filter @noren/desktop build`).
@@ -157,14 +158,16 @@ An announcement that is still there after about ten seconds is a bug: the region
 
 ### 7. The settings screen
 
-| Step                                               | Expect                                                                                                         |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Open Settings (button or palette "Open settings"). | A dialog named "Settings"; the first section is reachable by Tab.                                              |
-| Walk each section with headings or regions.        | Every section is a region with its own name ("Appearance", "Terminal options", "AI", "Sync"…).                 |
-| Tab through the fields of Terminal and AI.         | Every field has a name that includes its visible text; checkboxes say checked or not; selects say their value. |
-| Enter a wrong value (a font size of `abc`).        | The error is read next to the field (`aria-invalid` and its message).                                          |
-| In AI, press "Store key" with an empty box.        | "Paste the key in the box first." is read. The key, once stored, is never read back.                           |
-| Escape.                                            | The dialog closes; the focus returns to where it was.                                                          |
+| Step                                               | Expect                                                                                                                                                                                                           |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Open Settings (button or palette "Open settings"). | A dialog named "Settings"; the keyboard is on the search box ("Search settings").                                                                                                                                |
+| Tab to the column of sections.                     | A navigation named "Settings sections", one stop for Tab on the current section (read as current). Up and Down move between the buttons, Enter or Space shows the section and the keyboard lands on its heading. |
+| Type a word in the search.                         | The sections and the rows without it go away from the column and the page; with no match, "No setting matches ..." is read as a status. Esc empties the box first.                                               |
+| Walk each section with headings or regions.        | Every section is a region with its own name ("Appearance", "Terminal options", "AI", "Sync"…).                                                                                                                   |
+| Tab through the fields of Terminal and AI.         | Every field has a name that includes its visible text; checkboxes say checked or not; selects say their value.                                                                                                   |
+| Enter a wrong value (a font size of `abc`).        | The error is read next to the field (`aria-invalid` and its message).                                                                                                                                            |
+| In AI, press "Store key" with an empty box.        | "Paste the key in the box first." is read. The key, once stored, is never read back.                                                                                                                             |
+| Escape.                                            | The dialog closes; the focus returns to where it was.                                                                                                                                                            |
 
 ### 8. Splits and panes
 

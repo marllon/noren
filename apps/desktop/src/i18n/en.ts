@@ -398,6 +398,9 @@ export const en = {
 
   // The settings screen
   "settings.title": "Settings",
+  "settings.search": "Search settings",
+  "settings.searchNone": "No setting matches “{query}”.",
+  "settings.sections": "Settings sections",
   "settings.appearance": "Appearance",
   "settings.language": "Language",
   "settings.language.system": "Same as the system",

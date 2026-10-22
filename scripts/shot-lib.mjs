@@ -66,7 +66,7 @@ export const isValue = (text) => text.length <= 64 && VALUE.test(text);
  * `--open-settings` alone, `split` for `--split-keys` alone, `custom` otherwise); without them the five
  * built-in ones are made. `--split-keys` makes the app send Ctrl+Shift+D and Ctrl+Shift+E to its own
  * page as key events and check that each one split a pane. `--open-settings` makes the app open the
- * settings screen from inside its page and scroll the section (`themes`, `terminal`...) to the top;
+ * settings screen from inside its page and click the section (`themes`, `terminal`...) in its column of sections;
  * `--theme-editor` opens the editor of a theme from its card in the Themes section, `--editor-group`
  * scrolls the editor to a group (`terminal`, `font`, `picture`...) and `--editor-set` types a value into
  * a box of the editor (`ui.accent=#22d3ee`; the app checks that the preview followed). `--settings` is

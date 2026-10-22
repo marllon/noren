@@ -3,7 +3,7 @@ import { SYNC_METHODS, pushOnCloseAllowed, syncMethodOf } from "@noren/model";
 import type { Backend, SyncGistStatus, SyncMethod, SyncStatus } from "@noren/model";
 import { configManager, useConfigState } from "./config-store";
 import { useT } from "./i18n";
-import { NumberBox, SelectBox } from "./SettingsFields";
+import { NumberBox, SelectBox, Toggle } from "./SettingsFields";
 import {
   checkGistId,
   checkGistToken,
@@ -97,15 +97,13 @@ export function SyncPanel({ backend, spaces }: PanelProps) {
       ) : (
         <GitSync backend={backend} spaces={spaces} />
       )}
-      <label className="settings-option" title={t("field.sync.pushOnClose")}>
-        <input
-          type="checkbox"
-          checked={pushOnClose}
-          onChange={(event) => void write("pushOnClose", event.target.checked)}
-        />
-        <span>{t("settings.syncPushOnClose")}</span>
-      </label>
-      <p className="settings-hint">{t("settings.syncPushOnCloseHint")}</p>
+      <Toggle
+        label={t("settings.syncPushOnClose")}
+        field="sync.pushOnClose"
+        hint={t("settings.syncPushOnCloseHint")}
+        checked={pushOnClose}
+        onChange={(checked) => void write("pushOnClose", checked)}
+      />
       {note !== undefined && (
         <p
           role="status"

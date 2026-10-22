@@ -25,7 +25,7 @@
 // (written once it is up), `--image`, `--split-keys`, `--open-settings` or `--theme-editor`, one picture of
 // that window, `<prefix><name>.png` (`custom`, or `split`, `settings` or `editor` for `--split-keys`,
 // `--open-settings` or `--theme-editor` alone, by default); `--open-settings <section>` clicks the settings
-// button and scrolls the section to the top, `--theme-editor <theme id>` opens the editor of that theme
+// button and then the section in the column of sections, `--theme-editor <theme id>` opens the editor of that theme
 // from its card (the calls are made inside the page, never by the mouse of the system), `--editor-group
 // <group>` scrolls the editor to a group and `--editor-set <field>=<value>` types a value into a box of
 // the editor; a step that does not work fails the run after the PNG is written. The settings are

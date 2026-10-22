@@ -275,9 +275,12 @@ theme editor of Noren Dusk with two boxes typed into (see the next list).
 - **The settings screen and the theme editor are opened by calls inside the page.** `--open-settings
   <section>` calls `click()` on the settings button of the title bar (a DOM call that the page answers
   as it answers a click of the mouse, in the page and nowhere else: the window is disabled and nothing
-  reaches the mouse of the system), waits for the screen and scrolls the section whose `data-nr-part`
-  is `settings-<section>` to the top (`themes`, `terminal`, `background`, `profiles`...); it fails,
-  with the reason, if the screen or the section is not there. `--theme-editor <theme id>` then clicks
+  reaches the mouse of the system), waits for the screen and clicks the button of the section whose `data-nr-part`
+  is `settings-<section>` in the column of sections on its left (`appearance`, `themes`, `terminal`,
+  `background`, `profiles`, `ai`, `sync`...; all fifteen are there since NOR-F20-10a), which scrolls it to
+  the top of the content; it fails, with the reason, if the screen, the section or its button is not
+  there, if the column does not mark the section as the current one or if the section did not reach
+  the top. `--theme-editor <theme id>` then clicks
   the Customize or Edit button of the card of that theme in the Themes section (it opens the section by
   itself) and waits for the editor; `--editor-group <group>` scrolls the editor to a group
   (`accent`, `colors`, `sidebar`, `terminal`, `font`, `corners`, `transparency`, `picture`) and

@@ -420,6 +420,69 @@ test.describe("the search", () => {
   });
 });
 
+test.describe("the explanations", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  // The explanation of a field is short and gray, under its label (D22, item 7): at most 130
+  // characters under a label, at most 165 in a paragraph of a panel, in both languages.
+  for (const language of ["en", "pt-BR"] as const) {
+    test(`${language}: every explanation under a label or in a panel is short`, async ({
+      page,
+    }) => {
+      const screen = await start(page, { language });
+      const found = await screen.evaluate((root) => {
+        const text = (element: Element) => (element.textContent ?? "").replace(/\s+/g, " ").trim();
+        const shown = (element: Element) => element.getClientRects().length > 0;
+        const pick = (selector: string) =>
+          [...root.querySelectorAll(`.settings-content ${selector}`)].filter(shown).map(text);
+        return {
+          // Under a label: the `hint` of a field.
+          beside: pick(".settings-explain"),
+          // In a panel or a note: the paragraphs that say what a section is for (not a status or an alert).
+          panels: [
+            ...pick("p.settings-hint:not([role])"),
+            ...pick(".settings-steps li"),
+            ...pick(".settings-steps p"),
+          ],
+        };
+      });
+      expect(found.beside.length).toBeGreaterThan(8);
+      expect(found.panels.length).toBeGreaterThan(8);
+      expect(
+        found.beside.filter((words) => words.length > 130),
+        "an explanation under a label is not short",
+      ).toEqual([]);
+      expect(
+        found.panels.filter((words) => words.length > 165),
+        "an explanation in a panel is not short",
+      ).toEqual([]);
+    });
+  }
+
+  for (const mode of ["dark", "light"] as const) {
+    test(`${mode} theme: an explanation is gray, the muted color of the theme`, async ({
+      page,
+    }) => {
+      const screen = await start(page, { mode });
+      const colors = await screen.evaluate((root) => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--nr-muted)";
+        root.append(probe);
+        const muted = getComputedStyle(probe).color;
+        probe.remove();
+        return {
+          muted,
+          explanations: [...root.querySelectorAll(".settings-content .settings-explain")].map(
+            (element) => getComputedStyle(element).color,
+          ),
+        };
+      });
+      expect(colors.explanations.length).toBeGreaterThan(8);
+      expect(colors.explanations.filter((color) => color !== colors.muted)).toEqual([]);
+    });
+  }
+});
+
 test.describe("the grid", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
@@ -639,6 +702,11 @@ test.describe("no sideways scroll (finding 329)", () => {
 });
 
 test.describe("axe on every section", () => {
+  // Axe reads the whole screen (every section is on the page) and a full run has the machine busy:
+  // one of these once spent the 30 s of the default on the analysis. The time is longer, the checks
+  // are the same.
+  test.describe.configure({ timeout: 60_000 });
+
   for (const [language, mode] of [
     ["en", "dark"],
     ["en", "light"],

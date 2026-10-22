@@ -637,7 +637,7 @@ test.describe("the AI", () => {
     await expect(ai.locator('[data-nr-part="settings-ai-providers-status"]')).toHaveText(
       "meu-provedor adicionado.",
     );
-    await expect(ai).toContainText("Adicionar e remover um provedor grava o config.jsonc na hora");
+    await expect(ai).toContainText("Adicionar ou remover um provedor grava o config.jsonc na hora");
     await expectNoEnglish(ai);
   });
 

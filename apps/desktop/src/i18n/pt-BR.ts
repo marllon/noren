@@ -430,11 +430,11 @@ export const ptBR: Dictionary = {
   "settings.effect.acrylic": "Acrílico",
   "settings.effect.vibrancy": "Vibrancy",
   "settings.windowEffectHint":
-    "Mica e Acrílico são do Windows, vibrancy do macOS. Onde o sistema não consegue pintar o efeito, a janela continua opaca.",
+    "Mica e Acrílico são do Windows, vibrancy do macOS. Se o sistema não puder pintar o efeito, a janela fica opaca.",
   "settings.windowOpacity": "Opacidade da interface (0,3 a 1)",
   "settings.windowOpacitySlider": "Opacidade da interface",
   "settings.windowOpacityHint":
-    "Vazio: sólida, a opacidade do tema enquanto houver um efeito e meio transparente enquanto uma imagem aparece atrás da janela. O controle mostra o efeito na hora; Salvar o mantém.",
+    "Vazio: sólida; com efeito, a opacidade do tema; com imagem, meio transparente. O controle age na hora; Salvar o mantém.",
   "settings.background": "Fundo",
   "settings.backgroundImage": "Imagem de fundo (arquivo)",
   "settings.backgroundOpacity": "Opacidade da imagem (0 a 1)",
@@ -442,7 +442,7 @@ export const ptBR: Dictionary = {
   "settings.backgroundBlur": "Desfoque da imagem (px)",
   "settings.backgroundBlurSlider": "Desfoque da imagem",
   "settings.backgroundHint":
-    "Um arquivo de imagem neste computador: um caminho completo ou um caminho dentro da pasta de configuração (backgrounds/sky.jpg). Endereços da web não são aceitos. Opacidade e desfoque vazios deixam o tema decidir (0,6 e sem desfoque nos temas embutidos). Um véu da cor do tema mantém o texto legível sobre a imagem. Os controles mostram o efeito na hora; Salvar os mantém. Um espaço pode ter uma imagem própria, no menu dele.",
+    "Um arquivo deste computador: caminho completo ou da pasta de configuração (backgrounds/sky.jpg). Vazio, o tema decide a opacidade e o desfoque.",
   "settings.terminal": "Terminal",
   "settings.terminalSection": "Opções do terminal",
   "settings.fontList": "Lista de fontes",
@@ -454,7 +454,7 @@ export const ptBR: Dictionary = {
   "settings.ligaturesHint": "As ligaduras são aceitas, mas o terminal ainda não as desenha.",
   "settings.screenReader": "Modo leitor de tela",
   "settings.screenReaderHint":
-    "Dá a um leitor de tela o texto do terminal e lê a saída nova conforme ela chega. Deixa o terminal mais lento.",
+    "Dá a um leitor de tela o texto do terminal e a saída nova. Deixa o terminal mais lento.",
   "screenReader.on": "O modo leitor de tela está ligado.",
   "screenReader.off": "O modo leitor de tela está desligado.",
   "announce.tab": "Aba {name}",
@@ -501,7 +501,7 @@ export const ptBR: Dictionary = {
   "settings.profileRemoteProgram": "Programa nessa máquina (opcional)",
   "settings.profileRemoteCwd": "Pasta inicial nessa máquina (opcional)",
   "settings.profilesSshHint":
-    "Um perfil SSH abre o shell em outra máquina pelo ssh deste computador. Ele nomeia um arquivo de chave; nenhuma senha nem frase-senha é pedida ou guardada, então uma chave com frase-senha precisa de um agente ssh.",
+    "Abre um shell em outra máquina pelo ssh deste computador. Nenhuma senha ou frase-senha é guardada: use um agente ssh para uma chave protegida.",
   "settings.profilesHint": "A pasta inicial é opcional. Salvar um perfil não inicia nada.",
   "settings.shortcuts": "Atalhos",
   "settings.preset": "Preset de atalhos",
@@ -529,7 +529,7 @@ export const ptBR: Dictionary = {
   "settings.aiHint.command": "Para escrever um comando a partir de uma descrição.",
   "settings.aiNoProvider": "Nenhum provedor",
   "settings.aiFootnote":
-    "Desligada até você ligá-la: nada é enviado a nenhum provedor enquanto estiver desligada. Uma função sem provedor e sem modelo não tem padrão. Os provedores seus ficam em ai.providers no config.jsonc, onde você pode editá-los à mão.",
+    "Nada é enviado a nenhum provedor enquanto a IA estiver desligada. Seus provedores ficam em ai.providers no config.jsonc.",
   "settings.mods": "Mods",
   "settings.modsNone":
     "Ainda não há mods. Coloque um arquivo .css na pasta de mods, ao lado do config.jsonc.",
@@ -537,7 +537,7 @@ export const ptBR: Dictionary = {
     "Arquivos CSS da pasta de mods. Os mods ligados valem nesta ordem; o último vence.",
   "settings.gallery": "Galeria",
   "settings.galleryHint":
-    "Temas e mods para instalar. Cada arquivo é conferido com o hash que o índice declara antes de qualquer coisa ser gravada.",
+    "Temas e mods para instalar. Cada arquivo é conferido com o hash publicado antes de qualquer gravação.",
   "settings.galleryLoading": "Carregando a galeria...",
   "settings.galleryFailed": "Não foi possível carregar a galeria: {reason}",
   "settings.galleryNone": "A galeria não tem nada para oferecer.",
@@ -560,16 +560,16 @@ export const ptBR: Dictionary = {
     "{name} foi instalado, mas não é um tema utilizável, então ficou fora da lista: {reason}",
   "settings.sync": "Sincronização",
   "settings.syncHint":
-    "Guarda o config.jsonc, seus temas, seus mods e seus spaces (um arquivo cada) num repositório git que é seu. Pull traz os arquivos do remoto para este computador; Push envia os que mudaram aqui.",
+    "Guarda o config.jsonc, seus temas, mods e spaces num repositório git seu. Pull traz os arquivos dele para cá; Push envia os seus.",
   "settings.syncWarning":
-    "O config.jsonc inteiro é enviado, não só o que você mudou, então não deixe nada secreto nele. O Noren não pede nada ao git: uma credencial guardada ou uma chave ssh sem pergunta de senha precisa já funcionar num terminal antes de conectar. Remover um space não remove o arquivo dele: ele continua no repositório e nos seus outros computadores.",
+    "O config.jsonc inteiro é enviado: não deixe segredo nele. O git já precisa funcionar com este remoto num terminal; o Noren não pede senha.",
   "settings.syncConnectedWarning":
-    "O config.jsonc inteiro viaja, então não deixe nada secreto nele. O Noren não consegue pedir senha nem a senha da chave ssh: se o pull ou o push falhar por credencial, faça o git funcionar com este remoto num terminal primeiro.",
+    "O config.jsonc inteiro viaja, então não deixe nada secreto nele. O Noren não consegue pedir senha nem a senha da chave ssh: faça o git funcionar com este remoto num terminal primeiro.",
   "settings.syncRemote": "Endereço do remoto",
   "settings.syncRemotePlaceholder": "https://example.com/voce/noren-settings.git",
   "settings.syncPushOnClose": "Enviar ao fechar o Noren",
   "settings.syncPushOnCloseHint":
-    "Desligado por padrão. Ligado, fechar o Noren faz antes um push se houver um remoto ou um gist conectado e algo esperando para ser enviado, como o botão Push. Ele espera alguns segundos no máximo: um push que falha ou demora demais é pulado e o Noren fecha do mesmo jeito. Esconder a janela na bandeja não fecha o Noren.",
+    "Desligado por padrão. Ligado, fechar o Noren faz um push antes, se houver algo esperando; um push que falha ou demora é pulado.",
   "settings.syncConnect": "Conectar",
   "settings.syncPull": "Pull",
   "settings.syncPush": "Push",
@@ -621,9 +621,9 @@ export const ptBR: Dictionary = {
   "settings.syncMethod.git": "Um remoto git",
   "settings.syncMethod.gist": "Um gist secreto do GitHub",
   "settings.gistHint":
-    "Guarda o config.jsonc, os seus temas, os seus mods e os seus spaces (um arquivo cada) num gist do GitHub da sua conta. O Pull traz os arquivos do gist para este computador; o Push envia os que mudaram aqui. Precisa de um token de acesso pessoal com a permissão gist.",
+    "Guarda o config.jsonc, seus temas, mods e spaces num gist do GitHub da sua conta. Precisa de um token de acesso pessoal com a permissão gist.",
   "settings.gistWarning":
-    "O config.jsonc inteiro é enviado, não só o que você mudou, então não guarde segredo nele. Um gist secreto não é privado: ele fica fora das buscas, mas qualquer pessoa com o link consegue lê-lo. Remover um space não remove o arquivo dele: ele continua no gist e nos seus outros computadores.",
+    "O config.jsonc inteiro é enviado: não guarde segredo nele. Um gist secreto não é privado: quem tiver o link pode lê-lo.",
   "settings.gistToken": "Token do GitHub",
   "settings.gistTokenHint":
     "Fica no cofre do sistema, é enviado só para api.github.com e nunca mais aparece aqui. Crie-o com a permissão gist e mais nada.",
@@ -662,7 +662,7 @@ export const ptBR: Dictionary = {
   "update.check": "Verificar atualizações",
   "update.install": "Baixar e instalar",
   "update.installHint":
-    "Instalar primeiro salva suas abas, depois baixa o pacote, confere a assinatura com a chave de atualização desta versão e só então roda o instalador. No Windows o Noren fecha quando o instalador começa.",
+    "Instalar salva suas abas, baixa o pacote, confere a assinatura e só então roda o instalador. No Windows o Noren fecha quando ele começa.",
   "update.checking": "Procurando uma versão nova...",
   "update.current": "O Noren {version} é a versão mais recente.",
   "update.current.noVersion": "Você está na versão mais recente.",
@@ -897,7 +897,7 @@ export const ptBR: Dictionary = {
   // The themes section of the settings screen: the gallery and what is done with a theme
   "themes.title": "Temas",
   "themes.hint":
-    "Clique num tema para usá-lo. Personalize um tema para mudar as cores, a fonte, os cantos e o fundo num editor com prévia ao vivo, ou duplique-o para ter uma cópia sua: os seus podem ser editados, renomeados, exportados e apagados. Tudo aqui vale na hora e não faz parte do Salvar.",
+    "Clique num tema para usá-lo. Personalize ou duplique um para fazê-lo seu. Tudo aqui vale na hora, fora do Salvar.",
   "themes.scope": "Usar o tema em",
   "themes.scopeApp": "O app todo",
   "themes.scopeSpace": "Só o espaço “{name}”",
@@ -1176,7 +1176,7 @@ export const ptBR: Dictionary = {
   "providers.step.ollama":
     "Para usar o Ollama: instale-o, inicie-o e instale um modelo nele (ollama pull seguido do nome de um modelo). Depois pressione “Verificar o Ollama de novo”.",
   "providers.step.own":
-    "Ou adicione abaixo um provedor seu: o tipo, o endereço da API dele e um modelo. Se ele precisar de chave de API, cole no campo da chave; ela vai para o cofre de chaves do sistema, nunca para o config.jsonc.",
+    "Ou adicione abaixo um provedor seu: tipo, endereço da API e modelo. A chave de API vai no campo da chave, para o cofre do sistema, nunca para o config.jsonc.",
   "providers.step.turnOn":
     "Ligue a IA acima, escolha um provedor e um modelo para cada função e pressione Salvar.",
   "providers.ollamaModels": "Modelos do Ollama",
@@ -1202,7 +1202,7 @@ export const ptBR: Dictionary = {
   "providers.newKey": "Chave de API do provedor (opcional)",
   "providers.add": "Adicionar provedor",
   "providers.footnote":
-    "Adicionar e remover um provedor grava o config.jsonc na hora; o resto desta tela é gravado por Salvar. A chave vai para o cofre de chaves do seu sistema e nunca é gravada no config.jsonc.",
+    "Adicionar ou remover um provedor grava o config.jsonc na hora; o resto, por Salvar. As chaves vão para o cofre do sistema, nunca para o config.jsonc.",
   "providers.added": "{id} adicionado.",
   "providers.addedKey": "{id} adicionado, e a chave dele foi guardada no cofre de chaves.",
   "providers.addedNoKey": "{id} adicionado, mas a chave dele não foi guardada: {reason}",
@@ -1256,13 +1256,13 @@ export const ptBR: Dictionary = {
   "models.noTerminal":
     "Não há terminal para receber o comando. Abra uma aba de terminal e tente de novo.",
   "models.footnote":
-    "A lista é uma seleção fixa de modelos de pesos abertos (Apache-2.0 ou MIT). Instalar exige o Ollama neste computador e baixa o modelo da biblioteca dele; o Noren só escreve o comando no prompt.",
+    "Uma lista fixa de modelos de pesos abertos (Apache-2.0 ou MIT). O Noren só escreve o comando de instalação no prompt; o Ollama baixa o modelo.",
   // O placar do bench, na seção de IA das configurações
   "bench.title": "Bench de modelos",
   "bench.loading": "Lendo os resultados do bench...",
   "bench.loadFailed": "Não foi possível ler os resultados do bench: {reason}",
   "bench.empty":
-    "Ainda não há resultados do bench. Uma corrida do bench grava o resultado na pasta bench-results da pasta de dados do Noren, e o placar aparece aqui quando houver um. Rodar o bench por esta tela ainda não está disponível.",
+    "Ainda não há resultados do bench. Uma corrida do bench grava o resultado na pasta bench-results da pasta de dados do Noren; o placar o mostra aqui.",
   "bench.noRecommendation":
     "Nenhum modelo pode ser recomendado ainda: um modelo precisa de uma corrida concluída com pelo menos uma resposta certa.",
   "bench.recommendation": "Recomendado como padrão: {model} ({provider}).",

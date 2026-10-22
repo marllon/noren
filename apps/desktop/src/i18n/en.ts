@@ -425,11 +425,11 @@ export const en = {
   "settings.effect.acrylic": "Acrylic",
   "settings.effect.vibrancy": "Vibrancy",
   "settings.windowEffectHint":
-    "Mica and Acrylic are for Windows, vibrancy for macOS. Where the system cannot paint the effect, the window stays opaque.",
+    "Mica and Acrylic are for Windows, vibrancy for macOS. If the system cannot paint it, the window stays opaque.",
   "settings.windowOpacity": "Interface opacity (0.3 to 1)",
   "settings.windowOpacitySlider": "Interface opacity",
   "settings.windowOpacityHint":
-    "Empty: solid, the opacity of the theme while there is an effect, and half see-through while a picture shows behind the window. The slider shows its effect at once; Save keeps it.",
+    "Empty: solid; with an effect, the opacity of the theme; with a picture, half see-through. The slider acts at once; Save keeps it.",
   "settings.background": "Background",
   "settings.backgroundImage": "Background image (file)",
   "settings.backgroundOpacity": "Image opacity (0 to 1)",
@@ -437,7 +437,7 @@ export const en = {
   "settings.backgroundBlur": "Image blur (px)",
   "settings.backgroundBlurSlider": "Image blur",
   "settings.backgroundHint":
-    "A picture file on this computer: a full path, or a path inside the config folder (backgrounds/sky.jpg). Web addresses are not accepted. Empty opacity and blur let the theme decide (0.6 and no blur in the built-in themes). A veil of the color of the theme keeps the text readable over the picture. The sliders show their effect at once; Save keeps it. A space can have a picture of its own, in its menu.",
+    "A file on this computer: a full path, or one in the config folder (backgrounds/sky.jpg). Empty opacity and blur let the theme decide.",
   "settings.terminal": "Terminal",
   "settings.terminalSection": "Terminal options",
   "settings.fontList": "Font list",
@@ -449,7 +449,7 @@ export const en = {
   "settings.ligaturesHint": "Ligatures are accepted, but the terminal does not draw them yet.",
   "settings.screenReader": "Screen reader mode",
   "settings.screenReaderHint":
-    "Gives a screen reader the text of the terminal and reads new output as it arrives. It makes the terminal slower.",
+    "Gives a screen reader the text of the terminal and its new output. It makes the terminal slower.",
   "screenReader.on": "Screen reader mode is on.",
   "screenReader.off": "Screen reader mode is off.",
   "announce.tab": "Tab {name}",
@@ -496,7 +496,7 @@ export const en = {
   "settings.profileRemoteProgram": "Program on that machine (optional)",
   "settings.profileRemoteCwd": "Start folder on that machine (optional)",
   "settings.profilesSshHint":
-    "An SSH profile opens its shell on another machine through the ssh of this computer. It names a key file; no password or passphrase is asked for or stored, so a key with a passphrase needs an ssh agent.",
+    "Opens a shell on another machine through the ssh of this computer. No password or passphrase is stored: use an ssh agent for a protected key.",
   "settings.profilesHint": "The start folder is optional. Saving a profile starts nothing.",
   "settings.shortcuts": "Shortcuts",
   "settings.preset": "Shortcut preset",
@@ -524,14 +524,14 @@ export const en = {
   "settings.aiHint.command": "For writing a command from a description.",
   "settings.aiNoProvider": "No provider",
   "settings.aiFootnote":
-    "Off until you turn it on: nothing is sent to any provider while it is off. A function with no provider and no model has no default. Providers of your own are kept under ai.providers in config.jsonc, where you can edit them by hand.",
+    "Nothing is sent to any provider while the AI is off. Your own providers are kept under ai.providers in config.jsonc.",
   "settings.mods": "Mods",
   "settings.modsNone": "No mods yet. Put a .css file in the mods folder, next to config.jsonc.",
   "settings.modsHint":
     "CSS files from the mods folder. The mods that are on apply in this order; the last one wins.",
   "settings.gallery": "Gallery",
   "settings.galleryHint":
-    "Themes and mods to install. Each file is checked against the hash its index declares before anything is written.",
+    "Themes and mods to install. Each file is checked against its published hash before anything is written.",
   "settings.galleryLoading": "Loading the gallery...",
   "settings.galleryFailed": "The gallery could not be loaded: {reason}",
   "settings.galleryNone": "The gallery has nothing to offer.",
@@ -554,16 +554,16 @@ export const en = {
     "{name} was installed, but it is not a usable theme, so it is left out of the list: {reason}",
   "settings.sync": "Sync",
   "settings.syncHint":
-    "Keeps config.jsonc, your themes, your mods and your spaces (one file each) in a git repository you own. Pull brings the remote's files to this computer; Push sends the ones that changed here.",
+    "Keeps config.jsonc, your themes, mods and spaces in a git repository you own. Pull brings its files here; Push sends yours.",
   "settings.syncWarning":
-    "All of config.jsonc is sent, not only the settings you changed, so keep nothing secret in it. Noren asks git for nothing: a stored credential or an ssh key without a passphrase prompt must already work in a terminal before you connect. Removing a space does not remove its file: it stays in the repository and on your other computers.",
+    "All of config.jsonc is sent: keep nothing secret in it. Git must already work with this remote in a terminal; Noren cannot ask for a password.",
   "settings.syncConnectedWarning":
-    "All of config.jsonc travels, so keep nothing secret in it. Noren cannot ask for a password or an ssh passphrase: if pull or push fails on a credential, make git work with this remote in a terminal first.",
+    "All of config.jsonc travels, so keep nothing secret in it. Noren cannot ask for a password or an ssh passphrase: make git work with this remote in a terminal first.",
   "settings.syncRemote": "Remote address",
   "settings.syncRemotePlaceholder": "https://example.com/you/noren-settings.git",
   "settings.syncPushOnClose": "Push when Noren closes",
   "settings.syncPushOnCloseHint":
-    "Off by default. When on, closing Noren pushes first if a remote or a gist is connected and something is waiting to be sent, like the Push button. It waits a few seconds at most: a push that fails or is too slow is skipped and Noren closes anyway. Hiding the window in the tray does not close Noren.",
+    "Off by default. When on, closing Noren pushes first if something is waiting; a push that fails or is too slow is skipped.",
   "settings.syncConnect": "Connect",
   "settings.syncPull": "Pull",
   "settings.syncPush": "Push",
@@ -613,9 +613,9 @@ export const en = {
   "settings.syncMethod.git": "A git remote",
   "settings.syncMethod.gist": "A secret GitHub gist",
   "settings.gistHint":
-    "Keeps config.jsonc, your themes, your mods and your spaces (one file each) in a GitHub gist of your account. Pull brings the gist's files to this computer; Push sends the ones that changed here. It needs a personal access token with the gist permission.",
+    "Keeps config.jsonc, your themes, mods and spaces in a GitHub gist of your account. It needs a personal access token with the gist permission.",
   "settings.gistWarning":
-    "All of config.jsonc is sent, not only the settings you changed, so keep nothing secret in it. A secret gist is not private: it is left out of searches, but anyone who has its link can read it. Removing a space does not remove its file: it stays in the gist and on your other computers.",
+    "All of config.jsonc is sent: keep nothing secret in it. A secret gist is not private: anyone with its link can read it.",
   "settings.gistToken": "GitHub token",
   "settings.gistTokenHint":
     "Kept in the system keychain, sent only to api.github.com and never shown again. Make it with the gist permission and nothing else.",
@@ -652,7 +652,7 @@ export const en = {
   "update.check": "Check for updates",
   "update.install": "Download and install",
   "update.installHint":
-    "Installing saves your tabs first, then downloads the package, checks its signature against the update key of this build and only then runs the installer. On Windows Noren closes when the installer starts.",
+    "Installing saves your tabs first, then downloads the package, checks its signature and only then runs the installer. On Windows Noren closes when it starts.",
   "update.checking": "Looking for a new version...",
   "update.current": "Noren {version} is the latest version.",
   "update.current.noVersion": "You have the latest version.",
@@ -883,7 +883,7 @@ export const en = {
   // The themes section of the settings screen: the gallery and what is done with a theme
   "themes.title": "Themes",
   "themes.hint":
-    "Click a theme to use it. Customize a theme to change its colors, font, corners and background in an editor with a live preview, or duplicate it to get a copy of your own: yours can be edited, renamed, exported and deleted. Everything here acts at once and is not part of Save.",
+    "Click a theme to use it. Customize or duplicate one to make it yours. Everything here acts at once, outside Save.",
   "themes.scope": "Use a theme for",
   "themes.scopeApp": "The whole app",
   "themes.scopeSpace": "Only the space “{name}”",
@@ -1161,7 +1161,7 @@ export const en = {
   "providers.step.ollama":
     "To use Ollama: install it, start it, and install a model in it (ollama pull followed by the name of a model). Then press “Check Ollama again”.",
   "providers.step.own":
-    "Or add a provider of your own below: the kind, the address of its API and a model. If it needs an API key, paste it in the key box; it goes to the keychain of your system, never to config.jsonc.",
+    "Or add a provider of your own below: its kind, API address and a model. An API key goes in the key box, to the system keychain, never to config.jsonc.",
   "providers.step.turnOn":
     "Turn the AI on above, choose a provider and a model for each function, and press Save.",
   "providers.ollamaModels": "Ollama models",
@@ -1187,7 +1187,7 @@ export const en = {
   "providers.newKey": "Provider API key (optional)",
   "providers.add": "Add provider",
   "providers.footnote":
-    "Adding and removing a provider writes config.jsonc at once; the rest of this screen is written by Save. A key goes to the keychain of your system and is never written to config.jsonc.",
+    "Adding or removing a provider writes config.jsonc at once; the rest is written by Save. Keys go to the system keychain, never to config.jsonc.",
   "providers.added": "Added {id}.",
   "providers.addedKey": "Added {id}, and its key is stored in the keychain.",
   "providers.addedNoKey": "Added {id}, but its key was not stored: {reason}",
@@ -1241,13 +1241,13 @@ export const en = {
   "models.noTerminal":
     "There is no terminal to put the command in. Open a terminal tab and try again.",
   "models.footnote":
-    "The list is a fixed selection of open-weight models (Apache-2.0 or MIT). Installing needs Ollama on this computer and downloads the model from its library; Noren only writes the command at the prompt.",
+    "A fixed list of open-weight models (Apache-2.0 or MIT). Noren only writes the install command at the prompt; Ollama downloads the model.",
   // The bench scoreboard, in the AI section of the settings
   "bench.title": "Model bench",
   "bench.loading": "Reading the bench results...",
   "bench.loadFailed": "The bench results could not be read: {reason}",
   "bench.empty":
-    "No bench results yet. A bench run saves its result in the bench-results folder of the Noren data folder, and the scoreboard fills in here once there is one. Running the bench from this screen is not available yet.",
+    "No bench results yet. A bench run saves its result in the bench-results folder of the Noren data folder; the scoreboard shows it here.",
   "bench.noRecommendation":
     "No model can be recommended yet: a model needs a finished run with at least one right answer.",
   "bench.recommendation": "Recommended as the default: {model} ({provider}).",

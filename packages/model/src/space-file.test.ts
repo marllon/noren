@@ -17,6 +17,7 @@ import {
 } from "./space-file";
 import { deepFreeze, testContext } from "./test-helpers";
 import { treeGroups } from "./tree";
+import { DEFAULT_MAX_PANES } from "./types";
 import type { Id, Node, Pane, Space, Workspace } from "./types";
 import { layoutPanes } from "./sessions";
 import type { UserProfile } from "./user-profile-schema";
@@ -593,12 +594,12 @@ describe("parseSpaceFile", () => {
         f["space"].items[1].layout = {
           kind: "split",
           dir: "row",
-          sizes: [20, 20, 20, 20, 20],
-          children: ["a", "b", "c", "d", "e"].map(pane),
+          sizes: [12, 11, 11, 11, 11, 11, 11, 11, 11],
+          children: ["a", "b", "c", "d", "e", "f", "g", "h", "i"].map(pane),
         };
         f["space"].items[1].focusedPaneId = "a";
       },
-      /5 panes, max 4/,
+      /9 panes, max 8/,
     ],
   ];
 
@@ -787,7 +788,7 @@ describe("space/import", () => {
             const next = reduceStrict(deepFreeze(ws), action(first.file), {
               ...ctx,
               newId: collidingIds(ws),
-              maxPanes: 4,
+              maxPanes: DEFAULT_MAX_PANES,
             });
             expect(next).not.toBe(ws);
             expect(checkInvariants(next)).toEqual([]);

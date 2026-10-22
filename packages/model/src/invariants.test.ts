@@ -166,7 +166,7 @@ describe("arbWorkspace", () => {
     );
   });
 
-  it("covers 2-level groups, pinned items, and splits of 2, 3 and 4 panes", () => {
+  it("covers 2-level groups, pinned items, and splits of 2 to 8 panes", () => {
     const sample = fc.sample(arbWorkspace(), { numRuns: 300, seed: 7 });
     let nestedGroup = false;
     let pinned = false;
@@ -184,7 +184,7 @@ describe("arbWorkspace", () => {
     }
     expect(nestedGroup).toBe(true);
     expect(pinned).toBe(true);
-    expect([...splitSizes].sort()).toEqual([1, 2, 3, 4]);
+    expect([...splitSizes].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
   it("derives ids from a counter, so equal seeds give equal workspaces", () => {
@@ -356,11 +356,13 @@ describe("checkInvariants", () => {
     ).toContain("split-too-few-children");
   });
 
-  it("split-too-many-panes: five panes with the default of four", () => {
+  it("split-too-many-panes: nine panes with the default of eight", () => {
     const codes = codesAfter((_, space) => {
       const split = must(space.items["i2"]).layout as SplitNode;
-      split.children.push(leaf(pane("p7")), leaf(pane("p8")), leaf(pane("p9")));
-      split.sizes = [20, 20, 20, 20, 20];
+      split.children.push(
+        ...["p7", "p8", "p9", "p10", "p11", "p12", "p13"].map((id) => leaf(pane(id))),
+      );
+      split.sizes = [12, 11, 11, 11, 11, 11, 11, 11, 11];
     });
     expect(codes).toContain("split-too-many-panes");
     expect(codes).not.toContain("split-sizes-sum");

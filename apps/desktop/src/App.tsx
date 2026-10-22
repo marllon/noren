@@ -1,6 +1,5 @@
 import { emit } from "@tauri-apps/api/event";
 import {
-  DEFAULT_MAX_PANES,
   FakeBackend,
   ManualClock,
   PaneLocationTracker,
@@ -9,6 +8,7 @@ import {
   exportSpace,
   layoutPanes,
   mainWindowSpaces,
+  paneLimitOf,
   previewPathProblem,
   resolveOutputPath,
   scrollbackAllowed,
@@ -165,8 +165,9 @@ import {
   GroupContextMenu,
   ItemContextMenu,
   PaneContextMenu,
+  TerminalContextMenu,
 } from "./TreeMenus";
-import type { OutputActions } from "./TreeMenus";
+import type { OutputActions, SplitDir } from "./TreeMenus";
 import {
   chooseTheme,
   clearThemePreview,
@@ -217,7 +218,7 @@ import { GONE_FROM_LIBRARY_NOTICE, NOTHING_CLOSED_NOTICE, reopenClosed } from ".
 import { resumeService } from "./resume-service";
 import { restoredScrollbackOf } from "./scrollback-restore";
 import { noteTerminalActivity, registerTerminalSnapshot } from "./scrollback-service";
-import type { TerminalDrawing, TerminalHandle } from "./TerminalView";
+import type { TerminalDrawing, TerminalHandle, TerminalMenuRequest } from "./TerminalView";
 import { useTerminalOptions, zoomTerminalFont } from "./terminal-options-store";
 import {
   activeItemIdOf,
@@ -484,6 +485,8 @@ interface PaneTerminalProps {
   first: boolean;
   colors: ITheme;
   onReady(paneId: Id, handle: TerminalHandle): void;
+  /** A right click asked for the menu of the terminal. */
+  onMenu(request: TerminalMenuRequest): void;
   /** A link of the output was Ctrl+clicked: true when it opened beside the pane. */
   onOpenLink(url: string): boolean;
   /** A file path of the output was Ctrl+clicked (as written, it may be relative). */
@@ -504,6 +507,7 @@ function PaneTerminal({
   first,
   colors,
   onReady,
+  onMenu,
   onOpenLink,
   onOpenPath,
 }: PaneTerminalProps) {
@@ -566,6 +570,7 @@ function PaneTerminal({
       {...(restored !== undefined ? { restored } : {})}
       onSessionStart={(id) => store.getState().attachSession(pane.id, String(id))}
       onReady={(handle) => onReady(pane.id, handle)}
+      onMenu={onMenu}
       onOpenLink={onOpenLink}
       onOpenPath={onOpenPath}
       onExit={(code) => {
@@ -604,6 +609,8 @@ interface ItemViewProps {
   onReady(paneId: Id, handle: TerminalHandle): void;
   /** The menu button of a pane header was pressed. */
   onPaneMenu(paneId: Id, point: MenuPoint): void;
+  /** A right click in the terminal of a pane asked for its menu. */
+  onTerminalMenu(itemId: Id, paneId: Id, request: TerminalMenuRequest): void;
   /** A link of the output of a pane was Ctrl+clicked: true when it opened beside the pane. */
   onOpenBrowser(paneId: Id, url: string): boolean;
   /** A file path of the output of a pane was Ctrl+clicked: a preview opens beside it, or a notice says why not. */
@@ -621,6 +628,7 @@ function ItemView({
   home,
   onReady,
   onPaneMenu,
+  onTerminalMenu,
   onOpenBrowser,
   onOpenPreview,
 }: ItemViewProps) {
@@ -698,6 +706,7 @@ function ItemView({
           first={first}
           colors={colors}
           onReady={onReady}
+          onMenu={(request) => onTerminalMenu(item.id, pane.id, request)}
           onOpenLink={(url) => onOpenBrowser(pane.id, url)}
           onOpenPath={(path) => onOpenPreview(pane.id, path)}
         />
@@ -727,6 +736,9 @@ const MODIFIER_KEYS: ReadonlySet<string> = new Set(["Control", "Shift", "Alt", "
 
 /** How long the notice about a refused split stays on screen. */
 const NOTICE_MS = 3500;
+
+/** The most panes a tab holds now: `terminal.maxPanes` of the settings, read when it is asked. */
+const currentPaneLimit = (): number => paneLimitOf(configManager.state.config.terminal);
 
 /**
  * Carries out the command of a shortcut: on the space list, the tabs of the active space, or the
@@ -761,10 +773,9 @@ function runCommand(store: WorkspaceStore, command: ActionCommand): string | und
   if (!item) return undefined;
   const { dispatch } = state;
   switch (command.kind) {
-    case "split":
-      if (layoutPanes(item.layout).length >= DEFAULT_MAX_PANES) {
-        return paneLimitNotice(DEFAULT_MAX_PANES);
-      }
+    case "split": {
+      const limit = currentPaneLimit();
+      if (layoutPanes(item.layout).length >= limit) return paneLimitNotice(limit);
       dispatch({
         type: "pane/split",
         itemId: item.id,
@@ -773,6 +784,7 @@ function runCommand(store: WorkspaceStore, command: ActionCommand): string | und
         side: "after",
       });
       return undefined;
+    }
     case "close":
       dispatch({ type: "pane/close", itemId: item.id, paneId: item.focusedPaneId });
       return undefined;
@@ -800,6 +812,7 @@ type Overlay =
   | { kind: "group-menu"; groupId: Id; point: MenuPoint }
   | { kind: "favorite-menu"; itemId: Id; point: MenuPoint }
   | { kind: "pane-menu"; paneId: Id; point: MenuPoint }
+  | { kind: "terminal-menu"; itemId: Id; paneId: Id; request: TerminalMenuRequest }
   | { kind: "menu"; spaceId: Id; point: MenuPoint }
   | { kind: "new" }
   | { kind: "edit"; spaceId: Id }
@@ -1166,8 +1179,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
     if (activeId === undefined) return;
     const panes = joinedPaneCount(space, sourceId, activeId);
     if (panes === undefined) return;
-    if (panes > DEFAULT_MAX_PANES) {
-      showNotice(paneLimitNotice(DEFAULT_MAX_PANES));
+    const limit = currentPaneLimit();
+    if (panes > limit) {
+      showNotice(paneLimitNotice(limit));
       return;
     }
     const action = paneDropAction({ kind: "item", id: sourceId }, activeId, drop);
@@ -1429,8 +1443,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
         for (const item of Object.values(s.items)) {
           const panes = layoutPanes(item.layout);
           if (!panes.some((pane) => pane.id === paneId)) continue;
-          if (panes.length >= DEFAULT_MAX_PANES) {
-            showNotice(paneLimitNotice(DEFAULT_MAX_PANES));
+          const limit = currentPaneLimit();
+          if (panes.length >= limit) {
+            showNotice(paneLimitNotice(limit));
             return true;
           }
           state.dispatch({
@@ -1469,8 +1484,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
             showNotice(openPathNotice(resolved.problem));
             return;
           }
-          if (panes.length >= DEFAULT_MAX_PANES) {
-            showNotice(previewLimitNotice(DEFAULT_MAX_PANES));
+          const limit = currentPaneLimit();
+          if (panes.length >= limit) {
+            showNotice(previewLimitNotice(limit));
             return;
           }
           state.dispatch({
@@ -1510,8 +1526,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
       showNotice(badFolderNotice());
       return;
     }
-    if (layoutPanes(item.layout).length >= DEFAULT_MAX_PANES) {
-      showNotice(diffLimitNotice(DEFAULT_MAX_PANES));
+    const limit = currentPaneLimit();
+    if (layoutPanes(item.layout).length >= limit) {
+      showNotice(diffLimitNotice(limit));
       return;
     }
     state.dispatch({
@@ -1641,6 +1658,27 @@ function Shell({ store }: { store: WorkspaceStore }) {
       }
     },
     [focusedHandle, showNotice],
+  );
+
+  /**
+   * Splits `paneId` of the tab `itemId` from a menu (the one of the tab, the one of the terminal): at
+   * the limit of panes a notice says so and nothing changes. The tab is shown first, so the new pane
+   * is the one on screen.
+   */
+  const splitFromMenu = useCallback(
+    (itemId: Id, paneId: Id, dir: SplitDir): void => {
+      const state = store.getState();
+      const item = activeSpaceOf(state.workspace).items[itemId];
+      if (item === undefined) return;
+      const limit = currentPaneLimit();
+      if (layoutPanes(item.layout).length >= limit) {
+        showNotice(paneLimitNotice(limit));
+        return;
+      }
+      state.activateItem(itemId);
+      state.dispatch({ type: "pane/split", itemId, paneId, dir, side: "after" });
+    },
+    [store, showNotice],
   );
 
   /** Opens the search over all tabs on the text the terminals hold now. */
@@ -2453,6 +2491,11 @@ function Shell({ store }: { store: WorkspaceStore }) {
         onRename={(itemId) => startEdit({ kind: "item", id: itemId })}
         onGrouped={(groupId) => setEditing({ kind: "group", id: groupId })}
         {...(itemOutputActions !== undefined ? { outputActions: itemOutputActions } : {})}
+        {...(menuItem !== undefined
+          ? {
+              onSplit: (dir: SplitDir) => splitFromMenu(menuItem.id, menuItem.focusedPaneId, dir),
+            }
+          : {})}
         {...(tabAction !== undefined
           ? {
               projectAction: {
@@ -2473,6 +2516,36 @@ function Shell({ store }: { store: WorkspaceStore }) {
         onClose={close}
         onSelect={() => terminalAction({ kind: "select-output" }, paneId)}
         onCopy={() => terminalAction({ kind: "copy-output" }, paneId)}
+      />
+    );
+  } else if (overlay?.kind === "terminal-menu") {
+    const { itemId, paneId, request } = overlay;
+    const target = space.items[itemId];
+    overlayNode = (
+      <TerminalContextMenu
+        point={request.point}
+        hasSelection={request.hasSelection}
+        inSplit={target?.layout.kind === "split"}
+        zoomed={target?.zoomedPaneId === paneId}
+        onClose={() => {
+          close();
+          request.focus();
+        }}
+        onCopy={request.copy}
+        onPaste={request.paste}
+        onSplit={(dir) => {
+          close();
+          splitFromMenu(itemId, paneId, dir);
+        }}
+        onClosePane={() => {
+          close();
+          dispatch({ type: "pane/close", itemId, paneId });
+        }}
+        onZoom={() => {
+          close();
+          dispatch({ type: "pane/zoom", itemId, paneId });
+          request.focus();
+        }}
       />
     );
   } else if (
@@ -2622,11 +2695,14 @@ function Shell({ store }: { store: WorkspaceStore }) {
   // A menu or dialog opened from the sidebar keeps it shown, even though the pointer left it. The
   // tab and group menus of the top bar do not: they do not come from the sidebar.
   const fromTabBar = tabsOnTop && (overlay?.kind === "item-menu" || overlay?.kind === "group-menu");
-  // A pane menu does not come from the sidebar either.
+  // A pane menu and the menu of a terminal do not come from the sidebar either.
   const shown =
     reveal.revealed ||
     pending !== null ||
-    (overlay !== null && !fromTabBar && overlay.kind !== "pane-menu");
+    (overlay !== null &&
+      !fromTabBar &&
+      overlay.kind !== "pane-menu" &&
+      overlay.kind !== "terminal-menu");
   return (
     <ExplainContext.Provider value={explainCommand}>
       <div
@@ -2735,6 +2811,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
                           onReady={recordHandle}
                           onPaneMenu={(paneId, point) =>
                             setOverlay({ kind: "pane-menu", paneId, point })
+                          }
+                          onTerminalMenu={(itemId, paneId, request) =>
+                            setOverlay({ kind: "terminal-menu", itemId, paneId, request })
                           }
                           onOpenBrowser={openBrowserBeside}
                           onOpenPreview={openPreviewBeside}

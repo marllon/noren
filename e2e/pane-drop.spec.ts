@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { seedConfig } from "./settings-fixture";
 
 // Dragging a tab of the sidebar onto a pane of the tab on screen joins the two tabs.
 
@@ -111,6 +112,8 @@ for (const { name, fx, fy, dir, side } of SIDES) {
 test("a tab dropped on a tab with four panes is refused with a notice and stays", async ({
   page,
 }) => {
+  // The limit of the settings (`terminal.maxPanes`) is four here; the default is eight.
+  await seedConfig(page, '{ "terminal": { "maxPanes": 4 } }');
   const first = await twoTabs(page);
   for (let i = 0; i < 3; i++) {
     const id = await splitRight(page);

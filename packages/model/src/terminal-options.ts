@@ -5,12 +5,15 @@
 //
 // The defaults are what the terminal did before the options existed (a fixed font, 14 px, a
 // blinking block, 10,000 lines, a bell that only marks the tab), so a file that says nothing changes
-// nothing.
+// nothing. The right click and the most panes a tab holds are newer: by default a right click opens
+// a menu of the terminal, and a tab holds up to eight panes.
 //
 // The name of a font is text from a file the person edits (and could come from a theme file that
 // was downloaded), so it is never trusted: only the names of font families get through, written
 // into the CSS `font-family` value always as names, never as anything the CSS parser could read as
 // a rule (see `parseFontFamilies`).
+
+import { DEFAULT_MAX_PANES } from "./types";
 
 /** Smallest and largest font size, in pixels. The zoom shortcuts stop at the same limits. */
 export const MIN_FONT_SIZE = 6;
@@ -42,6 +45,34 @@ export const DEFAULT_BELL_STYLE: BellStyle = "none";
 
 /** Screen reader mode of the terminal (xterm's accessibility tree) is off until the person turns it on. */
 export const DEFAULT_SCREEN_READER_MODE = false;
+
+/**
+ * What a right click in the terminal does: opens a menu (Copy, Paste, Split right, Split down, Close
+ * pane, Maximize), copies the selection or pastes when nothing is selected, or always pastes. Whichever
+ * pastes goes through the same question a paste of several lines always asks.
+ */
+export const RIGHT_CLICK_ACTIONS = ["menu", "copy-or-paste", "paste"] as const;
+export type RightClickAction = (typeof RIGHT_CLICK_ACTIONS)[number];
+export const DEFAULT_RIGHT_CLICK: RightClickAction = "menu";
+
+/**
+ * The fewest and the most panes `terminal.maxPanes` may allow in one tab. Two is the first split; the
+ * ceiling is what the screen can still lay out (a pane has a minimum size) without every terminal
+ * being a few rows high.
+ */
+export const MIN_MAX_PANES = 2;
+export const MAX_MAX_PANES = 16;
+
+/**
+ * The most panes one tab may hold for these settings: `terminal.maxPanes` kept inside its range, or
+ * `DEFAULT_MAX_PANES` when the file does not say. A value out of range (the schema refuses those, so
+ * this is for callers that skipped it) is kept in range, never handed to the reducer as it is.
+ */
+export function paneLimitOf(settings: Pick<TerminalSettings, "maxPanes"> | undefined): number {
+  const wanted = settings?.maxPanes;
+  if (wanted === undefined || !Number.isFinite(wanted)) return DEFAULT_MAX_PANES;
+  return Math.min(MAX_MAX_PANES, Math.max(MIN_MAX_PANES, Math.round(wanted)));
+}
 
 /** Font names, comma separated, the first one found on the machine wins. */
 export const DEFAULT_FONT_FAMILY = "Cascadia Mono, Consolas, DejaVu Sans Mono, monospace";
@@ -255,6 +286,10 @@ export interface TerminalSettings {
   saveScrollback?: boolean | undefined;
   /** Whether xterm exposes its screen reader support (see `DEFAULT_SCREEN_READER_MODE`). */
   screenReaderMode?: boolean | undefined;
+  /** What a right click in the terminal does (see `RIGHT_CLICK_ACTIONS`). */
+  rightClick?: RightClickAction | undefined;
+  /** The most panes one tab holds (see `paneLimitOf`). */
+  maxPanes?: number | undefined;
 }
 
 /** What the terminal is given: every option has a value. */
@@ -269,6 +304,7 @@ export interface TerminalOptions {
   scrollback: number;
   bell: BellStyle;
   screenReaderMode: boolean;
+  rightClick: RightClickAction;
 }
 
 export const DEFAULT_TERMINAL_OPTIONS: Readonly<TerminalOptions> = {
@@ -281,6 +317,7 @@ export const DEFAULT_TERMINAL_OPTIONS: Readonly<TerminalOptions> = {
   scrollback: DEFAULT_SCROLLBACK,
   bell: DEFAULT_BELL_STYLE,
   screenReaderMode: DEFAULT_SCREEN_READER_MODE,
+  rightClick: DEFAULT_RIGHT_CLICK,
 };
 
 /**
@@ -310,5 +347,6 @@ export function terminalOptionsOf(settings: TerminalSettings | undefined): Termi
         : defaults.scrollback,
     bell: settings?.bell ?? defaults.bell,
     screenReaderMode: settings?.screenReaderMode ?? defaults.screenReaderMode,
+    rightClick: settings?.rightClick ?? defaults.rightClick,
   };
 }

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { setPaneHeaders } from "./settings-fixture";
+import { seedConfig, setPaneHeaders } from "./settings-fixture";
 
 type Hook = {
   lines(): string[];
@@ -587,6 +587,8 @@ test("Ctrl+Shift+W closes only the focused pane", async ({ page }) => {
 });
 
 test("a fifth pane is refused with a notice and nothing changes", async ({ page }) => {
+  // The limit of the settings (`terminal.maxPanes`) is four here; the default is eight (`pane-menus.spec.ts`).
+  await seedConfig(page, '{ "terminal": { "maxPanes": 4 } }');
   const first = await openFirstTab(page);
   await frame(page, first).click();
   await splitByKey(page, "Control+Shift+D");

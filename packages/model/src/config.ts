@@ -36,17 +36,22 @@ import {
   DEFAULT_FONT_SIZE,
   DEFAULT_LIGATURES,
   DEFAULT_LINE_HEIGHT,
+  DEFAULT_RIGHT_CLICK,
   DEFAULT_SCREEN_READER_MODE,
   DEFAULT_SCROLLBACK,
   MAX_FONT_SIZE,
   MAX_LINE_HEIGHT,
+  MAX_MAX_PANES,
   MAX_SCROLLBACK,
   MIN_FONT_SIZE,
   MIN_LINE_HEIGHT,
+  MIN_MAX_PANES,
   MIN_SCROLLBACK,
+  RIGHT_CLICK_ACTIONS,
   fontFamilyProblem,
 } from "./terminal-options";
 import { THEME_ID_PATTERN } from "./theme";
+import { DEFAULT_MAX_PANES } from "./types";
 import { MAX_USER_PROFILES, RESERVED_PROFILE_IDS, UserProfileSchema } from "./user-profile-schema";
 import { DEFAULT_WINDOW_EFFECT, MIN_WINDOW_OPACITY, WINDOW_EFFECTS } from "./window-effect";
 
@@ -233,9 +238,20 @@ const terminalSchema = z
       "Turns on the screen reader support of the terminal: it keeps a hidden copy of the text on screen that a screen reader (NVDA, VoiceOver, Narrator) can read, and reads new output as it arrives. It makes the terminal slower, so it is off by default. A change reaches the terminals that are open at once.",
       DEFAULT_SCREEN_READER_MODE,
     ),
+    rightClick: setting(
+      z.enum(RIGHT_CLICK_ACTIONS),
+      'What a right click in the terminal does: "menu" opens a menu (Copy, Paste, Split right, Split down, Close pane, Maximize), "copy-or-paste" copies the selection or, with nothing selected, pastes, and "paste" always pastes. A paste of several lines still asks first.',
+      DEFAULT_RIGHT_CLICK,
+    ),
+    maxPanes: setting(
+      z.number().int().min(MIN_MAX_PANES).max(MAX_MAX_PANES),
+      `The most panes one tab may hold, from ${MIN_MAX_PANES} to ${MAX_MAX_PANES}. A split past it is refused with a notice and nothing changes. Lowering it never closes a pane: a tab that has more keeps them.`,
+      DEFAULT_MAX_PANES,
+    ),
   })
   .meta({
-    description: "The terminal: its font, cursor, scrollback, bell and screen reader support.",
+    description:
+      "The terminal: its font, cursor, scrollback, bell, right click, panes per tab and screen reader support.",
   });
 
 const sessionsSchema = z

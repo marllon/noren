@@ -2,6 +2,7 @@ import { expectNoAxeViolations } from "./axe-fixture";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { seedConfig } from "./settings-fixture";
 
 // Opening a preview from the output (NOR-F15-02b). A path in the output of a terminal, absolute or
 // relative to the folder of the pane, is a link: with Ctrl held (Cmd on a Mac) a click opens a
@@ -369,6 +370,8 @@ test.describe("a path in the output", () => {
   });
 
   test("a tab with no room says so and makes no pane", async ({ page }) => {
+    // The limit of the settings (`terminal.maxPanes`) is four here; the default is eight.
+    await seedConfig(page, '{ "terminal": { "maxPanes": 4 } }');
     await start(page);
     // Four panes is the most a tab holds: three more terminals below the first.
     for (let i = 0; i < 3; i++) {
@@ -457,6 +460,8 @@ test.describe("in Portuguese", () => {
   });
 
   test("the notice of a full tab speaks Portuguese", async ({ page }) => {
+    // The limit of the settings (`terminal.maxPanes`) is four here; the default is eight.
+    await seedConfig(page, '{ "terminal": { "maxPanes": 4 } }');
     await start(page);
     for (let i = 0; i < 3; i++) {
       await page.evaluate(() => (window as HookWindow).__norenTest?.split("column", "t1"));

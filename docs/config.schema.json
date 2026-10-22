@@ -229,10 +229,23 @@
           "description": "Turns on the screen reader support of the terminal: it keeps a hidden copy of the text on screen that a screen reader (NVDA, VoiceOver, Narrator) can read, and reads new output as it arrives. It makes the terminal slower, so it is off by default. A change reaches the terminals that are open at once.",
           "default": false,
           "type": "boolean"
+        },
+        "rightClick": {
+          "description": "What a right click in the terminal does: \"menu\" opens a menu (Copy, Paste, Split right, Split down, Close pane, Maximize), \"copy-or-paste\" copies the selection or, with nothing selected, pastes, and \"paste\" always pastes. A paste of several lines still asks first.",
+          "default": "menu",
+          "type": "string",
+          "enum": ["menu", "copy-or-paste", "paste"]
+        },
+        "maxPanes": {
+          "description": "The most panes one tab may hold, from 2 to 16. A split past it is refused with a notice and nothing changes. Lowering it never closes a pane: a tab that has more keeps them.",
+          "default": 8,
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 16
         }
       },
       "additionalProperties": false,
-      "description": "The terminal: its font, cursor, scrollback, bell and screen reader support."
+      "description": "The terminal: its font, cursor, scrollback, bell, right click, panes per tab and screen reader support."
     },
     "mods": {
       "maxItems": 100,

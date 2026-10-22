@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { seedConfig } from "./settings-fixture";
 
 // The terminal draws on a canvas (WebGL) or in the DOM renderer, so the tests read xterm's buffer
 // through the hook the app publishes with the in-memory backend, never pixels.
@@ -124,7 +125,12 @@ test("a single line pastes without asking", async ({ page }) => {
   await expect(page.getByRole("dialog")).toBeHidden();
 });
 
-test("right click pastes when nothing is selected", async ({ page }) => {
+// The right click opens a menu by default (`pane-menus.spec.ts`); copy and paste straight from it is
+// the setting `terminal.rightClick`.
+test("right click pastes when nothing is selected, with the setting on copy-or-paste", async ({
+  page,
+}) => {
+  await seedConfig(page, '{ "terminal": { "rightClick": "copy-or-paste" } }');
   await openTerminal(page);
   await setClipboard(page, "echo right");
   await page.getByRole("region", { name: "Terminal", exact: true }).click({ button: "right" });

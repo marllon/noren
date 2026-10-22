@@ -23,7 +23,12 @@ interface ItemContextMenuProps {
   projectAction?: ItemProjectAction;
   /** What the menu of a single tab does with the output of the commands of its focused pane. */
   outputActions?: OutputActions;
+  /** Splits the focused pane of the (single) tab; without it the menu offers no split. */
+  onSplit?(dir: SplitDir): void;
 }
+
+/** The way a pane is split: side by side (`row`) or one above the other (`column`). */
+export type SplitDir = "row" | "column";
 
 /** Select the output of a command, or copy the output of the last one, in one pane. */
 export interface OutputActions {
@@ -51,6 +56,7 @@ export function ItemContextMenu({
   onGrouped,
   projectAction,
   outputActions,
+  onSplit,
 }: ItemContextMenuProps) {
   const t = useT();
   const space = activeSpaceOf(workspace);
@@ -116,6 +122,16 @@ export function ItemContextMenu({
         separated: index === 0,
         onSelect: run(each((itemId) => dispatch({ type: "item/move", itemId, spaceId: other.id }))),
       })),
+    ...(onSplit !== undefined && model.single
+      ? [
+          {
+            label: t("menu.splitRight"),
+            separated: true,
+            onSelect: run(() => onSplit("row")),
+          },
+          { label: t("menu.splitDown"), onSelect: run(() => onSplit("column")) },
+        ]
+      : []),
     ...(outputActions !== undefined && model.single
       ? [
           {
@@ -173,6 +189,76 @@ export function PaneContextMenu({ point, onClose, onSelect, onCopy }: PaneContex
     },
   ];
   return <ContextMenu label={t("menu.pane")} point={point} entries={entries} onClose={onClose} />;
+}
+
+interface TerminalContextMenuProps {
+  point: MenuPoint;
+  /** Some text is selected, so Copy has something to copy. */
+  hasSelection: boolean;
+  /** The tab has more than one pane: only then is there a pane to close or to maximize. */
+  inSplit: boolean;
+  /** The pane fills the tab now, so the entry gives it back its place. */
+  zoomed: boolean;
+  /** Closes the menu with no choice made (Escape, a click outside): the keyboard goes back to the terminal. */
+  onClose(): void;
+  onCopy(): void;
+  onPaste(): void;
+  onSplit(dir: SplitDir): void;
+  onClosePane(): void;
+  onZoom(): void;
+}
+
+/**
+ * What a right click in a terminal offers (the default of `terminal.rightClick`): Copy and Paste, a
+ * split to the right or below, closing the pane and maximizing it. The entries that act on the layout
+ * hand the keyboard to whichever pane the layout then focuses; Copy and Paste take it back to this one.
+ */
+export function TerminalContextMenu({
+  point,
+  hasSelection,
+  inSplit,
+  zoomed,
+  onClose,
+  onCopy,
+  onPaste,
+  onSplit,
+  onClosePane,
+  onZoom,
+}: TerminalContextMenuProps) {
+  const t = useT();
+  const entries: MenuEntry[] = [
+    {
+      label: t("menu.copy"),
+      disabled: !hasSelection,
+      onSelect: () => {
+        onClose();
+        onCopy();
+      },
+    },
+    {
+      label: t("menu.paste"),
+      onSelect: () => {
+        onClose();
+        onPaste();
+      },
+    },
+    { label: t("menu.splitRight"), separated: true, onSelect: () => onSplit("row") },
+    { label: t("menu.splitDown"), onSelect: () => onSplit("column") },
+    {
+      label: t("menu.closePane"),
+      separated: true,
+      disabled: !inSplit,
+      onSelect: onClosePane,
+    },
+    {
+      label: zoomed ? t("menu.restorePane") : t("menu.maximizePane"),
+      disabled: !inSplit,
+      onSelect: onZoom,
+    },
+  ];
+  return (
+    <ContextMenu label={t("menu.terminal")} point={point} entries={entries} onClose={onClose} />
+  );
 }
 
 interface FavoriteContextMenuProps {

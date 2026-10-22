@@ -9,6 +9,7 @@ import {
   DEFAULT_TERMINAL_VALUES,
   FONT_SIZE_PROBLEM,
   LINE_HEIGHT_PROBLEM,
+  MAX_PANES_PROBLEM,
   SCROLLBACK_PROBLEM,
   TERMINAL_PATHS,
   archiveValuesOf,
@@ -58,6 +59,8 @@ describe("the values in force", () => {
       scrollback: 10_000,
       bell: "none",
       screenReaderMode: false,
+      rightClick: "menu",
+      maxPanes: 8,
     });
     expect(DEFAULT_ARCHIVE_VALUES).toEqual({ enabled: true, afterHours: 12 });
   });
@@ -70,6 +73,8 @@ describe("the values in force", () => {
         scrollback: 0,
         bell: "both",
         screenReaderMode: true,
+        rightClick: "copy-or-paste",
+        maxPanes: 12,
       },
       archive: { enabled: false, afterHours: 0.5 },
     };
@@ -83,6 +88,8 @@ describe("the values in force", () => {
       scrollback: 0,
       bell: "both",
       screenReaderMode: true,
+      rightClick: "copy-or-paste",
+      maxPanes: 12,
     });
     expect(archiveValuesOf(config)).toEqual({ enabled: false, afterHours: 0.5 });
   });
@@ -108,6 +115,8 @@ describe("the values in force", () => {
       "terminal.scrollback",
       "terminal.bell",
       "terminal.screenReaderMode",
+      "terminal.rightClick",
+      "terminal.maxPanes",
     ]);
     expect(ARCHIVE_PATHS.afterHours.join(".")).toBe("archive.afterHours");
   });
@@ -142,6 +151,8 @@ describe("planTerminal", () => {
         cursorBlink: false,
         cursorStyle: "block",
         scrollback: "5000",
+        maxPanes: "6",
+        rightClick: "copy-or-paste",
       },
     );
     expect(plan.problems).toEqual({});
@@ -151,8 +162,24 @@ describe("planTerminal", () => {
         ["terminal.cursor.blink", false],
         ["terminal.scrollback", 5000],
         ["terminal.bell", "visual"],
+        ["terminal.rightClick", "copy-or-paste"],
+        ["terminal.maxPanes", 6],
       ],
     );
+  });
+
+  it("writes the right click and the limit of panes, and nothing for the defaults put back", () => {
+    expect(planTerminal({}, { rightClick: "paste" }).changes).toEqual([
+      { path: ["terminal", "rightClick"], value: "paste" },
+    ]);
+    expect(planTerminal({}, { rightClick: "menu", maxPanes: "8" }).changes).toEqual([]);
+    const config: Config = { terminal: { rightClick: "paste", maxPanes: 3 } };
+    expect(terminalValuesOf(config)).toMatchObject({ rightClick: "paste", maxPanes: 3 });
+    expect(planTerminal(config, { rightClick: "menu", maxPanes: "8" }).changes).toEqual([
+      { path: ["terminal", "rightClick"], value: "menu" },
+      { path: ["terminal", "maxPanes"], value: 8 },
+    ]);
+    expect(planTerminal(config, { rightClick: "paste", maxPanes: "3" }).changes).toEqual([]);
   });
 
   it("writes nothing for a change put back where it was, or for no draft", () => {
@@ -186,6 +213,11 @@ describe("planTerminal", () => {
     ["scrollback", "-1", SCROLLBACK_PROBLEM],
     ["scrollback", "100001", SCROLLBACK_PROBLEM],
     ["scrollback", "10.5", SCROLLBACK_PROBLEM],
+    ["maxPanes", "1", MAX_PANES_PROBLEM],
+    ["maxPanes", "17", MAX_PANES_PROBLEM],
+    ["maxPanes", "4.5", MAX_PANES_PROBLEM],
+    ["maxPanes", "many", MAX_PANES_PROBLEM],
+    ["maxPanes", "", MAX_PANES_PROBLEM],
   ] as const)("refuses %s = %j and writes nothing", (key, text, problem) => {
     const plan = planTerminal({}, { [key]: text });
     expect(plan.problems[key]).toBe(problem);

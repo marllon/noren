@@ -10,13 +10,17 @@ import {
   DEFAULT_FONT_SIZE,
   DEFAULT_LIGATURES,
   DEFAULT_LINE_HEIGHT,
+  DEFAULT_MAX_PANES,
+  DEFAULT_RIGHT_CLICK,
   DEFAULT_SCREEN_READER_MODE,
   DEFAULT_SCROLLBACK,
   MAX_FONT_SIZE,
   MAX_LINE_HEIGHT,
+  MAX_MAX_PANES,
   MAX_SCROLLBACK,
   MIN_FONT_SIZE,
   MIN_LINE_HEIGHT,
+  MIN_MAX_PANES,
   MIN_SCROLLBACK,
   OLLAMA_PROVIDER_ID,
 } from "@noren/model";
@@ -28,6 +32,7 @@ import type {
   ConfigEdit,
   ConfigPath,
   CursorStyle,
+  RightClickAction,
 } from "@noren/model";
 
 // The pure part of the Terminal, Auto-archive and AI sections of the settings screen: where each
@@ -66,6 +71,9 @@ export interface TerminalValues {
   scrollback: number;
   bell: BellStyle;
   screenReaderMode: boolean;
+  rightClick: RightClickAction;
+  /** The most panes one tab holds. */
+  maxPanes: number;
 }
 
 export type TerminalKey = keyof TerminalValues;
@@ -81,6 +89,8 @@ export const TERMINAL_PATHS: Readonly<Record<TerminalKey, readonly string[]>> = 
   scrollback: ["terminal", "scrollback"],
   bell: ["terminal", "bell"],
   screenReaderMode: ["terminal", "screenReaderMode"],
+  rightClick: ["terminal", "rightClick"],
+  maxPanes: ["terminal", "maxPanes"],
 };
 
 const TERMINAL_KEYS = Object.keys(TERMINAL_PATHS) as TerminalKey[];
@@ -95,11 +105,14 @@ export const DEFAULT_TERMINAL_VALUES: TerminalValues = {
   scrollback: DEFAULT_SCROLLBACK,
   bell: DEFAULT_BELL_STYLE,
   screenReaderMode: DEFAULT_SCREEN_READER_MODE,
+  rightClick: DEFAULT_RIGHT_CLICK,
+  maxPanes: DEFAULT_MAX_PANES,
 };
 
 /** The terminal settings in force: what the file says, and the default for what it does not say. */
 export function terminalValuesOf(config: Config): TerminalValues {
-  const { font, cursor, scrollback, bell, screenReaderMode } = config.terminal ?? {};
+  const { font, cursor, scrollback, bell, screenReaderMode, rightClick, maxPanes } =
+    config.terminal ?? {};
   return {
     fontFamily: font?.family ?? DEFAULT_TERMINAL_VALUES.fontFamily,
     fontSize: font?.size ?? DEFAULT_TERMINAL_VALUES.fontSize,
@@ -110,6 +123,8 @@ export function terminalValuesOf(config: Config): TerminalValues {
     scrollback: scrollback ?? DEFAULT_TERMINAL_VALUES.scrollback,
     bell: bell ?? DEFAULT_TERMINAL_VALUES.bell,
     screenReaderMode: screenReaderMode ?? DEFAULT_TERMINAL_VALUES.screenReaderMode,
+    rightClick: rightClick ?? DEFAULT_TERMINAL_VALUES.rightClick,
+    maxPanes: maxPanes ?? DEFAULT_TERMINAL_VALUES.maxPanes,
   };
 }
 
@@ -119,7 +134,7 @@ export function fontChoice(name: string): string {
 }
 
 /** The boxes of the section, as typed: the numbers are text because half a number is typed on the way. */
-export type TerminalTextKey = "fontFamily" | "fontSize" | "lineHeight" | "scrollback";
+export type TerminalTextKey = "fontFamily" | "fontSize" | "lineHeight" | "scrollback" | "maxPanes";
 
 /** What the person changed in the Terminal section and has not saved. */
 export type TerminalDraft = Partial<Omit<TerminalValues, TerminalTextKey>> &
@@ -137,12 +152,14 @@ export function shownTerminal(config: Config, draft: TerminalDraft | undefined):
     fontSize: draft?.fontSize ?? String(now.fontSize),
     lineHeight: draft?.lineHeight ?? String(now.lineHeight),
     scrollback: draft?.scrollback ?? String(now.scrollback),
+    maxPanes: draft?.maxPanes ?? String(now.maxPanes),
   };
 }
 
 export const FONT_SIZE_PROBLEM = `A number of pixels from ${MIN_FONT_SIZE} to ${MAX_FONT_SIZE}.`;
 export const LINE_HEIGHT_PROBLEM = `A number from ${MIN_LINE_HEIGHT} to ${MAX_LINE_HEIGHT}.`;
 export const SCROLLBACK_PROBLEM = `A whole number of lines, from ${MIN_SCROLLBACK} to ${MAX_SCROLLBACK}.`;
+export const MAX_PANES_PROBLEM = `A whole number of panes, from ${MIN_MAX_PANES} to ${MAX_MAX_PANES}.`;
 
 export type TerminalProblems = Partial<Record<TerminalKey, string>>;
 
@@ -165,6 +182,9 @@ function terminalWanted(
       break;
     case "scrollback":
       friendly = SCROLLBACK_PROBLEM;
+      break;
+    case "maxPanes":
+      friendly = MAX_PANES_PROBLEM;
       break;
     default:
       break;

@@ -246,6 +246,14 @@ export const ptBR: Dictionary = {
   "menu.tab": "Opções da aba",
   "menu.tabs": "Opções das abas selecionadas",
   "menu.pane": "Opções do painel",
+  "menu.terminal": "Opções do terminal",
+  "menu.copy": "Copiar",
+  "menu.paste": "Colar",
+  "menu.splitRight": "Dividir à direita",
+  "menu.splitDown": "Dividir abaixo",
+  "menu.closePane": "Fechar painel",
+  "menu.maximizePane": "Maximizar painel",
+  "menu.restorePane": "Restaurar painel",
   "menu.favorite": "Opções da favorita",
   "menu.group": "Opções do grupo",
   "menu.run": "Executar {name}",
@@ -461,6 +469,12 @@ export const ptBR: Dictionary = {
   "settings.bell.visual": "Piscar o painel",
   "settings.bell.sound": "Emitir um bipe",
   "settings.bell.both": "Piscar e emitir um bipe",
+  "settings.rightClick": "Botão direito no terminal",
+  "settings.rightClick.menu": "Abrir um menu",
+  "settings.rightClick.copy-or-paste": "Copiar a seleção ou colar",
+  "settings.rightClick.paste": "Sempre colar",
+  // A faixa fica numa linha só quando o rótulo quebra (os espaços sem quebra).
+  "settings.maxPanes": "Painéis por aba (2\u00a0a\u00a016)",
   "settings.profiles": "Perfis",
   "settings.profilesNone":
     "Ainda não há shells seus. Os que o Noren encontra neste computador sempre estão na paleta.",
@@ -1162,7 +1176,7 @@ export const ptBR: Dictionary = {
   "field.appearance.paneHeaders":
     "Mostra um cabeçalho com o título e os botões em cada painel de uma aba.",
   "field.terminal":
-    "O terminal: a fonte, o cursor, o histórico de rolagem, o sino e o suporte a leitor de tela.",
+    "O terminal: a fonte, o cursor, o histórico de rolagem, o sino, o botão direito, os painéis por aba e o suporte a leitor de tela.",
   "field.terminal.font": "O texto do terminal.",
   "field.terminal.font.family":
     'As fontes do terminal, por nome, separadas por vírgulas: a primeira encontrada neste computador é usada, como "Cascadia Code, Consolas, monospace". Só nomes de famílias de fonte são aceitos (um endereço da web, um ponto e vírgula ou uma chave é erro).',
@@ -1183,6 +1197,10 @@ export const ptBR: Dictionary = {
     "Guarda as últimas 2.000 linhas de cada painel quando o Noren fecha e a cada minuto enquanto o painel está em uso, e as mostra de novo, esmaecidas, quando o painel abre. false nunca guarda histórico, em nenhum espaço, e remove os arquivos já guardados. Um espaço também pode desligar isso só para ele.",
   "field.terminal.screenReaderMode":
     "Liga o suporte a leitor de tela do terminal: ele mantém uma cópia oculta do texto da tela que um leitor de tela (NVDA, VoiceOver, Narrador) consegue ler, e lê a saída nova conforme ela chega. Deixa o terminal mais lento, por isso vem desligado. Uma mudança chega aos terminais abertos na hora.",
+  "field.terminal.rightClick":
+    'O que o botão direito faz no terminal: "menu" abre um menu (Copiar, Colar, Dividir à direita, Dividir abaixo, Fechar painel, Maximizar), "copy-or-paste" copia a seleção ou, sem nada selecionado, cola, e "paste" sempre cola. Colar várias linhas continua perguntando antes.',
+  "field.terminal.maxPanes":
+    "O máximo de painéis que uma aba pode ter, de 2 a 16. Dividir além disso é recusado com um aviso e nada muda. Baixar o limite nunca fecha um painel: uma aba que tem mais mantém os seus.",
   "field.mods":
     'Os arquivos CSS da pasta de mods (ao lado deste arquivo) ligados para todos os espaços, como nomes de arquivo, tipo "compact-tabs.css", na ordem em que são aplicados: o último vence. Um arquivo que não está na pasta é ignorado.',
   "field.profiles":

@@ -241,6 +241,14 @@ export const en = {
   "menu.tab": "Tab options",
   "menu.tabs": "Selected tabs options",
   "menu.pane": "Pane options",
+  "menu.terminal": "Terminal options",
+  "menu.copy": "Copy",
+  "menu.paste": "Paste",
+  "menu.splitRight": "Split right",
+  "menu.splitDown": "Split down",
+  "menu.closePane": "Close pane",
+  "menu.maximizePane": "Maximize pane",
+  "menu.restorePane": "Restore pane",
   "menu.favorite": "Favorite options",
   "menu.group": "Group options",
   "menu.run": "Run {name}",
@@ -457,6 +465,12 @@ export const en = {
   "settings.bell.visual": "Flash the pane",
   "settings.bell.sound": "Beep",
   "settings.bell.both": "Flash and beep",
+  "settings.rightClick": "Right click in the terminal",
+  "settings.rightClick.menu": "Open a menu",
+  "settings.rightClick.copy-or-paste": "Copy the selection, or paste",
+  "settings.rightClick.paste": "Always paste",
+  // The range stays on one line when the label wraps (the no-break spaces).
+  "settings.maxPanes": "Panes per tab (2\u00a0to\u00a016)",
   "settings.profiles": "Profiles",
   "settings.profilesNone":
     "No shells of your own yet. The ones Noren finds on this computer are always in the palette.",
@@ -1147,7 +1161,8 @@ export const en = {
     "Where the tabs are: the tree in the sidebar, or a bar above the terminal.",
   "field.appearance.paneHeaders":
     "Shows a header with the title and the buttons on every pane of a tab.",
-  "field.terminal": "The terminal: its font, cursor, scrollback, bell and screen reader support.",
+  "field.terminal":
+    "The terminal: its font, cursor, scrollback, bell, right click, panes per tab and screen reader support.",
   "field.terminal.font": "The text of the terminal.",
   "field.terminal.font.family":
     'The fonts of the terminal, by name, separated by commas: the first one found on this computer is used, such as "Cascadia Code, Consolas, monospace". Only names of font families are accepted (a web address, a semicolon or a brace is an error).',
@@ -1168,6 +1183,10 @@ export const en = {
     "Keeps the last 2,000 lines of every pane when Noren closes and every minute while the pane is in use, and shows them again, dimmed, when the pane opens. false never saves any scrollback, in any space, and removes the files already saved. A space can turn it off for itself too.",
   "field.terminal.screenReaderMode":
     "Turns on the screen reader support of the terminal: it keeps a hidden copy of the text on screen that a screen reader (NVDA, VoiceOver, Narrator) can read, and reads new output as it arrives. It makes the terminal slower, so it is off by default. A change reaches the terminals that are open at once.",
+  "field.terminal.rightClick":
+    'What a right click in the terminal does: "menu" opens a menu (Copy, Paste, Split right, Split down, Close pane, Maximize), "copy-or-paste" copies the selection or, with nothing selected, pastes, and "paste" always pastes. A paste of several lines still asks first.',
+  "field.terminal.maxPanes":
+    "The most panes one tab may hold, from 2 to 16. A split past it is refused with a notice and nothing changes. Lowering it never closes a pane: a tab that has more keeps them.",
   "field.mods":
     'The CSS files of the mods folder (next to this file) that are turned on for every space, as file names such as "compact-tabs.css", in the order they are applied: the last one wins. A file that is not in the folder is ignored.',
   "field.profiles":

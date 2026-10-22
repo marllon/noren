@@ -6,6 +6,7 @@ import {
   BELL_STYLES,
   CURSOR_STYLES,
   LANGUAGES,
+  RIGHT_CLICK_ACTIONS,
   WINDOW_EFFECTS,
   OLLAMA_PROVIDER_ID,
   describeConfigError,
@@ -18,6 +19,7 @@ import type {
   BellStyle,
   CursorStyle,
   LanguageSetting,
+  RightClickAction,
   WindowEffect,
 } from "@noren/model";
 import { useConfigState, configManager } from "./config-store";
@@ -187,6 +189,9 @@ const cursorOptions = (): readonly { value: CursorStyle; label: string }[] =>
 
 const bellOptions = (): readonly { value: BellStyle; label: string }[] =>
   BELL_STYLES.map((value) => ({ value, label: t(`settings.bell.${value}`) }));
+
+const rightClickOptions = (): readonly { value: RightClickAction; label: string }[] =>
+  RIGHT_CLICK_ACTIONS.map((value) => ({ value, label: t(`settings.rightClick.${value}`) }));
 
 const aiFunctionLabel = (fn: AiFunction): string => t(`settings.ai.${fn}`);
 
@@ -621,6 +626,21 @@ export function SettingsDialog({
                   value={shown.terminal.bell}
                   options={bellOptions()}
                   onChange={(bell) => changeTerminal({ bell })}
+                />
+                <Choice
+                  legend={t("settings.rightClick")}
+                  field="terminal.rightClick"
+                  name="settings-right-click"
+                  value={shown.terminal.rightClick}
+                  options={rightClickOptions()}
+                  onChange={(rightClick) => changeTerminal({ rightClick })}
+                />
+                <NumberBox
+                  label={t("settings.maxPanes")}
+                  field="terminal.maxPanes"
+                  value={shown.terminal.maxPanes}
+                  problem={plan.terminalProblems.maxPanes}
+                  onChange={(maxPanes) => changeTerminal({ maxPanes })}
                 />
                 <Toggle
                   label={t("settings.screenReader")}

@@ -121,6 +121,8 @@ export interface AppApiHostOptions {
    * that names no space (NOR-F17-03b). Without it such a tab goes to the active space.
    */
   routing?: () => ApiRouting | undefined;
+  /** The most panes one tab holds now (`terminal.maxPanes`), asked at every split; the model's default without it. */
+  maxPanes?: () => number;
 }
 
 /** The pane a `notify` that names no terminal counts as coming from (for the repeat guard). */
@@ -128,7 +130,7 @@ const API_NOTIFY_SOURCE = "api";
 
 /** The host of the dispatcher over the real workspace store, backend and terminal tail. */
 export function appApiHost(options: AppApiHostOptions): ApiHost {
-  const { store, backend, tail, notifier, routing } = options;
+  const { store, backend, tail, notifier, routing, maxPanes } = options;
   return {
     workspace: () => store.getState().workspace,
     dispatch: (action) => store.getState().dispatch(action),
@@ -136,6 +138,7 @@ export function appApiHost(options: AppApiHostOptions): ApiHost {
     backend,
     readLines: (sessionId, count) => tail.read(sessionId, count),
     ...(routing !== undefined ? { routing } : {}),
+    ...(maxPanes !== undefined ? { maxPanes } : {}),
     ...(notifier !== undefined
       ? {
           notify: ({ title, body, paneId }) =>

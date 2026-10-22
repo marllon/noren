@@ -23,8 +23,22 @@ import { pathLinksOfRow } from "./terminal-paths";
 import { isTranslucent } from "./theme";
 import { t } from "./i18n";
 
-/** What a right click does: copy the selection or paste, always paste, or leave the native menu. */
-export type RightClickAction = "copy-or-paste" | "paste" | "menu";
+/**
+ * What a right click that opens the menu of the terminal hands to whoever draws it: where the pointer
+ * was, whether Copy has anything to copy, and the two things the menu does inside the terminal.
+ */
+export interface TerminalMenuRequest {
+  /** Where the pointer was, in the coordinates of the window. */
+  point: { x: number; y: number };
+  /** True when some text is selected in the terminal. */
+  hasSelection: boolean;
+  /** Copies the selected text to the clipboard. */
+  copy(): void;
+  /** Pastes the clipboard: a paste of several lines asks first, like every other paste. */
+  paste(): void;
+  /** Gives the keyboard back to the terminal (the menu closed). */
+  focus(): void;
+}
 
 /** What xterm draws with, as it has it now: the options of the terminal settings and the zoom. */
 export interface TerminalDrawing {
@@ -144,8 +158,12 @@ interface TerminalViewProps {
   options?: TerminalOptions;
   /** False while the view is hidden (another tab shows). Default true. */
   active?: boolean;
-  /** Default `copy-or-paste`. */
-  rightClick?: RightClickAction;
+  /**
+   * Called when a right click should open the menu of the terminal (`options.rightClick` is
+   * `menu`, the default). A view without it (the quick terminal, the page of a window) does what
+   * the setting `copy-or-paste` does instead.
+   */
+  onMenu?(request: TerminalMenuRequest): void;
   /** Called once the terminal is mounted. */
   onReady?(handle: TerminalHandle): void;
   /**
@@ -213,6 +231,20 @@ function preloadWebgl(attach: () => void): () => void {
   };
 }
 
+/**
+ * Ends the WebGL context of a canvas a terminal drew on. Chromium counts a context until its canvas is
+ * collected, and lets a page hold 16 before it takes the oldest away, a terminal in use included. A tab
+ * that holds eight panes makes a new terminal at every split (the pane that was split is drawn again),
+ * so a context left to the collector would soon make a live terminal lose its own.
+ */
+function freeWebglContext(canvas: HTMLCanvasElement): void {
+  try {
+    canvas.getContext("webgl2")?.getExtension("WEBGL_lose_context")?.loseContext();
+  } catch {
+    // A canvas with no WebGL context, or one that is gone already, has nothing to free.
+  }
+}
+
 function isShortcut(event: KeyboardEvent, code: string): boolean {
   return (
     event.type === "keydown" &&
@@ -239,7 +271,7 @@ export function TerminalView({
   theme,
   options = DEFAULT_TERMINAL_OPTIONS,
   active = true,
-  rightClick,
+  onMenu,
   onReady,
   onCwd,
   onExplain,
@@ -253,7 +285,7 @@ export function TerminalView({
   const container = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const marksRef = useRef<TerminalCommandMarks | null>(null);
-  const rightClickRef = useRef<RightClickAction>(rightClick ?? "copy-or-paste");
+  const onMenuRef = useRef(onMenu);
   const onReadyRef = useRef(onReady);
   const onCwdRef = useRef(onCwd);
   const onExplainRef = useRef(onExplain);
@@ -274,7 +306,7 @@ export function TerminalView({
   const [start0] = useState(() => ({ attach, profileId, cwd, env, paneId, restored, webglFirst }));
 
   useEffect(() => {
-    rightClickRef.current = rightClick ?? "copy-or-paste";
+    onMenuRef.current = onMenu;
     onReadyRef.current = onReady;
     onCwdRef.current = onCwd;
     onExplainRef.current = onExplain;
@@ -495,11 +527,24 @@ export function TerminalView({
     };
     host.addEventListener("paste", onNativePaste, true);
 
+    // The right click is what `terminal.rightClick` says (read now, so a change of the settings
+    // counts at once): the menu of the terminal, or copy-or-paste, or always paste. The menu is drawn
+    // by the page; a view that has none keeps the direct right click of before.
     const onContextMenu = (event: MouseEvent) => {
-      const action = rightClickRef.current;
-      if (action === "menu") return;
+      const setting = optionsRef.current.rightClick;
+      const menu = onMenuRef.current;
       event.preventDefault();
-      if (action === "copy-or-paste" && term.hasSelection()) {
+      if (setting === "menu" && menu !== undefined) {
+        menu({
+          point: { x: event.clientX, y: event.clientY },
+          hasSelection: term.hasSelection(),
+          copy: copySelection,
+          paste: pasteFromClipboard,
+          focus: () => term.focus(),
+        });
+        return;
+      }
+      if (setting !== "paste" && term.hasSelection()) {
         copySelection();
         term.clearSelection();
       } else {
@@ -690,7 +735,11 @@ export function TerminalView({
       commandMarks.dispose();
       marksRef.current = null;
       termRef.current = null;
+      // The canvases are listed before xterm takes them out of the page, and their contexts freed after
+      // it let go of what it drew with (see `freeWebglContext`).
+      const canvases = [...host.querySelectorAll("canvas")];
       term.dispose();
+      for (const canvas of canvases) freeWebglContext(canvas);
     };
   }, [backend, start0]);
 

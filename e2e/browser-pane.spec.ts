@@ -233,6 +233,8 @@ test.describe("opening a page from the output", () => {
   });
 
   test("a tab that is full says so and opens nothing", async ({ page }) => {
+    // The limit of the settings (`terminal.maxPanes`) is four here; the default is eight.
+    await seedConfig(page, '{ "terminal": { "maxPanes": 4 } }');
     const id = await start(page);
     for (let panes = 1; panes < 4; panes++) {
       await page.evaluate(() => (window as HookWindow).__norenTest?.split("row"));

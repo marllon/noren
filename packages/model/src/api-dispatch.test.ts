@@ -665,13 +665,14 @@ describe("splits.create", () => {
   it("refuses a split over the most panes a tab may hold, before a shell is started", async () => {
     const r = rig();
     const tab = await newTab(r, "w1");
-    for (let n = 0; n < 3; n++) {
+    // A tab holds eight panes by default (`DEFAULT_MAX_PANES`): the seven splits fit, the eighth does not.
+    for (let n = 0; n < 7; n++) {
       resultOf(await run(r, "splits.create", { item: tab.item, direction: "right" }));
     }
     const shells = r.backend.callsTo("createSession").length;
     const error = errorOf(await run(r, "splits.create", { item: tab.item, direction: "right" }));
     expect(error.code).toBe("failed");
-    expect(error.message).toContain("4");
+    expect(error.message).toContain("8");
     expect(r.backend.callsTo("createSession")).toHaveLength(shells);
 
     const small = rig({ maxPanes: 2 });

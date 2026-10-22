@@ -65,7 +65,7 @@ export interface Violation {
 }
 
 export interface InvariantOptions {
-  /** Most panes one item may hold. Defaults to `DEFAULT_MAX_PANES` (4). */
+  /** Most panes one item may hold. Defaults to `DEFAULT_MAX_PANES` (8). */
   maxPanes?: number;
 }
 

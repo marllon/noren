@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { expectNoAxeViolations } from "./axe-fixture";
-import { setPaneHeaders } from "./settings-fixture";
+import { seedConfig, setPaneHeaders } from "./settings-fixture";
 
 // The diff pane (NOR-F15-03): a pane that shows the git diff of a folder, with the files that
 // changed in a list and the one picked side by side. The state is restored with panes of type
@@ -675,6 +675,8 @@ test.describe("opening a diff from the palette", () => {
   });
 
   test("says so and makes no pane when the tab is full", async ({ page }) => {
+    // The limit of the settings (`terminal.maxPanes`) is four here; the default is eight.
+    await seedConfig(page, '{ "terminal": { "maxPanes": 4 } }');
     await start(page, [
       {
         id: "i1",
@@ -960,6 +962,8 @@ test.describe("in Portuguese", () => {
   });
 
   test("tells a full tab that the diff was not opened", async ({ page }) => {
+    // The limit of the settings (`terminal.maxPanes`) is four here; the default is eight.
+    await seedConfig(page, '{ "terminal": { "maxPanes": 4 } }');
     await start(page, [
       {
         id: "i1",

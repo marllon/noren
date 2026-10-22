@@ -255,16 +255,19 @@ describe("pane/split", () => {
     expect("zoomedPaneId" in itemOf(next, "b")).toBe(false);
   });
 
-  it("does not pass maxPanes (default 4): the same workspace comes back", () => {
-    const four = applyChecked(fixture(), {
-      type: "pane/split",
-      itemId: "c",
-      paneId: "p4",
-      dir: "column",
-      side: "after",
-    });
-    expect(paneIds(itemOf(four, "c"))).toHaveLength(4);
-    expectUnchanged(four, {
+  it("does not pass maxPanes (default 8): the same workspace comes back", () => {
+    let full = fixture();
+    while (paneIds(itemOf(full, "c")).length < 8) {
+      full = applyChecked(full, {
+        type: "pane/split",
+        itemId: "c",
+        paneId: "p4",
+        dir: "column",
+        side: "after",
+      });
+    }
+    expect(paneIds(itemOf(full, "c"))).toHaveLength(8);
+    expectUnchanged(full, {
       type: "pane/split",
       itemId: "c",
       paneId: "p6",
@@ -285,14 +288,15 @@ describe("pane/split", () => {
     const three = reduceStrict(deepFreeze(fixture()), action, withMax(3));
     expect(paneIds(itemOf(three, "b"))).toHaveLength(3);
     expect(checkInvariants(three, { maxPanes: 3 })).toEqual([]);
-    // A larger limit lets an item grow past 4.
+    // A larger limit lets an item grow past the default of 8.
     let grown = fixture();
-    const ctx = withMax(6);
-    for (let n = 0; n < 4; n++) {
+    const ctx = withMax(12);
+    for (let n = 0; n < 10; n++) {
       grown = reduceStrict(grown, { ...action, paneId: "p2" }, ctx);
     }
-    expect(paneIds(itemOf(grown, "b"))).toHaveLength(6);
-    expect(checkInvariants(grown, { maxPanes: 6 })).toEqual([]);
+    expect(paneIds(itemOf(grown, "b"))).toHaveLength(12);
+    expect(checkInvariants(grown, { maxPanes: 12 })).toEqual([]);
+    expectUnchanged(grown, { ...action, paneId: "p2" }, ctx);
   });
 
   it("an invalid maxPanes falls back to the default", () => {
@@ -576,9 +580,21 @@ describe("item/join", () => {
       dir: "row",
       side: "after",
     };
-    // 3 + 2 panes against the default of 4.
-    expectUnchanged(fixture(), action);
+    // 3 + 2 panes: five fit in the default of 8 and are refused by a limit of 4.
+    expect(paneIds(itemOf(applyChecked(fixture(), action), "b"))).toHaveLength(5);
     expectUnchanged(fixture(), action, withMax(4));
+    // 6 + 3 panes against the default of 8.
+    let big = fixture();
+    while (paneIds(itemOf(big, "b")).length < 6) {
+      big = applyChecked(big, {
+        type: "pane/split",
+        itemId: "b",
+        paneId: "p2",
+        dir: "row",
+        side: "after",
+      });
+    }
+    expectUnchanged(big, action);
     const next = reduceStrict(deepFreeze(fixture()), action, withMax(5));
     expect(paneIds(itemOf(next, "b"))).toEqual(["p2", "p4", "p5", "p6", "p3"]);
     expect(checkInvariants(next, { maxPanes: 5 })).toEqual([]);

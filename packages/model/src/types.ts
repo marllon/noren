@@ -265,8 +265,11 @@ export interface ArchivedItem {
 
 /** Closed stack limit. */
 export const MAX_CLOSED = 50;
-/** Default for the most panes one item may hold. */
-export const DEFAULT_MAX_PANES = 4;
+/**
+ * Default for the most panes one item may hold. The settings can change it (`terminal.maxPanes`, see
+ * `paneLimitOf`), within `MIN_MAX_PANES` and `MAX_MAX_PANES`.
+ */
+export const DEFAULT_MAX_PANES = 8;
 /** Deepest group nesting allowed in `Space.tree`. */
 export const MAX_GROUP_DEPTH = 2;
 /** Most windows the app keeps besides the main one. */

@@ -46,6 +46,18 @@ describe("terminal options store", () => {
     expect(getTerminalOptions()).toEqual(DEFAULT_TERMINAL_OPTIONS);
   });
 
+  it("follows the right click of the file, the menu until the file says otherwise", async () => {
+    expect(getTerminalOptions().rightClick).toBe("menu");
+    const backend = await started('{ "terminal": { "rightClick": "paste" } }');
+    expect(getTerminalOptions().rightClick).toBe("paste");
+    const before = getTerminalOptions();
+    backend.setConfig('{ "terminal": { "rightClick": "copy-or-paste" } }');
+    expect(getTerminalOptions()).not.toBe(before);
+    expect(getTerminalOptions().rightClick).toBe("copy-or-paste");
+    backend.setConfig(null);
+    expect(getTerminalOptions().rightClick).toBe("menu");
+  });
+
   it("keeps the options when the file turns invalid", async () => {
     const backend = await started('{ "terminal": { "font": { "size": 18 } } }');
     const before = getTerminalOptions();

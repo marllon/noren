@@ -1,8 +1,10 @@
 import {
   FakeBackend,
+  MAX_MAX_PANES,
   SystemNotifier,
   TerminalTail,
   agentSettingsOf,
+  paneLimitOf,
   pushOnCloseAllowed,
   scrollbackAllowed,
   syncMethodOf,
@@ -124,8 +126,11 @@ export async function bootWorkspace(
     // Whether the shells of the panes outlive the app (`sessions.keepOnClose`) goes to the backend
     // before anything restores a shell: it gives a pane its old shell back only when the settings
     // keep sessions. It follows the file from here on. A backend that refuses never stops the app.
+    // A saved tab is read against the most the settings could ever allow, not the limit of now: a
+    // limit lowered since (or a file written where it was higher) never sends the state to quarantine.
     const { restored } = await restoreKeepingSessions(target, configManager, {
       defaults: { newId, clock },
+      maxPanes: MAX_MAX_PANES,
     });
     perfMark("boot-restore");
     // A pane that had an agent running when the state was saved and got a new shell (the machine
@@ -155,9 +160,13 @@ export async function bootWorkspace(
       rules: configManager.state.config.routing?.rules,
       context: { platform, home } as const,
     });
+    // The most panes a tab holds (`terminal.maxPanes`), read at every action of the store, and by the
+    // local API at every split, so a change of the settings counts at once.
+    const maxPanes = () => paneLimitOf(configManager.state.config.terminal);
     const store = createWorkspaceStore({
       backend: target,
       routing,
+      maxPanes,
       // The entries of the live groups (NOR-F17-04a), for `openLiveEntry`; the command of an entry is
       // typed into its new shell when the shell is ready, like the resume of an agent.
       liveEntries: liveEntriesOf,
@@ -268,6 +277,7 @@ export async function bootWorkspace(
         tail: apiTail,
         notifier,
         routing,
+        maxPanes,
         bridge: tauriBridge(),
       });
       // And what the agents are doing goes out as events to the clients that subscribed (NOR-F17-01f).
@@ -278,7 +288,7 @@ export async function bootWorkspace(
     // plugin that is invalid or one that fails never stops the app (the host only records it).
     startPlugins({
       backend: target,
-      apiHost: appApiHost({ store, backend: target, tail: apiTail, notifier, routing }),
+      apiHost: appApiHost({ store, backend: target, tail: apiTail, notifier, routing, maxPanes }),
       // In the web build a test reads what the plugins were told (the test hook).
       ...(target instanceof FakeBackend ? { observe: recordPluginTraffic } : {}),
     });

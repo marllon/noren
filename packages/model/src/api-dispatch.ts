@@ -149,8 +149,11 @@ export interface ApiHost {
   readLines(sessionId: SessionId, count: number): readonly string[] | Promise<readonly string[]>;
   /** The size a shell the API starts begins with; `API_DEFAULT_SIZE` when left out. */
   readonly size?: { cols: number; rows: number };
-  /** Most panes one tab may hold; `DEFAULT_MAX_PANES` when left out. */
-  readonly maxPanes?: number;
+  /**
+   * Most panes one tab may hold, or the function that tells it now (the app asks the settings at
+   * every split, so a change counts at once); `DEFAULT_MAX_PANES` when left out.
+   */
+  readonly maxPanes?: number | (() => number);
   /**
    * The routing rules, asked at every `items.create` that names no space, so the settings of the
    * moment count. Without it (or without rules) such a tab goes to the active space.
@@ -578,7 +581,8 @@ async function createSplit(
   const panes = layoutPanes(item.layout);
   const source = panes.find((p) => p.id === item.focusedPaneId) ?? panes[0];
   if (source === undefined) return failure("failed", "the tab has no pane to split");
-  const most = host.maxPanes ?? DEFAULT_MAX_PANES;
+  const wanted = host.maxPanes;
+  const most = typeof wanted === "function" ? wanted() : (wanted ?? DEFAULT_MAX_PANES);
   if (panes.length + 1 > most) {
     return failure(
       "failed",

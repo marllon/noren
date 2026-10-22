@@ -14,6 +14,7 @@ import { restoreWorkspace } from "./restore";
 import { layoutPanes, liveSessionIds } from "./sessions";
 import { parseState, serializeWorkspace } from "./state";
 import { applyChecked, testContext } from "./test-helpers";
+import { DEFAULT_MAX_PANES } from "./types";
 import type { Item, LayoutNode, Pane, Workspace } from "./types";
 
 const FOLDER = "/home/me/project";
@@ -362,8 +363,8 @@ describe("the reducer with a diff pane", () => {
     const start = onlyTerminal(FOLDER);
     const { paneId } = start;
     let ws = start.ws;
-    for (let i = 0; i < 3; i++) ws = split(ws, paneId, { diff: true });
-    expect(layoutPanes(firstItem(ws).layout)).toHaveLength(4);
+    for (let i = 0; i < DEFAULT_MAX_PANES - 1; i++) ws = split(ws, paneId, { diff: true });
+    expect(layoutPanes(firstItem(ws).layout)).toHaveLength(DEFAULT_MAX_PANES);
     expect(
       reduce(
         ws,

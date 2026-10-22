@@ -1,4 +1,5 @@
 import {
+  MAX_MAX_PANES,
   MAX_PREVIEW_IMAGE_BYTES,
   MAX_PREVIEW_TEXT_BYTES,
   PREVIEW_REFUSALS,
@@ -108,7 +109,9 @@ export function spaceOfWindowState(payload: unknown, windowId: Id): Space | unde
     closed: [],
     archive: [],
   };
-  const read = parseState(JSON.stringify(alone));
+  // The space was checked by the main window against the limit of the settings; this page does not
+  // read them, so it accepts up to the most they could allow.
+  const read = parseState(JSON.stringify(alone), { maxPanes: MAX_MAX_PANES });
   return read.ok ? read.workspace.spaces[0] : undefined;
 }
 

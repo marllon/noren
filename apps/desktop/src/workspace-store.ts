@@ -182,7 +182,12 @@ export interface WorkspaceStoreOptions {
   clock?: Pick<Clock, "now">;
   /** The home folder, so the automatic title of a tab in it is `~`. */
   home?: string;
-  maxPanes?: number;
+  /**
+   * The most panes one tab may hold, or the function that tells it now: the app hands the setting
+   * `terminal.maxPanes`, asked at every action so a change in the settings counts at once. The
+   * default of the model (`DEFAULT_MAX_PANES`) when left out.
+   */
+  maxPanes?: number | (() => number);
   /**
    * Asks the system to notify the user of what happens in panes the user is not looking at (a
    * bell, a notification of a program, a long command that ended). Without it, nothing is sent.
@@ -321,10 +326,11 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
   const writer = options.writer ?? new StateWriter({ backend, onError });
   const newId = options.newId ?? (() => crypto.randomUUID());
   const clock = options.clock ?? { now: () => Date.now() };
-  const context = {
-    newId,
-    clock,
-    ...(options.maxPanes !== undefined ? { maxPanes: options.maxPanes } : {}),
+  const { maxPanes } = options;
+  /** What the reducer is given for one action: the limit of panes is read when the action runs. */
+  const contextNow = () => {
+    const most = typeof maxPanes === "function" ? maxPanes() : maxPanes;
+    return { newId, clock, ...(most !== undefined ? { maxPanes: most } : {}) };
   };
 
   const kill = (sessionId: Id) => {
@@ -375,7 +381,7 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
 
       dispatch(action) {
         const before = get().workspace;
-        const after = reduce(before, action, context);
+        const after = reduce(before, action, contextNow());
         if (after === before) return;
         set({ workspace: after });
         writer.schedule(after);

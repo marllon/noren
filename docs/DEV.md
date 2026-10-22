@@ -229,16 +229,18 @@ at in the web view of the real app. `pnpm shot` takes a picture of the real main
 window ever being on your screen.
 
 ```sh
-pnpm shot                                   # target/shots/default.png and target/shots/background.png
-pnpm shot --out some/dir --prefix after-    # some/dir/after-default.png, some/dir/after-background.png
+pnpm shot                                   # target/shots/default.png, background.png and split.png
+pnpm shot --out some/dir --prefix after-    # some/dir/after-default.png, after-background.png, after-split.png
 pnpm shot --no-build                        # reuse target/debug/noren.exe (it embeds the interface of the last build)
 pnpm shot --live-settings s.jsonc --image sky.png --name sky   # one picture of a window of your own
+pnpm shot --split-keys --name split3        # one picture of a tab the two split shortcuts made
 ```
 
 It builds the debug app like `pnpm smoke` does and runs `noren --smoke-shot <png>` once per picture,
 which prints a `SMOKE SHOT ...` line for each thing it checked. Windows only (the picture comes from
-WebView2). The two pictures made by default are the window as it starts and one with a picture behind
-the terminals and an interface that lets it through (`appearance.window.opacity` 0.7, a picture at 0.6).
+WebView2). The three pictures made by default are the window as it starts, one with a picture behind
+the terminals and an interface that lets it through (`appearance.window.opacity` 0.7, a picture at 0.6)
+and one of a tab that Ctrl+Shift+D and Ctrl+Shift+E split (see the next list).
 
 - **The window never shows on a monitor, and never has the focus.** The window of the run is created
   without asking for the focus and not focusable (`smoke_focus::quiet_windows`; the configuration of a
@@ -259,6 +261,14 @@ the terminals and an interface that lets it through (`appearance.window.opacity`
   page paints. It does not hold what is behind the window: the Mica or Acrylic effect of the system and
   the desktop that shows through a see-through window are not in it (where the page is see-through the
   PNG is too).
+- **The split shortcuts are events made inside the page.** With `--split-keys` the run sends Ctrl+Shift+D
+  and Ctrl+Shift+E to its own page: `Runtime.evaluate` (the same call that reads the state of the page)
+  makes a `KeyboardEvent` (`keydown`, Ctrl and Shift held, `code` `KeyD` and `KeyE`) and dispatches it on
+  the element the page has focused, where the listener of the window reads it as it reads a key of the
+  keyboard. No key reaches the system and the window stays disabled. After each one the run reads the
+  number of panes of the tab from the page (`data-nr-part="pane"` of the tab on screen) and fails if it
+  did not go up by exactly one; it prints `SMOKE SHOT shortcut ... : 1 -> 2 pane(s)` for each and
+  `SMOKE SHOT split keys: panes 1 -> 2 -> 3`, and the picture is of the tab as they left it.
 - **Settings and pictures of its own.** The run keeps the files of the app in a folder of its own,
   removed when it ends (the state, settings and token of your Noren are never read or written).
   `--settings <file>` is the settings file the app starts with (`config.jsonc`), `--live-settings

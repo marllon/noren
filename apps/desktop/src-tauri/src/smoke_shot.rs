@@ -32,7 +32,12 @@
 //!    `ICoreWebView2::CallDevToolsProtocolMethod`, a call inside the process. No debugging port is
 //!    opened and nothing captures the desktop, so the picture holds what the page paints and not what
 //!    is behind the window (the Mica of the system, the desktop through a see-through window). A
-//!    picture asked for with `--image` that is not on screen is a failure, after the PNG is written;
+//!    picture asked for with `--image` that is not on screen is a failure, after the PNG is written.
+//!    With `--split-keys` (NOR-F20-07b) the run first sends Ctrl+Shift+D and Ctrl+Shift+E to the
+//!    page, each as a `KeyboardEvent` made and dispatched by `Runtime.evaluate` inside the page
+//!    (never a key of the system: no input reaches the window, which is disabled), reads the number
+//!    of panes of the tab from the page after each one and fails if it did not go up by exactly one;
+//!    the picture is of the tab as they left it;
 //! 7. the run checks and prints that the window never had the focus of the system (no look of
 //!    [`Watch`] found a window of this program in front), lies outside every monitor, is out of the
 //!    taskbar and Alt+Tab, is disabled, and that the foreground window just before the window was
@@ -66,6 +71,7 @@ pub const SMOKE_SHOT_FLAG: &str = "--smoke-shot";
 const SETTINGS_FLAG: &str = "--settings";
 const LIVE_SETTINGS_FLAG: &str = "--live-settings";
 const IMAGE_FLAG: &str = "--image";
+const SPLIT_KEYS_FLAG: &str = "--split-keys";
 
 /// The whole run, from the start of the program to the app quitting, has this long.
 const TIMEOUT: Duration = Duration::from_secs(60);
@@ -115,9 +121,13 @@ pub struct ShotArgs {
     pub settings: Option<PathBuf>,
     pub live_settings: Option<PathBuf>,
     pub image: Option<PathBuf>,
+    /// `--split-keys`: the page is sent Ctrl+Shift+D and Ctrl+Shift+E as key events, and the run
+    /// checks that each one added a pane to the tab (see [`split_verdict`]).
+    pub split_keys: bool,
 }
 
-/// Reads `--smoke-shot <png> [--settings <file>] [--live-settings <file>] [--image <file>]`.
+/// Reads `--smoke-shot <png> [--settings <file>] [--live-settings <file>] [--image <file>]
+/// [--split-keys]`.
 pub fn parse_args(args: &[String]) -> Result<ShotArgs, String> {
     let at = args
         .iter()
@@ -138,8 +148,15 @@ pub fn parse_args(args: &[String]) -> Result<ShotArgs, String> {
         settings: None,
         live_settings: None,
         image: None,
+        split_keys: false,
     };
     while let Some(flag) = rest.next() {
+        if flag == SPLIT_KEYS_FLAG {
+            if std::mem::replace(&mut parsed.split_keys, true) {
+                return Err(format!("{flag} was given twice"));
+            }
+            continue;
+        }
         let slot = match flag.as_str() {
             SETTINGS_FLAG => &mut parsed.settings,
             LIVE_SETTINGS_FLAG => &mut parsed.live_settings,
@@ -525,6 +542,7 @@ const PROBE: &str = r#"(async () => {
     notice: notice ? notice.textContent : null,
     variable: root ? getComputedStyle(root).getPropertyValue("--nr-background-image").slice(0, 40) : null,
     terminals: document.querySelectorAll(".xterm").length,
+    panes: document.querySelectorAll('.space-layer:not([hidden]) .pane-slot:not([hidden]) [data-nr-part="pane"]').length,
     width: window.innerWidth,
     height: window.innerHeight,
   });
@@ -540,6 +558,8 @@ struct PageState {
     /// The start of `--nr-background-image` on the root of the window.
     variable: Option<String>,
     terminals: u64,
+    /// The panes of the tab on screen, counted in the page.
+    panes: u64,
     width: u64,
     height: u64,
 }
@@ -580,9 +600,94 @@ fn page_state_of(answer: &str) -> Result<PageState, String> {
         notice: text_of("notice"),
         variable: text_of("variable"),
         terminals: number("terminals"),
+        panes: number("panes"),
         width: number("width"),
         height: number("height"),
     })
+}
+
+// ---- the shortcuts of the split ---------------------------------------------------------------------
+
+/// The shortcuts `--split-keys` sends, in order: its name, the `key` and the `code` of the event.
+/// The page reads `code` (see `chordOf` in `keybindings.ts`), so these are the keys D and E.
+const SPLIT_SHORTCUTS: [(&str, &str, &str); 2] =
+    [("Ctrl+Shift+D", "D", "KeyD"), ("Ctrl+Shift+E", "E", "KeyE")];
+
+/// Longest a pane may take to show in the page after its shortcut was sent.
+const SPLIT_WAIT: Duration = Duration::from_secs(10);
+
+/// The script that sends one shortcut: a `keydown` with Ctrl and Shift held, made and dispatched
+/// inside the page, on the element that has the focus of the page (the terminal), where the page's
+/// own listener on the window reads it as it reads a key of the keyboard. Nothing reaches the
+/// keyboard of the system: no input is sent to the window, and the window is not even enabled. It
+/// answers with the element it was sent to and whether the page took the key (`preventDefault`).
+fn key_event_expression(key: &str, code: &str) -> String {
+    format!(
+        r#"(() => {{
+  const target = document.activeElement || document.body;
+  const event = new KeyboardEvent("keydown", {{
+    key: "{key}", code: "{code}", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true,
+  }});
+  target.dispatchEvent(event);
+  return JSON.stringify({{ target: target.tagName, handled: event.defaultPrevented }});
+}})()"#
+    )
+}
+
+/// What the page answered about the key event it was sent.
+#[derive(Debug, PartialEq, Eq)]
+struct KeySent {
+    /// The tag of the element the event was sent to.
+    target: String,
+    /// Whether the page's listener took the key (the event came back with `preventDefault` called).
+    handled: bool,
+}
+
+/// Reads the answer of `Runtime.evaluate` to [`key_event_expression`].
+fn key_sent_of(answer: &str) -> Result<KeySent, String> {
+    let value: Value = serde_json::from_str(answer)
+        .map_err(|e| format!("the web view answered something that is not JSON: {e}"))?;
+    if let Some(problem) = value.get("exceptionDetails") {
+        return Err(format!("the page could not be sent the key: {problem}"));
+    }
+    let text = value
+        .pointer("/result/value")
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("the page gave no answer to the key: {answer}"))?;
+    let page: Value = serde_json::from_str(text).map_err(|e| format!("the page's answer: {e}"))?;
+    Ok(KeySent {
+        target: page
+            .get("target")
+            .and_then(Value::as_str)
+            .unwrap_or("?")
+            .to_owned(),
+        handled: page.get("handled").and_then(Value::as_bool) == Some(true),
+    })
+}
+
+/// The first shortcut that did not add exactly one pane, as a sentence; `Ok` when each of
+/// [`SPLIT_SHORTCUTS`] did. `counts` is the number of panes of the tab on screen read from the page
+/// before the first shortcut and after each one.
+fn split_verdict(counts: &[u64]) -> Result<(), String> {
+    if counts.len() != SPLIT_SHORTCUTS.len() + 1 {
+        return Err(format!(
+            "the panes were counted {} time(s), not {}",
+            counts.len(),
+            SPLIT_SHORTCUTS.len() + 1
+        ));
+    }
+    if counts[0] == 0 {
+        return Err("the page shows no pane before the first shortcut".to_owned());
+    }
+    for (at, (name, _, _)) in SPLIT_SHORTCUTS.iter().enumerate() {
+        let (before, after) = (counts[at], counts[at + 1]);
+        if after != before + 1 {
+            return Err(format!(
+                "{name} did not split the pane: the tab had {before} pane(s) in the page before it and {after} after"
+            ));
+        }
+    }
+    Ok(())
 }
 
 // ---- the system -----------------------------------------------------------------------------------
@@ -859,6 +964,37 @@ fn wait_for_page(
     }
 }
 
+/// Sends each of [`SPLIT_SHORTCUTS`] to the page as a key event and waits for the pane it adds to
+/// show; returns the panes of the tab on screen before the first one and after each, as the page
+/// counts them. Each shortcut is printed with what the page answered.
+fn send_split_keys(window: &tauri::WebviewWindow, deadline: Instant) -> Result<Vec<u64>, String> {
+    let mut counts = vec![look_at_page(window)?.panes];
+    for (name, key, code) in SPLIT_SHORTCUTS {
+        let before = counts[counts.len() - 1];
+        let params = json!({
+            "expression": key_event_expression(key, code),
+            "returnByValue": true,
+        });
+        let answer = platform::devtools(window, "Runtime.evaluate", &params.to_string(), CALL)?;
+        let sent = key_sent_of(&answer)?;
+        let until = (Instant::now() + SPLIT_WAIT).min(deadline);
+        let after = loop {
+            let panes = look_at_page(window)?.panes;
+            if panes > before || Instant::now() >= until {
+                break panes;
+            }
+            thread::sleep(POLL);
+        };
+        print_line(&format!(
+            "SMOKE SHOT shortcut {name} sent to the page as a key event on <{}> (taken by the page: {}): {before} -> {after} pane(s)",
+            sent.target.to_lowercase(),
+            sent.handled
+        ));
+        counts.push(after);
+    }
+    Ok(counts)
+}
+
 /// What the program is doing, told to the looks at the foreground window so one that finds a
 /// window of this program in front says when.
 mod phase {
@@ -867,6 +1003,7 @@ mod phase {
     pub const PAGE_LOADING: &str = "the page was loading";
     pub const SETTINGS_WRITTEN: &str = "the settings were being applied";
     pub const SETTLING: &str = "the page was settling";
+    pub const SPLITTING: &str = "the page was being sent the split shortcuts";
     pub const CAPTURING: &str = "the picture was being taken";
     pub const CHECKING: &str = "the run was checking";
 }
@@ -940,6 +1077,25 @@ fn run(
     // The first prompt of the shell, the picture and the fade of the interface are drawn in this time.
     shot.watch.phase(phase::SETTLING);
     thread::sleep(SETTLE);
+    // The shortcuts of the split, sent as events inside the page (never to the keyboard of the
+    // system); the picture is of the tab as they left it, and a run in which one did not split fails
+    // after the picture is written, like a background that is not on screen.
+    let split = if shot.args.split_keys {
+        shot.watch.phase(phase::SPLITTING);
+        let counts = send_split_keys(&window, deadline)?;
+        let verdict = split_verdict(&counts);
+        if verdict.is_ok() {
+            print_line(&format!(
+                "SMOKE SHOT split keys: panes {} -> {} -> {} (each shortcut added one)",
+                counts[0], counts[1], counts[2]
+            ));
+        }
+        shot.watch.phase(phase::SETTLING);
+        thread::sleep(SETTLE);
+        verdict
+    } else {
+        Ok(())
+    };
     let state = look_at_page(&window)?;
     print_line(&format!(
         "SMOKE SHOT page drawn: {} x {} px, {} terminal(s), picture {}{}",
@@ -1020,6 +1176,7 @@ fn run(
                 .unwrap_or("the page gives no reason")
         ));
     }
+    split?;
     check_no_global_shortcut(app)?;
     check_daemon_stopped(&app.state::<AppState>())
 }
@@ -1156,11 +1313,40 @@ mod tests {
         assert_eq!(full.settings, Some(PathBuf::from("s.jsonc")));
         assert_eq!(full.live_settings, Some(PathBuf::from("l.jsonc")));
         assert_eq!(full.image, Some(PathBuf::from("sky.png")));
+        assert!(!plain.split_keys && !full.split_keys);
+        let keys = parse_args(&args(&["noren", "--smoke-shot", "k.png", "--split-keys"])).unwrap();
+        assert!(keys.split_keys);
+        assert_eq!(keys.out, PathBuf::from("k.png"));
+        // In any place among the other arguments.
+        let mixed = parse_args(&args(&[
+            "noren",
+            "--smoke-shot",
+            "k.png",
+            "--image",
+            "sky.png",
+            "--split-keys",
+            "--settings",
+            "s.jsonc",
+        ]))
+        .unwrap();
+        assert!(mixed.split_keys);
+        assert_eq!(mixed.image, Some(PathBuf::from("sky.png")));
+        assert_eq!(mixed.settings, Some(PathBuf::from("s.jsonc")));
     }
 
     #[test]
     fn arguments_that_do_not_say_what_to_do_are_refused_with_a_reason() {
-        let cases: [(&[&str], &str); 7] = [
+        let cases: [(&[&str], &str); 8] = [
+            (
+                &[
+                    "noren",
+                    "--smoke-shot",
+                    "a.png",
+                    "--split-keys",
+                    "--split-keys",
+                ],
+                "given twice",
+            ),
             (&["noren", "--smoke-shot"], "needs the path of the PNG"),
             (
                 &["noren", "--smoke-shot", "--image", "a.png"],
@@ -1305,6 +1491,7 @@ mod tests {
             settings: None,
             live_settings: None,
             image: None,
+            split_keys: false,
         })
         .unwrap();
         assert_ne!(run.state_dir, other.state_dir);
@@ -1325,6 +1512,7 @@ mod tests {
             settings: Some(given.join("nothing.jsonc")),
             live_settings: None,
             image: None,
+            split_keys: false,
         })
         .unwrap_err();
         assert!(error.contains("could not read the settings"), "{error}");
@@ -1346,6 +1534,7 @@ mod tests {
             settings: None,
             live_settings: Some(live.clone()),
             image: None,
+            split_keys: false,
         })
         .unwrap();
         // The app starts with no settings of its own; the file appears when the run says so.
@@ -1361,6 +1550,7 @@ mod tests {
             settings: None,
             live_settings: None,
             image: None,
+            split_keys: false,
         })
         .unwrap();
         assert!(!plain.apply_live_settings().unwrap());
@@ -1371,6 +1561,7 @@ mod tests {
             settings: None,
             live_settings: Some(given.join("nothing.jsonc")),
             image: None,
+            split_keys: false,
         })
         .unwrap_err();
         assert!(error.contains("could not read the settings"), "{error}");
@@ -1388,6 +1579,7 @@ mod tests {
                 notice: notice.map(str::to_owned),
                 variable: None,
                 terminals,
+                panes: 1,
                 width: 1,
                 height: 1,
             };
@@ -1653,7 +1845,7 @@ mod tests {
         let answer =
             |text: &str| json!({ "result": { "type": "string", "value": text } }).to_string();
         let up = answer(
-            r#"{"ready":"complete","picture":"shown","notice":null,"variable":"url(blob:x)","terminals":1,"width":1600,"height":1000}"#,
+            r#"{"ready":"complete","picture":"shown","notice":null,"variable":"url(blob:x)","terminals":1,"panes":3,"width":1600,"height":1000}"#,
         );
         let state = page_state_of(&up).unwrap();
         assert_eq!(
@@ -1664,6 +1856,7 @@ mod tests {
                 notice: None,
                 variable: Some("url(blob:x)".to_owned()),
                 terminals: 1,
+                panes: 3,
                 width: 1600,
                 height: 1000
             }
@@ -1699,5 +1892,101 @@ mod tests {
                 .contains("could not be asked")
         );
         assert!(page_state_of("{}").unwrap_err().contains("no answer"));
+    }
+
+    #[test]
+    fn a_shortcut_is_a_key_event_made_in_the_page_and_never_a_key_of_the_system() {
+        let d = key_event_expression("D", "KeyD");
+        // The two keys of the event, with Ctrl and Shift held, dispatched in the page.
+        assert!(d.contains(r#"key: "D", code: "KeyD""#), "{d}");
+        assert!(
+            d.contains("ctrlKey: true") && d.contains("shiftKey: true"),
+            "{d}"
+        );
+        assert!(
+            d.contains("new KeyboardEvent(\"keydown\"") && d.contains("dispatchEvent"),
+            "{d}"
+        );
+        assert!(
+            d.contains("bubbles: true") && d.contains("cancelable: true"),
+            "{d}"
+        );
+        let e = key_event_expression("E", "KeyE");
+        assert!(e.contains(r#"key: "E", code: "KeyE""#), "{e}");
+        // Nothing in it reaches the keyboard or the window of the system.
+        for script in [&d, &e] {
+            for word in [
+                "SendKeys",
+                "SendInput",
+                "keybd_event",
+                "SetForegroundWindow",
+                "focus(",
+            ] {
+                assert!(!script.contains(word), "{word} in {script}");
+            }
+        }
+        // The shortcuts the run sends are the ones of the split.
+        assert_eq!(
+            SPLIT_SHORTCUTS.map(|(name, _, _)| name),
+            ["Ctrl+Shift+D", "Ctrl+Shift+E"]
+        );
+    }
+
+    #[test]
+    fn what_the_page_answers_to_a_key_is_read() {
+        let answer =
+            |text: &str| json!({ "result": { "type": "string", "value": text } }).to_string();
+        assert_eq!(
+            key_sent_of(&answer(r#"{"target":"TEXTAREA","handled":true}"#)).unwrap(),
+            KeySent {
+                target: "TEXTAREA".to_owned(),
+                handled: true
+            }
+        );
+        // A key the page did not take is told, not an error: the count of panes decides.
+        let ignored = key_sent_of(&answer(r#"{"target":"BODY","handled":false}"#)).unwrap();
+        assert!(!ignored.handled);
+        let thrown = json!({ "exceptionDetails": { "text": "boom" } }).to_string();
+        assert!(
+            key_sent_of(&thrown)
+                .unwrap_err()
+                .contains("could not be sent")
+        );
+        assert!(key_sent_of("{}").unwrap_err().contains("no answer"));
+    }
+
+    #[test]
+    fn each_shortcut_must_add_exactly_one_pane() {
+        assert_eq!(split_verdict(&[1, 2, 3]), Ok(()));
+        assert_eq!(split_verdict(&[2, 3, 4]), Ok(()));
+        // The first one did nothing.
+        let first = split_verdict(&[1, 1, 2]).unwrap_err();
+        assert!(
+            first.contains("Ctrl+Shift+D") && first.contains("1 pane(s)"),
+            "{first}"
+        );
+        // The second one did nothing.
+        let second = split_verdict(&[1, 2, 2]).unwrap_err();
+        assert!(second.contains("Ctrl+Shift+E"), "{second}");
+        assert!(
+            second.contains("2 pane(s) in the page before it and 2 after"),
+            "{second}"
+        );
+        // More than one is as wrong as none.
+        assert!(
+            split_verdict(&[1, 3, 4])
+                .unwrap_err()
+                .contains("Ctrl+Shift+D")
+        );
+        // Fewer panes than before is a failure too.
+        assert!(
+            split_verdict(&[3, 2, 3])
+                .unwrap_err()
+                .contains("Ctrl+Shift+D")
+        );
+        // A page with no pane, and counts that are not the right number of looks.
+        assert!(split_verdict(&[0, 1, 2]).unwrap_err().contains("no pane"));
+        assert!(split_verdict(&[1, 2]).unwrap_err().contains("counted"));
+        assert!(split_verdict(&[]).is_err());
     }
 }

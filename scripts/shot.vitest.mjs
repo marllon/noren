@@ -24,6 +24,7 @@ import {
   parseArgs,
   refusal,
   requiredLines,
+  splitKeysProblem,
 } from "./shot-lib.mjs";
 
 const script = resolve(dirname(fileURLToPath(import.meta.url)), "shot.mjs");
@@ -128,7 +129,7 @@ describe("the refusal while the person is playing", () => {
 });
 
 describe("the arguments of pnpm shot", () => {
-  it("default to the two built-in pictures in target/shots", () => {
+  it("default to the three built-in pictures in target/shots", () => {
     expect(parseArgs([])).toEqual({
       out: DEFAULT_OUT,
       prefix: "",
@@ -136,6 +137,7 @@ describe("the arguments of pnpm shot", () => {
       settings: undefined,
       liveSettings: undefined,
       image: undefined,
+      splitKeys: false,
       build: true,
     });
     expect(isCustom(parseArgs([]))).toBe(false);
@@ -156,6 +158,7 @@ describe("the arguments of pnpm shot", () => {
       "b.jsonc",
       "--image",
       "c.png",
+      "--split-keys",
       "--no-build",
     ]);
     expect(parsed).toEqual({
@@ -165,12 +168,16 @@ describe("the arguments of pnpm shot", () => {
       settings: "a.jsonc",
       liveSettings: "b.jsonc",
       image: "c.png",
+      splitKeys: true,
       build: false,
     });
     expect(isCustom(parsed)).toBe(true);
     for (const only of ["--settings", "--live-settings", "--image"]) {
       expect(isCustom(parseArgs([only, "x"])), only).toBe(true);
     }
+    // The shortcuts alone are a window of their own too, and do not need a value.
+    expect(isCustom(parseArgs(["--split-keys"]))).toBe(true);
+    expect(parseArgs(["--split-keys", "--out", "x"]).splitKeys).toBe(true);
     expect(isCustom(parseArgs(["--out", "x", "--prefix", "y", "--no-build"]))).toBe(false);
   });
 
@@ -184,6 +191,8 @@ describe("the arguments of pnpm shot", () => {
       [["--prefix", "../x"], "--prefix"],
       [["--settings", "a", "--name", "a/b"], "--name"],
       [["--name", "ok"], "--name names the print"],
+      [["--split-keys", "--split-keys"], "--split-keys was given twice"],
+      [["--split-keys", "--name", "a/b"], "--name"],
     ];
     for (const [argv, sentence] of cases) {
       expect(() => parseArgs(argv), argv.join(" ")).toThrow(sentence);
@@ -204,15 +213,24 @@ describe("what the app is given and must say", () => {
       "--image",
       "i.png",
     ]);
+    // The shortcuts of the split are one flag, last, and only when asked for.
+    expect(appArgs("o.png", undefined, undefined, undefined, true)).toEqual([
+      "--smoke-shot",
+      "o.png",
+      "--split-keys",
+    ]);
+    expect(appArgs("o.png", "s.jsonc", undefined, undefined, false)).not.toContain("--split-keys");
   });
 
-  it("names the files and makes the two built-in pictures", () => {
+  it("names the files and makes the three built-in pictures", () => {
     expect(outputName("", "default")).toBe("default.png");
     expect(outputName("after-", "background")).toBe("after-background.png");
-    expect(BUILTIN_SCENARIOS.map((s) => s.name)).toEqual(["default", "background"]);
-    expect(BUILTIN_SCENARIOS.map((s) => s.picture)).toEqual([false, true]);
+    expect(BUILTIN_SCENARIOS.map((s) => s.name)).toEqual(["default", "background", "split"]);
+    expect(BUILTIN_SCENARIOS.map((s) => s.picture)).toEqual([false, true, false]);
+    // Only the third one sends the shortcuts of the split.
+    expect(BUILTIN_SCENARIOS.map((s) => s.splitKeys === true)).toEqual([false, false, true]);
     // The picture goes in while the app runs: see the note on BUILTIN_SCENARIOS.
-    expect(BUILTIN_SCENARIOS.map((s) => s.live)).toEqual([false, true]);
+    expect(BUILTIN_SCENARIOS.map((s) => s.live)).toEqual([false, true, false]);
   });
 
   it("requires the checks of the run in its output, and the picture only when one is asked for", () => {
@@ -235,6 +253,41 @@ describe("what the app is given and must say", () => {
     expect(plain).toContain("picture none");
     expect(picture).toContain("picture shown");
     expect(picture).not.toContain("picture none");
+  });
+
+  it("requires the lines of the two shortcuts only for a run that sends them", () => {
+    const plain = requiredLines(false);
+    const keys = requiredLines(false, true);
+    expect(plain.some((line) => line.includes("as a key event"))).toBe(false);
+    expect(plain.some((line) => line.includes("split keys"))).toBe(false);
+    for (const line of [
+      "SMOKE SHOT shortcut Ctrl+Shift+D sent to the page as a key event",
+      "SMOKE SHOT shortcut Ctrl+Shift+E sent to the page as a key event",
+      "SMOKE SHOT split keys: panes",
+    ]) {
+      expect(keys, line).toContain(line);
+    }
+    // The end of the run stays last.
+    expect(keys[keys.length - 1]).toBe("SMOKE SHOT OK");
+  });
+
+  it("reads the pane counts of a split run: each shortcut must add exactly one", () => {
+    const line = (a, b, c) =>
+      `SMOKE SHOT split keys: panes ${a} -> ${b} -> ${c} (each shortcut added one)`;
+    expect(splitKeysProblem(line(1, 2, 3))).toBeNull();
+    expect(
+      splitKeysProblem(`SMOKE x
+${line(2, 3, 4)}
+SMOKE SHOT OK`),
+    ).toBeNull();
+    expect(splitKeysProblem(line(1, 1, 2))).toContain("Ctrl+Shift+D took the tab from 1 to 1");
+    expect(splitKeysProblem(line(1, 2, 2))).toContain("Ctrl+Shift+E took the tab from 2 to 2");
+    expect(splitKeysProblem(line(1, 3, 4))).toContain("Ctrl+Shift+D");
+    expect(splitKeysProblem(line(3, 2, 3))).toContain("Ctrl+Shift+D");
+    expect(splitKeysProblem(line(0, 1, 2))).toContain("0 panes before");
+    // No line, or a line without the counts, never counts as a pass.
+    expect(splitKeysProblem("SMOKE SHOT OK")).toContain("did not say");
+    expect(splitKeysProblem("SMOKE SHOT split keys: panes ? -> ? -> ?")).toContain("did not say");
   });
 
   it("tells which lines an output lacks", () => {

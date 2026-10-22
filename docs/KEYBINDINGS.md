@@ -62,7 +62,7 @@ The **safe** preset is the default. It does not fight the shell: Ctrl+T, Ctrl+W 
 
 The browser preset is opt-in. It takes Ctrl+T, Ctrl+W and Ctrl+1..9 away from the terminal, so a shell program that uses them (for example a readline "transpose characters" or a "delete word") no longer receives them.
 
-Splitting, closing and maximizing a pane also have a mouse way: the right click menu of a tab (**Split right**, **Split down**) and the right click menu of a terminal (**Copy**, **Paste**, **Split right**, **Split down**, **Close pane**, **Maximize pane**). A tab holds at most `terminal.maxPanes` panes, 8 by default; a split past it is refused with a notice, by the shortcut as by the menus (see [CONFIG.md](CONFIG.md#the-terminal)).
+Splitting, closing and maximizing a pane also have a mouse way: two small buttons in the top right corner of a terminal pane, **Split right** and **Split down**, that show while the mouse is over the pane (or the keyboard is on one of them) and split that pane, the right click menu of a tab (**Split right**, **Split down**) and the right click menu of a terminal (**Copy**, **Paste**, **Split right**, **Split down**, **Close pane**, **Maximize pane**). A tab holds at most `terminal.maxPanes` panes, 8 by default; a split past it is refused with a notice, by the shortcut as by the menus (see [CONFIG.md](CONFIG.md#the-terminal)).
 
 A preset gives each action at most one chord. Where the browser preset moves an action, the safe chord is free again (Ctrl+Shift+T is "Reopen closed tab" there, as in a browser).
 

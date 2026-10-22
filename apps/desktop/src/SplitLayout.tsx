@@ -1,5 +1,13 @@
 import type { AgentState, Id, LayoutNode, Pane, SplitNode } from "@noren/model";
-import { Ellipsis, Maximize2, Minimize2, SquareArrowOutUpRight, X } from "lucide-react";
+import {
+  Columns2,
+  Ellipsis,
+  Maximize2,
+  Minimize2,
+  Rows2,
+  SquareArrowOutUpRight,
+  X,
+} from "lucide-react";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { Group, Panel, Separator, useGroupRef } from "react-resizable-panels";
@@ -7,6 +15,7 @@ import type { Layout } from "react-resizable-panels";
 import { menuPoint } from "./ContextMenu";
 import { useT } from "./i18n";
 import type { MenuPoint } from "./SpaceMenu";
+import type { SplitDir } from "./TreeMenus";
 import { usePaneDrag, usePaneDrop } from "./TreeDnd";
 import {
   MIN_PANEL_PERCENT,
@@ -45,6 +54,13 @@ export interface SplitLayoutContext {
   onPaneMenu(paneId: Id, point: MenuPoint): void;
   /** The user dragged a separator: the split at `path` now has these sizes. */
   onResize(path: number[], sizes: number[]): void;
+  /**
+   * Split the pane in two, the new one right of it (`row`) or below it (`column`). A context
+   * without it (the page of a window of a space) draws no split buttons in the corner of a pane.
+   */
+  onSplitPane?(paneId: Id, dir: SplitDir): void;
+  /** False when the tab already holds as many panes as it may: the corner buttons are off. */
+  canSplit?: boolean;
 }
 
 interface SplitGroupProps {
@@ -174,6 +190,46 @@ function PaneHeader({ pane, zoomed, actions, context }: PaneHeaderProps) {
   );
 }
 
+/**
+ * Two small buttons in the top right corner of a terminal pane that split it, shown while the mouse
+ * is over the pane or the keyboard is on one of them (the styles do that), so a split does not have
+ * to be found in a menu or a shortcut. At the limit of panes of a tab they are off.
+ */
+function PaneCorner({ pane, context }: { pane: Pane; context: SplitLayoutContext }) {
+  const t = useT();
+  const onSplit = context.onSplitPane;
+  if (onSplit === undefined) return null;
+  const canSplit = context.canSplit !== false;
+  return (
+    <div
+      className="pane-corner"
+      data-nr-part="pane-corner"
+      data-nr-headers={context.headers ? "true" : undefined}
+    >
+      <button
+        type="button"
+        className="pane-corner-button"
+        aria-label={t("menu.splitRight")}
+        title={t("menu.splitRight")}
+        disabled={!canSplit}
+        onClick={() => onSplit(pane.id, "row")}
+      >
+        <Columns2 size={14} aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        className="pane-corner-button"
+        aria-label={t("menu.splitDown")}
+        title={t("menu.splitDown")}
+        disabled={!canSplit}
+        onClick={() => onSplit(pane.id, "column")}
+      >
+        <Rows2 size={14} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 interface LayoutNodeViewProps {
   node: LayoutNode;
   path: number[];
@@ -219,6 +275,7 @@ function PaneFrame({ pane, context }: { pane: Pane; context: SplitLayoutContext 
         />
       ) : null}
       {context.renderPane(pane)}
+      {pane.type === "terminal" && <PaneCorner pane={pane} context={context} />}
       {agent !== undefined && (
         <>
           <span className="pane-agent-ring" data-nr-part="pane-agent-ring" aria-hidden="true" />

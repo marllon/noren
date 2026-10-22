@@ -6,8 +6,9 @@
 // `pnpm shot` runs `noren --smoke-shot <png>` (apps/desktop/src-tauri/src/smoke_shot.rs): the real
 // app draws its main window out of sight, with no focus, off the taskbar and Alt+Tab and outside
 // every monitor, and writes the PNG that its own web view gives. No program is started with a
-// window of its own, no key or mouse is sent and no desktop is captured (D19 still holds; this mode
-// is the one exception D22 makes).
+// window of its own, no key or mouse is sent to the system (the key events of `--split-keys` are made
+// and dispatched inside the page) and no desktop is captured (D19 still holds; this mode is the one
+// exception D22 makes).
 import { crc32, deflateSync } from "node:zlib";
 import { gameModeSignalPresent, signalPath } from "./game-mode.mjs";
 
@@ -28,10 +29,13 @@ export function refusal(env = process.env) {
   return `game mode is on (${signalPath(env)} exists, whatever its age): pnpm shot does not run while the person is playing`;
 }
 
-/** Whether the arguments ask for one window of their own instead of the two built-in prints. */
+/** Whether the arguments ask for one window of their own instead of the built-in prints. */
 export function isCustom(parsed) {
   return (
-    parsed.settings !== undefined || parsed.liveSettings !== undefined || parsed.image !== undefined
+    parsed.settings !== undefined ||
+    parsed.liveSettings !== undefined ||
+    parsed.image !== undefined ||
+    parsed.splitKeys
   );
 }
 
@@ -40,9 +44,11 @@ const PREFIX = /^[A-Za-z0-9_-]*$/;
 
 /**
  * Reads `pnpm shot [--out <dir>] [--prefix <text>] [--name <name>] [--settings <file>]
- * [--live-settings <file>] [--image <file>] [--no-build]`. With `--settings`, `--live-settings` or
- * `--image` one print is made, of that window, called `--name` (`custom` without it); without them
- * the two built-in ones are made. `--settings` is the settings file the app starts with;
+ * [--live-settings <file>] [--image <file>] [--split-keys] [--no-build]`. With `--settings`,
+ * `--live-settings`, `--image` or `--split-keys` one print is made, of that window, called `--name`
+ * (`split` for `--split-keys` alone, `custom` otherwise); without them the three built-in ones are
+ * made. `--split-keys` makes the app send Ctrl+Shift+D and Ctrl+Shift+E to its own page as key events
+ * and check that each one split a pane. `--settings` is the settings file the app starts with;
  * `--live-settings` is written once the app is up, as the settings screen writes it. Throws an Error
  * with a sentence for anything else.
  */
@@ -54,6 +60,7 @@ export function parseArgs(argv) {
     settings: undefined,
     liveSettings: undefined,
     image: undefined,
+    splitKeys: false,
     build: true,
   };
   const values = {
@@ -69,6 +76,11 @@ export function parseArgs(argv) {
     const flag = argv[at];
     if (flag === "--no-build") {
       parsed.build = false;
+      continue;
+    }
+    if (flag === "--split-keys") {
+      if (parsed.splitKeys) throw new Error("--split-keys was given twice");
+      parsed.splitKeys = true;
       continue;
     }
     const key = values[flag];
@@ -93,7 +105,7 @@ export function parseArgs(argv) {
     }
     if (!isCustom(parsed)) {
       throw new Error(
-        "--name names the print of --settings, --live-settings or --image, and none was given",
+        "--name names the print of --settings, --live-settings, --image or --split-keys, and none was given",
       );
     }
   }
@@ -115,9 +127,10 @@ export function backgroundSettings() {
 }
 
 /**
- * The prints made when no window is asked for: the window as it starts, and one with a picture behind
- * it and a see-through interface (`pnpm shot` makes the files from [`backgroundSettings`] and
- * [`backgroundPng`]). The second one's settings are written while the app runs, the way the settings
+ * The prints made when no window is asked for: the window as it starts, one with a picture behind it
+ * and a see-through interface (`pnpm shot` makes the files from [`backgroundSettings`] and
+ * [`backgroundPng`]), and one of a tab split by the shortcuts Ctrl+Shift+D and Ctrl+Shift+E, which
+ * the app sends to its own page as key events (NOR-F20-07b). The second one's settings are written while the app runs, the way the settings
  * screen writes them: the picture named in the settings file the app starts with does not show yet
  * (finding 309: the page asks for it before the store has its backend), and asking for it that way
  * is still possible with `--settings`, which fails with what the page says.
@@ -125,6 +138,7 @@ export function backgroundSettings() {
 export const BUILTIN_SCENARIOS = [
   { name: "default", picture: false, live: false },
   { name: "background", picture: true, live: true },
+  { name: "split", picture: false, live: false, splitKeys: true },
 ];
 
 /** The name of the PNG of a print: the prefix, then the name, then `.png`. */
@@ -134,13 +148,14 @@ export function outputName(prefix, name) {
 
 /**
  * The arguments of `noren` for one print. `settings`, `liveSettings` and `image` are paths, or
- * `undefined`.
+ * `undefined`; `splitKeys` asks the app to send the split shortcuts to its page.
  */
-export function appArgs(out, settings, liveSettings, image) {
+export function appArgs(out, settings, liveSettings, image, splitKeys = false) {
   const args = ["--smoke-shot", out];
   if (settings !== undefined) args.push("--settings", settings);
   if (liveSettings !== undefined) args.push("--live-settings", liveSettings);
   if (image !== undefined) args.push("--image", image);
+  if (splitKeys) args.push("--split-keys");
   return args;
 }
 
@@ -149,7 +164,7 @@ export function appArgs(out, settings, liveSettings, image) {
  * window out of sight, with no focus, with the foreground window of the system unchanged) and its
  * result; a run that lacks one did not do what it promised.
  */
-export function requiredLines(picture) {
+export function requiredLines(picture, splitKeys = false) {
   return [
     "SMOKE app-ready received",
     "SMOKE SHOT window placed outside every monitor",
@@ -163,8 +178,32 @@ export function requiredLines(picture) {
     "SMOKE SHOT wrote",
     "SMOKE global shortcut none registered",
     "SMOKE DAEMON stopped norend pid",
+    ...(splitKeys
+      ? [
+          "SMOKE SHOT shortcut Ctrl+Shift+D sent to the page as a key event",
+          "SMOKE SHOT shortcut Ctrl+Shift+E sent to the page as a key event",
+          "SMOKE SHOT split keys: panes",
+        ]
+      : []),
     "SMOKE SHOT OK",
   ];
+}
+
+/**
+ * What is wrong with the pane counts a `--split-keys` run printed (`SMOKE SHOT split keys: panes 1 -> 2
+ * -> 3`), or `null` when each shortcut added exactly one pane. The app fails the run itself when it
+ * did not; this reads the line again, so a run whose line is missing or wrong never counts.
+ */
+export function splitKeysProblem(stdout) {
+  const found = /SMOKE SHOT split keys: panes (\d+) -> (\d+) -> (\d+)/.exec(stdout);
+  if (found === null) return "the run did not say how many panes the shortcuts left";
+  const [start, afterD, afterE] = found.slice(1).map(Number);
+  if (start < 1) return `the tab had ${start} panes before the shortcuts`;
+  if (afterD !== start + 1)
+    return `Ctrl+Shift+D took the tab from ${start} to ${afterD} panes, not ${start + 1}`;
+  if (afterE !== afterD + 1)
+    return `Ctrl+Shift+E took the tab from ${afterD} to ${afterE} panes, not ${afterD + 1}`;
+  return null;
 }
 
 /** The lines of `required` that `stdout` does not have. */

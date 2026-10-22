@@ -611,6 +611,8 @@ interface ItemViewProps {
   onPaneMenu(paneId: Id, point: MenuPoint): void;
   /** A right click in the terminal of a pane asked for its menu. */
   onTerminalMenu(itemId: Id, paneId: Id, request: TerminalMenuRequest): void;
+  /** A split button in the corner of a pane was pressed. */
+  onSplitPane(itemId: Id, paneId: Id, dir: SplitDir): void;
   /** A link of the output of a pane was Ctrl+clicked: true when it opened beside the pane. */
   onOpenBrowser(paneId: Id, url: string): boolean;
   /** A file path of the output of a pane was Ctrl+clicked: a preview opens beside it, or a notice says why not. */
@@ -629,11 +631,14 @@ function ItemView({
   onReady,
   onPaneMenu,
   onTerminalMenu,
+  onSplitPane,
   onOpenBrowser,
   onOpenPreview,
 }: ItemViewProps) {
   const dispatch = useStore(store, (state) => state.dispatch);
   const { paneHeaders } = useLayout();
+  // The limit is a setting: the tab draws again when it changes, so the corner buttons follow it.
+  const paneLimit = paneLimitOf(useConfigState().config.terminal);
   const agentStateOf = useAgentStateOfPane();
   const context: SplitLayoutContext = {
     focusedPaneId: item.focusedPaneId,
@@ -718,6 +723,8 @@ function ItemView({
     onDetachPane: (paneId) => dispatch({ type: "pane/detach", itemId: item.id, paneId }),
     onPaneMenu,
     onResize: (path, sizes) => dispatch({ type: "pane/resize", itemId: item.id, path, sizes }),
+    onSplitPane: (paneId, dir) => onSplitPane(item.id, paneId, dir),
+    canSplit: layoutPanes(item.layout).length < paneLimit,
   };
   return (
     <div
@@ -2815,6 +2822,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
                           onTerminalMenu={(itemId, paneId, request) =>
                             setOverlay({ kind: "terminal-menu", itemId, paneId, request })
                           }
+                          onSplitPane={splitFromMenu}
                           onOpenBrowser={openBrowserBeside}
                           onOpenPreview={openPreviewBeside}
                         />

@@ -1388,6 +1388,58 @@ body {
 }
 
 /*
+ * The split buttons in the top right corner of a terminal pane: out of sight until the mouse is over
+ * the pane or the keyboard is on one of them. They sit past the scrollbar and cover only the corner;
+ * with the pane header on they start under it.
+ */
+.pane-corner {
+  position: absolute;
+  top: 4px;
+  right: 16px;
+  z-index: 2;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--nr-border);
+  border-radius: var(--nr-radius);
+  background: var(--nr-surface);
+  opacity: 0;
+}
+
+.pane-corner[data-nr-headers="true"] {
+  top: 26px;
+}
+
+.pane-frame:hover > .pane-corner,
+.pane-corner:focus-within {
+  opacity: 1;
+}
+
+.pane-corner-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--nr-radius);
+  background: transparent;
+  color: var(--nr-muted);
+  cursor: pointer;
+}
+
+.pane-corner-button:hover:not(:disabled) {
+  background: var(--nr-border);
+  color: var(--nr-text);
+}
+
+.pane-corner-button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/*
  * A pane that shows a web page: an address bar, and under it the area the web view of the shell is
  * laid over. The page itself is not drawn here; the area only holds the place (and the colors, for
  * the moment before the page has been drawn).

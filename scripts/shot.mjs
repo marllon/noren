@@ -3,18 +3,22 @@
 // window out of sight (outside every monitor, with no focus, off the taskbar and Alt+Tab, shown
 // without activating it), asks its own web view for the PNG, checks that the window never had the
 // focus and that the foreground window of the system did not change, and quits. Nothing is started
-// with a window of its own, no key or mouse is sent, no desktop is captured and no debugging port is
+// with a window of its own, no key or mouse is sent to the system (the key events of `--split-keys`
+// are made and dispatched inside the page), no desktop is captured and no debugging port is
 // opened. See docs/DEV.md ("Pictures of the real app").
 //
 //   pnpm shot [--out <dir>] [--prefix <text>] [--no-build]
-//   pnpm shot [--settings <file>] [--live-settings <file>] [--image <file>] [--name <name>]
-//             [--out <dir>] [--prefix <text>]
+//   pnpm shot [--settings <file>] [--live-settings <file>] [--image <file>] [--split-keys]
+//             [--name <name>] [--out <dir>] [--prefix <text>]
 //
-// Without `--settings` or `--image` two pictures are made, `<prefix>default.png` (the window as it
-// starts) and `<prefix>background.png` (a picture behind the terminals and an interface that lets it
-// through, the settings written while the app runs, as the settings screen writes them). With
-// `--settings` (the file the app starts with), `--live-settings` (written once it is up) or
-// `--image`, one picture of that window, `<prefix><name>.png` (`custom` by default); the settings are
+// Without `--settings`, `--image` or `--split-keys` three pictures are made, `<prefix>default.png` (the
+// window as it starts), `<prefix>background.png` (a picture behind the terminals and an interface that
+// lets it through, the settings written while the app runs, as the settings screen writes them) and
+// `<prefix>split.png` (the app sends Ctrl+Shift+D and Ctrl+Shift+E to its own page as key events, in
+// the page, never to the keyboard of the system, reads the pane count back from the page and fails if
+// either did not add one). With `--settings` (the file the app starts with), `--live-settings`
+// (written once it is up), `--image` or `--split-keys`, one picture of that window,
+// `<prefix><name>.png` (`custom`, or `split` for `--split-keys` alone, by default); the settings are
 // `config.jsonc` of the run (a picture is `backgrounds/<its name>` there). A picture that was asked
 // for and is not on screen fails the run, after its PNG is written. The files go to `--out`
 // (`target/shots` by default).
@@ -42,6 +46,7 @@ import {
   parseArgs,
   refusal,
   requiredLines,
+  splitKeysProblem,
   waitForExit,
 } from "./shot-lib.mjs";
 
@@ -123,18 +128,22 @@ work = mkdtempSync(join(tmpdir(), "noren shot "));
 function scenarios() {
   if (isCustom(args)) {
     const path = (file) => (file === undefined ? undefined : resolve(file));
+    const hasWindow =
+      args.settings !== undefined || args.liveSettings !== undefined || args.image !== undefined;
     return [
       {
-        name: args.name ?? "custom",
+        name: args.name ?? (args.splitKeys && !hasWindow ? "split" : "custom"),
         settings: path(args.settings),
         liveSettings: path(args.liveSettings),
         image: path(args.image),
         picture: args.image !== undefined,
+        splitKeys: args.splitKeys,
       },
     ];
   }
   return BUILTIN_SCENARIOS.map((scenario) => {
-    if (!scenario.picture) return { name: scenario.name, picture: false };
+    if (!scenario.picture)
+      return { name: scenario.name, picture: false, splitKeys: scenario.splitKeys === true };
     const settings = join(work, "background.jsonc");
     const image = join(work, BACKGROUND_FILE);
     writeFileSync(settings, backgroundSettings());
@@ -142,6 +151,7 @@ function scenarios() {
     return {
       name: scenario.name,
       picture: true,
+      splitKeys: false,
       settings: scenario.live ? undefined : settings,
       liveSettings: scenario.live ? settings : undefined,
       image,
@@ -170,7 +180,7 @@ function shoot(scenario) {
   rmSync(out, { force: true });
   const run = spawnSync(
     binary,
-    appArgs(out, scenario.settings, scenario.liveSettings, scenario.image),
+    appArgs(out, scenario.settings, scenario.liveSettings, scenario.image, scenario.splitKeys),
     {
       cwd: root,
       encoding: "utf8",
@@ -189,9 +199,13 @@ function shoot(scenario) {
   if (run.status === REFUSED_EXIT_CODE) fail("noren refused: game mode is on", REFUSED_EXIT_CODE);
   if (run.status !== 0)
     fail(`noren --smoke-shot exited with code ${run.status} (${scenario.name})`);
-  const missing = missingLines(stdout, requiredLines(scenario.picture));
+  const missing = missingLines(stdout, requiredLines(scenario.picture, scenario.splitKeys));
   if (missing.length > 0)
     fail(`not found in the output of ${scenario.name}: ${missing.join("; ")}`);
+  if (scenario.splitKeys) {
+    const problem = splitKeysProblem(stdout);
+    if (problem !== null) fail(`${scenario.name}: ${problem}`);
+  }
   if (!existsSync(out)) fail(`${out} was not written`);
   return `${out} (${statSync(out).size} bytes)`;
 }

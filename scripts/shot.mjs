@@ -48,8 +48,13 @@ import {
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const isWindows = process.platform === "win32";
 
+/** The folder of the files a run makes for the app (settings, picture); set once it exists. */
+let work;
+
 function fail(message, code = 1) {
   console.error(`shot: ${message}`);
+  // `process.exit` skips the `finally` of the run, so the folder goes here too.
+  if (work !== undefined) rmSync(work, { recursive: true, force: true });
   process.exit(code);
 }
 
@@ -112,7 +117,7 @@ for (const file of [binary, daemonBinary]) {
 
 const outDir = resolve(args.out);
 mkdirSync(outDir, { recursive: true });
-const work = mkdtempSync(join(tmpdir(), "noren shot "));
+work = mkdtempSync(join(tmpdir(), "noren shot "));
 
 /** What to draw: the windows asked for, each with the files it needs made. */
 function scenarios() {

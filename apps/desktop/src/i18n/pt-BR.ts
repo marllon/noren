@@ -1069,6 +1069,7 @@ export const ptBR: Dictionary = {
   "themeEditor.pictureOpacity": "Opacidade da imagem",
   "themeEditor.pictureBlur": "Desfoque da imagem (px)",
   "themeEditor.preview": "Prévia",
+  "themeEditor.contrast": "Contraste do texto {ratio} : 1",
   "themeEditor.slider": "{name}, controle deslizante",
   "themeEditor.swatch": "{name}, seletor de cor",
   "themeEditor.problem.color": "Use uma cor como #1a2b3c.",

@@ -1055,6 +1055,7 @@ export const en = {
   "themeEditor.pictureOpacity": "Picture opacity",
   "themeEditor.pictureBlur": "Picture blur (px)",
   "themeEditor.preview": "Preview",
+  "themeEditor.contrast": "Text contrast {ratio} : 1",
   "themeEditor.slider": "{name}, slider",
   "themeEditor.swatch": "{name}, color picker",
   "themeEditor.problem.color": "Use a color like #1a2b3c.",

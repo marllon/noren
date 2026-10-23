@@ -170,6 +170,10 @@
   --nr-sample-dense-bar: #0f1216;
   --nr-sample-dense-line: #1e242c;
   --nr-sample-dense-accent: #2ee6d6;
+  /* The moon of the night landscape the preview of the theme editor is drawn over (the sky and the ridge are the ones of the glass card above). */
+  --nr-sample-glass-moon: #f1e6cc;
+  /* The text of a button filled with the highlight (the Save of the theme editor): dark, which keeps 4.5:1 on every color a space can have. */
+  --nr-on-highlight: #0d0f1e;
 }
 
 :root[data-nr-scheme="light"] {

@@ -824,10 +824,10 @@ test.describe("the controls", () => {
   });
 });
 
-test("the theme editor, opened from the settings, keeps the look it had: its switch and its buttons are the classic ones (the editor has its own task)", async ({
+test("the theme editor, opened from the settings of the dense style, keeps the look it had: its switch and its buttons are the classic ones (the glass editor has its own spec, glass-editor.spec.ts)", async ({
   page,
 }) => {
-  const screen = await start(page);
+  const screen = await start(page, { style: "dense" });
   await sectionOf(screen, "themes").scrollIntoViewIfNeeded();
   await screen.getByRole("button", { name: "Customize Noren Dusk", exact: true }).click();
   const editor = page.getByRole("dialog", { name: "Theme editor", exact: true });

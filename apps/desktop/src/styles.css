@@ -3300,6 +3300,8 @@ ul.settings-models {
 
 /* The theme editor, a dialog of the themes section: the boxes of every group of a theme on the left (they scroll), a preview of the theme being edited on the right. */
 .space-dialog.theme-editor {
+  /* The unit the switch of the settings screen is drawn in (`.settings-switch`), which the editor uses too: set only on the settings dialog it left the switch 2 by 2 px (finding 352). */
+  --su: 8px;
   width: min(1040px, 94%);
   max-height: 92vh;
   overflow: hidden;
@@ -3377,8 +3379,13 @@ ul.settings-models {
   gap: 4px 12px;
 }
 
-.theme-editor-kind > span {
+.theme-editor-kind > span:first-child {
   color: var(--nr-muted);
+}
+
+/* The two options of the kind sit in the row as before (the glass style puts them in a track). */
+.theme-editor-kinds {
+  display: contents;
 }
 
 /* A color: its name, a swatch that opens the color picker and the box of its hex value. */
@@ -6828,6 +6835,10 @@ ul.settings-models {
 :root[data-nr-style="glass"]
   .settings-content
   .settings-number
+  > .settings-slider::-webkit-slider-runnable-track,
+:root[data-nr-style="glass"]
+  .theme-editor-group
+  .settings-number
   > .settings-slider::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 99px;
@@ -6841,6 +6852,10 @@ ul.settings-models {
 :root[data-nr-style="glass"]
   .settings-content
   .settings-number
+  > .settings-slider::-webkit-slider-thumb,
+:root[data-nr-style="glass"]
+  .theme-editor-group
+  .settings-number
   > .settings-slider::-webkit-slider-thumb {
   appearance: none;
   box-sizing: border-box;
@@ -6852,7 +6867,8 @@ ul.settings-models {
   background: var(--nr-highlight);
 }
 
-:root[data-nr-style="glass"] .settings-content .settings-number > .settings-slider:focus-visible {
+:root[data-nr-style="glass"] .settings-content .settings-number > .settings-slider:focus-visible,
+:root[data-nr-style="glass"] .theme-editor-group .settings-number > .settings-slider:focus-visible {
   outline: 2px solid var(--nr-highlight);
   outline-offset: 4px;
 }
@@ -7298,5 +7314,725 @@ ul.settings-models {
 
   :root[data-nr-style="glass"] .settings-content {
     padding: 16px 20px 32px;
+  }
+}
+
+/*
+ * The glass theme editor (NOR-F20-20, D23), as in the approved design (vidro-editor-de-tema). Under
+ * data-nr-style="glass" (the default style) the dialog is a card of glass like the settings screen (the
+ * sheet fill and blur, 14px corners, a line and a shadow) with a header of 60px: the title, the name of
+ * the theme in a box with its label inside, and at the right end the buttons (the one that saves is
+ * filled with the highlight). Under the header the preview takes the room that is left, with the
+ * reading of the contrast of the text over it, and the boxes of the groups are a column of 360px on the
+ * right: a color is a swatch of 22px and its hex value in one box of 30px, the sixteen colors of the
+ * terminal are rows of two such boxes, a number with a range is its label, a slider that fills up to
+ * its handle and its number in the mono type, and the picture is a card with its miniature, its name
+ * and its buttons. The preview itself (what it draws, from the theme being edited) is the same in
+ * both styles; only the frame around it changes: a night landscape behind the window it draws, which
+ * stands for what the system paints behind a window that lets it through. The dense style keeps every
+ * rule above: nothing here applies to it.
+ */
+:root[data-nr-style="glass"] .space-dialog.theme-editor {
+  --editor-line: color-mix(in srgb, var(--nr-text) 7%, transparent);
+  --editor-line-soft: color-mix(in srgb, var(--nr-text) 6%, transparent);
+  --editor-field: color-mix(in srgb, var(--nr-text) 6%, transparent);
+  --editor-field-line: color-mix(in srgb, var(--nr-text) 14%, transparent);
+  --editor-lit: color-mix(in srgb, var(--nr-text) 14%, transparent);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(60px, auto) minmax(0, 1fr);
+  gap: 0;
+  width: min(1120px, calc(100% - var(--nr-gap) * 2));
+  height: min(860px, calc(100% - var(--nr-gap) * 2));
+  max-height: none;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--nr-text) 10%, transparent);
+  border-radius: var(--nr-radius-side);
+  background: var(--nr-glass-sheet);
+  box-shadow: var(--nr-sheet-shadow);
+  backdrop-filter: var(--nr-glass-blur-sheet);
+}
+
+/* The header: the title, the name of the theme in its box and the buttons (they come last in the page, as the buttons of a dialog do, and sit here). */
+:root[data-nr-style="glass"] .theme-editor > h2 {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+  padding-left: 24px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+:root[data-nr-style="glass"] .theme-editor-name {
+  display: flex;
+  grid-column: 2;
+  grid-row: 1;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 10px 16px;
+  align-self: center;
+}
+
+:root[data-nr-style="glass"] .theme-editor-name-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  max-width: 300px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--nr-text) 10%, transparent);
+  border-radius: 9px;
+  background: var(--editor-field);
+}
+
+:root[data-nr-style="glass"] .theme-editor-name-box:focus-within {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 1px;
+}
+
+:root[data-nr-style="glass"] .theme-editor-name-box:has(input[aria-invalid="true"]) {
+  border-color: var(--nr-highlight);
+}
+
+:root[data-nr-style="glass"] .theme-editor-name-box label {
+  flex: none;
+  color: var(--nr-muted);
+  font-size: 12px;
+}
+
+:root[data-nr-style="glass"] .theme-editor-name-box input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--nr-text);
+}
+
+:root[data-nr-style="glass"] .theme-editor > .dialog-actions {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: center;
+  flex-wrap: wrap;
+  padding: 0 12px 0 0;
+}
+
+:root[data-nr-style="glass"] .theme-editor > .dialog-actions button {
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--editor-field-line);
+  border-radius: 9px;
+  background: transparent;
+}
+
+:root[data-nr-style="glass"] .theme-editor > .dialog-actions button:hover:not(:disabled) {
+  background: var(--editor-field);
+}
+
+:root[data-nr-style="glass"] .theme-editor > .dialog-actions button:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 2px;
+}
+
+:root[data-nr-style="glass"] .theme-editor > .dialog-actions .primary {
+  padding: 0 16px;
+  border-color: var(--nr-highlight);
+  background: var(--nr-highlight);
+  color: var(--nr-on-highlight);
+  font-weight: 600;
+}
+
+:root[data-nr-style="glass"] .theme-editor > .dialog-actions .primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--nr-highlight) 88%, var(--nr-text));
+}
+
+:root[data-nr-style="glass"] .theme-editor > .dialog-actions .primary:disabled {
+  color: var(--nr-on-highlight);
+  opacity: 0.45;
+}
+
+/* What Save says it cannot do, and why it failed: a strip under the body. */
+:root[data-nr-style="glass"] .theme-editor > .settings-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px 24px;
+  border-top: 1px solid var(--editor-line);
+}
+
+/* The body: the preview on the left (it takes what is left) and the column of boxes on the right. */
+:root[data-nr-style="glass"] .theme-editor-body {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 0;
+  border-top: 1px solid var(--editor-line);
+}
+
+:root[data-nr-style="glass"] .theme-editor-side {
+  grid-column: 1;
+  grid-row: 1;
+  gap: 12px;
+  box-sizing: border-box;
+  padding: 20px;
+}
+
+:root[data-nr-style="glass"] .theme-editor-side-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+:root[data-nr-style="glass"] .theme-editor-hint {
+  flex: 1 1 240px;
+  min-width: 0;
+  line-height: 16px;
+}
+
+/* The reading of the contrast of the text on the background: green while it holds the minimum the editor warns about, amber when it does not. */
+:root[data-nr-style="glass"] .theme-editor-contrast {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--nr-radius-chip);
+  background: color-mix(in srgb, var(--nr-state-running) 14%, transparent);
+  color: var(--nr-text);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+:root[data-nr-style="glass"] .theme-editor-contrast svg {
+  color: var(--nr-state-running);
+}
+
+:root[data-nr-style="glass"] .theme-editor-contrast[data-nr-state="low"] {
+  background: color-mix(in srgb, var(--nr-state-waiting) 16%, transparent);
+}
+
+:root[data-nr-style="glass"] .theme-editor-contrast[data-nr-state="low"] svg {
+  color: var(--nr-state-waiting);
+}
+
+/* The frame of the preview: the night landscape of the design behind the window the preview draws, which fills the room. */
+:root[data-nr-style="glass"] .theme-editor .theme-preview {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 340px;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid var(--editor-line-soft);
+  border-radius: var(--nr-radius-panel);
+  background: var(--nr-sample-glass-sky);
+}
+
+:root[data-nr-style="glass"] .theme-editor .theme-preview::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 60%;
+  background: var(--nr-sample-glass-ridge);
+  clip-path: polygon(0 40%, 20% 20%, 40% 50%, 60% 25%, 80% 55%, 100% 30%, 100% 100%, 0 100%);
+}
+
+:root[data-nr-style="glass"] .theme-editor .theme-preview::after {
+  content: "";
+  position: absolute;
+  top: 10%;
+  right: 12%;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: var(--nr-sample-glass-moon);
+  opacity: 0.85;
+}
+
+:root[data-nr-style="glass"] .theme-editor .tp-window {
+  z-index: 1;
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+/* The column of boxes: the groups one under the other, each with its title of 13px. */
+:root[data-nr-style="glass"] .theme-editor-controls {
+  grid-column: 2;
+  grid-row: 1;
+  gap: 18px;
+  box-sizing: border-box;
+  padding: 16px 18px 24px;
+  border-left: 1px solid var(--editor-line-soft);
+}
+
+:root[data-nr-style="glass"] .space-dialog .theme-editor-group {
+  gap: 8px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+:root[data-nr-style="glass"] .space-dialog .theme-editor-group > legend {
+  margin-bottom: 8px;
+}
+
+/* The first group is the kind of the theme, a row of its own: its title is for a screen reader, the row says Kind. */
+:root[data-nr-style="glass"] .theme-editor-group[data-nr-group="general"] > legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+:root[data-nr-style="glass"] .theme-editor-kind {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+:root[data-nr-style="glass"] .theme-editor-kind > span:first-child {
+  color: var(--nr-text);
+}
+
+:root[data-nr-style="glass"] .theme-editor-kinds {
+  display: flex;
+  padding: 3px;
+  border-radius: var(--nr-radius-control);
+  background: var(--editor-field);
+}
+
+:root[data-nr-style="glass"] .theme-editor-kinds > .settings-option {
+  position: relative;
+  justify-content: center;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+}
+
+:root[data-nr-style="glass"] .theme-editor-kinds > .settings-option > input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+:root[data-nr-style="glass"] .theme-editor-kinds > .settings-option:has(input:checked) {
+  background: var(--editor-lit);
+  font-weight: 500;
+}
+
+:root[data-nr-style="glass"] .theme-editor-kinds > .settings-option:has(input:focus-visible) {
+  outline: 2px solid var(--nr-highlight);
+}
+
+/* A color: its name on the left, and on the right one box of 30px with the swatch and the hex value in the mono type. */
+:root[data-nr-style="glass"] .theme-editor-group .theme-color {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 12px;
+  min-height: 30px;
+}
+
+:root[data-nr-style="glass"] .theme-editor-group .theme-color-label {
+  grid-column: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+:root[data-nr-style="glass"] .theme-editor-group .theme-color-boxes {
+  grid-column: 2;
+  box-sizing: border-box;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px 0 4px;
+  border: 1px solid color-mix(in srgb, var(--nr-text) 12%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--nr-text) 5%, transparent);
+}
+
+:root[data-nr-style="glass"] .theme-editor-group .theme-color-boxes:focus-within {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 1px;
+}
+
+:root[data-nr-style="glass"]
+  .theme-editor-group
+  .theme-color-boxes:has(input[aria-invalid="true"]) {
+  border-color: var(--nr-highlight);
+}
+
+:root[data-nr-style="glass"] .theme-editor-group input.theme-swatch {
+  appearance: none;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nr-text) 20%, transparent);
+}
+
+:root[data-nr-style="glass"] .theme-editor-group input.theme-swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+:root[data-nr-style="glass"] .theme-editor-group input.theme-swatch::-webkit-color-swatch {
+  border: 0;
+  border-radius: 6px;
+}
+
+:root[data-nr-style="glass"] .theme-editor-group input.theme-hex {
+  width: 9ch;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-family: var(--nr-font-mono);
+  font-size: 12px;
+}
+
+:root[data-nr-style="glass"] .theme-editor-group .theme-color-problem {
+  grid-column: 1 / -1;
+}
+
+/* The sixteen colors: the names down the left, the normal color and the bright one side by side. */
+:root[data-nr-style="glass"] .theme-palette {
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
+  justify-content: stretch;
+  gap: 6px 10px;
+}
+
+:root[data-nr-style="glass"] .theme-palette .theme-color {
+  display: flex;
+}
+
+:root[data-nr-style="glass"] .theme-palette-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The boxes of a name or a path: the width of the column, 30px, the corners and the fill of the other boxes. */
+:root[data-nr-style="glass"] .theme-editor-group .settings-wide .settings-option {
+  gap: 6px;
+}
+
+:root[data-nr-style="glass"] .theme-editor-group .settings-wide input[type="text"] {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--editor-field-line);
+  border-radius: 8px;
+  background: var(--editor-field);
+}
+
+:root[data-nr-style="glass"] .theme-editor-group .settings-wide input[type="text"]:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 1px;
+}
+
+:root[data-nr-style="glass"]
+  .theme-editor-group
+  .settings-wide
+  input[type="text"][aria-invalid="true"] {
+  border-color: var(--nr-highlight);
+}
+
+/* A number with a range: its label, the slider that fills up to its handle and its number in the mono type at the right end (still a box to type in). */
+:root[data-nr-style="glass"] .theme-editor-group .settings-number:has(> .settings-slider) {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 2px 10px;
+}
+
+:root[data-nr-style="glass"]
+  .theme-editor-group
+  .settings-number:has(> .settings-slider)
+  > .settings-option {
+  display: contents;
+}
+
+:root[data-nr-style="glass"]
+  .theme-editor-group
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > span {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 16px;
+}
+
+:root[data-nr-style="glass"]
+  .theme-editor-group
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input {
+  grid-column: 3;
+  grid-row: 1;
+  box-sizing: border-box;
+  width: 48px;
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font-family: var(--nr-font-mono);
+  text-align: right;
+}
+
+:root[data-nr-style="glass"]
+  .theme-editor-group
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input:hover,
+:root[data-nr-style="glass"]
+  .theme-editor-group
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input:focus-visible {
+  border-color: var(--editor-field-line);
+  background: var(--editor-field);
+}
+
+:root[data-nr-style="glass"]
+  .theme-editor-group
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 1px;
+}
+
+:root[data-nr-style="glass"]
+  .theme-editor-group
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input[aria-invalid="true"] {
+  border-color: var(--nr-highlight);
+}
+
+:root[data-nr-style="glass"]
+  .theme-editor-group
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input::placeholder {
+  color: var(--nr-muted);
+  opacity: 1;
+}
+
+:root[data-nr-style="glass"] .theme-editor-group .settings-number > .settings-slider {
+  --settings-track: color-mix(in srgb, var(--nr-text) 22%, transparent);
+  appearance: none;
+  grid-column: 2;
+  grid-row: 1;
+  width: 100%;
+  min-width: 0;
+  height: 16px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+:root[data-nr-style="glass"] .theme-editor-group .settings-number > [role="alert"] {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+/* The switch: its label on the left and the switch of 40 by 24 at the right end, drawn as the one of the settings screen is (its rules are written again here for the editor, which is not inside that screen). */
+:root[data-nr-style="glass"] .theme-editor-group .settings-toggle > .settings-option {
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  min-height: 30px;
+}
+
+:root[data-nr-style="glass"] .theme-editor .settings-switch {
+  width: 40px;
+  height: 24px;
+  border: 0;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--nr-text) 16%, transparent);
+}
+
+:root[data-nr-style="glass"] .theme-editor .settings-switch::after {
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: var(--nr-text);
+}
+
+:root[data-nr-style="glass"] .theme-editor .settings-switch:checked {
+  background: var(--nr-highlight);
+}
+
+:root[data-nr-style="glass"] .theme-editor .settings-switch:checked::after {
+  background: var(--nr-bg);
+  transform: translateX(16px);
+}
+
+:root[data-nr-style="glass"] .theme-editor .settings-switch:focus-visible {
+  outline-color: var(--nr-highlight);
+}
+
+/* The buttons of the picture, and the card that holds them with the miniature and the name of the file. */
+:root[data-nr-style="glass"] .theme-editor .settings-link {
+  box-sizing: border-box;
+  min-height: 30px;
+  padding: 0 12px;
+  border-color: var(--editor-field-line);
+  border-radius: 8px;
+  text-align: center;
+}
+
+:root[data-nr-style="glass"] .theme-editor .settings-link:hover:not(:disabled) {
+  background: var(--editor-field);
+}
+
+:root[data-nr-style="glass"] .theme-editor .settings-link:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 1px;
+}
+
+:root[data-nr-style="glass"] .theme-editor .settings-link:disabled {
+  color: var(--nr-muted);
+  cursor: default;
+}
+
+:root[data-nr-style="glass"] .theme-editor .settings-link[data-nr-part="background-choose"] {
+  border-color: var(--nr-highlight);
+  background: color-mix(in srgb, var(--nr-highlight) 26%, var(--nr-bg));
+  font-weight: 600;
+}
+
+:root[data-nr-style="glass"]
+  .theme-editor
+  .settings-link[data-nr-part="background-choose"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--nr-highlight) 36%, var(--nr-bg));
+}
+
+:root[data-nr-style="glass"] .theme-editor-group .background-picker {
+  align-items: center;
+  gap: 8px 12px;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--nr-text) 8%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--nr-text) 5%, transparent);
+}
+
+:root[data-nr-style="glass"] .theme-editor-group .background-thumb {
+  width: 54px;
+  height: 36px;
+  border: 0;
+  border-radius: 6px;
+}
+
+:root[data-nr-style="glass"] .theme-editor-group .background-picker-info {
+  flex: 1 1 100px;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-nr-style="glass"] .theme-editor-group .background-picker-buttons {
+  flex: 1 1 100%;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The columns scroll with a thin bar in the color of the text, with no track and no arrows (the bar of the web view is a thick one with arrows that takes 17px from the boxes, and the labels of the palette were wrapping because of it). */
+:root[data-nr-style="glass"] .theme-editor-controls::-webkit-scrollbar,
+:root[data-nr-style="glass"] .theme-editor-side::-webkit-scrollbar,
+:root[data-nr-style="glass"] .theme-editor-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+:root[data-nr-style="glass"] .theme-editor-controls::-webkit-scrollbar-track,
+:root[data-nr-style="glass"] .theme-editor-side::-webkit-scrollbar-track,
+:root[data-nr-style="glass"] .theme-editor-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:root[data-nr-style="glass"] .theme-editor-controls::-webkit-scrollbar-thumb,
+:root[data-nr-style="glass"] .theme-editor-side::-webkit-scrollbar-thumb,
+:root[data-nr-style="glass"] .theme-editor-body::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--nr-text) 28%, transparent);
+}
+
+:root[data-nr-style="glass"] .theme-editor-controls::-webkit-scrollbar-thumb:hover,
+:root[data-nr-style="glass"] .theme-editor-side::-webkit-scrollbar-thumb:hover,
+:root[data-nr-style="glass"] .theme-editor-body::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--nr-text) 45%, transparent);
+}
+
+:root[data-nr-style="glass"] .theme-editor-controls::-webkit-scrollbar-button,
+:root[data-nr-style="glass"] .theme-editor-side::-webkit-scrollbar-button,
+:root[data-nr-style="glass"] .theme-editor-body::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* A narrow window: the preview goes above the boxes and the body scrolls as one; under 760px the buttons take a row of their own under the title and the name. */
+@media (max-width: 860px) {
+  :root[data-nr-style="glass"] .theme-editor-body {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  :root[data-nr-style="glass"] .theme-editor-side,
+  :root[data-nr-style="glass"] .theme-editor-controls {
+    grid-column: 1;
+    overflow: visible;
+  }
+
+  :root[data-nr-style="glass"] .theme-editor-controls {
+    grid-row: 2;
+    border-top: 1px solid var(--editor-line-soft);
+    border-left: 0;
+  }
+
+  :root[data-nr-style="glass"] .theme-editor .theme-preview {
+    flex: none;
+    min-height: 300px;
+  }
+}
+
+@media (max-width: 760px) {
+  :root[data-nr-style="glass"] .space-dialog.theme-editor {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: minmax(60px, auto) auto minmax(0, 1fr);
+  }
+
+  :root[data-nr-style="glass"] .theme-editor > h2 {
+    padding-left: 16px;
+  }
+
+  :root[data-nr-style="glass"] .theme-editor > .dialog-actions {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: flex-end;
+    padding: 0 12px 10px;
+  }
+
+  :root[data-nr-style="glass"] .theme-editor-body {
+    grid-row: 3;
   }
 }

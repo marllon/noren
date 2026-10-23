@@ -1,8 +1,10 @@
+import { Check, TriangleAlert } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import {
   NUMBER_RANGES,
   ansiField,
+  contrastRatio,
   fieldText,
   renameTheme,
   themeContrastWarnings,
@@ -20,6 +22,7 @@ import type {
 import { BackgroundPicker } from "./BackgroundPicker";
 import { useBackgroundThumbnail } from "./background-thumbnail";
 import { useT } from "./i18n";
+import { useInterfaceStyle } from "./layout-store";
 import { NumberBox, Toggle } from "./SettingsFields";
 import { ThemePreview } from "./ThemePreview";
 import { nameProblem } from "./themes-section";
@@ -69,6 +72,12 @@ const ANSI_NAMES = ["black", "red", "green", "yellow", "blue", "magenta", "cyan"
  * so it takes Escape itself (the screen would otherwise close under it); Escape and Cancel throw the
  * changes away. The colors of the dialog are the ones of the theme in force, never those of the
  * theme being edited, so a color that cannot be read cannot make the editor unreadable.
+ *
+ * Under the glass style (the default) it is a card of glass like the settings screen: a header with
+ * the title, the name of the theme and the buttons (Cancel, Save), the preview with the reading of the
+ * contrast of the text on the left, and the boxes of the groups in a column on the right. The parts and
+ * what each box does are the same in both styles; the dense one keeps its dialog with the name in
+ * the first group and the buttons under the boxes.
  */
 export function ThemeEditorDialog({
   source,
@@ -78,6 +87,7 @@ export function ThemeEditorDialog({
   onCancel,
 }: ThemeEditorDialogProps) {
   const t = useT();
+  const glass = useInterfaceStyle() === "glass";
   const titleId = useId();
   const nameId = useId();
   const nameProblemId = useId();
@@ -199,6 +209,45 @@ export function ThemeEditorDialog({
   const ansiName = (index: AnsiIndex): string => t(`themeEditor.ansi.${index}`);
   const saveLabel = own ? t("themeEditor.saveChanges") : t("themeEditor.saveNew");
 
+  const nameInput = (
+    <input
+      id={nameId}
+      ref={nameRef}
+      type="text"
+      value={name}
+      spellCheck={false}
+      autoComplete="off"
+      aria-invalid={nameError !== undefined ? true : undefined}
+      aria-describedby={nameError !== undefined ? nameProblemId : undefined}
+      onChange={(event) => {
+        setName(event.target.value);
+        setFailure(undefined);
+      }}
+    />
+  );
+  const nameProblemLine = nameError !== undefined && (
+    <span id={nameProblemId} className="settings-hint" role="alert">
+      {nameError}
+    </span>
+  );
+  const hint = <p className="settings-hint theme-editor-hint">{t("themeEditor.hint")}</p>;
+  // The reading of the contrast of the text on the background (the first of the checks that warn), kept to one decimal.
+  const textLow = warnings.some((warning) => warning.check === "text");
+  const contrast = (
+    <span
+      className="theme-editor-contrast"
+      data-nr-part="theme-editor-contrast"
+      data-nr-state={textLow ? "low" : "ok"}
+    >
+      {textLow ? (
+        <TriangleAlert size={12} aria-hidden="true" />
+      ) : (
+        <Check size={12} aria-hidden="true" />
+      )}
+      {t("themeEditor.contrast", { ratio: contrastRatio(theme.ui.text, theme.ui.bg).toFixed(1) })}
+    </span>
+  );
+
   return (
     <div className="dialog-backdrop">
       <div
@@ -210,54 +259,51 @@ export function ThemeEditorDialog({
         onKeyDown={onKeyDown}
       >
         <h2 id={titleId}>{t("themeEditor.title")}</h2>
-        <p className="settings-hint">{t("themeEditor.hint")}</p>
+        {glass ? (
+          <div className="theme-editor-name" data-nr-field="name">
+            <div className="theme-editor-name-box">
+              <label htmlFor={nameId}>{t("themeEditor.name")}</label>
+              {nameInput}
+            </div>
+            {nameProblemLine}
+          </div>
+        ) : (
+          hint
+        )}
         <div className="theme-editor-body">
           <div className="theme-editor-controls">
             <fieldset className="settings-field theme-editor-group" data-nr-group="general">
               <legend>{t("themeEditor.general")}</legend>
-              <div className="settings-number settings-wide" data-nr-field="name">
-                <label className="settings-option" htmlFor={nameId}>
-                  <span>{t("themeEditor.name")}</span>
-                </label>
-                <input
-                  id={nameId}
-                  ref={nameRef}
-                  type="text"
-                  value={name}
-                  spellCheck={false}
-                  autoComplete="off"
-                  aria-invalid={nameError !== undefined ? true : undefined}
-                  aria-describedby={nameError !== undefined ? nameProblemId : undefined}
-                  onChange={(event) => {
-                    setName(event.target.value);
-                    setFailure(undefined);
-                  }}
-                />
-                {nameError !== undefined && (
-                  <span id={nameProblemId} className="settings-hint" role="alert">
-                    {nameError}
-                  </span>
-                )}
-              </div>
+              {!glass && (
+                <div className="settings-number settings-wide" data-nr-field="name">
+                  <label className="settings-option" htmlFor={nameId}>
+                    <span>{t("themeEditor.name")}</span>
+                  </label>
+                  {nameInput}
+                  {nameProblemLine}
+                </div>
+              )}
               <div
                 className="theme-editor-kind"
                 role="radiogroup"
                 aria-label={t("themeEditor.kind")}
               >
                 <span>{t("themeEditor.kind")}</span>
-                {(["dark", "light"] as const).map((kind) => (
-                  <label key={kind} className="settings-option">
-                    <input
-                      type="radio"
-                      name="theme-editor-kind"
-                      checked={theme.kind === kind}
-                      onChange={() => setKind(kind)}
-                    />
-                    <span>
-                      {t(kind === "dark" ? "themeEditor.kindDark" : "themeEditor.kindLight")}
-                    </span>
-                  </label>
-                ))}
+                <span className="theme-editor-kinds">
+                  {(["dark", "light"] as const).map((kind) => (
+                    <label key={kind} className="settings-option">
+                      <input
+                        type="radio"
+                        name="theme-editor-kind"
+                        checked={theme.kind === kind}
+                        onChange={() => setKind(kind)}
+                      />
+                      <span>
+                        {t(kind === "dark" ? "themeEditor.kindDark" : "themeEditor.kindLight")}
+                      </span>
+                    </label>
+                  ))}
+                </span>
               </div>
             </fieldset>
 
@@ -341,6 +387,7 @@ export function ThemeEditorDialog({
               <legend>{t("themeEditor.picture")}</legend>
               <BackgroundPicker
                 backend={backend}
+                named={glass}
                 path={textOf("background.image")}
                 onChoose={(path) => change("background.image", path)}
                 onRemove={() => change("background.image", "")}
@@ -361,7 +408,15 @@ export function ThemeEditorDialog({
           </div>
 
           <div className="theme-editor-side">
-            <h3>{t("themeEditor.preview")}</h3>
+            {glass ? (
+              <div className="theme-editor-side-head">
+                <h3>{t("themeEditor.preview")}</h3>
+                {hint}
+                {contrast}
+              </div>
+            ) : (
+              <h3>{t("themeEditor.preview")}</h3>
+            )}
             <ThemePreview theme={theme} picture={picture.status === "ready" ? picture.url : null} />
             <div role="status" className="theme-editor-notes" data-nr-part="theme-editor-notes">
               {warnings.map((warning) => (

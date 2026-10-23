@@ -33,6 +33,7 @@ import { useKeybindings } from "./keybindings-store";
 import type { Density, FavoritesPlacement, SidebarSide, TabsPlacement } from "./layout";
 import { settingsModRows } from "./mod-options";
 import { useModFiles } from "./mods-store";
+import { useInterfaceStyle } from "./layout-store";
 import { commitProfileImport, readProfileFile, takenProfileIds } from "./profile-import";
 import type { ProfileImportPlan } from "./profile-import";
 import { ProfileImportDialog } from "./ProfileImportDialog";
@@ -62,6 +63,7 @@ import {
 import { CHOICE_CONTROLS, asPercent, asPixels, sliderFor } from "./settings-controls";
 import { appearancePreview, setAppearancePreview } from "./appearance-preview";
 import { useSettingsAppearance } from "./use-window";
+import { SearchField, SectionIcon, StyleCards } from "./SettingsGlass";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { ThemesPanel } from "./ThemesPanel";
 import type { ThemesSpace } from "./ThemesPanel";
@@ -111,6 +113,16 @@ const favoritesPlacementOptions = (): readonly { value: FavoritesPlacement; labe
 const interfaceStyleOptions = (): readonly { value: InterfaceStyle; label: string }[] => [
   { value: "glass", label: t("settings.styleGlass") },
   { value: "dense", label: t("settings.styleDense") },
+];
+
+/** The two styles on their cards of the glass screen: the name and a line about each. */
+const interfaceStyleCards = (): readonly {
+  value: InterfaceStyle;
+  label: string;
+  note: string;
+}[] => [
+  { value: "glass", label: t("settings.styleGlass"), note: t("settings.styleGlassNote") },
+  { value: "dense", label: t("settings.styleDense"), note: t("settings.styleDenseNote") },
 ];
 
 const densityOptions = (): readonly { value: Density; label: string }[] => [
@@ -289,6 +301,9 @@ export function SettingsDialog({
   onClose,
 }: SettingsDialogProps) {
   const t = useT();
+  // The glass style (the default) draws the screen as in the approved design: an icon on each section,
+  // the magnifier in the search, the two cards of the interface style. The dense style keeps its markup.
+  const glass = useInterfaceStyle() === "glass";
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -580,42 +595,59 @@ export function SettingsDialog({
     preset: keyPresetOptions(),
   };
 
+  // The glass screen opens Appearance with the cards of the interface style, as the design does; the dense one keeps the language first.
+  const languageRow = row(
+    "language",
+    [t("settings.language"), t("settings.language.hint"), ...labelsOf(sectionOptions.language)],
+    <Choice
+      control={CHOICE_CONTROLS.language}
+      legend={t("settings.language")}
+      field="language"
+      hint={t("settings.language.hint")}
+      name="settings-language"
+      value={shown.language}
+      options={sectionOptions.language}
+      onChange={(language) => change({ language })}
+    />,
+  );
+  const styleRow = row(
+    "style",
+    [
+      t("settings.interfaceStyle"),
+      ...labelsOf(sectionOptions.style),
+      ...(glass
+        ? [t("settings.interfaceStyleHint"), ...interfaceStyleCards().map((card) => card.note)]
+        : []),
+    ],
+    glass ? (
+      <StyleCards
+        legend={t("settings.interfaceStyle")}
+        field="appearance.style"
+        hint={t("settings.interfaceStyleHint")}
+        name="settings-style"
+        value={shown.style}
+        options={interfaceStyleCards()}
+        onChange={(style) => change({ style })}
+      />
+    ) : (
+      <Choice
+        legend={t("settings.interfaceStyle")}
+        field="appearance.style"
+        name="settings-style"
+        control={CHOICE_CONTROLS.interfaceStyle}
+        value={shown.style}
+        options={sectionOptions.style}
+        onChange={(style) => change({ style })}
+      />
+    ),
+  );
+
   const sections: SectionDef[] = [
     {
       id: "appearance",
       title: t("settings.appearance"),
       rows: [
-        row(
-          "language",
-          [
-            t("settings.language"),
-            t("settings.language.hint"),
-            ...labelsOf(sectionOptions.language),
-          ],
-          <Choice
-            control={CHOICE_CONTROLS.language}
-            legend={t("settings.language")}
-            field="language"
-            hint={t("settings.language.hint")}
-            name="settings-language"
-            value={shown.language}
-            options={sectionOptions.language}
-            onChange={(language) => change({ language })}
-          />,
-        ),
-        row(
-          "style",
-          [t("settings.interfaceStyle"), ...labelsOf(sectionOptions.style)],
-          <Choice
-            legend={t("settings.interfaceStyle")}
-            field="appearance.style"
-            name="settings-style"
-            control={CHOICE_CONTROLS.interfaceStyle}
-            value={shown.style}
-            options={sectionOptions.style}
-            onChange={(style) => change({ style })}
-          />,
-        ),
+        ...(glass ? [styleRow, languageRow] : [languageRow, styleRow]),
         row(
           "side",
           [t("settings.sidebarSide"), ...labelsOf(sectionOptions.side)],
@@ -788,7 +820,19 @@ export function SettingsDialog({
         row(
           "image",
           [t("settings.backgroundImage"), t("background.choose"), t("background.removeChosen")],
+          // Under glass the card of the picture comes first, as in the design, and the box that takes a
+          // path typed by hand is under it.
           <>
+            {glass && (
+              <BackgroundPicker
+                backend={backend}
+                path={shown.backgroundImage}
+                reading={picture}
+                named
+                onChoose={(backgroundImage) => change({ backgroundImage })}
+                onRemove={() => change({ backgroundImage: "" })}
+              />
+            )}
             <NumberBox
               label={t("settings.backgroundImage")}
               field="appearance.background.image"
@@ -798,13 +842,15 @@ export function SettingsDialog({
               wide
               onChange={(backgroundImage) => typeIn({ backgroundImage })}
             />
-            <BackgroundPicker
-              backend={backend}
-              path={shown.backgroundImage}
-              reading={picture}
-              onChoose={(backgroundImage) => change({ backgroundImage })}
-              onRemove={() => change({ backgroundImage: "" })}
-            />
+            {!glass && (
+              <BackgroundPicker
+                backend={backend}
+                path={shown.backgroundImage}
+                reading={picture}
+                onChoose={(backgroundImage) => change({ backgroundImage })}
+                onRemove={() => change({ backgroundImage: "" })}
+              />
+            )}
           </>,
         ),
         row(
@@ -1626,6 +1672,21 @@ export function SettingsDialog({
 
   const activeShown = shownIds.includes(active) ? active : shownIds[0];
 
+  const searchInput = (
+    <input
+      type="search"
+      className="settings-search"
+      data-nr-part="settings-search"
+      aria-label={t("settings.search")}
+      placeholder={t("settings.search")}
+      autoComplete="off"
+      spellCheck={false}
+      value={query}
+      onChange={(event) => setQuery(event.target.value)}
+      onKeyDown={onSearchKeyDown}
+    />
+  );
+
   return (
     <>
       <div className="dialog-backdrop" onMouseDown={onBackdropDown} onClick={onBackdropClick}>
@@ -1640,18 +1701,7 @@ export function SettingsDialog({
         >
           <div className="settings-header">
             <h2 id={titleId}>{t("settings.title")}</h2>
-            <input
-              type="search"
-              className="settings-search"
-              data-nr-part="settings-search"
-              aria-label={t("settings.search")}
-              placeholder={t("settings.search")}
-              autoComplete="off"
-              spellCheck={false}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={onSearchKeyDown}
-            />
+            {glass ? <SearchField>{searchInput}</SearchField> : searchInput}
             <button
               type="button"
               className="settings-close"
@@ -1680,7 +1730,14 @@ export function SettingsDialog({
                       tabIndex={section.id === activeShown ? 0 : -1}
                       onClick={() => goTo(section.id)}
                     >
-                      {section.title}
+                      {glass ? (
+                        <>
+                          <SectionIcon section={section.id} />
+                          <span className="settings-nav-label">{section.title}</span>
+                        </>
+                      ) : (
+                        section.title
+                      )}
                     </button>
                   </li>
                 ))}

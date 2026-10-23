@@ -431,6 +431,10 @@ export const en = {
   "settings.interfaceStyle": "Interface style",
   "settings.styleGlass": "Glass",
   "settings.styleDense": "Dense technical",
+  "settings.interfaceStyleHint":
+    "Changes the look of the whole app. Your themes and colors stay in both.",
+  "settings.styleGlassNote": "translucent, rounded corners",
+  "settings.styleDenseNote": "compact, square corners",
   "settings.density": "Density",
   "settings.comfortable": "Comfortable",
   "settings.compact": "Compact",

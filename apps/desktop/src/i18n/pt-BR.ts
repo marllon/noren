@@ -436,6 +436,10 @@ export const ptBR: Dictionary = {
   "settings.interfaceStyle": "Estilo da interface",
   "settings.styleGlass": "Vidro",
   "settings.styleDense": "Técnico denso",
+  "settings.interfaceStyleHint":
+    "Muda o desenho do app inteiro. Seus temas e cores continuam valendo nos dois.",
+  "settings.styleGlassNote": "translúcido, cantos arredondados",
+  "settings.styleDenseNote": "compacto, cantos retos",
   "settings.density": "Densidade",
   "settings.comfortable": "Confortável",
   "settings.compact": "Compacta",

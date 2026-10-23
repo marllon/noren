@@ -2,7 +2,14 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
-import { closeSettings, configSaveCount, configText, quiet, seedConfig } from "./settings-fixture";
+import {
+  closeSettings,
+  configSaveCount,
+  configText,
+  denseOf,
+  quiet,
+  seedConfig,
+} from "./settings-fixture";
 
 // The controls of the settings screen (NOR-F20-10b): every field has the right one. A yes or no is a
 // switch, a number with a range in the schema is a box with a slider beside it, a path has a button
@@ -158,10 +165,12 @@ test.describe("the switch", () => {
     expect(await pane.evaluate((element) => (element as HTMLInputElement).checked)).toBe(true);
   });
 
+  // The dense style draws the switch in the accent of the theme; the glass one in the color of the
+  // space (glass-settings.spec.ts), so the check of the classic look starts from the dense style.
   test("it is drawn as a switch: a track and a knob that moves, in the color of the theme", async ({
     page,
   }) => {
-    const screen = await start(page);
+    const screen = await start(page, { file: denseOf(fileFor("en", "dark")) });
     const pane = rowOf(screen, "appearance.paneHeaders").getByRole("switch");
     await pane.scrollIntoViewIfNeeded();
     const facts = () =>
@@ -279,10 +288,11 @@ test.describe("the slider beside a box", () => {
     ).toHaveCount(0);
   });
 
+  // In the dense style the box is at the left of the slider; the glass style has its number at the right end.
   test("the box is on the left, the slider on its right, on one line, inside the control column", async ({
     page,
   }) => {
-    const screen = await start(page);
+    const screen = await start(page, { file: denseOf(fileFor("en", "dark")) });
     for (const range of RANGES) {
       const row = rowOf(screen, range.row);
       await row.scrollIntoViewIfNeeded();
@@ -442,10 +452,11 @@ test.describe("the slider beside a box", () => {
 });
 
 test.describe("the row of buttons and the list", () => {
+  // The dense style marks the chosen button with its weight and a line under it; the glass style lights it (glass-settings.spec.ts).
   test("a choice of two or three short options is a row of buttons, drawn side by side with one marked", async ({
     page,
   }) => {
-    const screen = await start(page);
+    const screen = await start(page, { file: denseOf(fileFor("en", "dark")) });
     for (const [key, name, options] of [
       ["appearance.side", "Sidebar side", ["Left", "Right"]],
       ["appearance.tabs", "Tab position", ["In the sidebar", "On top"]],
@@ -577,7 +588,11 @@ test.describe("the row of buttons and the list", () => {
       const found = await groups.evaluateAll((all) =>
         all.map((group) => ({
           count: group.querySelectorAll('input[type="radio"]').length,
-          names: [...group.querySelectorAll("label")].map((label) => label.textContent ?? ""),
+          // A card of the interface style has its name and a line about it: the name is what counts.
+          names: [...group.querySelectorAll("label")].map(
+            (label) =>
+              label.querySelector(".settings-style-name")?.textContent ?? label.textContent ?? "",
+          ),
           overflowing: [...group.querySelectorAll("label")].filter(
             (label) => label.scrollWidth > label.clientWidth + 1,
           ).length,

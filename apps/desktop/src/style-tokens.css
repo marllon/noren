@@ -73,6 +73,18 @@
   );
   --nr-glass-blur-side: blur(30px) saturate(160%);
   --nr-glass-blur-panel: blur(24px);
+
+  /*
+   * The sheet: the settings screen is one big card over the window, a little more opaque than a panel
+   * (0.74 against 0.62 by default, as in the design) because it is all text; it follows the same
+   * control, 0.12 over the panels, and is solid from 0.88.
+   */
+  --nr-glass-sheet: color-mix(
+    in srgb,
+    var(--nr-bg) calc(min(1, var(--nr-opacity, 0.62) + 0.12) * 100%),
+    transparent
+  );
+  --nr-glass-blur-sheet: blur(28px);
 }
 
 :root[data-nr-style="dense"] {
@@ -105,6 +117,8 @@
   --nr-glass-panel: var(--nr-bg);
   --nr-glass-blur-side: none;
   --nr-glass-blur-panel: none;
+  --nr-glass-sheet: var(--nr-bg);
+  --nr-glass-blur-sheet: none;
 }
 
 /* The state colors of a light theme: darker, for the same contrast on a light surface. */
@@ -122,8 +136,10 @@
   :root[data-nr-style="glass"] {
     --nr-glass-side: var(--nr-surface);
     --nr-glass-panel: var(--nr-bg);
+    --nr-glass-sheet: var(--nr-bg);
     --nr-glass-blur-side: none;
     --nr-glass-blur-panel: none;
+    --nr-glass-blur-sheet: none;
   }
 }
 
@@ -131,6 +147,31 @@
 :root[data-nr-style="glass"][data-nr-transparency="reduced"] {
   --nr-glass-side: var(--nr-surface);
   --nr-glass-panel: var(--nr-bg);
+  --nr-glass-sheet: var(--nr-bg);
   --nr-glass-blur-side: none;
   --nr-glass-blur-panel: none;
+  --nr-glass-blur-sheet: none;
+}
+
+/*
+ * What the glass settings screen draws that is not the theme's (NOR-F20-19): the shadow of its card, and
+ * the colors of the little pictures of the two styles on the cards that choose one. The pictures are
+ * drawings of what each style looks like (the night landscape of the glass, the black and the line
+ * of the dense), so they keep their colors in every theme; they are not part of the token set of a style.
+ */
+:root {
+  --nr-sheet-shadow: 0 24px 64px rgba(4, 5, 14, 0.55);
+  --nr-sample-glass-sky: #262b5c;
+  --nr-sample-glass-ridge: #4a3474;
+  --nr-sample-glass-side: rgba(14, 15, 32, 0.45);
+  --nr-sample-glass-panel: rgba(8, 9, 20, 0.62);
+  --nr-sample-glass-line: rgba(255, 255, 255, 0.12);
+  --nr-sample-dense-bg: #0a0c0f;
+  --nr-sample-dense-bar: #0f1216;
+  --nr-sample-dense-line: #1e242c;
+  --nr-sample-dense-accent: #2ee6d6;
+}
+
+:root[data-nr-scheme="light"] {
+  --nr-sheet-shadow: 0 24px 64px rgba(20, 24, 48, 0.28);
 }

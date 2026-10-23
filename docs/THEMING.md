@@ -166,7 +166,7 @@ The style never changes the colors of the theme. The lines and the glass are wor
 
 The root element of the window carries the style as `data-nr-style="glass"` or `data-nr-style="dense"`, and the token set of that attribute (the table below) is what the stylesheet reads. Both sets have the same names, so a component never asks which style is on. The page starts as `glass` before the settings are read.
 
-The new look comes in steps. The style itself is the first (task NOR-F20-17): the attribute, the two token sets, the fonts and the switch. The surfaces of the glass window are the second (task NOR-F20-18a, below): the window behind everything, the sidebar and the panes as cards of glass, the highlight, the controls and the opaque panels. The content of the sidebar is the third (task NOR-F20-18b, [the glass sidebar](#the-glass-sidebar)) and the header of a pane with the rings and the badge of an agent is the fourth (task NOR-F20-18c, [the glass pane](#the-glass-pane)). The settings screen, the theme editor and the status bar of the dense style come in the next tasks and are built on these tokens.
+The new look comes in steps. The style itself is the first (task NOR-F20-17): the attribute, the two token sets, the fonts and the switch. The surfaces of the glass window are the second (task NOR-F20-18a, below): the window behind everything, the sidebar and the panes as cards of glass, the highlight, the controls and the opaque panels. The content of the sidebar is the third (task NOR-F20-18b, [the glass sidebar](#the-glass-sidebar)) and the header of a pane with the rings and the badge of an agent is the fourth (task NOR-F20-18c, [the glass pane](#the-glass-pane)). The settings screen is the fifth (task NOR-F20-19, [the glass settings screen](#the-glass-settings-screen)). The theme editor and the status bar of the dense style come in the next tasks and are built on these tokens.
 
 ### The fonts
 
@@ -223,6 +223,21 @@ Under the glass style (task NOR-F20-18c) a terminal pane has a header of its own
 - **The ring of an agent** (`pane-agent-ring`) is a thin line inside the card in the color of what the agent does: **waiting** is the amber of the state (`--nr-state-waiting`, solid), **working** the green (`--nr-state-running`, it pulses unless the person asked for less motion) and **idle** the muted color, faint. The ring of the pane in focus is drawn over it.
 - **Narrow panes.** The header is a container: below 300 px of header the branch and the command give way (the folder and the badge stay), below 240 px the badge keeps only its icon and the folder only its last segment, below 200 px the folder icon goes too, below 150 px only the buttons stay (24 px) and below 100 px zoom goes as well (its shortcut and the menu of the pane stay). A long folder, branch or command is cut by an ellipsis inside its own box; nothing leaves the header or reaches the buttons.
 - **Readable over any picture.** The text of the header keeps 4.5:1 over the hardest pixel a picture can have (white under a dark theme, black under a light one): the chips use the text color pulled toward the color of their state, and the end-to-end tests measure it in the pixels of the page.
+
+### The glass settings screen
+
+Under the glass style (task NOR-F20-19) the settings screen is drawn as in the approved design of it. It is still the dialog over the window it was, with the same sections, the same search and the same keys (Tab, the arrows in the column, Esc, Enter in the search); what each field writes is untouched, and everything below is drawn only under `:root[data-nr-style="glass"]`: the dense screen keeps its size (960 by 720 px), its grid of 8 px and its markup.
+
+- **The card** (`settings`): one card of glass over the window, 14 px corners (`--nr-radius-side`), the fill `--nr-glass-sheet` (the background of the theme at the opacity of the panes plus 0.12, so 74% by default: it is all text), `--nr-glass-blur-sheet` (`blur(28px)`), a line at 10% of the text color and a shadow (`--nr-sheet-shadow`). It is 1120 by 860 px at most and keeps the gap of the window (8 px) around it in a smaller one. The fill follows the transparency control of the **Window** section like the panes do, and is solid from 0.88 and under `prefers-reduced-transparency` or with the transparency effects of the system off.
+- **The header**: 60 px, the title at 18 px, the search (`settings-search-field`: a frame of 36 px and 10 px corners with a magnifier in it; the frame shows the focus ring, not the box inside) and the X at the far end. The box is the same `settings-search`.
+- **The column of sections**: 232 px, a 36 px row for each section with its icon (16 px, for the eyes only: a screen reader says the name) and the current one lit. A name that does not fit goes to a second line; it is never cut.
+- **The content**: a column of 780 px at most, a heading of 15 px for each section and rows of a label (medium weight) with its explanation under it (12 px, muted) on the left and the control on the right, in a column of 260 px, 14 px over and under each row with a line between them. The controls are the ones of the design: a **switch** of 40 by 24 px with a 20 px knob (on, its track is the highlight; it is at the right end of the column), a **row of buttons** for a choice of two or three (they sit in a track with 3 px around them, 30 px tall, the chosen one lit), a **slider** with its number at the right end of its column in the mono font (the number is still a box you can type in; it looks like plain text until the pointer or the keyboard is on it, and it shows the number in force, muted, while the file has none), **boxes and lists** of 34 px with 9 px corners, and **buttons** of 34 px with 9 px corners. What is on, chosen or focused is `--nr-highlight`, the color of the space.
+- **The cards of the interface style** (`settings-style`, `settings-style-card`): **Appearance** opens with two cards, each with a little picture of its style, a radio mark, its name and a line about it (**Glass**: translucent, rounded corners; **Dense technical**: compact, square corners). A card is a radio button: a click anywhere on it, Space and the arrows choose it, and a screen reader says the style and then the line. The pictures are drawings (the night landscape of the glass, the black and the line of the dense) and keep their colors in every theme: they are `--nr-sample-*` of `style-tokens.css`. The line the design puts under the title says the themes and colors stay in both. The dense screen has the same choice as a row of two buttons, as it had.
+- **The picture of the background** (`background-picker`): a card with the miniature (112 by 68 px), the name of the file (`background-picker-name`, cut by an ellipsis inside its box), **Choose image...** (`background-choose`, tinted with the highlight: a solid fill could not keep its text at 4.5:1 for every color of a space and every theme) and **Remove** (`background-remove`). It is above the box that takes a path typed by hand.
+- **The themes**: the cards of the gallery have 10 px corners, a name under the miniature and a line of the highlight on the one in use; what can be done with a theme (**Customize**, **Duplicate**, **Rename**, **Export**, **Delete**) stays under its card.
+- **A narrow window** gives the column of sections 168 px and the content a smaller padding below 760 px; the control column gives way to the labels (at most 55% of the content). Nothing leaves its box and nothing scrolls sideways.
+
+What the design shows and the app has no data for is left out: the size, the dimensions and the scope of the picture ("2560 x 1440 · 1.8 MB · applies to every space"), the option **Hidden** of the favorites bar, a "Use only in the space..." switch for the theme (the choice is the row of two buttons of the **Themes** section) and the **Create theme** and **Edit theme** buttons of the gallery (the editor is the **Customize** and **Edit** of each card, and has its own task). The design has ten sections; the app has fifteen, each in its own part (`settings-<section>`).
 
 ## The window: effect, opacity and background
 
@@ -384,77 +399,85 @@ Set on the root element of the page by the active theme (and the active space, f
 
 The token set of the interface style (see [the interface style](#the-interface-style-glass-and-dense)): the root element has the set of its `data-nr-style`, so these have a value whatever the theme is. A mod may read them and may set them on the root to change a style.
 
-| Variable                | Glass                                                | Dense                          | What it holds                                                                           |
-| ----------------------- | ---------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------- |
-| `--nr-font-ui`          | Geist                                                | JetBrains Mono                 | The font of the interface, with the fonts it falls back to.                             |
-| `--nr-font-mono`        | Geist Mono                                           | JetBrains Mono                 | The font of shortcuts, paths and code in the interface.                                 |
-| `--nr-font-size`        | `13px`                                               | `12px`                         | The size of the text of the interface.                                                  |
-| `--nr-font-size-small`  | `12px`                                               | `11.5px`                       | The size of secondary text.                                                             |
-| `--nr-radius-side`      | `14px`                                               | `0px`                          | The corners of the sidebar.                                                             |
-| `--nr-radius-panel`     | `12px`                                               | `0px`                          | The corners of the panels (the terminals, the dialogs).                                 |
-| `--nr-radius-control`   | `10px`                                               | `3px`                          | The corners of buttons, fields and rows.                                                |
-| `--nr-radius-chip`      | `99px`                                               | `3px`                          | The corners of small labels (the branch, the state of a command).                       |
-| `--nr-gap`              | `8px`                                                | `1px`                          | The space between the sidebar and the panels, and between panels.                       |
-| `--nr-row-height`       | `44px`                                               | `24px`                         | The height of a row of the tree of tabs.                                                |
-| `--nr-control-height`   | `32px`                                               | `22px`                         | The height of a button of a bar.                                                        |
-| `--nr-line`             | 8% of `--nr-text`                                    | `--nr-border`                  | Thin lines and the borders of cards.                                                    |
-| `--nr-line-strong`      | 14% of `--nr-text`                                   | 20% of `--nr-text` on the line | The borders of controls.                                                                |
-| `--nr-style-accent`     | `#5EE6C8`                                            | `#2EE6D6`                      | The highlight the style starts from (the accent of the theme stays `--nr-accent`).      |
-| `--nr-highlight`        | the color of the active space                        | the color of the active space  | The highlight of the window: the ring of the pane in focus, the handle that is dragged. |
-| `--nr-state-running`    | `#7EE2A8` (dark), `#1E8F5A` (light)                  | `#4ADE80` (dark), `#15803D`    | The dot of a tab with a command running.                                                |
-| `--nr-state-waiting`    | `#F5B84B` (dark), `#B7791F` (light)                  | `#FFB547` (dark), `#B45309`    | The dot of a tab that waits for you.                                                    |
-| `--nr-glass-side`       | `--nr-surface` at 0.2 less than `--nr-opacity` (42%) | `--nr-surface`                 | What the sidebar and the title bar are filled with.                                     |
-| `--nr-glass-panel`      | `--nr-bg` at `--nr-opacity` (62%)                    | `--nr-bg`                      | What the panels are filled with.                                                        |
-| `--nr-glass-blur-side`  | `blur(30px) saturate(160%)`                          | `none`                         | The backdrop filter of the sidebar.                                                     |
-| `--nr-glass-blur-panel` | `blur(24px)`                                         | `none`                         | The backdrop filter of the panels.                                                      |
+| Variable                | Glass                                                | Dense                          | What it holds                                                                              |
+| ----------------------- | ---------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `--nr-font-ui`          | Geist                                                | JetBrains Mono                 | The font of the interface, with the fonts it falls back to.                                |
+| `--nr-font-mono`        | Geist Mono                                           | JetBrains Mono                 | The font of shortcuts, paths and code in the interface.                                    |
+| `--nr-font-size`        | `13px`                                               | `12px`                         | The size of the text of the interface.                                                     |
+| `--nr-font-size-small`  | `12px`                                               | `11.5px`                       | The size of secondary text.                                                                |
+| `--nr-radius-side`      | `14px`                                               | `0px`                          | The corners of the sidebar.                                                                |
+| `--nr-radius-panel`     | `12px`                                               | `0px`                          | The corners of the panels (the terminals, the dialogs).                                    |
+| `--nr-radius-control`   | `10px`                                               | `3px`                          | The corners of buttons, fields and rows.                                                   |
+| `--nr-radius-chip`      | `99px`                                               | `3px`                          | The corners of small labels (the branch, the state of a command).                          |
+| `--nr-gap`              | `8px`                                                | `1px`                          | The space between the sidebar and the panels, and between panels.                          |
+| `--nr-row-height`       | `44px`                                               | `24px`                         | The height of a row of the tree of tabs.                                                   |
+| `--nr-control-height`   | `32px`                                               | `22px`                         | The height of a button of a bar.                                                           |
+| `--nr-line`             | 8% of `--nr-text`                                    | `--nr-border`                  | Thin lines and the borders of cards.                                                       |
+| `--nr-line-strong`      | 14% of `--nr-text`                                   | 20% of `--nr-text` on the line | The borders of controls.                                                                   |
+| `--nr-style-accent`     | `#5EE6C8`                                            | `#2EE6D6`                      | The highlight the style starts from (the accent of the theme stays `--nr-accent`).         |
+| `--nr-highlight`        | the color of the active space                        | the color of the active space  | The highlight of the window: the ring of the pane in focus, the handle that is dragged.    |
+| `--nr-state-running`    | `#7EE2A8` (dark), `#1E8F5A` (light)                  | `#4ADE80` (dark), `#15803D`    | The dot of a tab with a command running.                                                   |
+| `--nr-state-waiting`    | `#F5B84B` (dark), `#B7791F` (light)                  | `#FFB547` (dark), `#B45309`    | The dot of a tab that waits for you.                                                       |
+| `--nr-glass-side`       | `--nr-surface` at 0.2 less than `--nr-opacity` (42%) | `--nr-surface`                 | What the sidebar and the title bar are filled with.                                        |
+| `--nr-glass-panel`      | `--nr-bg` at `--nr-opacity` (62%)                    | `--nr-bg`                      | What the panels are filled with.                                                           |
+| `--nr-glass-blur-side`  | `blur(30px) saturate(160%)`                          | `none`                         | The backdrop filter of the sidebar.                                                        |
+| `--nr-glass-blur-panel` | `blur(24px)`                                         | `none`                         | The backdrop filter of the panels.                                                         |
+| `--nr-glass-sheet`      | `--nr-bg` at `--nr-opacity` plus 0.12 (74%)          | `--nr-bg`                      | What the card of the settings screen is filled with: a little more opaque, it is all text. |
+| `--nr-glass-blur-sheet` | `blur(28px)`                                         | `none`                         | The backdrop filter of the card of the settings screen.                                    |
 
 #### Parts
 
 `data-nr-part` names what an element is. `data-nr-state` (where the table gives values) says what state it is in, and is absent when the element is in none.
 
-| `data-nr-part`         | What it is                                                                                             | `data-nr-state`                                   |
-| ---------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| `sidebar`              | The sidebar.                                                                                           | `revealed` or `hidden`, only with compact mode on |
-| `space-switcher`       | The row of spaces at the foot of the sidebar.                                                          |                                                   |
-| `sidebar-head`         | The head of the glass sidebar: the brand and the button that folds it.                                 |                                                   |
-| `sidebar-brand`        | The mark and the name at the head of the glass sidebar.                                                |                                                   |
-| `sidebar-collapse`     | The button that folds the glass sidebar (compact mode), not there with the tabs on top.                |                                                   |
-| `sidebar-search`       | The button of the glass sidebar that opens the command palette.                                        |                                                   |
-| `keycap`               | The keycap of a shortcut beside a row of the glass sidebar (the search, New tab).                      |                                                   |
-| `sidebar-base`         | The foot of the docked glass sidebar: the spaces and the settings button.                              |                                                   |
-| `sidebar-settings`     | The settings button at the foot of the glass sidebar.                                                  |                                                   |
-| `space-header`         | The card of the project actions of the active space, when it has any.                                  |                                                   |
-| `item-dot`             | The state dot at the start of a tab in the glass sidebar.                                              |                                                   |
-| `item-meta`            | The second line of a tab: the folder and the branch.                                                   |                                                   |
-| `item`                 | A tab, in the sidebar or in the bar on top.                                                            | `active`                                          |
-| `item-title`           | The title inside a tab.                                                                                |                                                   |
-| `group`                | A group of tabs.                                                                                       | `expanded` or `collapsed`                         |
-| `pinned-list`          | The list of pinned tabs.                                                                               | `over` while a tab is dragged over it             |
-| `favorites`            | The bar of favorites, always on screen.                                                                | `over` while a tab is dragged over it             |
-| `favorites-hint`       | The line that says how to add a favorite, only while none is.                                          |                                                   |
-| `favorite-dot`         | The state dot on the corner of a favorite tile in the glass style, only while it is waiting or busy.   |                                                   |
-| `favorite`             | One tile of the bar: a favorite tab, a profile or an action.                                           | `active`, `running` or `unavailable`              |
-| `tabbar`               | The bar of tabs on top, when the tabs are on top.                                                      |                                                   |
-| `pane`                 | One terminal pane.                                                                                     |                                                   |
-| `pane-header`          | The header of a pane, when pane headers are on.                                                        |                                                   |
-| `pane-bar`             | The header of a terminal pane in the glass style: the folder, the branch, the command and the buttons. |                                                   |
-| `pane-folder`          | The folder in the header of a glass pane.                                                              |                                                   |
-| `pane-branch`          | The branch chip in the header of a glass pane, only while the folder is in a repository.               |                                                   |
-| `pane-command`         | The command chip in the header of a glass pane, only after the shell told a command.                   | `running`, `done` or `failed`                     |
-| `pane-agent-badge`     | The amber badge "Agent waiting for you" in the header of a glass pane, only while one waits.           |                                                   |
-| `pane-bar-actions`     | The buttons at the right end of the header of a glass pane.                                            |                                                   |
-| `pane-bar-split-right` | The Split right button of a glass pane.                                                                |                                                   |
-| `pane-bar-split-down`  | The Split down button of a glass pane.                                                                 |                                                   |
-| `pane-bar-zoom`        | The Zoom pane or Restore pane button of a glass pane, only in a tab with more than one pane.           |                                                   |
-| `palette`              | The command palette.                                                                                   |                                                   |
-| `library`              | The library of archived and closed tabs.                                                               |                                                   |
-| `library-row`          | One tab of the library.                                                                                | `selected`                                        |
-| `peek`                 | The peek of a tab: its last lines in a popover beside it.                                              |                                                   |
-| `settings`             | The settings screen.                                                                                   |                                                   |
-| `glass-backdrop`       | The illustrated backdrop of the glass window, only while no picture and no system effect is behind it. |                                                   |
-| `background`           | The picture behind the terminals, only while one is on screen.                                         |                                                   |
-| `background-backing`   | What the picture is drawn on, only while a picture shows.                                              |                                                   |
-| `background-veil`      | The veil over the picture, only while a picture shows.                                                 |                                                   |
+| `data-nr-part`           | What it is                                                                                             | `data-nr-state`                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| `sidebar`                | The sidebar.                                                                                           | `revealed` or `hidden`, only with compact mode on |
+| `space-switcher`         | The row of spaces at the foot of the sidebar.                                                          |                                                   |
+| `sidebar-head`           | The head of the glass sidebar: the brand and the button that folds it.                                 |                                                   |
+| `sidebar-brand`          | The mark and the name at the head of the glass sidebar.                                                |                                                   |
+| `sidebar-collapse`       | The button that folds the glass sidebar (compact mode), not there with the tabs on top.                |                                                   |
+| `sidebar-search`         | The button of the glass sidebar that opens the command palette.                                        |                                                   |
+| `keycap`                 | The keycap of a shortcut beside a row of the glass sidebar (the search, New tab).                      |                                                   |
+| `sidebar-base`           | The foot of the docked glass sidebar: the spaces and the settings button.                              |                                                   |
+| `sidebar-settings`       | The settings button at the foot of the glass sidebar.                                                  |                                                   |
+| `space-header`           | The card of the project actions of the active space, when it has any.                                  |                                                   |
+| `item-dot`               | The state dot at the start of a tab in the glass sidebar.                                              |                                                   |
+| `item-meta`              | The second line of a tab: the folder and the branch.                                                   |                                                   |
+| `item`                   | A tab, in the sidebar or in the bar on top.                                                            | `active`                                          |
+| `item-title`             | The title inside a tab.                                                                                |                                                   |
+| `group`                  | A group of tabs.                                                                                       | `expanded` or `collapsed`                         |
+| `pinned-list`            | The list of pinned tabs.                                                                               | `over` while a tab is dragged over it             |
+| `favorites`              | The bar of favorites, always on screen.                                                                | `over` while a tab is dragged over it             |
+| `favorites-hint`         | The line that says how to add a favorite, only while none is.                                          |                                                   |
+| `favorite-dot`           | The state dot on the corner of a favorite tile in the glass style, only while it is waiting or busy.   |                                                   |
+| `favorite`               | One tile of the bar: a favorite tab, a profile or an action.                                           | `active`, `running` or `unavailable`              |
+| `tabbar`                 | The bar of tabs on top, when the tabs are on top.                                                      |                                                   |
+| `pane`                   | One terminal pane.                                                                                     |                                                   |
+| `pane-header`            | The header of a pane, when pane headers are on.                                                        |                                                   |
+| `pane-bar`               | The header of a terminal pane in the glass style: the folder, the branch, the command and the buttons. |                                                   |
+| `pane-folder`            | The folder in the header of a glass pane.                                                              |                                                   |
+| `pane-branch`            | The branch chip in the header of a glass pane, only while the folder is in a repository.               |                                                   |
+| `pane-command`           | The command chip in the header of a glass pane, only after the shell told a command.                   | `running`, `done` or `failed`                     |
+| `pane-agent-badge`       | The amber badge "Agent waiting for you" in the header of a glass pane, only while one waits.           |                                                   |
+| `pane-bar-actions`       | The buttons at the right end of the header of a glass pane.                                            |                                                   |
+| `pane-bar-split-right`   | The Split right button of a glass pane.                                                                |                                                   |
+| `pane-bar-split-down`    | The Split down button of a glass pane.                                                                 |                                                   |
+| `pane-bar-zoom`          | The Zoom pane or Restore pane button of a glass pane, only in a tab with more than one pane.           |                                                   |
+| `palette`                | The command palette.                                                                                   |                                                   |
+| `library`                | The library of archived and closed tabs.                                                               |                                                   |
+| `library-row`            | One tab of the library.                                                                                | `selected`                                        |
+| `peek`                   | The peek of a tab: its last lines in a popover beside it.                                              |                                                   |
+| `settings`               | The settings screen.                                                                                   |                                                   |
+| `settings-search-field`  | The frame of the search of the glass settings screen: the magnifier and the search box.                |                                                   |
+| `settings-style`         | The two cards that choose the interface style in the glass settings screen.                            |                                                   |
+| `settings-style-card`    | One card of the interface style, with its picture, its name and its line.                              |                                                   |
+| `background-picker-name` | The name of the picture of the background in the card of the glass settings screen.                    |                                                   |
+| `background-choose`      | The button that opens the file chooser for the picture of the background.                              |                                                   |
+| `background-remove`      | The button that takes the picture of the background away.                                              |                                                   |
+| `glass-backdrop`         | The illustrated backdrop of the glass window, only while no picture and no system effect is behind it. |                                                   |
+| `background`             | The picture behind the terminals, only while one is on screen.                                         |                                                   |
+| `background-backing`     | What the picture is drawn on, only while a picture shows.                                              |                                                   |
+| `background-veil`        | The veil over the picture, only while a picture shows.                                                 |                                                   |
 
 #### Other attributes
 

@@ -197,14 +197,18 @@ describe("style-tokens.css", () => {
     const inner = declarations(block(tokensCss.slice(media), SELECTOR("glass")));
     expect([...inner.keys()].sort()).toEqual([
       "--nr-glass-blur-panel",
+      "--nr-glass-blur-sheet",
       "--nr-glass-blur-side",
       "--nr-glass-panel",
+      "--nr-glass-sheet",
       "--nr-glass-side",
     ]);
     expect(inner.get("--nr-glass-side")).toBe("var(--nr-surface)");
     expect(inner.get("--nr-glass-panel")).toBe("var(--nr-bg)");
+    expect(inner.get("--nr-glass-sheet")).toBe("var(--nr-bg)");
     expect(inner.get("--nr-glass-blur-side")).toBe("none");
     expect(inner.get("--nr-glass-blur-panel")).toBe("none");
+    expect(inner.get("--nr-glass-blur-sheet")).toBe("none");
     // Dense is solid already: nothing to override there.
     expect(tokensCss.slice(media)).not.toContain(SELECTOR("dense"));
   });
@@ -384,7 +388,7 @@ describe("the glass surfaces (NOR-F20-18a)", () => {
       block(tokensCss, `${SELECTOR("glass")}[data-nr-transparency="reduced"]`),
     );
     expect([...fromSwitch.entries()].sort()).toEqual([...fromMedia.entries()].sort());
-    expect(fromSwitch.size).toBe(4);
+    expect(fromSwitch.size).toBe(6);
   });
 
   it("keeps the backdrop of the design for a dark theme, and every color of the pale one light enough to read on", () => {

@@ -14,6 +14,8 @@ interface BackgroundPickerProps {
    * reads the path itself.
    */
   reading?: ThumbnailState;
+  /** Say the name of the file between the preview and the buttons (the glass settings screen does). */
+  named?: boolean;
   /** The person chose a file in the chooser of the system. */
   onChoose(path: string): void;
   /** The person took away the picture the preview shows. */
@@ -30,10 +32,17 @@ export function BackgroundPicker({
   backend,
   path,
   reading,
+  named = false,
   onChoose,
   onRemove,
 }: BackgroundPickerProps) {
   const t = useT();
+  // The last part of the path, which is what the person knows the picture by.
+  const fileName =
+    path
+      .split(/[\\/]/)
+      .filter((part) => part !== "")
+      .pop() ?? "";
   const own = useBackgroundThumbnail(backend, reading === undefined ? path : "");
   const preview = reading ?? own;
   const [opening, setOpening] = useState(false);
@@ -73,13 +82,29 @@ export function BackgroundPicker({
           </span>
         )}
       </div>
+      {named && (
+        <div
+          className="background-picker-info"
+          data-nr-part="background-picker-name"
+          title={path === "" ? undefined : path}
+        >
+          {fileName}
+        </div>
+      )}
       <div className="background-picker-buttons">
-        <button type="button" className="settings-link" disabled={opening} onClick={choose}>
+        <button
+          type="button"
+          className="settings-link"
+          data-nr-part="background-choose"
+          disabled={opening}
+          onClick={choose}
+        >
           {t("background.choose")}
         </button>
         <button
           type="button"
           className="settings-link"
+          data-nr-part="background-remove"
           disabled={path.trim() === ""}
           onClick={onRemove}
         >

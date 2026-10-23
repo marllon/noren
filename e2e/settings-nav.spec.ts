@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
-import { WEB_CONFIG_KEY, closeSettings, seedConfig } from "./settings-fixture";
+import { WEB_CONFIG_KEY, closeSettings, denseOf, seedConfig } from "./settings-fixture";
 
 // The settings screen of NOR-F20-10a: a column of sections on the left, a search on top that keeps
 // the sections and the rows that have its words, and one column of rows (label and explanation on
@@ -531,8 +531,10 @@ test.describe("the grid", () => {
   }) => {
     // Two mods (one on, with its order buttons) and an SSH profile put the rows of the lists and of the
     // frames that reach into the padding on screen, besides the form of a provider that is always there.
+    // Controls that start at one line are the dense style's; the glass screen puts its switches and its
+    // numbers at the right end of the column and has its own check (glass-settings.spec.ts).
     const screen = await start(page, {
-      file: '{ "appearance": { "theme": "noren-dusk" }, "mods": ["quiet.css"] }\n',
+      file: denseOf('{ "appearance": { "theme": "noren-dusk" }, "mods": ["quiet.css"] }\n'),
       mods: { "quiet.css": "body {}", "loud.css": "body {}" },
     });
     await expect(screen.locator('[data-nr-part="settings-mod"]')).toHaveCount(2);
@@ -546,8 +548,9 @@ test.describe("the grid", () => {
     expect((found.controls[0] ?? 0) - (found.labels[0] ?? 0)).toBeGreaterThanOrEqual(240);
   });
 
+  // The grid of 8 px is the dense style's; the glass screen follows the design (glass-settings.spec.ts).
   test("every size of the layout is a multiple of 8 px", async ({ page }) => {
-    const screen = await start(page);
+    const screen = await start(page, { file: denseOf(fileFor("en", "dark")) });
     const sizes = await screen.evaluate((root) => {
       const px = (value: string): number => Number.parseFloat(value);
       const one = (selector: string): Element => {

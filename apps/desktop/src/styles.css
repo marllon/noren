@@ -6550,3 +6550,753 @@ ul.settings-models {
     display: none;
   }
 }
+
+/*
+ * The glass settings screen (NOR-F20-19, D23), as in the approved design (vidro-configuracoes). Under
+ * data-nr-style="glass" (the default style) the screen is one big card over the window, like the
+ * sidebar and the panes are: the glass of the sheet (--nr-glass-sheet, a little more opaque than a pane
+ * because it is all text, and blur(28px)), 14px corners, a line at 10%, and a header of 60px with the
+ * title, the search with its magnifier and the X. The column of sections has an icon on each and the
+ * current one lit; the content is a column of 780px at most, a heading of 15px for each section and rows
+ * of a label with its explanation on the left and the control on the right, 260px wide, with a line
+ * between them. The controls are the ones of the design: a switch of 40 by 24, a row of buttons in a
+ * track for a choice of two or three, a slider with its number in the mono type, boxes and lists of 34px
+ * and 9px corners, the buttons of 34px, and the highlight (the color of the space) for what is on, what
+ * is chosen and what has the focus. The dense style keeps every rule above: nothing here applies to it.
+ * What each field writes, the search and the keyboard are not touched; only what is drawn.
+ */
+:root[data-nr-style="glass"] .dialog-backdrop:has(> .settings-dialog) {
+  background: color-mix(in srgb, var(--nr-bg) 35%, transparent);
+}
+
+:root[data-nr-style="glass"] .space-dialog.settings-dialog {
+  --settings-nav: 232px;
+  --settings-control: 260px;
+  --settings-gap: 16px;
+  --settings-line: color-mix(in srgb, var(--nr-text) 7%, transparent);
+  --settings-line-soft: color-mix(in srgb, var(--nr-text) 6%, transparent);
+  --settings-field: color-mix(in srgb, var(--nr-text) 6%, transparent);
+  --settings-field-line: color-mix(in srgb, var(--nr-text) 14%, transparent);
+  --settings-lit: color-mix(in srgb, var(--nr-text) 11%, transparent);
+  width: min(1120px, calc(100% - var(--nr-gap) * 2));
+  height: min(860px, calc(100% - var(--nr-gap) * 2));
+  border: 1px solid color-mix(in srgb, var(--nr-text) 10%, transparent);
+  border-radius: var(--nr-radius-side);
+  background: var(--nr-glass-sheet);
+  box-shadow: var(--nr-sheet-shadow);
+  backdrop-filter: var(--nr-glass-blur-sheet);
+}
+
+/* The header: the title, the search (the box has its magnifier inside its frame) and the X at the far end. */
+:root[data-nr-style="glass"] .settings-header {
+  justify-content: flex-start;
+  gap: 16px;
+  box-sizing: border-box;
+  height: 60px;
+  padding: 0 12px 0 24px;
+  border-bottom-color: var(--settings-line);
+}
+
+:root[data-nr-style="glass"] .settings-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+:root[data-nr-style="glass"] .settings-search-field {
+  display: flex;
+  flex: 0 1 420px;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--nr-text) 10%, transparent);
+  border-radius: var(--nr-radius-control);
+  background: var(--settings-field);
+  color: var(--nr-muted);
+}
+
+:root[data-nr-style="glass"] .settings-search-field svg {
+  flex: none;
+}
+
+:root[data-nr-style="glass"] .settings-search-field:focus-within {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 1px;
+}
+
+:root[data-nr-style="glass"] .settings-search-field .settings-search {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--nr-text);
+}
+
+:root[data-nr-style="glass"] .settings-search-field .settings-search::placeholder {
+  color: var(--nr-muted);
+  opacity: 1;
+}
+
+:root[data-nr-style="glass"] .settings-close {
+  width: 36px;
+  height: 36px;
+  margin-left: auto;
+  border-radius: 9px;
+}
+
+:root[data-nr-style="glass"] .settings-close:focus-visible,
+:root[data-nr-style="glass"] .settings-nav-item:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+}
+
+/* The column of sections: an icon and the name, the current one is a lit row. */
+:root[data-nr-style="glass"] .settings-nav {
+  padding: 16px 12px;
+  border-right-color: var(--settings-line-soft);
+}
+
+:root[data-nr-style="glass"] .settings-nav ul {
+  gap: 2px;
+}
+
+:root[data-nr-style="glass"] .settings-nav-item {
+  gap: 10px;
+  height: auto;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 9px;
+}
+
+:root[data-nr-style="glass"] .settings-nav-item:hover {
+  background: var(--settings-field);
+}
+
+:root[data-nr-style="glass"] .settings-nav-item[aria-current="true"] {
+  background: var(--settings-lit);
+  box-shadow: none;
+  font-weight: 500;
+}
+
+:root[data-nr-style="glass"] .settings-nav-item:focus-visible {
+  outline-offset: -2px;
+}
+
+:root[data-nr-style="glass"] .settings-nav-icon {
+  flex: none;
+}
+
+/* A name that does not fit the column goes to a second line: a section is never cut, whatever the language or the width. */
+:root[data-nr-style="glass"] .settings-nav-label {
+  min-width: 0;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+/* The content: sections in a column of at most 780px, a heading of 15px over their rows. */
+:root[data-nr-style="glass"] .settings-content {
+  padding: 24px 32px 40px;
+}
+
+:root[data-nr-style="glass"] .settings-sections {
+  gap: 28px;
+  max-width: 780px;
+}
+
+:root[data-nr-style="glass"] .settings-section {
+  gap: 4px;
+}
+
+:root[data-nr-style="glass"] .settings-section h3 {
+  font-size: 15px;
+  line-height: 20px;
+}
+
+:root[data-nr-style="glass"] .settings-row {
+  gap: 12px;
+  padding: 14px 0;
+  border-top-color: var(--settings-line-soft);
+}
+
+:root[data-nr-style="glass"] .settings-footer {
+  padding: 12px 24px;
+  border-top-color: var(--settings-line);
+}
+
+:root[data-nr-style="glass"] .settings-autosave {
+  line-height: 16px;
+}
+
+/* A row: the label in the weight of the design, its explanation under it (the base of the rows is the grid above). */
+:root[data-nr-style="glass"] .settings-content .settings-number,
+:root[data-nr-style="glass"] .settings-content .settings-choice,
+:root[data-nr-style="glass"] .settings-content .settings-toggle,
+:root[data-nr-style="glass"] .settings-content .settings-action {
+  gap: 2px var(--settings-gap);
+  align-items: center;
+}
+
+:root[data-nr-style="glass"] .settings-content .settings-number > .settings-option > span,
+:root[data-nr-style="glass"] .settings-content .settings-number > .settings-option > label,
+:root[data-nr-style="glass"] .settings-content .settings-toggle > .settings-option > span,
+:root[data-nr-style="glass"] .settings-content .settings-choice-head > .settings-label {
+  font-weight: 500;
+}
+
+:root[data-nr-style="glass"] .settings-content .settings-explain {
+  line-height: 16px;
+}
+
+/* Boxes, lists and the text areas: 34px, 9px corners, a veil of the text color for the fill. */
+:root[data-nr-style="glass"] .settings-content .settings-number > .settings-option > input,
+:root[data-nr-style="glass"] .settings-content .settings-number > .settings-option > select,
+:root[data-nr-style="glass"] .settings-content .settings-number > .settings-option > textarea {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--settings-field-line);
+  border-radius: 9px;
+  background: var(--settings-field);
+}
+
+:root[data-nr-style="glass"] .settings-content .settings-number > .settings-option > textarea {
+  height: 64px;
+  padding: 8px 10px;
+}
+
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-number
+  > .settings-option
+  > input[aria-invalid="true"],
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-number
+  > .settings-option
+  > select[aria-invalid="true"],
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-number
+  > .settings-option
+  > textarea[aria-invalid="true"] {
+  border-color: var(--nr-highlight);
+}
+
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-number
+  > .settings-option
+  > input:focus-visible,
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-number
+  > .settings-option
+  > select:focus-visible,
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-number
+  > .settings-option
+  > textarea:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 1px;
+}
+
+/*
+ * A number with a range: the slider takes the control column and its number, in the mono type, stands
+ * at the right end of it. The number is still a box (a number typed by hand is how the file is edited),
+ * drawn as plain text until the pointer or the keyboard is on it.
+ */
+:root[data-nr-style="glass"] .settings-content .settings-number > .settings-slider {
+  --settings-track: color-mix(in srgb, var(--nr-text) 22%, transparent);
+  appearance: none;
+  justify-self: start;
+  width: calc(100% - 56px);
+  height: 16px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* The track is filled with the highlight up to the handle (the page says how far in --nr-slider-fill, 0 to 1); the handle is 16px, the width the browser gives one, so a click lands on the same value. */
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-number
+  > .settings-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 99px;
+  background: linear-gradient(
+    to right,
+    var(--nr-highlight) calc(8px + (100% - 16px) * var(--nr-slider-fill, 0)),
+    var(--settings-track) 0
+  );
+}
+
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-number
+  > .settings-slider::-webkit-slider-thumb {
+  appearance: none;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border: 2px solid var(--nr-bg);
+  border-radius: 50%;
+  background: var(--nr-highlight);
+}
+
+:root[data-nr-style="glass"] .settings-content .settings-number > .settings-slider:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 4px;
+}
+
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input {
+  justify-self: end;
+  width: 48px;
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  font-family: var(--nr-font-mono);
+  text-align: right;
+}
+
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input:hover,
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input:focus-visible {
+  border-color: var(--settings-field-line);
+  background: var(--settings-field);
+}
+
+/* A number the settings do not hold yet shows the one in force, in the muted color: readable, and still not a number typed. */
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-number
+  > .settings-option
+  > input::placeholder {
+  color: var(--nr-muted);
+  opacity: 1;
+}
+
+/* The switch: 40 by 24, a knob of 20; on, the track is the highlight. It sits at the right end of the control column (in the row of a mod the order buttons are there, so the switch stays at the left). */
+:root[data-nr-style="glass"] .settings-content .settings-toggle > .settings-option > input {
+  justify-self: end;
+}
+
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-mod
+  .settings-toggle
+  > .settings-option
+  > input {
+  justify-self: start;
+}
+
+:root[data-nr-style="glass"] .settings-dialog .settings-switch {
+  width: 40px;
+  height: 24px;
+  border: 0;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--nr-text) 16%, transparent);
+}
+
+:root[data-nr-style="glass"] .settings-dialog .settings-switch::after {
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: var(--nr-text);
+}
+
+:root[data-nr-style="glass"] .settings-dialog .settings-switch:checked {
+  background: var(--nr-highlight);
+}
+
+:root[data-nr-style="glass"] .settings-dialog .settings-switch:checked::after {
+  background: var(--nr-bg);
+  transform: translateX(16px);
+}
+
+:root[data-nr-style="glass"] .settings-dialog .settings-switch:focus-visible {
+  outline-color: var(--nr-highlight);
+}
+
+/* A choice of two or three: the options sit in a track (3px of room around them), the chosen one is lit. */
+:root[data-nr-style="glass"] .settings-content .settings-choices.settings-segmented {
+  height: auto;
+  padding: 3px;
+  border: 0;
+  border-radius: var(--nr-radius-control);
+  background: var(--settings-field);
+}
+
+:root[data-nr-style="glass"] .settings-content .settings-segmented > .settings-option {
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+}
+
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-segmented
+  > .settings-option
+  + .settings-option {
+  border-left: 0;
+}
+
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-segmented
+  > .settings-option:has(input:checked) {
+  background: color-mix(in srgb, var(--nr-text) 14%, transparent);
+  box-shadow: none;
+  font-weight: 500;
+}
+
+:root[data-nr-style="glass"]
+  .settings-content
+  .settings-segmented
+  > .settings-option:has(input:focus-visible) {
+  outline-color: var(--nr-highlight);
+}
+
+/* The buttons: 34px, 9px corners, a line; the one that chooses a picture is tinted with the highlight (a solid fill could not keep its text at 4.5:1 for every color of a space and every theme). */
+:root[data-nr-style="glass"] .settings-dialog .settings-link {
+  box-sizing: border-box;
+  min-height: 34px;
+  padding: 0 14px;
+  border-color: var(--settings-field-line);
+  border-radius: 9px;
+  text-align: center;
+}
+
+:root[data-nr-style="glass"] .settings-dialog .settings-link:hover:not(:disabled) {
+  background: var(--settings-field);
+}
+
+:root[data-nr-style="glass"] .settings-dialog .settings-link:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 1px;
+}
+
+:root[data-nr-style="glass"] .settings-dialog .settings-link:disabled {
+  color: var(--nr-muted);
+  cursor: default;
+}
+
+:root[data-nr-style="glass"] .settings-dialog .settings-link[data-nr-part="background-choose"] {
+  border-color: var(--nr-highlight);
+  background: color-mix(in srgb, var(--nr-highlight) 26%, var(--nr-bg));
+  font-weight: 600;
+}
+
+:root[data-nr-style="glass"]
+  .settings-dialog
+  .settings-link[data-nr-part="background-choose"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--nr-highlight) 36%, var(--nr-bg));
+}
+
+/* The picture of the background: a card with the miniature, the name of the file and the two buttons. */
+:root[data-nr-style="glass"] .settings-content .background-picker {
+  flex-wrap: wrap;
+  align-self: stretch;
+  gap: 14px;
+  box-sizing: border-box;
+  width: auto;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--nr-text) 8%, transparent);
+  border-radius: var(--nr-radius-panel);
+  background: color-mix(in srgb, var(--nr-text) 5%, transparent);
+}
+
+:root[data-nr-style="glass"] .settings-content .background-thumb {
+  width: 112px;
+  height: 68px;
+  border: 0;
+  border-radius: 8px;
+}
+
+:root[data-nr-style="glass"] .settings-content .background-picker-info {
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-nr-style="glass"] .settings-content .background-picker-buttons {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The two cards that choose the interface style, each with a little picture of its style (drawings: they keep their colors in every theme). */
+:root[data-nr-style="glass"] .settings-style {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: 12px;
+  min-width: 0;
+}
+
+:root[data-nr-style="glass"] .settings-style-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+:root[data-nr-style="glass"] .settings-style-head .settings-label {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+:root[data-nr-style="glass"] .settings-style-head .settings-explain {
+  font-size: 12.5px;
+}
+
+:root[data-nr-style="glass"] .settings-style-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+:root[data-nr-style="glass"] .settings-style-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  border: 1.5px solid color-mix(in srgb, var(--nr-text) 12%, transparent);
+  border-radius: var(--nr-radius-panel);
+  background: color-mix(in srgb, var(--nr-text) 3%, transparent);
+  cursor: pointer;
+}
+
+:root[data-nr-style="glass"] .settings-style-card:has(input:checked) {
+  border-color: var(--nr-highlight);
+  background: var(--settings-field);
+}
+
+:root[data-nr-style="glass"] .settings-style-card:has(input:focus-visible) {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 2px;
+}
+
+:root[data-nr-style="glass"] .settings-style-card > input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+
+:root[data-nr-style="glass"] .settings-style-thumb {
+  position: relative;
+  display: block;
+  height: 120px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--nr-sample-glass-sky);
+}
+
+:root[data-nr-style="glass"] .settings-style-thumb[data-nr-thumb="dense"] {
+  box-sizing: border-box;
+  border: 1px solid var(--nr-sample-dense-line);
+  border-radius: 4px;
+  background: var(--nr-sample-dense-bg);
+}
+
+:root[data-nr-style="glass"] .settings-style-ridge {
+  position: absolute;
+  inset: auto 0 0;
+  height: 60%;
+  background: var(--nr-sample-glass-ridge);
+  clip-path: polygon(0 40%, 20% 20%, 40% 50%, 60% 25%, 80% 55%, 100% 30%, 100% 100%, 0 100%);
+}
+
+:root[data-nr-style="glass"] .settings-style-side,
+:root[data-nr-style="glass"] .settings-style-main {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  border: 1px solid var(--nr-sample-glass-line);
+  border-radius: 6px;
+}
+
+:root[data-nr-style="glass"] .settings-style-side {
+  left: 6px;
+  width: 28%;
+  background: var(--nr-sample-glass-side);
+}
+
+:root[data-nr-style="glass"] .settings-style-main {
+  right: 6px;
+  left: calc(28% + 12px);
+  background: var(--nr-sample-glass-panel);
+}
+
+:root[data-nr-style="glass"] .settings-style-bar {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 12px;
+  border-bottom: 1px solid var(--nr-sample-dense-line);
+  background: var(--nr-sample-dense-bar);
+}
+
+:root[data-nr-style="glass"] .settings-style-rail {
+  position: absolute;
+  top: 12px;
+  bottom: 10px;
+  left: 0;
+  width: 26%;
+  border-right: 1px solid var(--nr-sample-dense-line);
+  background: var(--nr-sample-dense-bar);
+}
+
+:root[data-nr-style="glass"] .settings-style-grid {
+  position: absolute;
+  inset: 12px 0 10px 26%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--nr-sample-dense-line);
+}
+
+:root[data-nr-style="glass"] .settings-style-grid > span {
+  background: var(--nr-sample-dense-bg);
+}
+
+:root[data-nr-style="glass"] .settings-style-status {
+  position: absolute;
+  inset: auto 0 0;
+  height: 10px;
+  background: var(--nr-sample-dense-accent);
+}
+
+:root[data-nr-style="glass"] .settings-style-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+:root[data-nr-style="glass"] .settings-style-mark {
+  flex: none;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--nr-muted);
+  border-radius: 50%;
+}
+
+:root[data-nr-style="glass"] .settings-style-card:has(input:checked) .settings-style-mark {
+  border: 5px solid var(--nr-highlight);
+}
+
+:root[data-nr-style="glass"] .settings-style-name {
+  font-weight: 600;
+}
+
+:root[data-nr-style="glass"] .settings-style-note {
+  min-width: 0;
+  color: var(--nr-muted);
+  font-size: 12px;
+}
+
+/* The gallery of themes: cards of 10px corners, the one in use ringed with the highlight, the name under the miniature. */
+:root[data-nr-style="glass"] .settings-content .theme-gallery {
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 10px;
+}
+
+:root[data-nr-style="glass"] .settings-content .theme-pick {
+  gap: 8px;
+  padding: 6px;
+  border: 1.5px solid transparent;
+  border-radius: var(--nr-radius-control);
+  font-size: 12px;
+  text-align: center;
+}
+
+:root[data-nr-style="glass"] .settings-content .theme-pick[aria-pressed="true"] {
+  border-color: var(--nr-highlight);
+  box-shadow: none;
+}
+
+:root[data-nr-style="glass"] .settings-content .theme-pick:focus-visible {
+  outline-color: var(--nr-highlight);
+}
+
+:root[data-nr-style="glass"] .settings-content .theme-thumb {
+  aspect-ratio: auto;
+  height: 54px;
+  border: 0;
+  border-radius: 6px;
+}
+
+:root[data-nr-style="glass"] .settings-content .theme-name {
+  font-weight: 400;
+}
+
+:root[data-nr-style="glass"] .settings-content .theme-meta {
+  font-size: 11.5px;
+}
+
+:root[data-nr-style="glass"] .settings-content .theme-tag {
+  border-color: var(--nr-highlight);
+  border-radius: var(--nr-radius-chip);
+}
+
+:root[data-nr-style="glass"] .settings-content .theme-actions .settings-link {
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+/* The boxes of a profile and of a provider: a card with a line, as the picture of the background is. */
+:root[data-nr-style="glass"] .settings-content .settings-profile {
+  border-color: var(--settings-line);
+  border-radius: var(--nr-radius-panel);
+  background: color-mix(in srgb, var(--nr-text) 4%, transparent);
+}
+
+/* A narrow window: the column of sections gets thinner and the content gives up some of its room. */
+@media (max-width: 760px) {
+  :root[data-nr-style="glass"] .space-dialog.settings-dialog {
+    --settings-nav: 168px;
+  }
+
+  :root[data-nr-style="glass"] .settings-header {
+    gap: 8px;
+    padding-left: 16px;
+  }
+
+  :root[data-nr-style="glass"] .settings-content {
+    padding: 16px 20px 32px;
+  }
+}

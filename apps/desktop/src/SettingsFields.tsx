@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { Backend, PathKind } from "@noren/model";
 import { useT } from "./i18n";
 import { fieldDescription } from "./i18n/names";
@@ -63,16 +63,20 @@ export function Slider({
 }: SliderSpec & {
   onChange(value: number): void;
 }) {
+  const shown = Math.min(max, Math.max(min, value));
+  // How far the handle is, 0 to 1: the glass style fills its track up to it.
+  const fill = max > min ? (shown - min) / (max - min) : 0;
   return (
     <input
       type="range"
       className="settings-slider"
+      style={{ "--nr-slider-fill": fill } as CSSProperties}
       aria-label={label}
       aria-valuetext={valueText}
       min={min}
       max={max}
       step={step}
-      value={Math.min(max, Math.max(min, value))}
+      value={shown}
       onChange={(event) => onChange(event.target.valueAsNumber)}
     />
   );

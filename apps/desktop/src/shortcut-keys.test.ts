@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Keybindings } from "./keybindings";
 import { DEFAULT_KEYBINDINGS } from "./keybindings";
-import { ariaShortcutOf, chordOfAction, keycapOf } from "./shortcut-keys";
+import { ariaShortcutOf, chordOfAction, denseKeysOf, keycapOf } from "./shortcut-keys";
 
 // The keycap of a shortcut in the glass sidebar (the short form of the design: `Ctrl ⇧ P`), the same
 // chord as a value for aria-keyshortcuts, and the chord an action has once the preset and the
@@ -54,5 +54,18 @@ describe("chordOfAction", () => {
 
   it("is nothing for an action that is not in the registry", () => {
     expect(chordOfAction(DEFAULT_KEYBINDINGS, "no.such.action")).toBeUndefined();
+  });
+});
+
+describe("denseKeysOf", () => {
+  it("writes the chord the way the dense window does: lower case, a plus between the keys, Shift as its glyph", () => {
+    expect(denseKeysOf("Ctrl+Shift+KeyP")).toBe("ctrl+⇧+p");
+    expect(denseKeysOf("Ctrl+Shift+KeyT")).toBe("ctrl+⇧+t");
+    expect(denseKeysOf("Ctrl+Comma")).toBe("ctrl+,");
+    expect(denseKeysOf("Ctrl+Alt+Digit1")).toBe("ctrl+alt+1");
+  });
+
+  it("keeps a key with no modifier as it is", () => {
+    expect(denseKeysOf("F11")).toBe("f11");
   });
 });

@@ -15,6 +15,11 @@ export const SPACE_COLORS: readonly { name: string; value: string }[] = [
   { name: "Lilac", value: "#a99bff" },
   { name: "Gold", value: "#f5b84b" },
   { name: "Blush", value: "#ff8fa3" },
+  // The four highlight colors of the dense design.
+  { name: "Cyan", value: "#2ee6d6" },
+  { name: "Lime", value: "#b4ff39" },
+  { name: "Apricot", value: "#ffb547" },
+  { name: "Fuchsia", value: "#ff5ca8" },
 ];
 
 /** Lucide icons the new-space dialog offers (their kebab-case names); the first is the default. */

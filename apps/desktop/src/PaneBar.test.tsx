@@ -188,3 +188,99 @@ describe("PaneBar buttons", () => {
     expect(html).toContain('aria-label="Ampliar painel"');
   });
 });
+
+// The header of the dense style (NOR-F20-21a): the number of the pane, what runs, the folder, how it is,
+// the badge and the buttons, with a close button for a tab of several panes.
+describe("PaneBar under the dense style", () => {
+  const dense = (info: PaneBarInfo, extra: Partial<Parameters<typeof PaneBar>[0]> = {}): string =>
+    bar(info, { dense: true, number: 1, ...extra });
+
+  it("is told apart from the glass header and has none of its parts", () => {
+    const html = dense({ folder: "~/site/api", cwd: "/home/ada/site/api", branch: "main" });
+    expect(html).toContain('data-nr-style="dense"');
+    expect(html).not.toContain("pane-bar-chip");
+    expect(html).not.toContain("pane-bar-head");
+    expect(html).not.toContain("pane-branch");
+    // The glass one is not told apart that way.
+    expect(bar({ folder: "~/site/api" })).not.toContain('data-nr-style="dense"');
+  });
+
+  it("leads with the number of the pane, for the eyes, and writes the folder whole with the full path as the tooltip", () => {
+    const html = dense({ folder: "~/site/api", cwd: "/home/ada/site/api" }, { number: 2 });
+    expect(html).toContain(
+      '<span class="pane-bar-num" data-nr-part="pane-number" aria-hidden="true">2</span>',
+    );
+    expect(html).toContain(
+      '<span class="pane-bar-path" data-nr-part="pane-folder" title="/home/ada/site/api">~/site/api</span>',
+    );
+  });
+
+  it("leaves the number out when the page gives none", () => {
+    expect(bar({ folder: "~/x" }, { dense: true })).not.toContain("pane-number");
+  });
+
+  it("says Terminal while no command is known, and the command once the shell tells it, with the words for assistive technology", () => {
+    expect(dense({ folder: "~/x" })).toContain('<span aria-hidden="true">Terminal</span>');
+    const running = dense({ folder: "~/x", command: { state: "running", text: "pnpm dev" } });
+    expect(running).toContain('data-nr-part="pane-command" data-nr-state="running"');
+    expect(running).toContain('<span aria-hidden="true">pnpm dev</span>');
+    expect(running).toContain('<span class="sr-only">Running pnpm dev</span>');
+    const done = dense({
+      folder: "~/x",
+      command: { state: "done", text: "pnpm test", exitCode: 0, duration: "2.5s" },
+    });
+    expect(done).toContain('<span class="sr-only">Last command pnpm test, exit 0, 2.5s</span>');
+  });
+
+  it("shows the state only for a command that runs or that failed, with the code", () => {
+    const running = dense({ folder: "~/x", command: { state: "running", text: "pnpm dev" } });
+    expect(running).toContain(
+      'data-nr-part="pane-state" data-nr-state="running" aria-hidden="true"',
+    );
+    expect(running).toContain("running</span>");
+    const failed = dense({
+      folder: "~/x",
+      command: { state: "failed", text: "make", exitCode: 2 },
+    });
+    expect(failed).toContain('data-nr-state="failed"');
+    expect(failed).toContain("exit 2</span>");
+    expect(
+      dense({ folder: "~/x", command: { state: "done", text: "ls", exitCode: 0 } }),
+    ).not.toContain("pane-state");
+    expect(dense({ folder: "~/x" })).not.toContain("pane-state");
+  });
+
+  it("says that an agent waits in the header, with a diamond, and in no other case", () => {
+    expect(dense({ folder: "~/x" }, { waiting: true })).toContain(
+      'data-nr-part="pane-agent-badge" aria-hidden="true">◆ Agent waiting for you<',
+    );
+    expect(dense({ folder: "~/x" })).not.toContain("pane-agent-badge");
+  });
+
+  it("has a close button only when the page gives a way to close the pane", () => {
+    expect(dense({ folder: "~/x" })).not.toContain("pane-bar-close");
+    const html = dense({ folder: "~/x" }, { onClose: nothing });
+    expect(html).toContain('data-nr-part="pane-bar-close"');
+    expect(html).toContain('aria-label="Close pane"');
+  });
+
+  it("has the buttons of the glass header, at 12 px", () => {
+    const html = dense({ folder: "~/x" }, { zoomable: true, onClose: nothing });
+    expect(html).toContain('data-nr-part="pane-bar-split-right"');
+    expect(html).toContain('data-nr-part="pane-bar-split-down"');
+    expect(html).toContain('data-nr-part="pane-bar-zoom"');
+    expect(html).toContain('width="12" height="12"');
+    expect(html).not.toContain('width="16"');
+  });
+
+  it("speaks Portuguese", () => {
+    setLanguage("pt-BR");
+    const html = dense(
+      { folder: "~/x", command: { state: "running", text: "pnpm dev" } },
+      { waiting: true, onClose: nothing },
+    );
+    expect(html).toContain("em execução</span>");
+    expect(html).toContain("◆ Agente esperando você");
+    expect(html).toContain('aria-label="Fechar painel"');
+  });
+});

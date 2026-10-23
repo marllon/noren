@@ -146,3 +146,8 @@ export function useT(): typeof t {
 export function tabCount(count: number): string {
   return count === 1 ? t("count.tab.one") : t("count.tab.other", { count });
 }
+
+/** "1 pane", "3 panes": the count with the word in the language in force. */
+export function paneCount(count: number): string {
+  return count === 1 ? t("count.pane.one") : t("count.pane.other", { count });
+}

@@ -1,13 +1,5 @@
 import type { AgentState, Id, LayoutNode, Pane, SplitNode } from "@noren/model";
-import {
-  Columns2,
-  Ellipsis,
-  Maximize2,
-  Minimize2,
-  Rows2,
-  SquareArrowOutUpRight,
-  X,
-} from "lucide-react";
+import { Ellipsis, Maximize2, Minimize2, SquareArrowOutUpRight, X } from "lucide-react";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { Group, Panel, Separator, useGroupRef } from "react-resizable-panels";
@@ -47,11 +39,17 @@ export interface SplitLayoutContext {
    */
   paneAgent?(pane: Pane): { state: AgentState; label: string } | undefined;
   /**
-   * What the glass header of a pane says (its folder, branch and command), or `undefined` for a pane
-   * with no header of this kind: every pane under the dense style, and a pane that is not a terminal.
-   * A pane with the header has no hover corner, its split buttons are in the header.
+   * What the header of a pane says (its folder, branch and command), or `undefined` for a pane with no
+   * header of this kind: a pane that is not a terminal. A pane with the header has no hover corner, its
+   * split buttons are in the header.
    */
   paneBar?(pane: Pane): PaneBarInfo | undefined;
+  /**
+   * The header is the one of the dense style: it leads with the place of the pane in its tab, which
+   * `paneNumber` says (1 is the first), and has a button that closes the pane when the tab holds several.
+   */
+  denseBar?: boolean;
+  paneNumber?(pane: Pane): number | undefined;
   renderPane(pane: Pane): ReactNode;
   onFocusPane(paneId: Id): void;
   onZoomPane(paneId: Id): void;
@@ -64,10 +62,10 @@ export interface SplitLayoutContext {
   onResize(path: number[], sizes: number[]): void;
   /**
    * Split the pane in two, the new one right of it (`row`) or below it (`column`). A context
-   * without it (the page of a window of a space) draws no split buttons in the corner of a pane.
+   * without it (the page of a window of a space) draws no split buttons in the header of a pane.
    */
   onSplitPane?(paneId: Id, dir: SplitDir): void;
-  /** False when the tab already holds as many panes as it may: the corner buttons are off. */
+  /** False when the tab already holds as many panes as it may: the split buttons of the header are off. */
   canSplit?: boolean;
 }
 
@@ -198,46 +196,6 @@ function PaneHeader({ pane, zoomed, actions, context }: PaneHeaderProps) {
   );
 }
 
-/**
- * Two small buttons in the top right corner of a terminal pane that split it, shown while the mouse
- * is over the pane or the keyboard is on one of them (the styles do that), so a split does not have
- * to be found in a menu or a shortcut. At the limit of panes of a tab they are off.
- */
-function PaneCorner({ pane, context }: { pane: Pane; context: SplitLayoutContext }) {
-  const t = useT();
-  const onSplit = context.onSplitPane;
-  if (onSplit === undefined) return null;
-  const canSplit = context.canSplit !== false;
-  return (
-    <div
-      className="pane-corner"
-      data-nr-part="pane-corner"
-      data-nr-headers={context.headers ? "true" : undefined}
-    >
-      <button
-        type="button"
-        className="pane-corner-button"
-        aria-label={t("menu.splitRight")}
-        title={t("menu.splitRight")}
-        disabled={!canSplit}
-        onClick={() => onSplit(pane.id, "row")}
-      >
-        <Columns2 size={14} aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        className="pane-corner-button"
-        aria-label={t("menu.splitDown")}
-        title={t("menu.splitDown")}
-        disabled={!canSplit}
-        onClick={() => onSplit(pane.id, "column")}
-      >
-        <Rows2 size={14} aria-hidden="true" />
-      </button>
-    </div>
-  );
-}
-
 interface LayoutNodeViewProps {
   node: LayoutNode;
   path: number[];
@@ -262,6 +220,7 @@ function PaneFrame({ pane, context }: { pane: Pane; context: SplitLayoutContext 
   const agent = context.paneAgent?.(pane);
   const bar = context.paneBar?.(pane);
   const onSplit = context.onSplitPane;
+  const number = context.denseBar === true ? context.paneNumber?.(pane) : undefined;
   return (
     <div
       ref={drop.ref}
@@ -294,12 +253,19 @@ function PaneFrame({ pane, context }: { pane: Pane; context: SplitLayoutContext 
           canSplit={context.canSplit !== false}
           {...(onSplit !== undefined ? { onSplit: (dir: SplitDir) => onSplit(pane.id, dir) } : {})}
           onZoom={() => context.onZoomPane(pane.id)}
+          {...(context.denseBar === true
+            ? {
+                dense: true,
+                ...(number !== undefined ? { number } : {}),
+                // With the pane headers on, the close button is the header's own (two would have one name).
+                ...(context.framed && !context.headers
+                  ? { onClose: () => context.onClosePane(pane.id) }
+                  : {}),
+              }
+            : {})}
         />
       )}
       {context.renderPane(pane)}
-      {pane.type === "terminal" && bar === undefined && (
-        <PaneCorner pane={pane} context={context} />
-      )}
       {agent !== undefined && (
         <>
           <span className="pane-agent-ring" data-nr-part="pane-agent-ring" aria-hidden="true" />

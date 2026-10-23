@@ -1,6 +1,6 @@
 import { PanelLeftClose, PanelLeftOpen, Search, Settings } from "lucide-react";
 import { useT } from "./i18n";
-import { ariaShortcutOf, useChord, useKeycap } from "./shortcut-keys";
+import { ariaShortcutOf, useChord, useDenseKeys, useKeycap } from "./shortcut-keys";
 
 /**
  * The parts the glass sidebar has at its head and foot that the dense one does not: the brand with
@@ -8,13 +8,18 @@ import { ariaShortcutOf, useChord, useKeycap } from "./shortcut-keys";
  * shortcut and the settings button. Nothing here is drawn under the dense style (the page asks).
  */
 
-/** The shortcut of an action as a keycap; nothing when the action has no key. */
-export function Keycap({ actionId }: { actionId: string }) {
+/**
+ * The shortcut of an action as a keycap (`Ctrl ⇧ P`); nothing when the action has no key. The dense
+ * window writes it plain, in lower case (`ctrl+⇧+p`): `dense` asks for that.
+ */
+export function Keycap({ actionId, dense = false }: { actionId: string; dense?: boolean }) {
   const keycap = useKeycap(actionId);
-  if (keycap === undefined) return null;
+  const plain = useDenseKeys(actionId);
+  const text = dense ? plain : keycap;
+  if (text === undefined) return null;
   return (
     <span className="keycap" data-nr-part="keycap" aria-hidden="true">
-      {keycap}
+      {text}
     </span>
   );
 }

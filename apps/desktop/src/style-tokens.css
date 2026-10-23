@@ -179,3 +179,18 @@
 :root[data-nr-scheme="light"] {
   --nr-sheet-shadow: 0 24px 64px rgba(20, 24, 48, 0.28);
 }
+
+/*
+ * What the dense window draws that is worked out from the theme (NOR-F20-21a), the same in both styles
+ * and so not part of a token set: the strip behind the bars (a little lighter than the window on a dark
+ * theme), the tint of a chip or a pane header, and the state colors pulled toward the text where they are
+ * the color of words (the amber and the green of the states are the colors of marks; as text on a bar
+ * they keep 4.5:1 on a dark and on a light theme alike).
+ */
+:root {
+  --nr-bar-bg: color-mix(in srgb, var(--nr-bg) 55%, var(--nr-surface));
+  --nr-chip-bg: color-mix(in srgb, var(--nr-text) 7%, var(--nr-bg));
+  --nr-head-bg: color-mix(in srgb, var(--nr-text) 5%, var(--nr-bg));
+  --nr-waiting-text: color-mix(in srgb, var(--nr-state-waiting) 70%, var(--nr-text));
+  --nr-running-text: color-mix(in srgb, var(--nr-state-running) 70%, var(--nr-text));
+}

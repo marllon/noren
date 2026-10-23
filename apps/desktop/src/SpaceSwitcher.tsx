@@ -1,6 +1,7 @@
 import { Ellipsis, Plus } from "lucide-react";
 import type { Id, Space } from "@noren/model";
 import { menuPoint } from "./ContextMenu";
+import { useInterfaceStyle } from "./layout-store";
 import { useT } from "./i18n";
 import { marksWords, spaceMarks } from "./pane-info";
 import { MarkBadges } from "./SidebarTree";
@@ -31,6 +32,8 @@ function SpaceButton({ space, index, active, onActivate, onMenu }: SpaceButtonPr
   const marks = spaceMarks(space);
   const words = marksWords(marks);
   const descriptionId = `space-info-${space.id}`;
+  // The dense sidebar lists the spaces as tabs: a square in the color of the space and its name.
+  const dense = useInterfaceStyle() === "dense";
   return (
     <button
       ref={drop.ref}
@@ -48,7 +51,16 @@ function SpaceButton({ space, index, active, onActivate, onMenu }: SpaceButtonPr
         onMenu(space.id, menuPoint(event));
       }}
     >
-      <SpaceIcon name={space.icon} color={space.color} />
+      {dense ? (
+        <>
+          <span className="space-swatch" data-nr-part="space-swatch" aria-hidden="true" />
+          <span className="space-label" data-nr-part="space-label" aria-hidden="true">
+            {space.name}
+          </span>
+        </>
+      ) : (
+        <SpaceIcon name={space.icon} color={space.color} />
+      )}
       {words.length > 0 && (
         <span className="space-marks" data-nr-part="space-marks" aria-hidden="true">
           <MarkBadges marks={marks} />
@@ -72,6 +84,7 @@ export function SpaceSwitcher({
   onMenu,
 }: SpaceSwitcherProps) {
   const t = useT();
+  const dense = useInterfaceStyle() === "dense";
   return (
     <nav className="space-switcher" data-nr-part="space-switcher" aria-label={t("spaces.nav")}>
       {spaces.map((space, index) => (
@@ -91,7 +104,7 @@ export function SpaceSwitcher({
         title={t("spaces.new")}
         onClick={onNewSpace}
       >
-        <Plus size={18} aria-hidden="true" />
+        <Plus size={dense ? 12 : 18} aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -104,7 +117,7 @@ export function SpaceSwitcher({
           onMenu(activeSpaceId, { x: rect.left, y: rect.top });
         }}
       >
-        <Ellipsis size={18} aria-hidden="true" />
+        <Ellipsis size={dense ? 12 : 18} aria-hidden="true" />
       </button>
     </nav>
   );

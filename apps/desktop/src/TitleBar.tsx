@@ -2,6 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Copy, Minus, Settings, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { insideTauri } from "./backend";
+import { BrandMark, TitleCrumbs, TitlePalette } from "./DenseChrome";
 import { useT } from "./i18n";
 import { openSettings } from "./settings-ui";
 
@@ -80,13 +81,28 @@ function WindowControls() {
  * settings button: in the title bar so it is reachable even when the sidebar is hidden, and left out
  * when a docked glass sidebar has its own at the foot (one button of that name on the page).
  */
-export function TitleBar({ settings = true }: { settings?: boolean }) {
+export function TitleBar({
+  settings = true,
+  dense = false,
+}: {
+  settings?: boolean;
+  /** The dense window: the brand with its mark, where the person is, and the button of the palette. */
+  dense?: boolean;
+}) {
   const t = useT();
   return (
     <header className={onMac ? "titlebar titlebar-mac" : "titlebar"} data-tauri-drag-region>
       <span className="titlebar-title" role="heading" aria-level={1} data-tauri-drag-region>
+        {dense && <BrandMark />}
         Noren
       </span>
+      {dense && (
+        <>
+          <TitleCrumbs />
+          <span className="titlebar-fill" data-tauri-drag-region />
+          <TitlePalette />
+        </>
+      )}
       {settings && (
         <button
           type="button"

@@ -16,6 +16,14 @@ export function keycapOf(chord: string): string {
     .join(" ");
 }
 
+/**
+ * A chord as the dense window writes it, in lower case with the plus signs of the design: `Ctrl+Shift+KeyP`
+ * reads `ctrl+⇧+p`.
+ */
+export function denseKeysOf(chord: string): string {
+  return keycapOf(chord).split(" ").join("+").toLowerCase();
+}
+
 /** The same chord as the value of aria-keyshortcuts: `Ctrl+Shift+KeyP` is `Control+Shift+P`. */
 export function ariaShortcutOf(chord: string): string {
   return formatChord(chord)
@@ -39,4 +47,10 @@ export function useChord(actionId: string): string | undefined {
 export function useKeycap(actionId: string): string | undefined {
   const chord = useChord(actionId);
   return chord === undefined ? undefined : keycapOf(chord);
+}
+
+/** The shortcut of an action in the dense form (`ctrl+⇧+p`); `undefined` when it has no key. */
+export function useDenseKeys(actionId: string): string | undefined {
+  const chord = useChord(actionId);
+  return chord === undefined ? undefined : denseKeysOf(chord);
 }

@@ -363,18 +363,19 @@ test.describe("the favorites: a grid of four tiles with a state dot", () => {
     await expectNothingLeavesTheCard(page);
   });
 
-  test("the dense style keeps its tiles: 36 px, no dot, no grid of four", async ({ page }) => {
+  test("the dense style draws its favorites as chips of 22 px in the bar under the title bar, not as a grid of four in the sidebar", async ({
+    page,
+  }) => {
     await start(page, { style: "dense", bar: true, agents: AGENT_STATES });
-    const first = part(page, "favorites").locator('[data-nr-part="favorite"]').first();
-    const at = await box(first);
-    expect([at.width, at.height]).toEqual([36, 36]);
-    await expect(part(page, "favorites").locator(".favorite-dot")).toHaveCount(0);
-    // The columns are the 36 px ones of the dense bar (as many as fit), not four equal ones.
-    const columns = await style(
-      part(page, "favorites").locator(".favorites-grid"),
-      "grid-template-columns",
-    );
-    expect(columns.split(" ")[0]).toBe("36px");
+    await expect(side(page).locator('[data-nr-part="favorites"]')).toHaveCount(0);
+    const bar = page.locator('[data-nr-part="dense-toolbar"]');
+    const first = bar.locator('[data-nr-part="favorite"]').first();
+    expect((await box(first)).height).toBe(22);
+    expect(await style(bar.locator(".favorites-grid"), "display")).toBe("flex");
+    // The state is a square of 6 px before the name, not the round dot of the glass.
+    const dot = bar.locator(".favorite-dot").first();
+    await expect(dot).toHaveCount(1);
+    expect(await style(dot, "border-top-left-radius")).toBe("0px");
   });
 });
 
@@ -481,15 +482,23 @@ test.describe("the card of the project actions", () => {
     expect(await style(title, "text-overflow")).toBe("ellipsis");
   });
 
-  test("the dense style keeps the rows of the actions: a dot, the label and Start", async ({
+  test("the dense style puts the actions in the bar under the title bar: a button with its mark and its label, after the word actions", async ({
     page,
   }) => {
     await start(page, { style: "dense" });
-    const card = page.getByRole("region", { name: "Project actions", exact: true });
+    await expect(side(page).locator('[data-nr-part="space-header"]')).toHaveCount(0);
+    const card = page
+      .locator('[data-nr-part="dense-toolbar"]')
+      .getByRole("region", { name: "Project actions", exact: true });
     await expect(card.locator(".space-header-mark")).toHaveCount(0);
     await expect(card.locator(".space-header-note")).toHaveCount(0);
-    await expect(card.getByRole("button", { name: "Start Loop", exact: true })).toHaveText("Start");
-    await expect(card.locator(".space-action > .action-label")).toHaveCount(2);
+    await expect(card.getByRole("heading")).toHaveCount(0);
+    await expect(card.locator(".space-header-label")).toHaveText("actions");
+    const loop = card.getByRole("button", { name: "Start Loop", exact: true });
+    await expect(loop).toHaveText("Loop");
+    await expect(loop.locator("svg")).toHaveCount(1);
+    await expect(card.locator(".action-dot")).toHaveCount(0);
+    expect((await box(loop)).height).toBe(22);
   });
 });
 
@@ -656,15 +665,18 @@ test.describe("the tree: a state dot, the title, a second line with the folder a
     await expect(part(page, "sidebar-search")).toHaveAccessibleName("Search or run a command");
   });
 
-  test("the dense style keeps its rows: no dot, no second-line dot, the icon of the branch", async ({
+  test("the dense style has rows of one line: a square state at the start, the title, the branch at the end, no icon of the branch", async ({
     page,
   }) => {
     await start(page, { style: "dense" });
-    await expect(side(page).locator('[data-nr-part="item-dot"]')).toHaveCount(0);
+    const dot = row(page, "api").locator('[data-nr-part="item-dot"]');
+    await expect(dot).toHaveCount(1);
+    expect(await style(dot, "border-top-left-radius")).toBe("0px");
     const branch = row(page, "api").locator('[data-nr-part="item-branch"]');
-    expect(await style(branch, "content", "::before")).not.toBe('"·"');
-    await expect(branch.locator(".tab-branch-icon")).toBeVisible();
-    expect(await style(row(page, "api"), "display")).toBe("flex");
+    await expect(branch.locator(".tab-branch-icon")).toBeHidden();
+    await expect(row(page, "api").locator('[data-nr-part="item-cwd"]')).toBeHidden();
+    expect(await style(row(page, "api"), "flex-direction")).toBe("row");
+    expect((await box(row(page, "api"))).height).toBe(24);
   });
 });
 
@@ -753,18 +765,25 @@ test.describe("the foot: New tab, the spaces and the settings", () => {
     ).toBeVisible();
   });
 
-  test("the dense style keeps the settings in the title bar and nothing at the foot but the spaces", async ({
+  test("the dense style has the settings as the last row of the sidebar (and not in the title bar) and the spaces at its top", async ({
     page,
   }) => {
     await start(page, { style: "dense" });
-    await expect(
-      page.locator(".titlebar").getByRole("button", { name: "Settings", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Settings", exact: true })).toHaveCount(1);
+    await expect(side(page).getByRole("button", { name: "Settings", exact: true })).toBeVisible();
+    await expect(page.locator(".titlebar").getByRole("button", { name: "Settings" })).toHaveCount(
+      0,
+    );
     await expect(part(page, "sidebar-base")).toHaveCount(0);
     await expect(part(page, "sidebar-head")).toHaveCount(0);
     await expect(part(page, "sidebar-search")).toHaveCount(0);
-    await expect(side(page).locator(".keycap")).toHaveCount(0);
-    expect(await style(side(page).locator(".new-tab"), "border-top-width")).toBe("1px");
+    // New tab says its shortcut in the plain form of the dense style, and is a row without a line.
+    await expect(side(page).locator(".new-tab .keycap")).toHaveText("ctrl+⇧+t");
+    expect(await style(side(page).locator(".new-tab"), "border-top-width")).toBe("0px");
+    // The spaces are the first thing in the sidebar.
+    const spaces = await box(part(page, "space-switcher"));
+    const sidebar = await box(side(page));
+    expect(Math.abs(spaces.y - sidebar.y)).toBeLessThanOrEqual(1);
   });
 
   test("the style switch moves the settings button and brings the parts back at once", async ({
@@ -795,7 +814,7 @@ test.describe("the colors of a space: the four of the design are offered (findin
     ["Blush", "rgb(255, 143, 163)"],
   ] as const;
 
-  test("the dialog of a new space offers them after the older eight, and the first, Blue, is still the one it starts on", async ({
+  test("the dialog of a new space offers them after the older eight (and the four of the dense design after them), and the first, Blue, is still the one it starts on", async ({
     page,
   }) => {
     await start(page);
@@ -803,7 +822,7 @@ test.describe("the colors of a space: the four of the design are offered (findin
     const dialog = page.getByRole("dialog", { name: "New space", exact: true });
     await expect(dialog).toBeVisible();
     const radios = dialog.locator('input[name="space-color"]');
-    await expect(radios).toHaveCount(12);
+    await expect(radios).toHaveCount(16);
     await expect(radios.first()).toBeChecked();
     await expect(dialog.getByRole("radio", { name: "Blue", exact: true })).toBeChecked();
     for (const [name] of DESIGN) {

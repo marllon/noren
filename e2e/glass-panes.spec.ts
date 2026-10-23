@@ -197,17 +197,20 @@ test.describe("the header of a terminal pane", () => {
     expect((await box(bar(page, SECOND))).height).toBe(38);
   });
 
-  test("is not drawn for a pane that is not a terminal, and not under the dense style", async ({
+  test("the dense style draws a header of its own (24 px, with the number of the pane), not the parts of this one, and there is no hover corner", async ({
     page,
   }) => {
     await openSplit(page, { style: "dense" });
-    await expect(page.locator('[data-nr-part="pane-bar"]')).toHaveCount(0);
-    // The dense style keeps its hover corner, out of sight until the mouse is over the pane.
-    const corner = frame(page, FIRST).locator('[data-nr-part="pane-corner"]');
-    await expect(corner).toHaveCount(1);
-    await page.mouse.move(2, 2);
-    await expect(corner).toHaveCSS("opacity", "0");
-    await expect(page.locator('[data-nr-part="pane-bar-actions"]')).toHaveCount(0);
+    for (const id of [FIRST, SECOND]) {
+      await expect(bar(page, id)).toHaveAttribute("data-nr-style", "dense");
+      expect((await box(bar(page, id))).height).toBe(24);
+      await expect(part(page, id, "pane-number")).toBeVisible();
+      await expect(part(page, id, "pane-branch")).toHaveCount(0);
+      await expect(bar(page, id).locator(".pane-bar-head")).toHaveCount(0);
+    }
+    await expect(part(page, FIRST, "pane-number")).toHaveText("1");
+    await expect(part(page, SECOND, "pane-number")).toHaveText("2");
+    await expect(page.locator('[data-nr-part="pane-corner"]')).toHaveCount(0);
   });
 });
 

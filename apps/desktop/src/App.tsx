@@ -10,6 +10,8 @@ import {
   favoriteLinkKey,
   favoriteLinkRef,
   favoriteLinksOf,
+  findGroup,
+  findItemSlot,
   layoutPanes,
   mainWindowSpaces,
   paneLimitOf,
@@ -58,6 +60,8 @@ import { loadHome } from "./home";
 import { realClock } from "./real-clock";
 import { recentFolders, recordFolder } from "./recent-folders-store";
 import { ActionsHeader } from "./ActionsHeader";
+import { SidebarAgents, SidebarSettingsRow, StatusBar } from "./DenseChrome";
+import { setPaletteOpener, setWindowCrumbs } from "./window-chrome";
 import { handleDeepLink, setDeepLinkHandler } from "./deep-link";
 import { createDeepLinkHandler } from "./deep-link-handler";
 import { startDeepLinkReceiver } from "./deep-link-receiver";
@@ -708,8 +712,9 @@ function ItemView({
   // The limit is a setting: the tab draws again when it changes, so the corner buttons follow it.
   const paneLimit = paneLimitOf(useConfigState().config.terminal);
   const agentStateOf = useAgentStateOfPane();
-  // The glass style gives every terminal pane a header of its own (folder, branch, command).
-  const glass = useInterfaceStyle() === "glass";
+  // Both styles give every terminal pane a header of its own: the glass one (folder, branch, command)
+  // and the dense one (number, command, folder, state); the dense one leads with the place of the pane.
+  const dense = useInterfaceStyle() === "dense";
   const context: SplitLayoutContext = {
     focusedPaneId: item.focusedPaneId,
     framed: item.layout.kind === "split",
@@ -723,7 +728,12 @@ function ItemView({
         ? { state, label: agentStateLabel(name, state) }
         : undefined;
     },
-    ...(glass ? { paneBar: (pane: Pane) => paneBarInfo(pane, space.defaults.cwd, home) } : {}),
+    paneBar: (pane: Pane) => paneBarInfo(pane, space.defaults.cwd, home),
+    denseBar: dense,
+    paneNumber: (pane: Pane) => {
+      const place = layoutPanes(item.layout).findIndex((candidate) => candidate.id === pane.id);
+      return place < 0 ? undefined : place + 1;
+    },
     paneTitle: (pane) => {
       if (pane.type === "browser") return browserTitle(pane.url);
       if (pane.type === "preview") return previewTitle(pane.path);
@@ -960,7 +970,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
   // fills), so the terminal paints nothing of its own while the glass lets anything through.
   const appearance = useWindowAppearance();
   const pictureShown = pictureUrl(usePicture()) !== null;
-  const glassOn = useInterfaceStyle() === "glass";
+  const interfaceStyle = useInterfaceStyle();
+  const glassOn = interfaceStyle === "glass";
+  const denseOn = interfaceStyle === "dense";
   const terminalAlpha = terminalOpacity(
     appearance,
     pictureShown || (glassOn && appearance.opacity < 1),
@@ -1059,10 +1071,12 @@ function Shell({ store }: { store: WorkspaceStore }) {
     setEditing(null);
   };
 
-  // The active space tinges the accent. After the theme's own effect, which sets the accent.
+  // The active space tinges the accent. After the theme's own effect, which sets the accent (and does
+  // so again when the interface style changes, so this runs again then too: the highlight of the window
+  // is this color, and a switch of the style would otherwise leave it the accent of the theme).
   useEffect(() => {
     applySpaceColor(document.documentElement, theme, spaceColor);
-  }, [theme, spaceColor]);
+  }, [theme, spaceColor, interfaceStyle]);
 
   // The home folder arrives asynchronously; until then folders show in full.
   const [home, setHome] = useState<string | undefined>(undefined);
@@ -2891,7 +2905,40 @@ function Shell({ store }: { store: WorkspaceStore }) {
   );
   const autoHide = sidebarMode(layout) === "auto-hide";
   const tabsOnTop = layout.tabs === "top";
-  const favoritesOnTop = layout.favorites === "top";
+  /** The search button of the glass sidebar and the commands button of the dense title bar do what the palette shortcut does. */
+  const openPalette = useCallback(() => {
+    setSearchText(null);
+    setPaletteMode("all");
+    setPaletteOpen(true);
+  }, []);
+  useEffect(() => {
+    setPaletteOpener(openPalette);
+    return () => setPaletteOpener(undefined);
+  }, [openPalette]);
+  // The dense title bar says where the person is (space / group / tab) and opens the palette: both
+  // are the shell's, so it hands them to the module the title bar reads (window-chrome.ts).
+  const crumbSpace = space.name;
+  const crumbTab = activeId !== undefined ? itemTitle(space, activeId) : undefined;
+  const activeSlot = activeId !== undefined ? findItemSlot(space.tree, activeId) : undefined;
+  const crumbGroup =
+    activeSlot?.parentId !== undefined
+      ? findGroup(space.tree, activeSlot.parentId)?.group.name
+      : undefined;
+  useEffect(() => {
+    if (!denseOn) {
+      setWindowCrumbs(undefined);
+      return;
+    }
+    setWindowCrumbs({
+      space: crumbSpace,
+      ...(crumbGroup !== undefined ? { group: crumbGroup } : {}),
+      ...(crumbTab !== undefined ? { tab: crumbTab } : {}),
+    });
+    return () => setWindowCrumbs(undefined);
+  }, [denseOn, crumbSpace, crumbGroup, crumbTab]);
+  // Under the dense style the favorites and the project actions are the bar under the title bar, the
+  // top of the window, whatever the setting of their place says (it is for the glass style).
+  const favoritesOnTop = layout.favorites === "top" || denseOn;
   // A menu or dialog opened from the sidebar keeps it shown, even though the pointer left it. The
   // tab and group menus of the top bar do not: they do not come from the sidebar.
   const fromTabBar = tabsOnTop && (overlay?.kind === "item-menu" || overlay?.kind === "group-menu");
@@ -2919,12 +2966,27 @@ function Shell({ store }: { store: WorkspaceStore }) {
       onMenu={(spaceId, point) => setOverlay({ kind: "menu", spaceId, point })}
     />
   );
-  /** The search button of the glass sidebar does what the palette shortcut does. */
-  const openPalette = () => {
-    setSearchText(null);
-    setPaletteMode("all");
-    setPaletteOpen(true);
-  };
+  const actionsHeader = (
+    <ActionsHeader
+      spaceName={space.name}
+      ui={projectActions}
+      onMenu={(action, point) =>
+        setOverlay({
+          kind: "link-menu",
+          link: {
+            kind: "action",
+            spaceId: space.id,
+            actionId: action.id,
+            label: action.label,
+          },
+          point,
+        })
+      }
+    />
+  );
+  // What the status bar says of the pane in focus (the dense window): its folder and branch.
+  const activeItem = activeId !== undefined ? space.items[activeId] : undefined;
+  const statusPane = activeItem !== undefined ? focusedPane(activeItem) : undefined;
   const favoritesBar = (
     <FavoritesGrid
       placement={layout.favorites}
@@ -2943,31 +3005,37 @@ function Shell({ store }: { store: WorkspaceStore }) {
   );
   return (
     <ExplainContext.Provider value={explainCommand}>
-      <div
-        className="app-body"
-        data-nr-side={layout.side}
-        data-nr-density={layout.density}
-        data-nr-sidebar-mode={sidebarMode(layout)}
+      <TreeDnd
+        spaces={listedSpaces}
+        favorites={workspace.favorites}
+        space={space}
+        rows={rows}
+        onAction={dispatch}
+        paneItemId={activeId}
+        onPaneDrop={onPaneDrop}
+        onPaneSwap={onPaneSwap}
+        {...(windowsAvailable() ? { onDragOut: moveTabToNewWindow } : {})}
       >
-        {autoHide && (
-          <div
-            className="sidebar-edge"
-            data-nr-part="sidebar-edge"
-            aria-hidden="true"
-            {...reveal.edge}
-          />
+        {denseOn && (
+          <div className="dense-toolbar" data-nr-part="dense-toolbar">
+            {favoritesBar}
+            {actionsHeader}
+          </div>
         )}
-        <TreeDnd
-          spaces={listedSpaces}
-          favorites={workspace.favorites}
-          space={space}
-          rows={rows}
-          onAction={dispatch}
-          paneItemId={activeId}
-          onPaneDrop={onPaneDrop}
-          onPaneSwap={onPaneSwap}
-          {...(windowsAvailable() ? { onDragOut: moveTabToNewWindow } : {})}
+        <div
+          className="app-body"
+          data-nr-side={layout.side}
+          data-nr-density={layout.density}
+          data-nr-sidebar-mode={sidebarMode(layout)}
         >
+          {autoHide && (
+            <div
+              className="sidebar-edge"
+              data-nr-part="sidebar-edge"
+              aria-hidden="true"
+              {...reveal.edge}
+            />
+          )}
           <aside
             ref={sidebarRef}
             className="sidebar"
@@ -2984,6 +3052,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
               onCommit={(width) => void saveSidebarWidth(width)}
               disabled={settingsFileBroken}
             />
+            {denseOn && switcher}
             {glassOn && (
               <>
                 <SidebarHead
@@ -2995,22 +3064,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
               </>
             )}
             {!favoritesOnTop && favoritesBar}
-            <ActionsHeader
-              spaceName={space.name}
-              ui={projectActions}
-              onMenu={(action, point) =>
-                setOverlay({
-                  kind: "link-menu",
-                  link: {
-                    kind: "action",
-                    spaceId: space.id,
-                    actionId: action.id,
-                    label: action.label,
-                  },
-                  point,
-                })
-              }
-            />
+            {!denseOn && actionsHeader}
             {!tabsOnTop && (
               <SidebarTree
                 {...treeProps}
@@ -3029,24 +3083,26 @@ function Shell({ store }: { store: WorkspaceStore }) {
             )}
             <div className="sidebar-foot">
               <button type="button" className="new-tab" onClick={() => newTab()}>
-                {glassOn && <Plus size={16} aria-hidden="true" />}
+                {(glassOn || denseOn) && <Plus size={denseOn ? 12 : 16} aria-hidden="true" />}
                 {t("window.newTab")}
-                {glassOn && <Keycap actionId="tab.new" />}
+                {(glassOn || denseOn) && <Keycap actionId="tab.new" dense={denseOn} />}
               </button>
               <DropZones pinned={space.pinned.length === 0} />
             </div>
+            {denseOn && <SidebarAgents workspace={workspace} onPick={goToAgent} />}
+            {denseOn && !autoHide && <SidebarSettingsRow onOpen={openSettings} />}
             {glassOn && !autoHide ? (
               <div className="sidebar-base" data-nr-part="sidebar-base">
                 {switcher}
                 <SidebarSettings onOpen={openSettings} />
               </div>
             ) : (
-              switcher
+              !denseOn && switcher
             )}
           </aside>
           <div className="main">
             {tabsOnTop && <TabBar {...treeProps} onNewTab={() => newTab()} />}
-            {favoritesOnTop && favoritesBar}
+            {favoritesOnTop && !denseOn && favoritesBar}
             <section className="content" aria-label={t("window.content")}>
               {/* A space another window shows is drawn by that window's page, not here: a terminal
                   mounted in two pages would take the output of its session back. */}
@@ -3105,116 +3161,128 @@ function Shell({ store }: { store: WorkspaceStore }) {
             />
           )}
           <PluginPanel />
-        </TreeDnd>
-        {overlayNode}
-        {confirmNode}
-        <LinkPrompt backend={backend} />
-        <input
-          ref={schemeInput}
-          type="file"
-          hidden
-          tabIndex={-1}
-          aria-label={t("window.schemeFile")}
-          data-nr-part="scheme-file"
-          onChange={onSchemeFile}
-        />
-        <input
-          ref={spaceInput}
-          type="file"
-          hidden
-          tabIndex={-1}
-          aria-label={t("window.spaceFile")}
-          data-nr-part="space-file"
-          onChange={onSpaceFile}
-        />
+          {overlayNode}
+          {confirmNode}
+          <LinkPrompt backend={backend} />
+          <input
+            ref={schemeInput}
+            type="file"
+            hidden
+            tabIndex={-1}
+            aria-label={t("window.schemeFile")}
+            data-nr-part="scheme-file"
+            onChange={onSchemeFile}
+          />
+          <input
+            ref={spaceInput}
+            type="file"
+            hidden
+            tabIndex={-1}
+            aria-label={t("window.spaceFile")}
+            data-nr-part="space-file"
+            onChange={onSpaceFile}
+          />
 
-        {mru.rows !== undefined && <MruSwitcherView rows={mru.rows} />}
-        {searchText !== null && (
-          <TabSearch tabs={searchText} onPick={pickSearchHit} onClose={closeSearch} />
-        )}
-        {libraryOpen && (
-          <Library
-            workspace={workspace}
-            backend={backend}
-            home={home}
-            onRestore={restoreFromLibrary}
-            onDelete={deleteFromLibrary}
-            onClose={closeLibrary}
-          />
-        )}
-        {agentsOpen && (
-          <AgentsPanel workspace={workspace} onPick={goToAgent} onClose={closeAgents} />
-        )}
-        {paletteOpen && (
-          <CommandPalette
-            key={paletteMode}
-            entries={paletteEntries}
-            {...(paletteMode === "space-theme"
-              ? { placeholder: t("palette.placeholderSpaceTheme", { name: space.name }) }
-              : {})}
-            onRun={runPaletteEntry}
-            onClose={closePalette}
-            onHighlight={onPaletteHighlight}
-            entryMenu={paletteEntryMenu}
-            {...(aiOn && paletteMode === "all" ? { onAskCommand: askForCommand } : {})}
-          />
-        )}
-        {commandAsk !== undefined && aiOn && (
-          <CommandAskDialog
-            backend={backend}
-            config={configState.config}
-            space={space}
-            request={commandAsk.request}
-            shell={commandAsk.shell}
-            os={commandAsk.os}
-            onInsert={(text) => focusedHandle()?.insert(text) ?? false}
-            onClose={closeCommandAsk}
-          />
-        )}
-        {worktreeDialog?.kind === "new" && (
-          <NewWorktreeDialog
-            backend={backend}
-            cwd={worktreeDialog.cwd}
-            onCreated={(worktree) => {
-              // The tab opens in the new folder and takes the keyboard like any new tab.
-              setWorktreeDialog(null);
-              newTab({ cwd: worktree.path });
-              // A live group of worktrees lists the new one now, not at the next round.
-              void refreshLiveGroups();
-            }}
-            onClose={closeWorktree}
-          />
-        )}
-        {worktreeDialog?.kind === "remove" && (
-          <RemoveWorktreeDialog
-            backend={backend}
-            cwd={worktreeDialog.cwd}
-            onRemoved={(worktree) => {
-              setWorktreeDialog(null);
-              showNotice(t("worktree.removed", { path: worktree.path }));
-              void refreshLiveGroups();
-              focusTerminal();
-            }}
-            onClose={closeWorktree}
-          />
-        )}
-        {settingsOpen && (
-          <SettingsDialog
-            backend={backend}
-            spaceSync={spaceSync}
-            updates={updates}
-            space={{ id: space.id, name: space.name, themeId: space.themeId }}
-            onSpaceTheme={(themeId) =>
-              dispatch({ type: "space/set-theme", spaceId: space.id, themeId })
+          {mru.rows !== undefined && <MruSwitcherView rows={mru.rows} />}
+          {searchText !== null && (
+            <TabSearch tabs={searchText} onPick={pickSearchHit} onClose={closeSearch} />
+          )}
+          {libraryOpen && (
+            <Library
+              workspace={workspace}
+              backend={backend}
+              home={home}
+              onRestore={restoreFromLibrary}
+              onDelete={deleteFromLibrary}
+              onClose={closeLibrary}
+            />
+          )}
+          {agentsOpen && (
+            <AgentsPanel workspace={workspace} onPick={goToAgent} onClose={closeAgents} />
+          )}
+          {paletteOpen && (
+            <CommandPalette
+              key={paletteMode}
+              entries={paletteEntries}
+              {...(paletteMode === "space-theme"
+                ? { placeholder: t("palette.placeholderSpaceTheme", { name: space.name }) }
+                : {})}
+              onRun={runPaletteEntry}
+              onClose={closePalette}
+              onHighlight={onPaletteHighlight}
+              entryMenu={paletteEntryMenu}
+              {...(aiOn && paletteMode === "all" ? { onAskCommand: askForCommand } : {})}
+            />
+          )}
+          {commandAsk !== undefined && aiOn && (
+            <CommandAskDialog
+              backend={backend}
+              config={configState.config}
+              space={space}
+              request={commandAsk.request}
+              shell={commandAsk.shell}
+              os={commandAsk.os}
+              onInsert={(text) => focusedHandle()?.insert(text) ?? false}
+              onClose={closeCommandAsk}
+            />
+          )}
+          {worktreeDialog?.kind === "new" && (
+            <NewWorktreeDialog
+              backend={backend}
+              cwd={worktreeDialog.cwd}
+              onCreated={(worktree) => {
+                // The tab opens in the new folder and takes the keyboard like any new tab.
+                setWorktreeDialog(null);
+                newTab({ cwd: worktree.path });
+                // A live group of worktrees lists the new one now, not at the next round.
+                void refreshLiveGroups();
+              }}
+              onClose={closeWorktree}
+            />
+          )}
+          {worktreeDialog?.kind === "remove" && (
+            <RemoveWorktreeDialog
+              backend={backend}
+              cwd={worktreeDialog.cwd}
+              onRemoved={(worktree) => {
+                setWorktreeDialog(null);
+                showNotice(t("worktree.removed", { path: worktree.path }));
+                void refreshLiveGroups();
+                focusTerminal();
+              }}
+              onClose={closeWorktree}
+            />
+          )}
+          {settingsOpen && (
+            <SettingsDialog
+              backend={backend}
+              spaceSync={spaceSync}
+              updates={updates}
+              space={{ id: space.id, name: space.name, themeId: space.themeId }}
+              onSpaceTheme={(themeId) =>
+                dispatch({ type: "space/set-theme", spaceId: space.id, themeId })
+              }
+              onInsert={(text) => focusedHandle()?.insert(text) ?? false}
+              onClose={() => {
+                closeSettings();
+                focusTerminal();
+              }}
+            />
+          )}
+        </div>
+        {denseOn && (
+          <StatusBar
+            space={{ name: space.name, color: space.color }}
+            focused={
+              statusPane !== undefined
+                ? paneBarInfo(statusPane, space.defaults.cwd, home)
+                : undefined
             }
-            onInsert={(text) => focusedHandle()?.insert(text) ?? false}
-            onClose={() => {
-              closeSettings();
-              focusTerminal();
-            }}
+            panes={activeItem !== undefined ? layoutPanes(activeItem.layout).length : 0}
+            workspace={workspace}
           />
         )}
-      </div>
+      </TreeDnd>
     </ExplainContext.Provider>
   );
 }
@@ -3262,9 +3330,10 @@ export function App() {
   // that picks the token set (fonts, corners, gaps) and the one token it shares with the theme, the
   // radius, so the theme is applied again when the style changes.
   const style = useInterfaceStyle();
-  // Under glass a docked sidebar has the settings button at its foot; otherwise the title bar has it.
+  // A docked sidebar has the settings button at its foot (an icon under glass, a row under dense);
+  // otherwise the title bar has it.
   const sidebar = sidebarMode(useLayout());
-  const settingsInTitleBar = !(style === "glass" && sidebar === "docked");
+  const settingsInTitleBar = sidebar !== "docked";
   useLayoutEffect(() => {
     applyInterfaceStyle(document.documentElement, style);
   }, [style]);
@@ -3305,7 +3374,7 @@ export function App() {
       {style === "glass" && pictureAddress === null && appearance.effect === "none" && (
         <GlassBackdrop kind={theme.kind} />
       )}
-      <TitleBar settings={settingsInTitleBar} />
+      <TitleBar settings={settingsInTitleBar} dense={style === "dense"} />
       {import.meta.env.VITE_NOREN_DEMO === "1" && <DemoBanner />}
       <ConfigErrorNotice />
       <BackgroundNotice picture={picture} />

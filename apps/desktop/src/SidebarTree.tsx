@@ -414,8 +414,11 @@ export function SidebarTree({
   onLiveEntryClick,
 }: SidebarTreeProps) {
   const t = useT();
-  // The glass style gives each tab a state dot at the start of its row.
-  const glass = useInterfaceStyle() === "glass";
+  // Both styles give each tab a state dot at the start of its row (a dot under glass, a square under
+  // dense); the dense one also says in a word when an agent in the tab waits for you.
+  const style = useInterfaceStyle();
+  const glass = style === "glass";
+  const dense = style === "dense";
   // The entries of the live groups come from the updater; this draws again when it tells a list changed.
   useLiveGroupsVersion();
   const agentOf = useAgentOfPane();
@@ -688,7 +691,7 @@ export function SidebarTree({
             onItemMenu(row.id, menuPoint(event));
           }}
         >
-          {glass && (
+          {(glass || dense) && (
             <span
               className="tab-dot"
               data-nr-part="item-dot"
@@ -720,6 +723,11 @@ export function SidebarTree({
             </span>
           )}
           {command !== undefined && <CommandLine info={command} part="item-command" />}
+          {dense && summary.agentState === "waiting" && (
+            <span className="tab-wait" data-nr-part="item-waiting" aria-hidden="true">
+              {t("tree.waitingShort")}
+            </span>
+          )}
         </button>
         {isSplit && (
           <button

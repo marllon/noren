@@ -8,11 +8,13 @@ import { changeSettings, denseOf, seedConfig } from "./settings-fixture";
 // split that pane, up to `terminal.maxPanes`. They run on the `FakeBackend` of web mode and read the
 // panes from the model through the test hook and the geometry from the boxes, never from pixels.
 //
-// The hover corner is the dense style's. Under the glass style (the default) the two buttons are in the
-// header of every terminal pane, always in sight (NOR-F20-18c, e2e/glass-panes.spec.ts); the tests that
-// are about the corner itself (out of sight until the mouse is over, its geometry, its place under the
-// header of the settings) start from the dense style, and the others (what a button does, the limit, the
-// names) run under both.
+// The hover corner is gone (NOR-F20-21a): both styles give every terminal pane a header with the two
+// buttons always in sight, the glass one (NOR-F20-18c, e2e/glass-panes.spec.ts) and the dense one
+// (e2e/dense-window.spec.ts). The tests that were about the corner itself (out of sight until the mouse is
+// over, its geometry, the keyboard on it, its place under the header of the settings) are about the buttons
+// of the header of the dense style now (always in sight, at the right end of the strip, reachable with the
+// keyboard, under the header of the settings), and the others (what a button does, the limit, the names)
+// run under both.
 
 interface Hook {
   paneIds(): string[];
@@ -30,8 +32,8 @@ const lines = (page: Page): Promise<string[]> =>
 
 const panes = (page: Page): Locator => page.locator('[data-nr-part="pane"]:visible');
 const frame = (page: Page, paneId: string): Locator => page.locator(`[data-pane-id="${paneId}"]`);
-const corner = (page: Page, paneId: string): Locator =>
-  frame(page, paneId).locator('[data-nr-part="pane-corner"]');
+const header = (page: Page, paneId: string): Locator =>
+  frame(page, paneId).locator('[data-nr-part="pane-bar"]');
 const splitRight = (page: Page, paneId: string, name = "Split right"): Locator =>
   frame(page, paneId).getByRole("button", { name, exact: true });
 const splitDown = (page: Page, paneId: string, name = "Split down"): Locator =>
@@ -74,18 +76,21 @@ async function growTo(page: Page, first: string, count: number): Promise<void> {
   }
 }
 
-test.describe("the split buttons in the corner of a pane", () => {
-  test("are out of sight until the mouse is over the pane, and are named", async ({ page }) => {
+test.describe("the split buttons of a pane", () => {
+  test("are in sight with the mouse away, in the header, and are named with their shortcut", async ({
+    page,
+  }) => {
     const first = await open(page, undefined, true);
     await page.mouse.move(2, 2);
-    await expect(corner(page, first)).toHaveCSS("opacity", "0");
-    await overPane(page, first);
-    await expect(corner(page, first)).toHaveCSS("opacity", "1");
+    await expect(header(page, first)).toBeVisible();
     await expect(splitRight(page, first)).toBeVisible();
     await expect(splitDown(page, first)).toBeVisible();
-    await expect(splitRight(page, first)).toHaveAttribute("title", "Split right");
-    await page.mouse.move(2, 2);
-    await expect(corner(page, first)).toHaveCSS("opacity", "0");
+    await expect(splitRight(page, first)).toHaveAttribute("title", "Split right (Ctrl+Shift+D)");
+    await expect(splitDown(page, first)).toHaveAttribute("title", "Split down (Ctrl+Shift+E)");
+    await overPane(page, first);
+    await expect(splitRight(page, first)).toBeVisible();
+    // No hover corner is left behind: the buttons are the ones of the header.
+    await expect(page.locator('[data-nr-part="pane-corner"]')).toHaveCount(0);
   });
 
   test("Split right puts a second terminal beside the pane and gives it the focus", async ({
@@ -145,43 +150,45 @@ test.describe("the split buttons in the corner of a pane", () => {
     expect(await focusedPaneId(page)).toBe(added);
   });
 
-  test("sit in the top right corner and cover nothing of the pane but that corner", async ({
+  test("sit at the right end of the strip at the top of the pane and cover nothing of the terminal", async ({
     page,
   }) => {
     const first = await open(page, undefined, true);
     await growTo(page, first, 2);
     for (const id of await paneIds(page)) {
-      await overPane(page, id);
-      await expect(corner(page, id)).toHaveCSS("opacity", "1");
       const pane = await boxOf(page, id);
-      const box = await boxOf(page, corner(page, id));
+      const strip = await boxOf(page, header(page, id));
       const right = await boxOf(page, splitRight(page, id));
       const down = await boxOf(page, splitDown(page, id));
-      // Inside the pane, in its top right corner, small, and clear of the scrollbar.
-      expect(box.x).toBeGreaterThan(pane.x + pane.width / 2);
-      expect(box.x + box.width).toBeLessThanOrEqual(pane.x + pane.width - 8);
-      expect(box.y).toBeGreaterThanOrEqual(pane.y);
-      expect(box.y).toBeLessThan(pane.y + 12);
-      expect(box.width).toBeLessThan(80);
-      expect(box.height).toBeLessThan(40);
-      expect(box.width * box.height).toBeLessThan(pane.width * pane.height * 0.05);
-      // Side by side, not on top of each other, and each a target a mouse can hit.
+      const terminal = await boxOf(page, frame(page, id).locator(".terminal-view"));
+      // The strip is the top of the pane, 24 px, and the terminal starts under it.
+      expect(strip.y).toBeGreaterThanOrEqual(pane.y);
+      expect(strip.y).toBeLessThan(pane.y + 3);
+      expect(strip.height).toBe(24);
+      expect(terminal.y).toBeGreaterThanOrEqual(strip.y + strip.height - 0.5);
+      // The buttons are at its right end, inside it, side by side, each a target a mouse can hit.
+      for (const button of [right, down]) {
+        expect(button.x).toBeGreaterThan(pane.x + pane.width / 2);
+        expect(button.x + button.width).toBeLessThanOrEqual(strip.x + strip.width);
+        expect(button.y).toBeGreaterThanOrEqual(strip.y);
+        expect(button.y + button.height).toBeLessThanOrEqual(strip.y + strip.height);
+        expect(button.width).toBeGreaterThanOrEqual(20);
+        expect(button.height).toBeGreaterThanOrEqual(20);
+      }
       expect(down.x).toBeGreaterThanOrEqual(right.x + right.width);
       expect(Math.abs(down.y - right.y)).toBeLessThan(2);
-      expect(right.width).toBeGreaterThanOrEqual(20);
-      expect(right.height).toBeGreaterThanOrEqual(20);
     }
   });
 
-  test("show when the keyboard is on one of them, with the mouse far away", async ({ page }) => {
+  test("are reached with the keyboard, one after the other, with the mouse far away", async ({
+    page,
+  }) => {
     const first = await open(page, undefined, true);
     await page.mouse.move(2, 2);
-    await expect(corner(page, first)).toHaveCSS("opacity", "0");
     await splitRight(page, first).focus();
-    await expect(corner(page, first)).toHaveCSS("opacity", "1");
+    await expect(splitRight(page, first)).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(splitDown(page, first)).toBeFocused();
-    await expect(corner(page, first)).toHaveCSS("opacity", "1");
     await page.keyboard.press("Enter");
     await expect(panes(page)).toHaveCount(2);
     const [a, b] = await Promise.all((await paneIds(page)).map((id) => boxOf(page, id)));
@@ -253,14 +260,20 @@ test.describe("the split buttons in the corner of a pane", () => {
     await expect(notice(page)).not.toHaveText(/at most/);
   });
 
-  test("start under the header of the pane when the headers are on", async ({ page }) => {
+  test("start under the header of the settings when the headers are on", async ({ page }) => {
     const first = await open(page, '{ "appearance": { "paneHeaders": true } }', true);
     await growTo(page, first, 2);
     for (const id of await paneIds(page)) {
-      await overPane(page, id);
-      const header = await boxOf(page, frame(page, id).locator('[data-nr-part="pane-header"]'));
-      const box = await boxOf(page, corner(page, id));
-      expect(box.y).toBeGreaterThanOrEqual(header.y + header.height);
+      const optional = await boxOf(page, frame(page, id).locator('[data-nr-part="pane-header"]'));
+      const strip = await boxOf(page, header(page, id));
+      expect(strip.y).toBeGreaterThanOrEqual(optional.y + optional.height - 0.5);
+      // One button of each name in the pane: the zoom and the close are the ones of the header of the settings.
+      await expect(
+        frame(page, id).getByRole("button", { name: "Zoom pane", exact: true }),
+      ).toHaveCount(1);
+      await expect(
+        frame(page, id).getByRole("button", { name: "Close pane", exact: true }),
+      ).toHaveCount(1);
     }
   });
 
@@ -273,18 +286,16 @@ test.describe("the split buttons in the corner of a pane", () => {
     await expect(panes(page)).toHaveCount(2);
   });
 
-  test("axe: the page has no violation with the buttons on screen, on and off", async ({
+  test("axe: the page has no violation with the buttons on, and off at the limit", async ({
     page,
   }) => {
     const first = await open(page, '{ "terminal": { "maxPanes": 2 } }', true);
-    await overPane(page, first);
-    await expect(corner(page, first)).toHaveCSS("opacity", "1");
+    await expect(splitRight(page, first)).toBeVisible();
     await expectNoAxeViolations(page, "a pane with the split buttons on");
     await splitRight(page, first).click();
     await expect(panes(page)).toHaveCount(2);
     const ids = await paneIds(page);
-    await overPane(page, ids[0] ?? first);
-    await expect(corner(page, ids[0] ?? first)).toHaveCSS("opacity", "1");
+    await expect(splitRight(page, ids[0] ?? first)).toBeDisabled();
     await expectNoAxeViolations(page, "a pane with the split buttons off at the limit");
   });
 });

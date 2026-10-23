@@ -20,7 +20,9 @@ interface ActionsHeaderProps {
  *
  * The glass style draws it as a card: the mark in the color of the space, its name and the words
  * "project actions", then each action as a button of its own (the icon of what it does, the label)
- * side by side. The names, the buttons and what they do are the same in both styles.
+ * side by side. The dense style draws it at the right end of the bar under the title bar, after the
+ * word "actions": a button for each action, its mark (a filled square while it runs, a triangle
+ * otherwise) and its label. The names, the buttons and what they do are the same in both styles.
  */
 export function ActionsHeader({ spaceName, ui, onMenu }: ActionsHeaderProps) {
   const t = useT();
@@ -37,12 +39,13 @@ export function ActionsHeader({ spaceName, ui, onMenu }: ActionsHeaderProps) {
           </span>
         </div>
       ) : (
-        <h2 className="space-header-title">{spaceName}</h2>
+        <span className="space-header-label" data-nr-part="space-header-label" aria-hidden="true">
+          {t("toolbar.actions")}
+        </span>
       )}
       <ul className="space-actions">
         {ui.actions.map((action) => {
           const running = ui.statusOf(action) === "running";
-          const verb = running ? t("actions.stop") : t("actions.start");
           const buttonName = running
             ? t("actions.stopNamed", { name: action.label })
             : t("actions.startNamed", { name: action.label });
@@ -57,16 +60,6 @@ export function ActionsHeader({ spaceName, ui, onMenu }: ActionsHeaderProps) {
                 onMenu(action, menuPoint(event));
               }}
             >
-              {!glass && (
-                <>
-                  <span
-                    className="action-dot"
-                    data-nr-indicator={running ? "running" : "idle"}
-                    title={running ? t("actions.running") : t("actions.idle")}
-                  />
-                  <span className="action-label">{action.label}</span>
-                </>
-              )}
               <button
                 type="button"
                 className="action-button"
@@ -75,21 +68,17 @@ export function ActionsHeader({ spaceName, ui, onMenu }: ActionsHeaderProps) {
                 onClick={() => (running ? ui.stop(action) : ui.run(action))}
               >
                 {running ? (
-                  <Square size={glass ? 12 : 11} aria-hidden="true" />
+                  <Square size={glass ? 12 : 9} aria-hidden="true" />
                 ) : (
-                  <Play size={glass ? 12 : 11} aria-hidden="true" />
+                  <Play size={glass ? 12 : 9} aria-hidden="true" />
                 )}
-                {glass ? (
-                  <>
-                    <span className="action-label">{action.label}</span>
-                    <span
-                      className="action-dot"
-                      data-nr-indicator={running ? "running" : "idle"}
-                      title={running ? t("actions.running") : t("actions.idle")}
-                    />
-                  </>
-                ) : (
-                  verb
+                <span className="action-label">{action.label}</span>
+                {glass && (
+                  <span
+                    className="action-dot"
+                    data-nr-indicator={running ? "running" : "idle"}
+                    title={running ? t("actions.running") : t("actions.idle")}
+                  />
                 )}
               </button>
             </li>

@@ -55,7 +55,9 @@ export function FavoritesGrid({
   const t = useT();
   const drop = useOutsideDrop({ kind: "favorites" });
   const reasonId = useId();
-  const glass = useInterfaceStyle() === "glass";
+  const style = useInterfaceStyle();
+  const glass = style === "glass";
+  const dense = style === "dense";
   const agentOf = useAgentOfPane();
   const agentStateOf = useAgentStateOfPane();
   return (
@@ -105,7 +107,7 @@ export function FavoritesGrid({
             // waiting) or is busy (a command or an agent working, a project action running).
             let dot: TabDot | undefined;
             let dotWords = "";
-            if (glass && tile.kind === "tab") {
+            if ((glass || dense) && tile.kind === "tab") {
               const owner = spaces.find((space) => space.id === tile.favorite.spaceId);
               const item = owner?.items[tile.favorite.id];
               if (owner !== undefined && item !== undefined) {
@@ -113,7 +115,7 @@ export function FavoritesGrid({
                 dot = tabDotOf(summary);
                 dotWords = indicatorLabels(summary).join(". ");
               }
-            } else if (glass && tile.kind === "action" && tile.running) {
+            } else if ((glass || dense) && tile.kind === "action" && tile.running) {
               dot = "running";
             }
             const shownDot = dot === "running" || dot === "waiting" ? dot : undefined;
@@ -149,7 +151,19 @@ export function FavoritesGrid({
                     onMenu(tile, menuPoint(event));
                   }}
                 >
-                  {tile.kind === "tab" ? (
+                  {dense ? (
+                    <>
+                      {tile.kind === "profile" && <Terminal size={11} aria-hidden="true" />}
+                      {tile.kind === "action" && <Play size={9} aria-hidden="true" />}
+                      <span
+                        className="favorite-label"
+                        data-nr-part="favorite-label"
+                        aria-hidden="true"
+                      >
+                        {tile.kind === "tab" ? tile.favorite.title : tile.title}
+                      </span>
+                    </>
+                  ) : tile.kind === "tab" ? (
                     <span className="favorite-initial" aria-hidden="true">
                       {tile.favorite.initial}
                     </span>

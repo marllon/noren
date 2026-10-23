@@ -48,6 +48,16 @@ describe("space choices", () => {
     }
     expect(SPACE_COLORS[0]).toEqual({ name: "Blue", value: "#6b8afd" });
   });
+
+  it("offer the four highlight colors of the dense design too, after the glass ones, with a name each", () => {
+    const values = SPACE_COLORS.map((color) => color.value);
+    for (const design of ["#2ee6d6", "#b4ff39", "#ffb547", "#ff5ca8"]) {
+      expect(values, design).toContain(design);
+    }
+    const names = SPACE_COLORS.map((color) => color.name);
+    expect(names.slice(-4)).toEqual(["Cyan", "Lime", "Apricot", "Fuchsia"]);
+    expect(new Set(names).size).toBe(names.length);
+  });
 });
 
 describe("formatEnvLines", () => {

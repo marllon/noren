@@ -1,4 +1,4 @@
-import { Bot, Columns2, Folder, GitBranch, Maximize, Minimize, Rows2 } from "lucide-react";
+import { Bot, Columns2, Folder, GitBranch, Maximize, Minimize, Rows2, X } from "lucide-react";
 import { useT } from "./i18n";
 import { commandWords, exitText, folderParts } from "./pane-info";
 import type { PaneBarInfo } from "./pane-info";
@@ -7,10 +7,12 @@ import { formatChord } from "./shortcuts-screen";
 import type { SplitDir } from "./TreeMenus";
 
 /**
- * The header of a terminal pane under the glass style: the folder, the git branch, the command, the
+ * The header of a terminal pane. Under the glass style: the folder, the git branch, the command, the
  * badge of an agent that waits for you, and at the right end the buttons that split the pane and
- * zoom it. It is a strip of fixed height, so what it says changing never moves the terminal under it.
- * The dense style draws none of it (the page asks; its split buttons are the hover corner).
+ * zoom it. Under the dense style (`dense`): the number of the pane, what it runs (the command, else
+ * the word Terminal), its folder, whether the command runs or failed, the same badge and the buttons,
+ * with one more that closes the pane in a tab that holds several (the branch is in the status bar).
+ * It is a strip of fixed height, so what it says changing never moves the terminal under it.
  */
 
 interface PaneBarProps {
@@ -25,6 +27,12 @@ interface PaneBarProps {
   /** Splits the pane; a page that cannot (a window of a space) leaves it out and has no split buttons. */
   onSplit?(dir: SplitDir): void;
   onZoom(): void;
+  /** The dense header: the place of the pane in its tab (1 is the first), written before its title. */
+  number?: number;
+  /** The dense header: closes the pane; a page that cannot, or a tab of one pane, leaves it out and has no button. */
+  onClose?(): void;
+  /** Draws the header of the dense style. */
+  dense?: boolean;
 }
 
 /** The title of a button with the shortcut of its action: `Split right (Ctrl+Shift+D)`. */
@@ -89,12 +97,18 @@ function Actions({
   canSplit,
   onSplit,
   onZoom,
-}: Pick<PaneBarProps, "zoomable" | "zoomed" | "canSplit" | "onSplit" | "onZoom">) {
+  onClose,
+  dense = false,
+}: Pick<
+  PaneBarProps,
+  "zoomable" | "zoomed" | "canSplit" | "onSplit" | "onZoom" | "onClose" | "dense"
+>) {
   const t = useT();
+  const size = dense ? 12 : 16;
   const splitRight = useChord("pane.split-right");
   const splitDown = useChord("pane.split-below");
   const zoom = useChord("pane.zoom");
-  if (onSplit === undefined && !zoomable) return null;
+  if (onSplit === undefined && !zoomable && onClose === undefined) return null;
   const zoomLabel = zoomed ? t("pane.restore") : t("pane.zoom");
   const ZoomIcon = zoomed ? Minimize : Maximize;
   return (
@@ -113,7 +127,7 @@ function Actions({
             disabled={!canSplit}
             onClick={() => onSplit("row")}
           >
-            <Columns2 size={16} aria-hidden="true" />
+            <Columns2 size={size} aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -125,7 +139,7 @@ function Actions({
             disabled={!canSplit}
             onClick={() => onSplit("column")}
           >
-            <Rows2 size={16} aria-hidden="true" />
+            <Rows2 size={size} aria-hidden="true" />
           </button>
         </>
       )}
@@ -139,14 +153,113 @@ function Actions({
           {...(zoom !== undefined ? { "aria-keyshortcuts": ariaShortcutOf(zoom) } : {})}
           onClick={onZoom}
         >
-          <ZoomIcon size={16} aria-hidden="true" />
+          <ZoomIcon size={size} aria-hidden="true" />
+        </button>
+      )}
+      {onClose !== undefined && (
+        <button
+          type="button"
+          className="pane-bar-button"
+          data-nr-part="pane-bar-close"
+          aria-label={t("pane.close")}
+          title={t("pane.close")}
+          onClick={onClose}
+        >
+          <X size={size} aria-hidden="true" />
         </button>
       )}
     </div>
   );
 }
 
-export function PaneBar({
+/** What the dense header says of the command: it runs (a filled square), or it failed with a code. */
+function DenseState({ info }: { info: PaneBarInfo }) {
+  const t = useT();
+  const command = info.command;
+  if (command === undefined) return null;
+  const failed = command.state === "failed" && command.exitCode !== undefined;
+  if (command.state !== "running" && !failed) return null;
+  return (
+    <span
+      className="pane-bar-state"
+      data-nr-part="pane-state"
+      data-nr-state={command.state}
+      aria-hidden="true"
+    >
+      <span className="pane-bar-dot" />
+      {command.state === "running" ? t("pane.running") : exitText(command)}
+    </span>
+  );
+}
+
+/** The header of the dense style: the number, what runs, where, how it is, and the buttons. */
+function DensePaneBar({
+  info,
+  waiting,
+  zoomable,
+  zoomed,
+  canSplit,
+  onSplit,
+  onZoom,
+  onClose,
+  number,
+}: PaneBarProps) {
+  const t = useT();
+  const command = info.command;
+  const words = command !== undefined ? commandWords(command) : undefined;
+  const title = command?.text ?? t("pane.title");
+  return (
+    <div className="pane-bar" data-nr-part="pane-bar" data-nr-style="dense">
+      <div className="pane-bar-info">
+        {number !== undefined && (
+          <span className="pane-bar-num" data-nr-part="pane-number" aria-hidden="true">
+            {number}
+          </span>
+        )}
+        <span
+          className="pane-bar-title"
+          data-nr-part="pane-command"
+          {...(command !== undefined ? { "data-nr-state": command.state } : {})}
+          {...(words !== undefined ? { title: words } : {})}
+        >
+          <span aria-hidden="true">{title}</span>
+          {words !== undefined && <span className="sr-only">{words}</span>}
+        </span>
+        {info.folder !== "" && (
+          <span
+            className="pane-bar-path"
+            data-nr-part="pane-folder"
+            {...(info.cwd !== undefined ? { title: info.cwd } : {})}
+          >
+            {info.folder}
+          </span>
+        )}
+        <DenseState info={info} />
+        {waiting && (
+          <span className="pane-bar-agent" data-nr-part="pane-agent-badge" aria-hidden="true">
+            ◆ {t("pane.agentWaitingBadge")}
+          </span>
+        )}
+      </div>
+      <Actions
+        zoomable={zoomable}
+        zoomed={zoomed}
+        canSplit={canSplit}
+        dense
+        {...(onSplit !== undefined ? { onSplit } : {})}
+        {...(onClose !== undefined ? { onClose } : {})}
+        onZoom={onZoom}
+      />
+    </div>
+  );
+}
+
+export function PaneBar(props: PaneBarProps) {
+  if (props.dense === true) return <DensePaneBar {...props} />;
+  return <GlassPaneBar {...props} />;
+}
+
+function GlassPaneBar({
   info,
   waiting,
   zoomable,

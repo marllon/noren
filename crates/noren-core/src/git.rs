@@ -412,6 +412,28 @@ mod tests {
         assert_eq!(read_head(Path::new(&slashed)), branch("main"));
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn a_folder_of_a_wsl_distro_as_the_shell_reports_it_is_a_unc_path() {
+        // A bash inside WSL reports `//wsl.localhost/<distro>/home/me/proj` (OSC 7), a UNC path with
+        // forward slashes: it has to be absolute for `read_head` to look at it, and the search has
+        // to stop at the share of the distro, never wander off to another one.
+        for folder in [
+            "//wsl.localhost/Ubuntu/home/me/proj",
+            r"\\wsl.localhost\Ubuntu\home\me\proj",
+            "//wsl$/Ubuntu/home/me/proj",
+        ] {
+            let path = Path::new(folder);
+            assert!(path.is_absolute(), "{folder}");
+            let top = path.ancestors().last().expect("has an ancestor");
+            let top = top.to_string_lossy().replace('\\', "/");
+            assert!(
+                top.trim_end_matches('/').ends_with("/Ubuntu"),
+                "{folder}: the search ends at {top}"
+            );
+        }
+    }
+
     #[test]
     fn a_branch_name_with_non_ascii_letters_is_kept() {
         let dir = TempDir::new();

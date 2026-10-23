@@ -1,7 +1,8 @@
 # Noren shell integration for bash (3.2 and newer; Git for Windows ships 5.x).
 #
 # Noren starts an interactive bash with `--rcfile` pointing here, because bash reads no other file
-# when --rcfile is given and ignores --rcfile in a login shell. So this file first loads what the
+# when --rcfile is given and ignores --rcfile in a login shell. In a WSL distro (`wsl.exe -d ...`) a
+# small launcher does it, for the login bash of the distro. So this file first loads what the
 # user would have got without it, then adds the hooks:
 #
 #   NOREN_BASH_LOGIN set (the profile asked for --login): /etc/profile, then the first of
@@ -75,12 +76,39 @@ __noren_escape() {
     REPLY=$s
 }
 
+# Sets REPLY to the folder $1 of a WSL distro as Windows names it, in the form the path of a file
+# URI takes: "/C:/Users/me" for a folder on a drive (/mnt/c/Users/me), "//wsl.localhost/<distro>/home/me"
+# for the files of the distro. Windows opens both, so the branch, the project files and the tab of a
+# folder in the distro are read from the Windows side like any other folder. `wslpath` knows how the
+# drives are mounted in this distro; without it only the default /mnt/<letter> is told apart.
+__noren_wsl_folder() {
+    local w
+    if type wslpath > /dev/null 2>&1 && w=$(wslpath -m -- "$1" 2> /dev/null) && [ -n "$w" ]; then
+        case $w in
+            [a-zA-Z]:*) REPLY=/$w ;;
+            //*) REPLY=$w ;;
+            *) REPLY=//wsl.localhost/$WSL_DISTRO_NAME$1 ;;
+        esac
+    elif [[ $1 =~ ^/mnt/([a-zA-Z])(/.*)?$ ]]; then
+        w=${BASH_REMATCH[1]}
+        REPLY=/${w^}:${BASH_REMATCH[2]:-/}
+    else
+        REPLY=//wsl.localhost/$WSL_DISTRO_NAME$1
+    fi
+}
+
 # Sets REPLY to the file URI of the current folder: "file://host/C:/Users/me" for a Windows
-# folder, "file://host/home/me" elsewhere, with everything but letters, digits and "/._~:-"
-# written as %XX.
+# folder, "file://host/home/me" elsewhere (in WSL, the Windows name of the folder, see above), with
+# everything but letters, digits and "/._~:-" written as %XX.
 __noren_make_uri() {
     local dir=$PWD host=${HOSTNAME:-localhost} out= c hex i LC_ALL=C
     case ${OSTYPE-} in
+        linux*)
+            if [ -n "${WSL_DISTRO_NAME-}" ]; then
+                __noren_wsl_folder "$dir"
+                dir=$REPLY
+            fi
+            ;;
         msys* | cygwin*)
             if [[ $dir =~ ^/([a-zA-Z])(/.*)?$ ]]; then
                 dir=/${BASH_REMATCH[1]^}:${BASH_REMATCH[2]:-/}

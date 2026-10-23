@@ -32,6 +32,7 @@ pub mod update;
 pub mod vault;
 pub mod window;
 pub mod worktree;
+pub mod wsl;
 
 pub use agents::{
     AgentEntry, AgentMatch, CatalogError, MAX_CATALOG_ENTRIES, MAX_ENTRY_NAMES, MAX_NAME_CHARS,
@@ -137,6 +138,10 @@ pub use worktree::{
     GitCli, Worktree, WorktreeError, create_worktree, list_worktrees, native_path,
     parse_worktree_list, remove_worktree, validate_branch_name, worktree_destination,
     worktree_folder_name,
+};
+pub use wsl::{
+    WSL_LAUNCHER, WSL_SCRIPT_VAR, WSLENV_VAR, WslArgs, folder_in_distro, is_wsl, scan_wsl_args,
+    wsl_integration_args, wslenv_with_script,
 };
 
 /// Returns the product name.

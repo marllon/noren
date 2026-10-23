@@ -28,6 +28,24 @@ describe("agentOfPane", () => {
     expect(agentOfPane(pane("p1", "codex"))).toBe("codex");
   });
 
+  it("sees an agent in a distro of WSL by the command alone: the tree of Windows stops at wsl.exe", () => {
+    // The shell inside the distro reports the line (OSC 633;E) and nothing is under it in the tree.
+    const inDistro = (command?: string): Pane => ({
+      ...pane("w1", command),
+      profileId: "wsl-Ubuntu",
+      cwd: "//wsl.localhost/Ubuntu/home/ada/proj",
+    });
+    expect(agentOfPane(inDistro())).toBeUndefined();
+    expect(agentOfPane(inDistro("claude --continue"))).toBe("claude");
+    expect(agentOfPane(inDistro("codex"))).toBe("codex");
+    expect(agentOfPane(inDistro("gemini"))).toBe("gemini");
+    // The command of another pane, or of one that was not an agent, tells nothing.
+    setTreeAgents(new Map([["p9", "claude"]]));
+    expect(agentOfPane(inDistro("ls -la"))).toBeUndefined();
+    // Only the command ends it: with no line running the agent is gone.
+    expect(agentOfPane(inDistro())).toBeUndefined();
+  });
+
   it("takes what the process tree showed for that pane only", () => {
     setTreeAgents(new Map([["p1", "gemini"]]));
     expect(agentOfPane(pane("p1"))).toBe("gemini");

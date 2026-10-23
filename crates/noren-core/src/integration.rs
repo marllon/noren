@@ -5,8 +5,9 @@
 //! `apps/desktop/src-tauri/resources/shell-integration/`), and the app tells this module in which
 //! folder it is. Nothing here runs a process or reads the user's configuration.
 //!
-//! Covered: PowerShell (`pwsh` and Windows PowerShell), bash, zsh and cmd. Any other shell is
-//! started exactly as detected. What each one gets:
+//! Covered: PowerShell (`pwsh` and Windows PowerShell), bash, zsh, cmd and the bash inside a WSL
+//! distro (`wsl.exe -d <distro>`). Any other shell is started exactly as detected. What each one
+//! gets:
 //!
 //! - PowerShell: `-Command` that loads `noren.ps1` after the user's profile.
 //! - bash: `--rcfile noren.bash`; the script loads the user's own files first. Bash ignores
@@ -16,13 +17,17 @@
 //!   user's, and `NOREN_USER_ZDOTDIR` carries the user's own `ZDOTDIR`.
 //! - cmd: a `PROMPT` environment variable with the sequences around the user's prompt. No script,
 //!   and cmd does not know the exit code of the last command, so it sends no `OSC 133;D`.
+//! - `wsl.exe`: a launcher that starts the login bash of the distro with `noren.bash` (see the
+//!   [`wsl`](crate::wsl) module); the path of the script travels in `WSLENV`.
 //!
-//! Profile arguments that choose what runs (`-c`, a script, `/c`, `/k`, ...) leave the spec plain.
+//! Profile arguments that choose what runs (`-c`, a script, `/c`, `/k`, `-e`, ...) leave the spec
+//! plain.
 
 use std::path::Path;
 
 use crate::profiles::Profile;
 use crate::pty::SpawnSpec;
+use crate::wsl::{WSL_SCRIPT_VAR, WSLENV_VAR, is_wsl, wsl_integration_args, wslenv_with_script};
 
 /// File name of the PowerShell script inside the integration folder.
 pub const POWERSHELL_SCRIPT: &str = "noren.ps1";
@@ -298,6 +303,19 @@ impl Profile {
                     spec.env.push((BASH_LOGIN_VAR.to_owned(), "1".to_owned()));
                 }
             }
+        } else if is_wsl(&self.program) {
+            let script = dir.join(BASH_SCRIPT);
+            if script.is_file()
+                && let Some(args) = wsl_integration_args(&self.args)
+            {
+                spec.args = args;
+                spec.env
+                    .push((WSL_SCRIPT_VAR.to_owned(), script_path_text(&script)));
+                spec.env.push((
+                    WSLENV_VAR.to_owned(),
+                    wslenv_with_script(process_env(WSLENV_VAR).as_deref()),
+                ));
+            }
         } else if is_zsh(&self.program) {
             let zsh_dir = dir.join(ZSH_DIR);
             let scan = scan_shell_args(&self.args, &["no-rcs"], &['f']);
@@ -446,8 +464,7 @@ mod tests {
     fn other_shells_are_unchanged() {
         let dir = ScriptDir::new("others");
         for (program, args) in [
-            ("wsl.exe", &["-d", "Debian"][..]),
-            // The launcher of the Windows Subsystem for Linux is not a bash.
+            // The other launcher of the subsystem is not wsl.exe, and is not a bash either.
             ("C:\\Windows\\System32\\bash.exe", &[][..]),
             ("C:\\WINDOWS\\sysnative\\bash.exe", &[][..]),
             ("/usr/bin/fish", &[][..]),
@@ -711,6 +728,142 @@ mod tests {
             assert_eq!(spec.args, chosen);
             assert!(spec.env.is_empty(), "{chosen:?}");
         }
+    }
+
+    fn wsl(args: &[&str]) -> Profile {
+        profile("wsl-Ubuntu", "wsl.exe", args)
+    }
+
+    #[test]
+    fn a_wsl_profile_gets_the_launcher_and_the_script_through_wslenv() {
+        let dir = ScriptDir::new("wsl");
+        let profile = wsl(&["-d", "Ubuntu"]);
+        let spec = profile.spec_with_integration(100, 30, Some(&dir.0), &no_process_env);
+        assert_eq!(spec.program, "wsl.exe");
+        assert_eq!((spec.cols, spec.rows), (100, 30));
+        assert_eq!(
+            spec.args,
+            ["-d", "Ubuntu", "-e", "sh", "-c", crate::wsl::WSL_LAUNCHER]
+        );
+        // The Windows path of the script (the system turns it into the Linux one), no `\\?\`.
+        let script = env_value(&spec, WSL_SCRIPT_VAR).expect("the script path is set");
+        assert!(Path::new(script).ends_with(BASH_SCRIPT), "{script}");
+        assert!(!script.starts_with(r"\\?\"), "{script}");
+        assert!(Path::new(script).is_file(), "{script}");
+        assert_eq!(env_value(&spec, WSLENV_VAR), Some("NOREN_WSL_SCRIPT/p"));
+        // Nothing else of the environment is touched, and the login flag travels inside the
+        // launcher, not through the environment.
+        assert_eq!(spec.env.len(), 2, "{:?}", spec.env);
+        assert!(spec.cwd.is_none());
+    }
+
+    #[test]
+    fn the_wslenv_of_the_user_is_kept() {
+        let dir = ScriptDir::new("wsl-env");
+        let spec = wsl(&["-d", "Debian"]).spec_with_integration(80, 24, Some(&dir.0), &|name| {
+            (name == "WSLENV").then(|| "GOPATH/l:USERPROFILE/p".to_owned())
+        });
+        assert_eq!(
+            env_value(&spec, WSLENV_VAR),
+            Some("GOPATH/l:USERPROFILE/p:NOREN_WSL_SCRIPT/p")
+        );
+    }
+
+    #[test]
+    fn a_wsl_profile_keeps_its_own_arguments_before_the_launcher() {
+        let dir = ScriptDir::new("wsl-args");
+        let spec = wsl(&["-d", "Ubuntu 22.04", "-u", "ada"]).spawn_spec_with_integration(
+            80,
+            24,
+            Some(&dir.0),
+        );
+        assert_eq!(&spec.args[..4], ["-d", "Ubuntu 22.04", "-u", "ada"]);
+        assert_eq!(&spec.args[4..7], ["-e", "sh", "-c"]);
+        assert_eq!(spec.args.len(), 8);
+        // The default distribution of the machine: no `-d` at all.
+        let spec = wsl(&[]).spawn_spec_with_integration(80, 24, Some(&dir.0));
+        assert_eq!(&spec.args[..3], ["-e", "sh", "-c"]);
+    }
+
+    #[test]
+    fn a_wsl_profile_with_the_integration_off_is_plain() {
+        let dir = ScriptDir::new("wsl-off");
+        let mut profile = wsl(&["-d", "Ubuntu"]);
+        profile.inject_integration = false;
+        let spec = profile.spec_with_integration(80, 24, Some(&dir.0), &no_process_env);
+        assert_eq!(spec.program, "wsl.exe");
+        assert_eq!(spec.args, ["-d", "Ubuntu"]);
+        assert!(spec.env.is_empty(), "{:?}", spec.env);
+        // The folder of the pane is not moved either: it stays what the spec had.
+        let mut with_folder = profile.spawn_spec(80, 24);
+        with_folder.cwd = Some(PathBuf::from("//wsl.localhost/Ubuntu/home/ada"));
+        assert_eq!(profile.place_wsl_folder(with_folder.clone()), with_folder);
+    }
+
+    #[test]
+    fn a_wsl_profile_that_chooses_what_to_run_is_left_alone() {
+        let dir = ScriptDir::new("wsl-chosen");
+        for chosen in [
+            &["-d", "Ubuntu", "-e", "htop"][..],
+            &["-d", "Ubuntu", "--exec", "htop"][..],
+            &["-d", "Ubuntu", "--", "htop", "-d", "5"][..],
+            &["-d", "Ubuntu", "htop"][..],
+            &["-d", "Ubuntu", "--shell-type", "none"][..],
+            &["--shutdown"][..],
+            &["--terminate", "Ubuntu"][..],
+            &["--unregister", "Ubuntu"][..],
+            &["--set-default", "Ubuntu"][..],
+            &["-l", "-q"][..],
+        ] {
+            let profile = wsl(chosen);
+            let spec = profile.spec_with_integration(80, 24, Some(&dir.0), &no_process_env);
+            assert_eq!(spec.args, chosen);
+            assert!(spec.env.is_empty(), "{chosen:?}");
+        }
+    }
+
+    #[test]
+    fn a_wsl_profile_without_the_script_or_the_folder_is_plain() {
+        let profile = wsl(&["-d", "Ubuntu"]);
+        let spec = profile.spec_with_integration(80, 24, None, &no_process_env);
+        assert_eq!(spec.args, ["-d", "Ubuntu"]);
+        assert!(spec.env.is_empty());
+        let empty = std::env::temp_dir().join("noren-integration-no-such-folder-3b70");
+        let spec = profile.spec_with_integration(80, 24, Some(&empty), &no_process_env);
+        assert_eq!(spec.args, ["-d", "Ubuntu"]);
+        assert!(spec.env.is_empty());
+    }
+
+    #[test]
+    fn a_wsl_profile_started_in_a_folder_of_the_distro_gets_cd_and_one_on_a_drive_keeps_its_folder()
+    {
+        let dir = ScriptDir::new("wsl-folder");
+        let profile = wsl(&["-d", "Ubuntu"]);
+
+        let mut spec = profile.spec_with_integration(80, 24, Some(&dir.0), &no_process_env);
+        spec.cwd = Some(PathBuf::from("//wsl.localhost/Ubuntu/home/ada/proj"));
+        let placed = profile.place_wsl_folder(spec);
+        assert_eq!(
+            placed.args,
+            [
+                "-d",
+                "Ubuntu",
+                "--cd",
+                "/home/ada/proj",
+                "-e",
+                "sh",
+                "-c",
+                crate::wsl::WSL_LAUNCHER
+            ]
+        );
+        assert_eq!(placed.cwd, None);
+        // The environment of the launcher is the one the spec had.
+        assert_eq!(env_value(&placed, WSLENV_VAR), Some("NOREN_WSL_SCRIPT/p"));
+
+        let mut spec = profile.spec_with_integration(80, 24, Some(&dir.0), &no_process_env);
+        spec.cwd = Some(PathBuf::from("D:/Projetos/noren"));
+        let placed = profile.place_wsl_folder(spec.clone());
+        assert_eq!(placed, spec);
     }
 
     #[test]

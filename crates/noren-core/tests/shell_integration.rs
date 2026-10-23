@@ -407,6 +407,121 @@ fn bash_user_debug_trap() {
     manager.kill(id).expect("kill the session");
 }
 
+/// A shell session the test types into, line by line.
+struct Typed {
+    manager: SessionManager,
+    id: noren_core::SessionId,
+    rx: Receiver<Vec<u8>>,
+    seen: Vec<u8>,
+    at: usize,
+}
+
+impl Typed {
+    /// What the shell printed from sending `line` to the next prompt.
+    fn ask(&mut self, line: &str) -> String {
+        let from = self.at;
+        self.manager
+            .write(self.id, format!("{line}\r").as_bytes())
+            .expect("write the line");
+        self.at = wait_for(&self.rx, &mut self.seen, "\x1b]133;B\x07", from);
+        String::from_utf8_lossy(&self.seen)[from..self.at].to_owned()
+    }
+
+    /// The reply of `__noren_wsl_folder` for `path` (the typed text has `$REPLY`, not its value).
+    fn folder(&mut self, path: &str) -> String {
+        self.ask(&format!(
+            r#"__noren_wsl_folder '{path}'; echo "R=[$REPLY]""#
+        ))
+    }
+}
+
+/// Inside WSL the script tells the folder as Windows names it: a folder on a drive as `C:/...`, and
+/// the files of the distro as `//wsl.localhost/<distro>/...`. This machine's bash is no WSL, so the
+/// test says it is one (`OSTYPE`, `WSL_DISTRO_NAME`) and gives `wslpath` as a function: it checks
+/// the script's own rules, not WSL (`tests/wsl_integration.rs` runs the real thing).
+fn bash_wsl_folders() {
+    let Some(setup) = BashSetup::new("bash-wsl", false) else {
+        return;
+    };
+    let (manager, id, rx) = setup.spawn();
+    let mut seen = Vec::new();
+    let at = wait_for(&rx, &mut seen, "\x1b]133;B\x07", 0);
+    let mut shell = Typed {
+        manager,
+        id,
+        rx,
+        seen,
+        at,
+    };
+
+    // Not in WSL (no distro name): the folder is left alone, a POSIX path as before.
+    shell.ask("OSTYPE=linux-gnu; cd /tmp");
+    let outside = shell.ask("true");
+    assert!(
+        outside.contains("/tmp\x07") && !outside.contains("wsl.localhost"),
+        "{outside:?}"
+    );
+
+    // In WSL, with no `wslpath`: the default mount of a drive, and the distro for the rest.
+    shell.ask("WSL_DISTRO_NAME='Ubuntu 22.04'");
+    for (path, reply) in [
+        ("/mnt/c/Users/me", "/C:/Users/me"),
+        ("/mnt/d", "/D:/"),
+        ("/mnt/D/x y", "/D:/x y"),
+        (
+            "/home/ada/proj",
+            "//wsl.localhost/Ubuntu 22.04/home/ada/proj",
+        ),
+        ("/", "//wsl.localhost/Ubuntu 22.04/"),
+        // Not a drive: more than one letter, or nothing after the mount point.
+        ("/mnt/cc/x", "//wsl.localhost/Ubuntu 22.04/mnt/cc/x"),
+        ("/mnt", "//wsl.localhost/Ubuntu 22.04/mnt"),
+    ] {
+        let text = shell.folder(path);
+        assert!(text.contains(&format!("R=[{reply}]")), "{path}: {text:?}");
+    }
+
+    // The folder of the prompt is the same name, in the form of a file URI (the space is %20). It is a
+    // new folder: the URI of the one the shell was in is kept until the folder changes.
+    let text = shell.ask("cd /usr");
+    assert!(
+        text.contains("//wsl.localhost/Ubuntu%2022.04/usr\x07"),
+        "{text:?}"
+    );
+    assert!(text.contains("\x1b]7;file://"), "{text:?}");
+
+    // With `wslpath`, what it says is used: it knows how this distro mounts its drives.
+    shell.ask("wslpath() { echo 'D:/Projetos/noren'; }");
+    assert!(
+        shell
+            .folder("/mnt/whatever")
+            .contains("R=[/D:/Projetos/noren]")
+    );
+    shell.ask("wslpath() { echo '//wsl.localhost/Ubuntu 22.04/srv'; }");
+    assert!(
+        shell
+            .folder("/srv")
+            .contains("R=[//wsl.localhost/Ubuntu 22.04/srv]")
+    );
+    // An answer that is neither a drive nor a share of WSL is not trusted.
+    shell.ask("wslpath() { echo 'weird'; }");
+    assert!(
+        shell
+            .folder("/srv")
+            .contains("R=[//wsl.localhost/Ubuntu 22.04/srv]")
+    );
+    // A `wslpath` that fails falls back to the rules above.
+    shell.ask("wslpath() { return 1; }");
+    assert!(shell.folder("/mnt/c/a").contains("R=[/C:/a]"));
+    assert!(
+        shell
+            .folder("/home/x")
+            .contains("R=[//wsl.localhost/Ubuntu 22.04/home/x]")
+    );
+
+    shell.manager.kill(shell.id).expect("kill the session");
+}
+
 /// cmd gets its folder and prompt marks from a PROMPT variable, ended with ST. It has no exit code,
 /// so there is no `133;D`.
 #[cfg(windows)]
@@ -490,6 +605,11 @@ fn bash_keeps_the_prompt_and_prompt_command_of_the_user_in_a_plain_shell() {
 #[test]
 fn bash_leaves_a_debug_trap_of_the_user_alone() {
     with_timeout(bash_user_debug_trap);
+}
+
+#[test]
+fn bash_in_wsl_names_the_folders_as_windows_does() {
+    with_timeout(bash_wsl_folders);
 }
 
 #[cfg(windows)]

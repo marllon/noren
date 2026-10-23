@@ -7,6 +7,7 @@ import {
   paneFolder,
   paneTitle,
   tabLabel,
+  wslFolder,
 } from "./tab-label";
 import type { Item, LayoutNode, Pane } from "./types";
 
@@ -93,6 +94,24 @@ describe("folderName", () => {
     expect(folderName("\\\\wsl$\\Ubuntu\\home\\ada")).toBe("ada");
   });
 
+  it("names a folder in a WSL distro as the distro does, the root included", () => {
+    // The form a bash in WSL reports (OSC 7), in the share Windows reaches the distro by.
+    expect(folderName("//wsl.localhost/Ubuntu/home/ada/proj")).toBe("proj");
+    expect(folderName("\\\\wsl.localhost\\Ubuntu\\home\\ada\\proj\\")).toBe("proj");
+    expect(folderName("//wsl.localhost/Ubuntu 22.04/srv/api/")).toBe("api");
+    // The root of the distro is `/`, not the name of the share (the distro).
+    expect(folderName("//wsl.localhost/Ubuntu")).toBe("/");
+    expect(folderName("//wsl.localhost/Ubuntu/")).toBe("/");
+    expect(folderName("\\\\wsl$\\Ubuntu")).toBe("/");
+    // A distro that happens to be called `home`, or a folder called like the share.
+    expect(folderName("//wsl.localhost/home")).toBe("/");
+    expect(folderName("//wsl.localhost/Ubuntu/wsl.localhost")).toBe("wsl.localhost");
+    // The home folder of Windows is not a folder of the distro.
+    expect(folderName("//wsl.localhost/Ubuntu/Users/ada", "C:\\Users\\ada")).toBe("ada");
+    // A folder on a drive seen from inside the distro is a Windows folder, as before.
+    expect(folderName("D:/Projetos/noren")).toBe("noren");
+  });
+
   it("is ~ for the home folder, and the name of a folder inside it", () => {
     expect(folderName("/home/ada", "/home/ada")).toBe("~");
     expect(folderName("/home/ada/", "/home/ada")).toBe("~");
@@ -111,6 +130,52 @@ describe("folderName", () => {
     expect(folderName(undefined)).toBeUndefined();
     expect(folderName("   ")).toBeUndefined();
     expect(folderName("")).toBeUndefined();
+  });
+});
+
+describe("wslFolder", () => {
+  it("gives the distro and the Linux path of a folder in a distro, in either share and either slash", () => {
+    expect(wslFolder("//wsl.localhost/Ubuntu/home/ada/proj")).toEqual({
+      distro: "Ubuntu",
+      linux: "/home/ada/proj",
+    });
+    expect(wslFolder("\\\\wsl.localhost\\Debian\\srv\\api")).toEqual({
+      distro: "Debian",
+      linux: "/srv/api",
+    });
+    expect(wslFolder("\\\\wsl$\\Ubuntu\\home\\ada")).toEqual({
+      distro: "Ubuntu",
+      linux: "/home/ada",
+    });
+    expect(wslFolder("//WSL.LOCALHOST/Ubuntu/Home")).toEqual({ distro: "Ubuntu", linux: "/Home" });
+  });
+
+  it("keeps a distro name with a space and drops repeated and trailing slashes", () => {
+    expect(wslFolder("//wsl.localhost/Ubuntu 22.04/home//ada///")).toEqual({
+      distro: "Ubuntu 22.04",
+      linux: "/home/ada",
+    });
+  });
+
+  it("gives / for the root of the distro, with or without the last slash", () => {
+    expect(wslFolder("//wsl.localhost/Ubuntu")).toEqual({ distro: "Ubuntu", linux: "/" });
+    expect(wslFolder("//wsl.localhost/Ubuntu/")).toEqual({ distro: "Ubuntu", linux: "/" });
+  });
+
+  it("is none for anything that is not a folder in a distro", () => {
+    for (const path of [
+      "C:/Users/ada",
+      "D:\\Projetos\\noren",
+      "/home/ada",
+      "//server/share/dir",
+      "//wsl.localhost",
+      "//wsl.localhost/",
+      "wsl.localhost/Ubuntu/home",
+      "/wsl.localhost/Ubuntu/home",
+      "",
+    ]) {
+      expect(wslFolder(path), path).toBeUndefined();
+    }
   });
 });
 
@@ -141,6 +206,21 @@ describe("paneTitle", () => {
 
   it("follows the shell when it leaves the folder it was recorded in", () => {
     expect(paneTitle(pane("p1", { cwd: "/a", shellCwd: "/b" }))).toBe("b");
+  });
+
+  it("names a tab in a WSL distro after its folder and the program that runs there", () => {
+    const folder = pane("p1", {
+      profileId: "wsl-Ubuntu",
+      cwd: "//wsl.localhost/Ubuntu/home/ada/proj",
+    });
+    expect(paneTitle(folder)).toBe("proj");
+    expect(paneTitle({ ...folder, runningCommand: { text: "claude --continue" } })).toBe(
+      "proj · claude",
+    );
+    // The folder the shell started in, which the pane does not keep, names the tab as well.
+    expect(
+      paneTitle(pane("p2", { shellCwd: "//wsl.localhost/Ubuntu/home/ada/work" }), "C:\\Users\\ada"),
+    ).toBe("work");
   });
 
   it("is the program alone while no folder is known", () => {

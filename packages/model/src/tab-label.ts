@@ -34,6 +34,28 @@ function isWindowsPath(path: string): boolean {
   return /^[A-Za-z]:/.test(path) || path.includes("\\");
 }
 
+/** A folder inside a WSL distro, as Windows names it. */
+export interface WslFolder {
+  /** The name of the distro (`Ubuntu`). */
+  distro: string;
+  /** The folder the shell inside the distro knows it by (`/home/ada/proj`; `/` for the root). */
+  linux: string;
+}
+
+/**
+ * The distro and the Linux path of a folder that is in a WSL distro as Windows names it:
+ * `//wsl.localhost/Ubuntu/home/ada/proj` (what a bash in WSL reports, see docs/SHELL_INTEGRATION.md),
+ * with either slash, or the older `\\wsl$\Ubuntu\home\ada\proj`. `undefined` for any other path (a
+ * drive, another server, a Linux path), and for a path that names no distro.
+ */
+export function wslFolder(path: string): WslFolder | undefined {
+  const match = /^\/\/(?:wsl\.localhost|wsl\$)\/([^/]+)(\/.*)?$/i.exec(path.replaceAll("\\", "/"));
+  const distro = match?.[1];
+  if (distro === undefined) return undefined;
+  const parts = (match?.[2] ?? "").split("/").filter((part) => part !== "");
+  return { distro, linux: `/${parts.join("/")}` };
+}
+
 /** Path with the separators and the case of the drive normalized, for comparing against `home`. */
 function comparable(path: string, windows: boolean): string {
   const slashed = windows ? path.replaceAll("\\", "/") : path;
@@ -50,6 +72,9 @@ function comparable(path: string, windows: boolean): string {
  */
 export function shortCwd(cwd: string, home?: string, maxSegments = 2): string {
   if (cwd.trim() === "") return "";
+  // A folder in a WSL distro is shown as the distro knows it, not as the share Windows reaches it by.
+  const inDistro = wslFolder(cwd);
+  if (inDistro !== undefined) return shortCwd(inDistro.linux, undefined, maxSegments);
   const windows = isWindowsPath(cwd);
   const sep = windows && cwd.includes("\\") ? "\\" : "/";
   const split = (path: string): string[] => path.split(/[\\/]+/).filter((part) => part !== "");
@@ -126,6 +151,8 @@ export function commandName(text: string | undefined): string | undefined {
  */
 export function folderName(cwd: string | undefined, home?: string): string | undefined {
   if (cwd === undefined || cwd.trim() === "") return undefined;
+  const inDistro = wslFolder(cwd);
+  if (inDistro !== undefined) return folderName(inDistro.linux);
   const short = shortCwd(cwd, home);
   if (short === "~") return "~";
   const last = cwd

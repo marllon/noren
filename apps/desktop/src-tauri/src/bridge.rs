@@ -469,12 +469,36 @@ pub fn session_spec<R: Runtime>(
             profile.id
         ));
     }
+    let spec = spec_with_options(
+        &profile,
+        integration_dir(app).as_deref(),
+        cwd,
+        env,
+        cols,
+        rows,
+    )?;
+    Ok((profile, spec))
+}
+
+/// The command of a profile on this machine with the shell integration, the folder and the
+/// environment of the call applied. The folder is checked first (a folder that is gone is an error
+/// here, before any process starts, and `wsl.exe --cd` would start in `/` with an error line), then a
+/// folder of the distro of a WSL profile, which the pane holds as the path Windows opens
+/// (`\\wsl.localhost\Ubuntu\home\ada`), becomes the Linux path `wsl.exe --cd` takes.
+fn spec_with_options(
+    profile: &Profile,
+    integration_dir: Option<&Path>,
+    cwd: Option<&str>,
+    env: Option<HashMap<String, String>>,
+    cols: u16,
+    rows: u16,
+) -> Result<SpawnSpec, String> {
     let spec = apply_session_options(
-        profile.spawn_spec_with_integration(cols, rows, integration_dir(app).as_deref()),
+        profile.spawn_spec_with_integration(cols, rows, integration_dir),
         cwd,
         env,
     )?;
-    Ok((profile, spec))
+    Ok(profile.place_wsl_folder(spec))
 }
 
 /// Starts the shell of `spec`, sends its output to `output` through a route kept in `state` and
@@ -2749,6 +2773,59 @@ mod tests {
         let applied = apply_session_options(gone.spawn_spec(80, 24), given.to_str(), None)
             .expect("the given folder replaces the profile's");
         assert_eq!(applied.cwd.as_deref(), Some(given.as_path()));
+    }
+
+    /// A WSL profile with the integration: the script is in the folder of the scripts, and the
+    /// folder the call names is checked as for any profile.
+    #[test]
+    fn a_wsl_session_gets_the_integration_and_its_folder_is_checked_before_wsl_exe_starts() {
+        let scripts = TempDir::new("wsl-scripts");
+        std::fs::write(scripts.0.join(noren_core::BASH_SCRIPT), "# test script\n")
+            .expect("write the script");
+        let mut wsl = profile("wsl-Ubuntu", "WSL: Ubuntu");
+        wsl.program = "wsl.exe".to_owned();
+        wsl.args = vec!["-d".to_owned(), "Ubuntu".to_owned()];
+
+        // A folder on a drive stays the folder of the process, next to the launcher.
+        let folder = TempDir::new("wsl-folder");
+        let given = folder.0.to_string_lossy().into_owned();
+        let spec = spec_with_options(&wsl, Some(&scripts.0), Some(&given), None, 80, 24)
+            .expect("an existing folder");
+        assert_eq!(
+            spec.args.last().map(String::as_str),
+            Some(noren_core::WSL_LAUNCHER)
+        );
+        assert!(
+            !spec.args.iter().any(|arg| arg == "--cd"),
+            "{:?}",
+            spec.args
+        );
+        assert_eq!(spec.cwd.as_deref(), Some(folder.0.as_path()));
+        assert!(
+            spec.env
+                .iter()
+                .any(|(name, _)| name == noren_core::WSL_SCRIPT_VAR),
+            "{:?}",
+            spec.env
+        );
+
+        // A folder of the distro that is gone (the distro was removed, the folder deleted) is an
+        // error before anything starts: `wsl.exe --cd` would open the shell in `/` with an error.
+        let gone = "//wsl.localhost/NoSuchDistroForNoren/home/ada/proj";
+        let error = spec_with_options(&wsl, Some(&scripts.0), Some(gone), None, 80, 24)
+            .expect_err("the folder is not there");
+        assert!(
+            error.contains("does not exist or is not a folder") && error.contains("NoSuchDistro"),
+            "{error}"
+        );
+
+        // With the integration off the spec is the plain one and the folder is the process folder.
+        wsl.inject_integration = false;
+        let spec = spec_with_options(&wsl, Some(&scripts.0), Some(&given), None, 80, 24)
+            .expect("an existing folder");
+        assert_eq!(spec.args, ["-d", "Ubuntu"]);
+        assert!(spec.env.is_empty(), "{:?}", spec.env);
+        assert_eq!(spec.cwd.as_deref(), Some(folder.0.as_path()));
     }
 
     /// The output of a profile of the user, run for real in a pseudo terminal: what it was told to run.

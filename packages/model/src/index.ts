@@ -30,8 +30,9 @@ export {
   shortCwd,
   speakingPane,
   tabLabel,
+  wslFolder,
 } from "./tab-label";
-export type { TabLabelOptions } from "./tab-label";
+export type { TabLabelOptions, WslFolder } from "./tab-label";
 export type { BranchProblem } from "./worktree";
 export { branchProblem, worktreeDestination, worktreeFolderName } from "./worktree";
 export {

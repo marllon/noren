@@ -548,3 +548,91 @@ describe("PaneLocationTracker attention", () => {
     expect(events).toHaveLength(2);
   });
 });
+
+// A bash inside a WSL distro (`noren.bash`) writes the folder as Windows names it: the files of the
+// distro as `//wsl.localhost/<distro>/...` (so the path of the file URI starts with two slashes) and a
+// folder on a drive, seen from inside as `/mnt/d/...`, as `D:/...`.
+describe("PaneLocationTracker in a WSL distro", () => {
+  const DISTRO_PROJ = "//wsl.localhost/Ubuntu/home/ada/proj";
+  const wslPrompt = (path: string): string => osc(`7;file://DESKTOP-X${path}`) + osc("133;A");
+
+  it("reads the folder of the distro and the branch of the repository in it", async () => {
+    const backend = new FakeBackend({ gitRepos: { [DISTRO_PROJ]: MAIN } });
+    const folders: string[] = [];
+    const locations: PaneLocation[] = [];
+    const tracker = new PaneLocationTracker({
+      gitInfo: (folder) => backend.gitInfo(folder),
+      onLocation: (location) => locations.push(location),
+      onFolder: (cwd) => folders.push(cwd),
+    });
+    // The path is the one the shell wrote, with the two slashes of the share kept. It is where the
+    // shell started, so the pane does not keep it, but its branch is read.
+    tracker.feed(wslPrompt(DISTRO_PROJ));
+    await settle();
+    expect(folders).toEqual([DISTRO_PROJ]);
+    expect(locations).toEqual([{ gitBranch: "main" }]);
+    // A folder the shell moved to is recorded, and so is the one it comes back to, with its branch.
+    tracker.feed(wslPrompt("//wsl.localhost/Ubuntu/home/ada/other"));
+    await settle();
+    expect(locations.at(-1)).toEqual({ cwd: "//wsl.localhost/Ubuntu/home/ada/other" });
+    tracker.feed(wslPrompt(DISTRO_PROJ));
+    await settle();
+    expect(locations.at(-1)).toEqual({ cwd: DISTRO_PROJ, gitBranch: "main" });
+  });
+
+  it("finds the repository of the distro from a folder inside it, through the fake backend", async () => {
+    const { tracker, locations } = setup({ [DISTRO_PROJ]: MAIN }, DISTRO_PROJ);
+    tracker.feed(wslPrompt(`${DISTRO_PROJ}/src/deep`));
+    await settle();
+    expect(locations).toEqual([{ cwd: `${DISTRO_PROJ}/src/deep`, gitBranch: "main" }]);
+    // Another distro's folder with the same path is not in that repository.
+    tracker.feed(wslPrompt("//wsl.localhost/Debian/home/ada/proj"));
+    await settle();
+    expect(locations.at(-1)).toEqual({ cwd: "//wsl.localhost/Debian/home/ada/proj" });
+  });
+
+  it("decodes a distro name with a space (the script writes it as %20)", async () => {
+    const folder = "//wsl.localhost/Ubuntu 22.04/home/ada";
+    const { tracker, locations } = setup({ [folder]: MAIN }, "/h");
+    tracker.feed(wslPrompt("//wsl.localhost/Ubuntu%2022.04/home/ada"));
+    await settle();
+    expect(tracker.cwd).toBe(folder);
+    expect(locations).toEqual([{ cwd: folder, gitBranch: "main" }]);
+  });
+
+  it("reads a folder on a drive seen from inside the distro as the drive folder", async () => {
+    const { tracker, locations } = setup({
+      "D:/Projetos/noren": { branch: "dev", detached: false },
+    });
+    tracker.feed(wslPrompt("/D:/Projetos/noren/apps"));
+    await settle();
+    expect(locations).toEqual([{ cwd: "D:/Projetos/noren/apps", gitBranch: "dev" }]);
+  });
+
+  it("a pane restored in a folder of the distro reads its branch at the first prompt", async () => {
+    const { tracker, locations } = setup({ [DISTRO_PROJ]: MAIN }, DISTRO_PROJ);
+    // The shell the pane starts with `--cd` in that folder reports it at its first prompt.
+    tracker.feed(wslPrompt(DISTRO_PROJ));
+    await settle();
+    expect(locations).toEqual([{ cwd: DISTRO_PROJ, gitBranch: "main" }]);
+  });
+
+  it("tells the command a shell in the distro runs, by its line, the way the agent panel needs", () => {
+    const events: PaneCommandEvent[] = [];
+    const tracker = new PaneLocationTracker({
+      gitInfo: () => Promise.resolve(null),
+      onLocation: () => undefined,
+      onCommand: (event) => events.push(event),
+      clock: { now: () => 1000 },
+    });
+    // The prompt, the line the user typed, the start, the output, the end: what `noren.bash` writes.
+    tracker.feed(wslPrompt(DISTRO_PROJ) + osc("133;B"));
+    tracker.feed(osc("633;E;claude --continue") + osc("133;C"));
+    expect(events).toEqual([{ kind: "start", text: "claude --continue" }]);
+    tracker.feed(`done\r\n${osc("133;D;0")}${wslPrompt(DISTRO_PROJ)}`);
+    expect(events).toEqual([
+      { kind: "start", text: "claude --continue" },
+      { kind: "end", text: "claude --continue", exitCode: 0, durationMs: 0 },
+    ]);
+  });
+});

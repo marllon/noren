@@ -865,6 +865,54 @@ describe("workspace store", () => {
       }
     });
 
+    it("a tab in a WSL distro comes back in the folder of the distro it was last in, with its branch", async () => {
+      // The folder as the bash in the distro reports it: the share Windows reaches the distro by.
+      const folder = "//wsl.localhost/Ubuntu/home/ada/proj";
+      const backend = new FakeBackend({
+        profiles: [
+          { id: "fake", name: "Fake shell", default: true },
+          { id: "wsl-Ubuntu", name: "WSL: Ubuntu", default: false },
+        ],
+        gitRepos: { [folder]: { branch: "main", detached: false } },
+      });
+      const first = await openStore(backend);
+      first.store.getState().newTab({ profileId: "wsl-Ubuntu" });
+      const space = activeSpaceOf(first.store.getState().workspace);
+      const item = space.items[spaceItemIds(space).at(-1) ?? ""];
+      const pane = item && layoutPanes(item.layout)[0];
+      if (!pane) throw new Error("no pane");
+      expect(pane.profileId).toBe("wsl-Ubuntu");
+      first.store.getState().setPaneLocation(pane.id, { cwd: folder, gitBranch: "main" });
+      await first.store.getState().flush();
+
+      // A new run of the app: the tab is where it was, in the same profile.
+      const second = await openStore(backend);
+      const restoredSpace = activeSpaceOf(second.store.getState().workspace);
+      const restoredItem = restoredSpace.items[spaceItemIds(restoredSpace).at(-1) ?? ""];
+      const restored = restoredItem && layoutPanes(restoredItem.layout)[0];
+      if (!restored) throw new Error("the pane was not restored");
+      expect(restored).toMatchObject({ profileId: "wsl-Ubuntu", cwd: folder, gitBranch: "main" });
+
+      // What the app asks the backend for: the profile and the folder, as saved.
+      const start = sessionStartOptions(restoredSpace, restored);
+      expect(start).toEqual({ profileId: "wsl-Ubuntu", cwd: folder });
+
+      // The shell started with them reports that folder at its first prompt, and the branch of it is
+      // read again.
+      const locations: { cwd?: string; gitBranch?: string }[] = [];
+      const tracker = new PaneLocationTracker({
+        gitInfo: (path) => backend.gitInfo(path),
+        onLocation: (location) => locations.push(location),
+        cwd: folder,
+      });
+      const id = await backend.createSession({ cols: 80, rows: 24, ...start });
+      backend.onOutput(id, (bytes) => tracker.feed(bytes));
+      await backend.write(id, "true\r");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(tracker.cwd).toBe(folder);
+      expect(locations.at(-1)).toEqual({ cwd: folder, gitBranch: "main" });
+    });
+
     it("the same location again changes nothing and saves nothing", async () => {
       const backend = new FakeBackend();
       const { store, paneId } = await openOne(backend);

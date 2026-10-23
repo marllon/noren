@@ -76,6 +76,23 @@ describe("shortCwd", () => {
     expect(shortCwd("\\\\server\\share\\team\\app")).toBe("\u2026\\team\\app");
   });
 
+  it("shows a folder in a WSL distro the way the distro knows it", () => {
+    // What a bash in WSL reports (OSC 7), and the older share name.
+    expect(shortCwd("//wsl.localhost/Ubuntu/home/ada/proj")).toBe("\u2026/ada/proj");
+    expect(shortCwd("\\\\wsl.localhost\\Ubuntu\\home\\ada\\proj")).toBe("\u2026/ada/proj");
+    expect(shortCwd("\\\\wsl$\\Ubuntu\\home\\ada")).toBe("/home/ada");
+    expect(shortCwd("//wsl.localhost/Ubuntu/srv/api")).toBe("/srv/api");
+    expect(shortCwd("//wsl.localhost/Ubuntu/srv/api/")).toBe("/srv/api");
+    // The root of the distro is the root, not the share; a distro with a space keeps working.
+    expect(shortCwd("//wsl.localhost/Ubuntu")).toBe("/");
+    expect(shortCwd("//wsl.localhost/Ubuntu/")).toBe("/");
+    expect(shortCwd("//wsl.localhost/Ubuntu 22.04/tmp")).toBe("/tmp");
+    // The home folder of Windows says nothing about a folder in the distro.
+    expect(shortCwd("//wsl.localhost/Ubuntu/home/ada", "C:\\Users\\ada")).toBe("/home/ada");
+    // A share that is not WSL stays what it is.
+    expect(shortCwd("//server/share/team/app")).toBe("\u2026/team/app");
+  });
+
   it("keeps a path that already starts with ~", () => {
     expect(shortCwd("~")).toBe("~");
     expect(shortCwd("~/proj")).toBe("~/proj");

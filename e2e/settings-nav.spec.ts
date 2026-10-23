@@ -489,16 +489,26 @@ test.describe("the explanations", () => {
 test.describe("the grid", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
-  /** The left edge of every label and of every control of the rows, relative to the form. */
-  async function edges(screen: Locator) {
-    return screen.evaluate((root) => {
+  /**
+   * The left edge of every label and of every control of the rows, relative to the form: the ones in the
+   * rows of the sections, or (`inBox`) the ones in the boxes of a profile or of a provider, which are a
+   * border and a padding further in. The dense style puts a switch and the number of a slider at the end
+   * of the row, so those are not "controls that start at one line".
+   */
+  async function edges(screen: Locator, inBox: boolean) {
+    return screen.evaluate((root, boxed) => {
       const form = root.querySelector(".settings-form");
       if (form === null) throw new Error("no form");
       const origin = form.getBoundingClientRect().left;
       const shown = (element: Element) => element.getClientRects().length > 0;
-      const lefts = (selector: string): number[] =>
+      const here = (element: Element) =>
+        (element.closest(".settings-profile, .settings-providers") !== null) === boxed;
+      const atEnd =
+        ".settings-toggle > .settings-option > input, .settings-number:has(> .settings-slider) > .settings-option > input";
+      const lefts = (selector: string, skip = ""): number[] =>
         [...root.querySelectorAll(`.settings-content ${selector}`)]
-          .filter(shown)
+          .filter((element) => shown(element) && here(element))
+          .filter((element) => skip === "" || !element.matches(skip))
           .map((element) => Math.round(element.getBoundingClientRect().left - origin));
       return {
         labels: lefts(
@@ -514,42 +524,52 @@ test.describe("the grid", () => {
           [
             ".settings-number > .settings-option > :is(input, select, textarea)",
             ".settings-number > .settings-path-choose",
-            ".settings-toggle > .settings-option > input",
             ".settings-choices",
             ".settings-action-buttons",
             ".settings-gallery-item > button",
             ".settings-sync-buttons",
             ".background-picker",
           ].join(", "),
+          atEnd,
         ),
       };
-    });
+    }, inBox);
   }
 
   test("every label starts at one line and every control at another, in every section", async ({
     page,
   }) => {
     // Two mods (one on, with its order buttons) and an SSH profile put the rows of the lists and of the
-    // frames that reach into the padding on screen, besides the form of a provider that is always there.
-    // Controls that start at one line are the dense style's; the glass screen puts its switches and its
-    // numbers at the right end of the column and has its own check (glass-settings.spec.ts).
+    // frames on screen, besides the form of a provider that is always there. The rows of the sections
+    // share two lines (the label, and the control 252 px to its right: the column of 240 px and a gap of
+    // 12 px); the boxes of a profile or a provider are a border and a padding further in and share two
+    // lines of their own. A switch and the number of a slider are at the end of the row (the design), and
+    // the glass screen has its own check (glass-settings.spec.ts).
     const screen = await start(page, {
       file: denseOf('{ "appearance": { "theme": "noren-dusk" }, "mods": ["quiet.css"] }\n'),
       mods: { "quiet.css": "body {}", "loud.css": "body {}" },
     });
     await expect(screen.locator('[data-nr-part="settings-mod"]')).toHaveCount(2);
     await screen.getByRole("button", { name: "Add SSH profile", exact: true }).click();
-    const found = await edges(screen);
-    expect(found.labels.length).toBeGreaterThan(40);
-    expect(found.controls.length).toBeGreaterThan(40);
-    expect([...new Set(found.labels)]).toHaveLength(1);
-    expect([...new Set(found.controls)]).toHaveLength(1);
-    // The labels are on the left of the controls, with room between them.
-    expect((found.controls[0] ?? 0) - (found.labels[0] ?? 0)).toBeGreaterThanOrEqual(240);
+    const rows = await edges(screen, false);
+    expect(rows.labels.length).toBeGreaterThan(40);
+    expect(rows.controls.length).toBeGreaterThan(30);
+    expect([...new Set(rows.labels)]).toHaveLength(1);
+    expect([...new Set(rows.controls)]).toHaveLength(1);
+    expect((rows.controls[0] ?? 0) - (rows.labels[0] ?? 0)).toBe(252);
+    const boxes = await edges(screen, true);
+    expect(boxes.labels.length).toBeGreaterThan(5);
+    expect(boxes.controls.length).toBeGreaterThan(5);
+    expect([...new Set(boxes.labels)]).toHaveLength(1);
+    expect([...new Set(boxes.controls)]).toHaveLength(1);
+    expect((boxes.controls[0] ?? 0) - (boxes.labels[0] ?? 0)).toBe(252);
+    // The box is a border and a padding (1 px and 10 px) in from the row it is in.
+    expect((boxes.labels[0] ?? 0) - (rows.labels[0] ?? 0)).toBe(11);
   });
 
-  // The grid of 8 px is the dense style's; the glass screen follows the design (glass-settings.spec.ts).
-  test("every size of the layout is a multiple of 8 px", async ({ page }) => {
+  // The grid of 8 px was the classic look of this screen; the dense style is drawn to the design instead
+  // (denso-configuracoes, NOR-F20-21b) and the glass screen follows its own (glass-settings.spec.ts).
+  test("every size of the layout is the one of the dense design", async ({ page }) => {
     const screen = await start(page, { file: denseOf(fileFor("en", "dark")) });
     const sizes = await screen.evaluate((root) => {
       const px = (value: string): number => Number.parseFloat(value);
@@ -560,40 +580,48 @@ test.describe("the grid", () => {
       };
       const style = (selector: string) => getComputedStyle(one(selector));
       const box = (selector: string) => one(selector).getBoundingClientRect();
-      const form = box(".settings-form");
       const out: Record<string, number> = {
         dialogWidth: root.getBoundingClientRect().width,
         dialogHeight: root.getBoundingClientRect().height,
-        headerPaddingTop: px(style(".settings-header").paddingTop),
-        headerPaddingLeft: px(style(".settings-header").paddingLeft),
-        searchHeight: box(".settings-search").height,
-        searchWidth: box(".settings-search").width,
+        headerHeight: box(".settings-header h2").height,
+        searchHeight: box(".settings-search-field").height,
+        searchLeft: box(".settings-search-field").left - box(".settings-nav").right,
         columnWidth: box(".settings-nav").width,
-        columnPadding: px(style(".settings-nav").paddingLeft),
         columnItemHeight: box(".settings-nav-item").height,
         contentPaddingTop: px(style(".settings-content").paddingTop),
         contentPaddingLeft: px(style(".settings-content").paddingLeft),
         contentPaddingRight: px(style(".settings-content").paddingRight),
         sectionGap: px(style(".settings-sections").rowGap),
         rowPaddingTop: px(style(".settings-row").paddingTop),
-        rowPaddingBottom: px(style(".settings-row").paddingBottom),
-        inputHeight: box(".settings-number > .settings-option > input").height,
-        // A box with a slider beside it is narrower (112 px); the width of the column is the one of a box on its own.
-        controlWidth: box(
-          ".settings-number:not(:has(> .settings-slider)) > .settings-option > input",
-        ).width,
-        labelLeft: box(".settings-number > .settings-option > span").left - form.left,
-        controlLeft: box(".settings-number > .settings-option > input").left - form.left,
-        footerPaddingTop: px(style(".settings-footer").paddingTop),
-        footerPaddingLeft: px(style(".settings-footer").paddingLeft),
+        rowPaddingLeft: px(style(".settings-row").paddingLeft),
+        rowBorder: px(style(".settings-rows").borderTopWidth),
+        inputHeight: box(".settings-number > .settings-option > select").height,
+        footerHeight: box(".settings-footer").height,
+        labelToControl:
+          box(".settings-number > .settings-option > select").left -
+          box(".settings-number > .settings-option > label").left,
       };
       return out;
     });
-    const off = Object.entries(sizes).filter(([, value]) => Math.round(value * 100) % 800 !== 0);
-    expect(off, JSON.stringify(sizes)).toEqual([]);
-    expect(sizes["dialogWidth"]).toBe(960);
-    expect(sizes["columnWidth"]).toBe(192);
-    expect(sizes["controlWidth"]).toBe(320);
+    expect(sizes).toEqual({
+      dialogWidth: 1280,
+      dialogHeight: 768,
+      headerHeight: 32,
+      searchHeight: 30,
+      searchLeft: 24,
+      columnWidth: 220,
+      columnItemHeight: 26,
+      contentPaddingTop: 18,
+      contentPaddingLeft: 24,
+      contentPaddingRight: 24,
+      sectionGap: 22,
+      rowPaddingTop: 5,
+      rowPaddingLeft: 10,
+      rowBorder: 1,
+      inputHeight: 24,
+      footerHeight: 24,
+      labelToControl: 252,
+    });
   });
 
   test("a label and its explanation stay together in the left column, the control in the right", async ({

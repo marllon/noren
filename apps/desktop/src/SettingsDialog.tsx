@@ -301,9 +301,14 @@ export function SettingsDialog({
   onClose,
 }: SettingsDialogProps) {
   const t = useT();
-  // The glass style (the default) draws the screen as in the approved design: an icon on each section,
-  // the magnifier in the search, the two cards of the interface style. The dense style keeps its markup.
-  const glass = useInterfaceStyle() === "glass";
+  // Both styles draw the screen as in their approved design (the choice of the interface style is two
+  // cards in both): the glass has an icon on each section and the magnifier in the search; the dense one
+  // numbers its sections (a counter of the style sheet), has the slash of its design in the search, the
+  // section the person is in after the title (a crumb), the word that closes the screen and the strip of
+  // the file at the foot. What each field writes, the search and the keyboard are the same in both.
+  const interfaceStyle = useInterfaceStyle();
+  const glass = interfaceStyle === "glass";
+  const dense = interfaceStyle === "dense";
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -595,7 +600,7 @@ export function SettingsDialog({
     preset: keyPresetOptions(),
   };
 
-  // The glass screen opens Appearance with the cards of the interface style, as the design does; the dense one keeps the language first.
+  // Both screens open Appearance with the cards of the interface style, as the designs do.
   const languageRow = row(
     "language",
     [t("settings.language"), t("settings.language.hint"), ...labelsOf(sectionOptions.language)],
@@ -615,31 +620,18 @@ export function SettingsDialog({
     [
       t("settings.interfaceStyle"),
       ...labelsOf(sectionOptions.style),
-      ...(glass
-        ? [t("settings.interfaceStyleHint"), ...interfaceStyleCards().map((card) => card.note)]
-        : []),
+      t("settings.interfaceStyleHint"),
+      ...interfaceStyleCards().map((card) => card.note),
     ],
-    glass ? (
-      <StyleCards
-        legend={t("settings.interfaceStyle")}
-        field="appearance.style"
-        hint={t("settings.interfaceStyleHint")}
-        name="settings-style"
-        value={shown.style}
-        options={interfaceStyleCards()}
-        onChange={(style) => change({ style })}
-      />
-    ) : (
-      <Choice
-        legend={t("settings.interfaceStyle")}
-        field="appearance.style"
-        name="settings-style"
-        control={CHOICE_CONTROLS.interfaceStyle}
-        value={shown.style}
-        options={sectionOptions.style}
-        onChange={(style) => change({ style })}
-      />
-    ),
+    <StyleCards
+      legend={t("settings.interfaceStyle")}
+      field="appearance.style"
+      hint={t("settings.interfaceStyleHint")}
+      name="settings-style"
+      value={shown.style}
+      options={interfaceStyleCards()}
+      onChange={(style) => change({ style })}
+    />,
   );
 
   const sections: SectionDef[] = [
@@ -647,7 +639,8 @@ export function SettingsDialog({
       id: "appearance",
       title: t("settings.appearance"),
       rows: [
-        ...(glass ? [styleRow, languageRow] : [languageRow, styleRow]),
+        styleRow,
+        languageRow,
         row(
           "side",
           [t("settings.sidebarSide"), ...labelsOf(sectionOptions.side)],
@@ -821,7 +814,8 @@ export function SettingsDialog({
           "image",
           [t("settings.backgroundImage"), t("background.choose"), t("background.removeChosen")],
           // Under glass the card of the picture comes first, as in the design, and the box that takes a
-          // path typed by hand is under it.
+          // path typed by hand is under it; under dense the box comes first, and the picture is a row under
+          // it with the miniature, the name of the file and the two buttons (the name in both styles).
           <>
             {glass && (
               <BackgroundPicker
@@ -847,6 +841,7 @@ export function SettingsDialog({
                 backend={backend}
                 path={shown.backgroundImage}
                 reading={picture}
+                named
                 onChoose={(backgroundImage) => change({ backgroundImage })}
                 onRemove={() => change({ backgroundImage: "" })}
               />
@@ -1671,6 +1666,9 @@ export function SettingsDialog({
   };
 
   const activeShown = shownIds.includes(active) ? active : shownIds[0];
+  // The name of the section the person is in, which the dense header shows after its title.
+  const currentTitle = shownSections.find((entry) => entry.section.id === activeShown)?.section
+    .title;
 
   const searchInput = (
     <input
@@ -1700,8 +1698,20 @@ export function SettingsDialog({
           onKeyDown={onKeyDown}
         >
           <div className="settings-header">
-            <h2 id={titleId}>{t("settings.title")}</h2>
-            {glass ? <SearchField>{searchInput}</SearchField> : searchInput}
+            <h2 id={titleId}>
+              {t("settings.title")}
+              {dense && currentTitle !== undefined && (
+                <span className="settings-crumb" aria-hidden="true" data-nr-part="settings-crumb">
+                  <span className="settings-crumb-sep">/</span>
+                  <span className="settings-crumb-name">{currentTitle}</span>
+                </span>
+              )}
+            </h2>
+            {glass || dense ? (
+              <SearchField style={interfaceStyle}>{searchInput}</SearchField>
+            ) : (
+              searchInput
+            )}
             <button
               type="button"
               className="settings-close"
@@ -1711,6 +1721,7 @@ export function SettingsDialog({
               onClick={() => void close()}
             >
               <X size={16} aria-hidden="true" />
+              {dense && <span className="settings-close-text">{t("common.close")}</span>}
             </button>
           </div>
           <form className="settings-form" onSubmit={onSubmit} onBlur={onBlur}>
@@ -1781,6 +1792,12 @@ export function SettingsDialog({
               )}
             </div>
             <div className="settings-footer">
+              {dense && (
+                <span className="settings-footer-file" aria-hidden="true">
+                  <span className="settings-footer-label">{t("settings.footerLabel")}</span>
+                  <span className="settings-footer-name">config.jsonc</span>
+                </span>
+              )}
               <div className="settings-feedback">
                 {firstError !== undefined && (
                   <p role="alert" className="settings-warning" data-nr-part="settings-file-problem">

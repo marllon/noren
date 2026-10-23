@@ -534,6 +534,7 @@ export const ptBR: Dictionary = {
   "settings.profileRemoveTitle": "Remover este perfil?",
   "settings.profileRemoveMessage": "“{name}” sai do config.jsonc. Isso não pode ser desfeito.",
   "settings.autoSaved": "Cada mudança é salva na hora.",
+  "settings.footerLabel": "Config",
   "settings.profileAdd": "Adicionar perfil",
   "settings.profileAddSsh": "Adicionar perfil SSH",
   "settings.profileHost": "Máquina",

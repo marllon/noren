@@ -14,15 +14,18 @@ const stylesCss = strip(readFileSync(new URL("styles.css", here), "utf8"));
 const tokensCss = strip(readFileSync(new URL("style-tokens.css", here), "utf8"));
 
 const DENSE = ':root[data-nr-style="dense"]';
-/** The first rule of the dense window section and the first of the glass one, which comes after it. */
+/**
+ * The first rule of the dense window section and the first of the dense settings section (NOR-F20-21b,
+ * tested in dense-settings.test.ts), which comes right after it; the glass section follows that one.
+ */
 const START = `${DENSE} .app .titlebar {`;
-const END = ".glass-backdrop {";
+const END = `${DENSE} .dialog-backdrop:has(> .settings-dialog) {`;
 
 const section = (): string => {
   const start = stylesCss.indexOf(START);
   const end = stylesCss.indexOf(END);
   expect(start, "the dense section starts with the title bar").toBeGreaterThan(0);
-  expect(end, "the glass section is there").toBeGreaterThan(start);
+  expect(end, "the dense settings section is there").toBeGreaterThan(start);
   return stylesCss.slice(start, end);
 };
 
@@ -39,6 +42,7 @@ function selectorsOf(css: string): string[] {
 describe("the dense window section of the stylesheet", () => {
   it("comes before the glass section, so the test that keeps the glass section under its own attribute still holds", () => {
     expect(stylesCss.indexOf(START)).toBeLessThan(stylesCss.indexOf(END));
+    expect(stylesCss.indexOf(END)).toBeLessThan(stylesCss.indexOf(".glass-backdrop {"));
   });
 
   it("keeps every rule under the dense attribute, so the glass style does not move", () => {

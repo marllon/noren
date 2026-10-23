@@ -6469,6 +6469,1110 @@ ul.settings-models {
 }
 
 /*
+ * The dense style: the settings screen (NOR-F20-21b, D23), as in the approved design (denso-configuracoes).
+ * Everything below is under data-nr-style="dense", so the glass style does not move. The screen fills the
+ * window under its title bar (the title bar stays, with the buttons of the window) and reads like a page of
+ * the dense window: a header of 32px (the title, the section the person is in as a crumb, and the word
+ * that closes the screen with its key), the column of sections at the left (each with its number, the
+ * current one tinted with the highlight), the search over the content (a slash in the highlight), the
+ * sections as headings of 11px over a box of rows with a line of 1px between them, and at the foot a
+ * strip of 24px like the status bar of the window (the file the settings are written to, and the line
+ * that says every change is saved). Square corners, lines of 1px (--nr-line, --nr-line-strong), one
+ * monospaced font, and the highlight (the color of the active space, --nr-highlight) for what is on,
+ * what is chosen and what has the focus.
+ *
+ * The controls are the ones of the design: a row is a label and, in a column from the label, its control
+ * (a box of 24px, a list, a row of buttons in a frame with the chosen one filled, a switch of 36 by 18
+ * with a square knob, a slider with its number at the end of the row); the explanation of a field is in
+ * gray under its label. Words in the color of the highlight are pulled toward the text (--settings-on) so
+ * they keep 4.5:1 on any color a space can have; the highlight itself is for lines and fills, and a fill
+ * carries the dark text of --nr-on-highlight. Under a style rule no selector lists alternatives inside a
+ * function (the test of this section reads every comma as the end of a selector). What each field writes,
+ * the search and the keyboard are not touched; only what is drawn.
+ */
+:root[data-nr-style="dense"] .dialog-backdrop:has(> .settings-dialog) {
+  inset: 32px 0 0;
+  align-items: stretch;
+  justify-content: stretch;
+  background: var(--nr-bg);
+}
+
+:root[data-nr-style="dense"] .space-dialog.settings-dialog {
+  --settings-nav: 220px;
+  --settings-label: 240px;
+  --settings-gap: 12px;
+  --settings-soft: color-mix(in srgb, var(--nr-highlight) 14%, transparent);
+  --settings-on: color-mix(in srgb, var(--nr-highlight) 45%, var(--nr-text));
+  --settings-hover: color-mix(in srgb, var(--nr-text) 7%, transparent);
+  display: grid;
+  grid-template-columns: var(--settings-nav) minmax(0, 1fr);
+  grid-template-rows: 32px auto minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  background: var(--nr-bg);
+  box-shadow: none;
+  font-size: var(--nr-font-size);
+}
+
+/* On a light theme the words in the color of the highlight are pulled further toward the text (the colors of a space are bright, and a bright word on a light page has little contrast). */
+:root[data-nr-style="dense"][data-nr-scheme="light"] .space-dialog.settings-dialog {
+  --settings-on: color-mix(in srgb, var(--nr-highlight) 15%, var(--nr-text));
+}
+
+/* The header, the form and the footer take part in the grid of the screen: the title bar spans it, the search is over the content, the footer spans it. */
+:root[data-nr-style="dense"] .settings-header,
+:root[data-nr-style="dense"] .settings-form {
+  display: contents;
+}
+
+:root[data-nr-style="dense"] .settings-header h2 {
+  display: flex;
+  grid-column: 1 / -1;
+  grid-row: 1;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--nr-line);
+  background: var(--nr-bar-bg);
+  color: var(--nr-muted);
+  font-size: var(--nr-font-size);
+  font-weight: 400;
+  line-height: 31px;
+  text-transform: lowercase;
+}
+
+:root[data-nr-style="dense"] .settings-crumb {
+  display: inline-flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+:root[data-nr-style="dense"] .settings-crumb-sep {
+  flex: none;
+  color: var(--nr-line-strong);
+}
+
+:root[data-nr-style="dense"] .settings-crumb-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--nr-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-nr-style="dense"] .settings-close {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  justify-self: end;
+  gap: 8px;
+  width: auto;
+  height: 22px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 1px solid var(--nr-line-strong);
+  border-radius: var(--nr-radius-control);
+  color: var(--nr-muted);
+  font: inherit;
+  text-transform: lowercase;
+}
+
+:root[data-nr-style="dense"] .settings-close svg {
+  display: none;
+}
+
+:root[data-nr-style="dense"] .settings-close::after {
+  content: "esc" / "";
+  color: var(--nr-muted);
+}
+
+:root[data-nr-style="dense"] .settings-close:hover {
+  background: transparent;
+  color: var(--nr-text);
+}
+
+:root[data-nr-style="dense"] .settings-close:focus-visible,
+:root[data-nr-style="dense"] .settings-nav-item:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+}
+
+/* The search: a slash in the highlight, the box, the frame of 30px over the content (it is not part of what scrolls). */
+:root[data-nr-style="dense"] .settings-search-field {
+  display: flex;
+  grid-column: 2;
+  grid-row: 2;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  max-width: 880px;
+  height: 30px;
+  margin: 16px 24px 0;
+  padding: 0 10px;
+  border: 1px solid var(--nr-line-strong);
+  background: var(--nr-bar-bg);
+  color: var(--nr-muted);
+}
+
+:root[data-nr-style="dense"] .settings-search-field:focus-within {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 1px;
+}
+
+:root[data-nr-style="dense"] .settings-search-slash {
+  flex: none;
+  color: var(--settings-on);
+}
+
+:root[data-nr-style="dense"] .settings-search-field .settings-search {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  color: var(--nr-text);
+  font-size: var(--nr-font-size);
+}
+
+:root[data-nr-style="dense"] .settings-search-field .settings-search::placeholder {
+  color: var(--nr-muted);
+  opacity: 1;
+}
+
+/* The column of sections: a number and the name on one line, the current one tinted with the highlight. */
+:root[data-nr-style="dense"] .settings-nav {
+  grid-column: 1;
+  grid-row: 2 / 4;
+  padding: 8px 0;
+  border-right-color: var(--nr-line);
+  background: var(--nr-bar-bg);
+}
+
+:root[data-nr-style="dense"] .settings-nav ul {
+  counter-reset: settings-section;
+}
+
+:root[data-nr-style="dense"] .settings-nav li {
+  counter-increment: settings-section;
+}
+
+:root[data-nr-style="dense"] .settings-nav-item {
+  display: block;
+  height: 26px;
+  padding: 0 12px;
+  overflow: hidden;
+  border-radius: 0;
+  color: color-mix(in srgb, var(--nr-muted) 30%, var(--nr-text));
+  font-size: var(--nr-font-size);
+  line-height: 26px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-nr-style="dense"] .settings-nav-item::before {
+  content: counter(settings-section, decimal-leading-zero) / "";
+  display: inline-block;
+  margin-right: 10px;
+  color: var(--nr-muted);
+}
+
+:root[data-nr-style="dense"] .settings-nav-item:hover {
+  background: var(--settings-hover);
+}
+
+:root[data-nr-style="dense"] .settings-nav-item[aria-current="true"] {
+  background: var(--settings-soft);
+  box-shadow: none;
+  color: var(--nr-text);
+}
+
+:root[data-nr-style="dense"] .settings-nav-item[aria-current="true"]::before {
+  color: var(--settings-on);
+}
+
+:root[data-nr-style="dense"] .settings-nav-item:focus-visible {
+  outline-offset: -2px;
+}
+
+:root[data-nr-style="dense"] .settings-nav::-webkit-scrollbar,
+:root[data-nr-style="dense"] .settings-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+:root[data-nr-style="dense"] .settings-nav::-webkit-scrollbar-thumb,
+:root[data-nr-style="dense"] .settings-content::-webkit-scrollbar-thumb {
+  border-radius: 0;
+  background: color-mix(in srgb, var(--nr-text) 22%, transparent);
+}
+
+/* The content: a column of 880px at most, a heading of 11px over each box of rows. */
+:root[data-nr-style="dense"] .settings-content {
+  grid-column: 2;
+  grid-row: 3;
+  padding: 18px 24px 32px;
+}
+
+:root[data-nr-style="dense"] .settings-sections {
+  gap: 22px;
+  max-width: 880px;
+}
+
+:root[data-nr-style="dense"] .settings-section {
+  gap: 8px;
+  font-size: var(--nr-font-size);
+}
+
+:root[data-nr-style="dense"] .settings-section h3 {
+  color: var(--nr-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+:root[data-nr-style="dense"] .settings-section h4 {
+  font-size: var(--nr-font-size-small);
+}
+
+:root[data-nr-style="dense"] .settings-rows {
+  border: 1px solid var(--nr-line);
+}
+
+:root[data-nr-style="dense"] .settings-row {
+  box-sizing: border-box;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 5px 10px;
+  border-top-color: var(--nr-line);
+}
+
+:root[data-nr-style="dense"] .settings-dialog .settings-hint {
+  font-size: var(--nr-font-size-small);
+}
+
+/* The foot: the strip of the file at the left (the word in the highlight, as the space is in the status bar), the line that says every change is saved at the right. */
+:root[data-nr-style="dense"] .settings-footer {
+  box-sizing: border-box;
+  display: flex;
+  grid-column: 1 / -1;
+  grid-row: 4;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0;
+  min-height: 24px;
+  padding: 0;
+  border-top-color: var(--nr-line);
+  background: var(--nr-bar-bg);
+  font-size: var(--nr-font-size-small);
+}
+
+:root[data-nr-style="dense"] .settings-footer-file {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+:root[data-nr-style="dense"] .settings-footer-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  background: var(--nr-highlight);
+  color: var(--nr-on-highlight);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+:root[data-nr-style="dense"] .settings-footer-name {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  color: var(--nr-muted);
+}
+
+:root[data-nr-style="dense"] .settings-feedback {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+:root[data-nr-style="dense"] .settings-feedback .settings-warning {
+  padding: 1px 8px;
+  border-left-width: 1px;
+  border-left-color: var(--nr-state-waiting);
+  background: transparent;
+  color: var(--nr-waiting-text);
+}
+
+:root[data-nr-style="dense"] .settings-autosave {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 0 10px;
+  border-left: 1px solid var(--nr-line);
+  color: var(--nr-running-text);
+  font-size: var(--nr-font-size-small);
+  line-height: 23px;
+}
+
+:root[data-nr-style="dense"] .settings-autosave::before {
+  content: "\2713" / "";
+}
+
+/* A row: the label in a column of its own, its control in the next; the explanation is in gray under the label. */
+:root[data-nr-style="dense"] .settings-content .settings-number,
+:root[data-nr-style="dense"] .settings-content .settings-choice,
+:root[data-nr-style="dense"] .settings-content .settings-action {
+  grid-template-columns: var(--settings-label) minmax(0, 1fr);
+  align-items: center;
+  gap: 2px var(--settings-gap);
+}
+
+:root[data-nr-style="dense"] .settings-content .settings-toggle {
+  grid-template-columns: var(--settings-label) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px var(--settings-gap);
+}
+
+:root[data-nr-style="dense"] .settings-content .settings-number > .settings-option > span,
+:root[data-nr-style="dense"] .settings-content .settings-number > .settings-option > label,
+:root[data-nr-style="dense"] .settings-content .settings-toggle > .settings-option > span,
+:root[data-nr-style="dense"] .settings-content .settings-choice-head > .settings-label {
+  min-height: 24px;
+  color: var(--nr-text);
+  font-weight: 400;
+}
+
+:root[data-nr-style="dense"] .settings-content .settings-explain {
+  font-size: var(--nr-font-size-small);
+  line-height: 16px;
+}
+
+/* The explanation of a switch goes between its label and the switch, in the middle column, as the design has it. */
+:root[data-nr-style="dense"] .settings-content .settings-toggle > .settings-explain {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+:root[data-nr-style="dense"] .settings-content .settings-toggle > .settings-option > input {
+  grid-column: 3;
+  justify-self: end;
+}
+
+/* Boxes, lists and text areas: 24px, a line of 1px, square, the fill of the bars. */
+:root[data-nr-style="dense"] .settings-content .settings-number > .settings-option > input,
+:root[data-nr-style="dense"] .settings-content .settings-number > .settings-option > select,
+:root[data-nr-style="dense"] .settings-content .settings-number > .settings-option > textarea {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--nr-line-strong);
+  border-radius: 0;
+  background: var(--nr-bar-bg);
+  color: var(--nr-text);
+}
+
+:root[data-nr-style="dense"] .settings-content .settings-number > .settings-option > textarea {
+  height: 56px;
+  padding: 4px 8px;
+}
+
+/* A number that is not a path or a list is a short box at the start of the column; a list takes what it needs. */
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-number:not(.settings-wide)
+  > .settings-option
+  > input {
+  justify-self: start;
+  width: 96px;
+}
+
+:root[data-nr-style="dense"] .settings-content .settings-number > .settings-option > select {
+  justify-self: start;
+  width: auto;
+  min-width: 160px;
+}
+
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-number
+  > .settings-option
+  > input[aria-invalid="true"],
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-number
+  > .settings-option
+  > select[aria-invalid="true"],
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-number
+  > .settings-option
+  > textarea[aria-invalid="true"] {
+  border-color: var(--nr-highlight);
+}
+
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-number
+  > .settings-option
+  > input:focus-visible,
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-number
+  > .settings-option
+  > select:focus-visible,
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-number
+  > .settings-option
+  > textarea:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 1px;
+}
+
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-number
+  > .settings-option
+  > input::placeholder {
+  color: var(--nr-muted);
+  opacity: 1;
+}
+
+/*
+ * A number with a range: the label, the slider and, at the end of the row, its number (64px). The number is
+ * still a box (a number typed by hand is how the file is edited), drawn as plain text until the pointer or
+ * the keyboard is on it. The track is filled with the highlight up to the handle (--nr-slider-fill, 0 to
+ * 1, says how far); the handle is 14px, the width the browser gives one, so a click lands on the same value.
+ */
+:root[data-nr-style="dense"] .settings-content .settings-number:has(> .settings-slider) {
+  grid-template-columns: var(--settings-label) minmax(0, 1fr) 64px;
+}
+
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input {
+  grid-column: 3;
+  justify-self: end;
+  width: 64px;
+  padding: 0 4px;
+  border-color: transparent;
+  background: transparent;
+  text-align: right;
+}
+
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input:hover,
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input:focus-visible {
+  border-color: var(--nr-line-strong);
+  background: var(--nr-bar-bg);
+}
+
+:root[data-nr-style="dense"] .settings-content .settings-number > .settings-slider {
+  --settings-track: color-mix(in srgb, var(--nr-text) 22%, transparent);
+  appearance: none;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: stretch;
+  width: auto;
+  height: 14px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-number
+  > .settings-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--nr-highlight) calc(7px + (100% - 14px) * var(--nr-slider-fill, 0)),
+    var(--settings-track) 0
+  );
+}
+
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-number
+  > .settings-slider::-webkit-slider-thumb {
+  appearance: none;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--nr-highlight);
+}
+
+:root[data-nr-style="dense"] .settings-content .settings-number > .settings-slider:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 4px;
+}
+
+/* The chooser of a path: its button under the box, at the start of the control column. */
+:root[data-nr-style="dense"] .settings-content .settings-number > .settings-path-choose {
+  justify-self: start;
+}
+
+/* The switch: 36 by 18, a line of 1px and a square knob of 12px; on, the line and the knob are the highlight over a tint of it. */
+:root[data-nr-style="dense"] .settings-dialog .settings-switch {
+  width: 36px;
+  height: 18px;
+  border: 1px solid var(--nr-line-strong);
+  border-radius: 0;
+  background: transparent;
+}
+
+:root[data-nr-style="dense"] .settings-dialog .settings-switch::after {
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 0;
+  background: var(--nr-muted);
+}
+
+:root[data-nr-style="dense"] .settings-dialog .settings-switch:checked {
+  border-color: var(--nr-highlight);
+  background: var(--settings-soft);
+}
+
+:root[data-nr-style="dense"] .settings-dialog .settings-switch:checked::after {
+  background: var(--nr-highlight);
+  transform: translateX(18px);
+}
+
+:root[data-nr-style="dense"] .settings-dialog .settings-switch:focus-visible {
+  outline-color: var(--nr-highlight);
+  outline-offset: 2px;
+}
+
+/* A choice of two or three: the options side by side in one frame, the chosen one filled with the highlight (and the dark text that keeps 4.5:1 on any of them). */
+:root[data-nr-style="dense"] .settings-content .settings-choices.settings-segmented {
+  display: flex;
+  flex-flow: row wrap;
+  justify-self: start;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 100%;
+  height: auto;
+  min-height: 22px;
+  border: 1px solid var(--nr-line-strong);
+  border-radius: 0;
+  background: transparent;
+}
+
+:root[data-nr-style="dense"] .settings-content .settings-segmented > .settings-option {
+  flex: none;
+  height: 22px;
+  padding: 0 10px;
+  color: var(--nr-text);
+  white-space: nowrap;
+}
+
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-segmented
+  > .settings-option
+  + .settings-option {
+  border-left: 1px solid var(--nr-line-strong);
+}
+
+:root[data-nr-style="dense"] .settings-content .settings-segmented > .settings-option:hover {
+  background: var(--settings-hover);
+}
+
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-segmented
+  > .settings-option:has(input:checked) {
+  background: var(--nr-highlight);
+  box-shadow: none;
+  color: var(--nr-on-highlight);
+  font-weight: 400;
+}
+
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-segmented
+  > .settings-option:has(input:focus-visible) {
+  outline-color: var(--nr-highlight);
+}
+
+/* The buttons: 24px, a line of 1px, square; the one that chooses a picture and the one that edits the theme in use have the highlight for a line. */
+:root[data-nr-style="dense"] .settings-dialog .settings-link {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--nr-line-strong);
+  border-radius: 0;
+  color: var(--nr-text);
+}
+
+:root[data-nr-style="dense"] .settings-dialog .settings-link:hover:not(:disabled) {
+  background: var(--settings-hover);
+}
+
+:root[data-nr-style="dense"] .settings-dialog .settings-link:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 1px;
+}
+
+:root[data-nr-style="dense"] .settings-dialog .settings-link:disabled {
+  color: var(--nr-muted);
+  cursor: default;
+}
+
+:root[data-nr-style="dense"] .settings-dialog .settings-link[data-nr-part="background-choose"],
+:root[data-nr-style="dense"]
+  .settings-dialog
+  .theme-card:has(.theme-pick[aria-pressed="true"])
+  .settings-link[data-nr-action="edit"] {
+  border-color: var(--nr-highlight);
+  color: var(--settings-on);
+}
+
+:root[data-nr-style="dense"] .settings-content .settings-action > .settings-action-buttons {
+  flex-flow: row wrap;
+  align-items: center;
+  justify-self: start;
+}
+
+/* A mod and an item of the gallery are rows of the same two columns: the name in the one of the labels, the switch or the button in the other (the order buttons of a mod at its end). */
+:root[data-nr-style="dense"] .settings-content .settings-mod,
+:root[data-nr-style="dense"] .settings-content .settings-gallery-item {
+  grid-template-columns: var(--settings-label) minmax(0, 1fr);
+  gap: 0 var(--settings-gap);
+}
+
+:root[data-nr-style="dense"]
+  .settings-content
+  .settings-mod
+  .settings-toggle
+  > .settings-option
+  > input {
+  grid-column: 2;
+  justify-self: start;
+}
+
+/* The buttons of a panel (the picture of the background, Connect, Pull and Push, Check for updates) start where the controls do. */
+:root[data-nr-style="dense"] .settings-content .background-picker,
+:root[data-nr-style="dense"] .settings-content .settings-sync-buttons {
+  align-self: stretch;
+  width: auto;
+  margin-left: calc(var(--settings-label) + var(--settings-gap));
+}
+
+:root[data-nr-style="dense"] .settings-content .settings-sync-buttons {
+  gap: 8px;
+}
+
+:root[data-nr-style="dense"] .settings-content .settings-sync-buttons .settings-link:only-child {
+  width: auto;
+}
+
+/* The picture of the background: the miniature, the name of the file and the two buttons on one row. */
+:root[data-nr-style="dense"] .settings-content .background-picker {
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+:root[data-nr-style="dense"] .settings-content .background-thumb {
+  width: 48px;
+  height: 28px;
+  border-radius: 0;
+  font-size: 0;
+}
+
+:root[data-nr-style="dense"] .settings-content .background-picker-info {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--nr-muted) 30%, var(--nr-text));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-nr-style="dense"] .settings-content .background-picker-buttons {
+  flex: none;
+  flex-direction: row;
+  gap: 8px;
+}
+
+:root[data-nr-style="dense"] .settings-content .background-picker-note {
+  flex: 1 1 100%;
+}
+
+/* The two cards that choose the interface style: the picture of each (120 by 70), a mark, its name and a line about it. */
+:root[data-nr-style="dense"] .settings-style {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+
+:root[data-nr-style="dense"] .settings-style-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+:root[data-nr-style="dense"] .settings-style-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+:root[data-nr-style="dense"] .settings-style-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--nr-line-strong);
+  background: var(--nr-bar-bg);
+  cursor: pointer;
+}
+
+:root[data-nr-style="dense"] .settings-style-card:has(input:checked) {
+  border-color: var(--nr-highlight);
+  background: var(--settings-soft);
+}
+
+:root[data-nr-style="dense"] .settings-style-card:has(input:focus-visible) {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 2px;
+}
+
+:root[data-nr-style="dense"] .settings-style-card > input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+:root[data-nr-style="dense"] .settings-style-thumb {
+  position: relative;
+  display: block;
+  flex: none;
+  box-sizing: border-box;
+  width: 120px;
+  height: 70px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--nr-sample-glass-sky);
+}
+
+:root[data-nr-style="dense"] .settings-style-thumb[data-nr-thumb="dense"] {
+  border: 1px solid var(--nr-line-strong);
+  border-radius: 0;
+  background: var(--nr-bg);
+}
+
+:root[data-nr-style="dense"] .settings-style-ridge {
+  position: absolute;
+  inset: auto 0 0;
+  height: 60%;
+  background: var(--nr-sample-glass-ridge);
+  clip-path: polygon(0 40%, 20% 20%, 40% 50%, 60% 25%, 80% 55%, 100% 30%, 100% 100%, 0 100%);
+}
+
+:root[data-nr-style="dense"] .settings-style-side,
+:root[data-nr-style="dense"] .settings-style-main {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  border: 1px solid var(--nr-sample-glass-line);
+  border-radius: 4px;
+}
+
+:root[data-nr-style="dense"] .settings-style-side {
+  left: 4px;
+  width: 28%;
+  background: var(--nr-sample-glass-side);
+}
+
+:root[data-nr-style="dense"] .settings-style-main {
+  right: 4px;
+  left: calc(28% + 8px);
+  background: var(--nr-sample-glass-panel);
+}
+
+:root[data-nr-style="dense"] .settings-style-bar {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 8px;
+  border-bottom: 1px solid var(--nr-line-strong);
+  background: var(--nr-bar-bg);
+}
+
+:root[data-nr-style="dense"] .settings-style-rail {
+  position: absolute;
+  top: 8px;
+  bottom: 7px;
+  left: 0;
+  width: 26%;
+  border-right: 1px solid var(--nr-line-strong);
+  background: var(--nr-bar-bg);
+}
+
+:root[data-nr-style="dense"] .settings-style-grid {
+  position: absolute;
+  inset: 8px 0 7px 26%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--nr-line-strong);
+}
+
+:root[data-nr-style="dense"] .settings-style-grid > span {
+  background: var(--nr-bg);
+}
+
+:root[data-nr-style="dense"] .settings-style-status {
+  position: absolute;
+  inset: auto 0 0;
+  height: 7px;
+  background: var(--nr-highlight);
+}
+
+:root[data-nr-style="dense"] .settings-style-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+:root[data-nr-style="dense"] .settings-style-mark::before {
+  content: "( )" / "";
+  color: var(--nr-muted);
+}
+
+:root[data-nr-style="dense"] .settings-style-card:has(input:checked) .settings-style-mark::before {
+  content: "(\2022)" / "";
+  color: var(--settings-on);
+}
+
+:root[data-nr-style="dense"] .settings-style-name {
+  min-width: 0;
+}
+
+:root[data-nr-style="dense"] .settings-style-note {
+  grid-column: 1 / -1;
+  min-width: 0;
+  color: var(--nr-muted);
+}
+
+/*
+ * The themes: a list of rows, one for each theme, with a mark, the name, the eight colors of the theme (the
+ * background, the six that tell a theme apart and the text; the miniature of the glass screen is not drawn)
+ * and what it is at the end of the row; what can be done with a theme is the row of small buttons under it.
+ */
+:root[data-nr-style="dense"] .settings-content .theme-gallery {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  border: 1px solid var(--nr-line);
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 12px;
+  padding-bottom: 6px;
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-card + .theme-card {
+  border-top: 1px solid var(--nr-line);
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-pick {
+  grid-column: 1;
+  grid-row: 1;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 0;
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-card:has(.theme-pick[aria-pressed="true"]) {
+  background: var(--settings-soft);
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-pick[aria-pressed="true"] {
+  box-shadow: none;
+  color: var(--nr-text);
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-pick:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: -2px;
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-pick::before {
+  content: "( )" / "";
+  flex: none;
+  width: 24px;
+  color: var(--nr-muted);
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-pick[aria-pressed="true"]::before {
+  content: "(\2022)" / "";
+  color: var(--settings-on);
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-name {
+  flex: 0 0 140px;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-thumb {
+  order: 2;
+  flex-direction: row;
+  width: auto;
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-thumb-title,
+:root[data-nr-style="dense"] .settings-content .theme-thumb-side,
+:root[data-nr-style="dense"] .settings-content .theme-thumb-line {
+  display: none;
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-thumb-body,
+:root[data-nr-style="dense"] .settings-content .theme-thumb-terminal {
+  display: contents;
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-thumb-colors {
+  display: flex;
+  gap: 2px;
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-thumb-colors > span,
+:root[data-nr-style="dense"] .settings-content .theme-thumb-colors::before,
+:root[data-nr-style="dense"] .settings-content .theme-thumb-colors::after {
+  content: "";
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 0;
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-thumb-colors::before {
+  background: var(--thumb-term-bg);
+  box-shadow: inset 0 0 0 1px var(--nr-line-strong);
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-thumb-colors::after {
+  background: var(--thumb-term-fg);
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-meta {
+  grid-column: 2;
+  grid-row: 1;
+  padding-right: 10px;
+  font-size: var(--nr-font-size-small);
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-tags {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  padding: 0 10px 4px 44px;
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-tag {
+  border-color: var(--nr-highlight);
+  border-radius: 0;
+  font-size: var(--nr-font-size-small);
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-actions {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  gap: 8px;
+  padding: 0 10px 0 44px;
+}
+
+:root[data-nr-style="dense"] .settings-content .theme-actions .settings-link {
+  min-height: 22px;
+  padding: 0 8px;
+  font-size: var(--nr-font-size-small);
+}
+
+/* The boxes of a profile and of a provider: a box with a line, as the rows are. */
+:root[data-nr-style="dense"] .settings-content .settings-profile {
+  margin-inline: 0;
+  padding: 8px 10px;
+  border-color: var(--nr-line);
+  border-radius: 0;
+}
+
+/* A narrow window: the label gives up some of its room (the variable is set on what the container holds, not on the dialog above it, which a container query cannot reach). */
+@container settings-content (max-width: 640px) {
+  :root[data-nr-style="dense"] .settings-sections {
+    --settings-label: 180px;
+  }
+}
+
+@media (max-width: 760px) {
+  :root[data-nr-style="dense"] .space-dialog.settings-dialog {
+    --settings-nav: 168px;
+  }
+
+  :root[data-nr-style="dense"] .settings-content {
+    padding: 16px 16px 24px;
+  }
+
+  :root[data-nr-style="dense"] .settings-search-field {
+    margin: 12px 16px 0;
+  }
+}
+
+/*
  * The glass style: the surfaces of the main window (NOR-F20-18a, D23). Everything below is under
  * data-nr-style="glass" (the default style), so the dense style keeps the surfaces above as they are.
  * The values are the tokens of style-tokens.css, which come from the approved design of the window:

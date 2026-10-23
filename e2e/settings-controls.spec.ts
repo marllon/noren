@@ -165,9 +165,10 @@ test.describe("the switch", () => {
     expect(await pane.evaluate((element) => (element as HTMLInputElement).checked)).toBe(true);
   });
 
-  // The dense style draws the switch in the accent of the theme; the glass one in the color of the
-  // space (glass-settings.spec.ts), so the check of the classic look starts from the dense style.
-  test("it is drawn as a switch: a track and a knob that moves, in the color of the theme", async ({
+  // The dense style draws the switch as a frame of 36 by 18 px with a square knob of 12 px, in the color
+  // of the space (denso-configuracoes, NOR-F20-21b); the glass one is a pill (glass-settings.spec.ts), so
+  // the check of this drawing starts from the dense style.
+  test("it is drawn as a switch: a frame and a square knob that moves, in the color of the space", async ({
     page,
   }) => {
     const screen = await start(page, { file: denseOf(fileFor("en", "dark")) });
@@ -175,35 +176,38 @@ test.describe("the switch", () => {
     await pane.scrollIntoViewIfNeeded();
     const facts = () =>
       pane.evaluate((element) => {
-        const track = getComputedStyle(element);
+        const frame = getComputedStyle(element);
         const knob = getComputedStyle(element, "::after");
-        const root = getComputedStyle(document.documentElement);
-        const accent = root.getPropertyValue("--nr-accent").trim();
         const probe = document.createElement("i");
-        probe.style.color = accent;
+        probe.style.color = "var(--nr-highlight)";
         document.body.append(probe);
-        const accentRgb = getComputedStyle(probe).color;
+        const highlight = getComputedStyle(probe).color;
         probe.remove();
         const rect = element.getBoundingClientRect();
         return {
           width: rect.width,
           height: rect.height,
-          track: track.backgroundColor,
+          frame: frame.borderTopColor,
           knobMove: knob.transform,
-          accentRgb,
-          radius: track.borderTopLeftRadius,
+          knobColor: knob.backgroundColor,
+          knobSize: [knob.width, knob.height],
+          highlight,
+          radius: frame.borderTopLeftRadius,
         };
       });
     const off = await facts();
-    expect([off.width, off.height]).toEqual([40, 24]);
+    expect([off.width, off.height]).toEqual([36, 18]);
     expect(off.knobMove).toBe("none");
-    expect(off.track).not.toBe(off.accentRgb);
-    expect(parseFloat(off.radius)).toBeGreaterThanOrEqual(12);
+    expect(off.knobSize).toEqual(["12px", "12px"]);
+    expect(off.frame).not.toBe(off.highlight);
+    expect(off.knobColor).not.toBe(off.highlight);
+    expect(parseFloat(off.radius)).toBe(0);
     await pane.click();
     // The knob slides (120 ms); wait for it to arrive, then read it.
-    await expect.poll(async () => (await facts()).knobMove).toBe("matrix(1, 0, 0, 1, 16, 0)");
+    await expect.poll(async () => (await facts()).knobMove).toBe("matrix(1, 0, 0, 1, 18, 0)");
     const on = await facts();
-    expect(on.track).toBe(on.accentRgb);
+    expect(on.frame).toBe(on.highlight);
+    expect(on.knobColor).toBe(on.highlight);
   });
 
   test("a switch that cannot be used now is off and cannot be turned (Keep sidebar open without compact mode)", async ({
@@ -288,26 +292,31 @@ test.describe("the slider beside a box", () => {
     ).toHaveCount(0);
   });
 
-  // In the dense style the box is at the left of the slider; the glass style has its number at the right end.
-  test("the box is on the left, the slider on its right, on one line, inside the control column", async ({
+  // In the dense style the slider takes the control column and its number, a box of 64 px, is at the end
+  // of the row (denso-configuracoes, NOR-F20-21b); the glass style has its number at the right end too,
+  // in a box of 48 px.
+  test("the slider takes the control column and the box is at the end of the row, on one line", async ({
     page,
   }) => {
     const screen = await start(page, { file: denseOf(fileFor("en", "dark")) });
+    const starts = new Set<number>();
     for (const range of RANGES) {
       const row = rowOf(screen, range.row);
       await row.scrollIntoViewIfNeeded();
       const box = await row.getByRole("textbox").boundingBox();
       const slider = await row.getByRole("slider").boundingBox();
       if (box === null || slider === null) throw new Error(range.row);
-      expect(box.x + box.width, range.row).toBeLessThanOrEqual(slider.x);
+      expect(slider.x + slider.width, range.row).toBeLessThanOrEqual(box.x);
       expect(
         Math.abs(box.y + box.height / 2 - (slider.y + slider.height / 2)),
         range.row,
       ).toBeLessThan(4);
-      expect(box.width, range.row).toBe(112);
-      // The two together are the control column: 320 px, which starts where the other controls do.
-      expect(Math.round(slider.x + slider.width - box.x), range.row).toBe(320);
+      expect(box.width, range.row).toBe(64);
+      expect(slider.width, range.row).toBeGreaterThan(300);
+      // The sliders of every row start at one line (the control column), and the boxes end at one.
+      starts.add(Math.round(slider.x));
     }
+    expect([...starts]).toHaveLength(1);
   });
 
   for (const range of RANGES) {
@@ -452,7 +461,8 @@ test.describe("the slider beside a box", () => {
 });
 
 test.describe("the row of buttons and the list", () => {
-  // The dense style marks the chosen button with its weight and a line under it; the glass style lights it (glass-settings.spec.ts).
+  // The dense style fills the chosen button with the highlight and gives it the dark text (denso-configuracoes,
+  // NOR-F20-21b); the glass style lights it (glass-settings.spec.ts).
   test("a choice of two or three short options is a row of buttons, drawn side by side with one marked", async ({
     page,
   }) => {
@@ -480,23 +490,28 @@ test.describe("the row of buttons and the list", () => {
         boxes.map((one) => one.text),
         key,
       ).toEqual([...options]);
-      // Side by side: one line, each to the right of the one before, the same width.
+      // Side by side: one line, each to the right of the one before (each as wide as its words).
       expect(new Set(boxes.map((one) => Math.round(one.y))).size, key).toBe(1);
       const lefts = boxes.map((one) => one.x);
       expect(lefts, key).toEqual([...lefts].sort((a, b) => a - b));
       expect(new Set(lefts).size, key).toBe(boxes.length);
-      expect(new Set(boxes.map((one) => Math.round(one.width))).size, key).toBe(1);
-      // Exactly one is checked, and the one that is has the mark of the theme on it.
+      // Exactly one is checked, and the one that is is filled with the highlight (the color of the
+      // space), with the dark text that keeps 4.5:1 on any of them.
       const checked = await radios.evaluateAll(
         (all) => all.filter((radio) => (radio as HTMLInputElement).checked).length,
       );
       expect(checked, key).toBe(1);
       const marked = await group.locator("label:has(input:checked)").evaluate((label) => {
         const style = getComputedStyle(label);
-        return { weight: style.fontWeight, shadow: style.boxShadow };
+        const probe = document.createElement("i");
+        probe.style.color = "var(--nr-highlight)";
+        document.body.append(probe);
+        const highlight = getComputedStyle(probe).color;
+        probe.remove();
+        return { background: style.backgroundColor, color: style.color, highlight };
       });
-      expect(Number(marked.weight)).toBeGreaterThanOrEqual(600);
-      expect(marked.shadow).not.toBe("none");
+      expect(marked.background, key).toBe(marked.highlight);
+      expect(marked.color, key).toBe("rgb(13, 15, 30)");
     }
   });
 

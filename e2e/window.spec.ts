@@ -160,12 +160,13 @@ test.describe("on a dark system", () => {
     expect(alphaOf(textColor)).toBe(1);
     expect(await computed(page, '[data-nr-part="sidebar"]', "opacity")).toBe("1");
 
-    // A dialog is painted with the solid color of the surface, not the see-through one.
+    // A dialog is painted with a solid color of the theme, not the see-through one: the settings screen of
+    // the dense style is the page of the window (the background; its strips are a mix of the two).
     const screen = await openSettings(page);
     const dialogBackground = await screen.evaluate((element) =>
       getComputedStyle(element).getPropertyValue("background-color"),
     );
-    expect(dialogBackground).toBe(DUSK.surface);
+    expect(dialogBackground).toBe(DUSK.bg);
     await screen.getByRole("button", { name: "Close", exact: true }).click();
   });
 

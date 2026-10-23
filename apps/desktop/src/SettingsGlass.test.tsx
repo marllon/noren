@@ -50,7 +50,7 @@ describe("SectionIcon", () => {
 describe("SearchField", () => {
   it("holds the magnifier and the box it is given, in one frame", () => {
     const html = renderToStaticMarkup(
-      <SearchField>
+      <SearchField style="glass">
         <input type="search" aria-label="Search settings" />
       </SearchField>,
     );
@@ -59,6 +59,18 @@ describe("SearchField", () => {
     expect(html).toContain('<input type="search" aria-label="Search settings"');
     // The magnifier comes first, as in the design.
     expect(html.indexOf("<svg")).toBeLessThan(html.indexOf("<input"));
+  });
+
+  it("holds the slash of the dense design, and no magnifier, before the box", () => {
+    const html = renderToStaticMarkup(
+      <SearchField style="dense">
+        <input type="search" aria-label="Search settings" />
+      </SearchField>,
+    );
+    expect(html).toContain('data-nr-part="settings-search-field"');
+    expect(html).not.toContain("<svg");
+    expect(html).toContain('<span class="settings-search-slash" aria-hidden="true">/</span>');
+    expect(html.indexOf("settings-search-slash")).toBeLessThan(html.indexOf("<input"));
   });
 });
 

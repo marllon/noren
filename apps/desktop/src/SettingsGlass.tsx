@@ -24,11 +24,12 @@ import { fieldDescription } from "./i18n/names";
 import type { SettingsSection } from "./settings-nav";
 
 /**
- * The parts of the glass settings screen (NOR-F20-19, D23) that the dense one does not have: an icon on
- * each section of the column, the magnifier of the search, and the two cards that choose the interface
- * style. Nothing here is drawn under the dense style (the screen asks), so the dense screen keeps its
- * markup as it was. The cards are radio buttons like the buttons of the other choices: the input is the
- * control (the click, the arrow keys, the focus), and the picture of the style is for the eyes.
+ * The parts of the settings screen that the two styles draw each their way (NOR-F20-19 and NOR-F20-21b,
+ * D23): an icon on each section of the column (the glass has them, the dense one numbers its sections
+ * with a counter of the style sheet), the mark of the search (the magnifier under glass, the slash of the
+ * design under dense), and the two cards that choose the interface style (both screens have them). The
+ * cards are radio buttons like the buttons of the other choices: the input is the control (the click, the
+ * arrow keys, the focus), and the picture of the style is for the eyes.
  */
 
 /** The icon of each section of the column; they are drawings, so a screen reader says the name only. */
@@ -56,11 +57,20 @@ export function SectionIcon({ section }: { section: SettingsSection }) {
   return <Icon className="settings-nav-icon" size={16} strokeWidth={1.75} aria-hidden="true" />;
 }
 
-/** The search box with its magnifier: the box is `children`, drawn inside the frame of the field. */
-export function SearchField({ children }: { children: ReactNode }) {
+/**
+ * The search box with its mark: the box is `children`, drawn inside the frame of the field. The mark is a
+ * drawing, so it says nothing to a screen reader (the box has its own name).
+ */
+export function SearchField({ style, children }: { style: InterfaceStyle; children: ReactNode }) {
   return (
     <div className="settings-search-field" data-nr-part="settings-search-field">
-      <Search size={15} strokeWidth={1.75} aria-hidden="true" />
+      {style === "glass" ? (
+        <Search size={15} strokeWidth={1.75} aria-hidden="true" />
+      ) : (
+        <span className="settings-search-slash" aria-hidden="true">
+          /
+        </span>
+      )}
       {children}
     </div>
   );

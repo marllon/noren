@@ -287,23 +287,26 @@ test.describe("the card of glass", () => {
       .toBeCloseTo(0.74, 2);
   });
 
-  test("the dense style does not change: the old size, square corners, no glass, no icons, no cards", async ({
+  test("the dense style has a screen of its own (NOR-F20-21b): the window under its title bar, square corners, no glass, no icons", async ({
     page,
   }) => {
     const screen = await start(page, { style: "dense" });
+    // It fills the window under the title bar (32 px) instead of floating over it as a card.
     const at = await box(screen);
-    expect([at.width, at.height]).toEqual([960, 720]);
+    expect([at.x, at.y, at.width, at.height]).toEqual([0, 32, 1280, 768]);
     expect(await style(screen, "backdrop-filter")).toBe("none");
-    expect(parseFloat(await style(screen, "border-top-left-radius"))).toBeLessThanOrEqual(3);
+    expect(parseFloat(await style(screen, "border-top-left-radius"))).toBe(0);
     await expect(screen.locator(".settings-nav-icon")).toHaveCount(0);
-    await expect(screen.locator('[data-nr-part="settings-search-field"]')).toHaveCount(0);
-    await expect(screen.locator('[data-nr-part="settings-style-card"]')).toHaveCount(0);
-    // The style is a row of two buttons, the language is the first row of Appearance.
+    // The search has its frame (with a slash, not the magnifier), and the style is the two cards, as in
+    // the glass; Appearance opens with them, the language after.
+    await expect(screen.locator('[data-nr-part="settings-search-field"]')).toHaveCount(1);
+    await expect(screen.locator('[data-nr-part="settings-search-field"] svg')).toHaveCount(0);
+    await expect(screen.locator('[data-nr-part="settings-style-card"]')).toHaveCount(2);
     const first = sectionOf(screen, "appearance").locator("[data-nr-row]").first();
-    await expect(first).toHaveAttribute("data-nr-row", "appearance.language");
+    await expect(first).toHaveAttribute("data-nr-row", "appearance.style");
     const group = rowOf(screen, "appearance.style").getByRole("group", { name: "Interface style" });
     await expect(group.getByRole("radio")).toHaveCount(2);
-    await expect(group.locator(".settings-segmented")).toHaveCount(1);
+    await expect(group.locator(".settings-segmented")).toHaveCount(0);
   });
 });
 
@@ -571,8 +574,10 @@ test.describe("the two cards of the interface style", () => {
     await expect.poll(written(page)).toMatch(/"style":\s*"dense"/);
     const after = (await configText(page)) ?? "";
     expect(after.replace(/"style":\s*"dense"/, '"style": "glass"')).toBe(before);
-    // The screen is the dense one at once, and the same choice is a row of two buttons.
-    await expect(screen.locator('[data-nr-part="settings-style-card"]')).toHaveCount(0);
+    // The screen is the dense one at once (it fills the window under the title bar), and the same two cards
+    // choose the style there.
+    await expect(screen.locator('[data-nr-part="settings-style-card"]')).toHaveCount(2);
+    expect((await box(screen)).width).toBe(1280);
     await expect(
       rowOf(screen, "appearance.style").getByRole("radio", { name: "Glass", exact: true }),
     ).toBeVisible();

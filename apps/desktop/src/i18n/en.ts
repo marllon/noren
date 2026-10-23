@@ -529,6 +529,7 @@ export const en = {
   "settings.profileRemoveTitle": "Remove this profile?",
   "settings.profileRemoveMessage": "“{name}” is taken out of config.jsonc. This cannot be undone.",
   "settings.autoSaved": "Every change is saved as you make it.",
+  "settings.footerLabel": "Config",
   "settings.profileAdd": "Add profile",
   "settings.profileAddSsh": "Add SSH profile",
   "settings.profileHost": "Host",

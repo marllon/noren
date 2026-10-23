@@ -10,8 +10,9 @@ import { seedConfig } from "./settings-fixture";
 // glass style (NOR-F20-20): the card of glass with its header, the preview over the night landscape
 // and the column of boxes, at its top (the kind, the colors), in the dark and the light scheme and in
 // both languages; at its Font group (the sliders and the switch) and at its picture (the card, with
-// a picture on the preview) for a theme of the person; and the same editor under the dense style,
-// which did not change but for its switch. The capture is of the card.
+// a picture on the preview) for a theme of the person; and the dense editor at its Font group, which
+// has its own look since NOR-F20-21c (its other pictures are in dense-editor.visual.spec.ts). The capture
+// is of the card.
 
 type Language = "en" | "pt-BR";
 

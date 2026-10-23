@@ -15,8 +15,8 @@ import { seedConfig } from "./settings-fixture";
 // number with a range is a label, a slider and a number in the mono type, a switch of 40 by 24 and a card for
 // the picture). What the editor edits, what the preview draws and what Save writes are what they
 // were (e2e/theme-editor.spec.ts, which runs under this style, is the proof); this spec is about how
-// it looks and sits. The dense style does not change, and a test says so. Everything runs on the
-// `FakeBackend` of web mode.
+// it looks and sits. The dense style has its own editor (NOR-F20-21c, e2e/dense-editor.spec.ts), and a
+// test here says the glass card is not it. Everything runs on the `FakeBackend` of web mode.
 
 interface Hook {
   paneIds(): string[];
@@ -301,30 +301,27 @@ test.describe("the card of glass", () => {
       .toBeCloseTo(0.74, 2);
   });
 
-  test("the dense style does not change: the old dialog, the name in its first group, the buttons under the boxes, a preview of 300 px", async ({
+  test("the dense style does not get the card: it has a page of the window under its title bar, with the name in its first group and no box in the header (its look is e2e/dense-editor.spec.ts)", async ({
     page,
   }) => {
     await start(page, { style: "dense" });
     const editor = await openEditor(page, "noren-dusk");
-    const at = await box(editor);
-    expect(at.width).toBe(1040);
-    expect(await style(editor, "display")).toBe("flex");
+    expect(await box(editor)).toMatchObject({ x: 0, y: 32, width: 1280, height: 768 });
     expect(await style(editor, "backdrop-filter")).toBe("none");
-    expect(parseFloat(await style(editor, "border-top-left-radius"))).toBeLessThanOrEqual(3);
+    expect(await style(editor, "border-top-left-radius")).toBe("0px");
+    expect(await style(editor, "box-shadow")).toBe("none");
     // The name is the first box of the first group, and no box of the header exists.
     await expect(group(editor, "general").locator('[data-nr-field="name"]')).toHaveCount(1);
     await expect(editor.locator(".theme-editor-name")).toHaveCount(0);
-    await expect(editor.locator('[data-nr-part="theme-editor-contrast"]')).toHaveCount(0);
-    // The hint is under the title, the buttons are under the body.
-    const title = await box(editor.getByRole("heading", { name: "Theme editor", level: 2 }));
-    const hint = await box(editor.locator(".theme-editor-hint"));
+    // The sentence and the readings are in the head of the preview, the buttons come after the body in the page.
+    await expect(editor.locator('[data-nr-part="theme-editor-contrast"]')).toHaveCount(1);
+    await expect(editor.locator(".theme-editor-side-head .theme-editor-hint")).toHaveCount(1);
     const body = await box(editor.locator(".theme-editor-body"));
+    const title = await box(editor.getByRole("heading", { name: "Theme editor", level: 2 }));
     const save = await box(editor.getByRole("button", { name: "Save as my theme", exact: true }));
-    expect(hint.y).toBeGreaterThan(title.y);
-    expect(hint.y).toBeLessThan(body.y);
-    expect(save.y).toBeGreaterThan(body.y + body.height - 1);
-    expect((await box(editor.locator(".tp-window"))).height).toBe(300);
-    // The first group is the only one with its title read out: all nine are visible.
+    expect(title.y + title.height).toBeLessThanOrEqual(body.y + 1);
+    expect(save.y + save.height).toBeLessThanOrEqual(body.y + 1);
+    // The first group has its title read out like the others: all nine are visible.
     await expect(editor.locator("fieldset.theme-editor-group > legend").first()).toBeVisible();
   });
 });
@@ -756,7 +753,7 @@ test.describe("the boxes of the groups", () => {
     expect(column.x + column.width - 18 - (at.x + at.width)).toBeCloseTo(0, 0);
   });
 
-  test("finding 352: the switch of the editor has its size in the dense style too (it was 2 by 2 px)", async ({
+  test("finding 352: the switch of the editor has its size in the dense style too (it was 2 by 2 px, it is the 36 by 18 of the dense screens now)", async ({
     page,
   }) => {
     await start(page, { style: "dense", themes: [MINE] });
@@ -764,14 +761,15 @@ test.describe("the boxes of the groups", () => {
     const ligatures = editor.getByRole("switch", { name: "Ligatures", exact: true });
     await ligatures.scrollIntoViewIfNeeded();
     const at = await box(ligatures);
-    expect([at.width, at.height]).toEqual([40, 24]);
-    expect(await style(ligatures, "width", "::after")).toBe("16px");
-    expect(await style(ligatures, "height", "::after")).toBe("16px");
+    // The switch of the dense editor is the one of the dense settings screen: 36 by 18 with a knob of 12.
+    expect([at.width, at.height]).toEqual([36, 18]);
+    expect(await style(ligatures, "width", "::after")).toBe("12px");
+    expect(await style(ligatures, "height", "::after")).toBe("12px");
     await ligatures.click();
     await expect(ligatures).toBeChecked();
     await expect
       .poll(() => style(ligatures, "transform", "::after"))
-      .toBe("matrix(1, 0, 0, 1, 16, 0)");
+      .toBe("matrix(1, 0, 0, 1, 18, 0)");
   });
 
   test("the kind of the theme is a row with a label and a track of two buttons, the chosen one lit", async ({

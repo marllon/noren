@@ -7573,6 +7573,1002 @@ ul.settings-models {
 }
 
 /*
+ * The dense style: the theme editor (NOR-F20-21c, D23), as in the approved design (denso-editor-de-tema).
+ * Everything below is under data-nr-style="dense" and starts from the editor, which is a portal outside the
+ * settings screen: no rule here reaches a thing that is not inside it (the test of this section lists the
+ * selectors that do not name the editor). Like the settings screen the editor is a page of the window under
+ * its title bar (which stays, with the buttons of the window): a header of 32px (the title, the name of the
+ * theme as a crumb with a mark while something is unsaved, and the buttons, the one that saves filled with
+ * the highlight), the preview at the left with the readings of the contrast and the sixteen colors under it
+ * as a table, the boxes of the groups in a column of 320px at the right (a heading of 28px over rows of a
+ * label in a column of 130px and its control: a color is a swatch of 16px and a box of 22px, a number with a
+ * range is its slider and its number, the kind is a row of two buttons in one frame, the ligatures a switch
+ * of 36 by 18) and a strip of 24px at the foot with how many changes are unsaved. Square corners, lines of
+ * 1px (--nr-line, --nr-line-strong), one monospaced font, and the highlight (the color of the active
+ * space, --nr-highlight) for what is on, chosen or focused; a fill of it carries the dark text of
+ * --nr-on-highlight, and no word is drawn in the highlight itself. What the editor edits, what the preview
+ * draws and what Save writes are not touched; only where things sit and how they are drawn.
+ */
+:root[data-nr-style="dense"] .dialog-backdrop:has(> .theme-editor) {
+  inset: 32px 0 0;
+  align-items: stretch;
+  justify-content: stretch;
+  background: var(--nr-bg);
+}
+
+:root[data-nr-style="dense"] .space-dialog.theme-editor {
+  --editor-label: 130px;
+  --editor-props: 320px;
+  --editor-hover: color-mix(in srgb, var(--nr-text) 7%, transparent);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 32px minmax(0, 1fr) auto auto 24px;
+  grid-template-areas:
+    "title actions"
+    "body body"
+    "fix fix"
+    "failure failure"
+    "foot foot";
+  gap: 0;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--nr-bg);
+  box-shadow: none;
+  font-size: var(--nr-font-size);
+}
+
+/* The header: the title and the crumb at the left, the buttons at the right (they come last in the page, as the buttons of a dialog do, and sit here). */
+:root[data-nr-style="dense"] .theme-editor > h2 {
+  display: flex;
+  grid-area: title;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 32px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--nr-line);
+  background: var(--nr-bar-bg);
+  color: var(--nr-muted);
+  font-size: var(--nr-font-size);
+  font-weight: 400;
+  line-height: 31px;
+  text-transform: lowercase;
+}
+
+:root[data-nr-style="dense"] .theme-editor-crumb {
+  display: inline-flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+:root[data-nr-style="dense"] .theme-editor-crumb-sep {
+  flex: none;
+  color: var(--nr-line-strong);
+}
+
+:root[data-nr-style="dense"] .theme-editor-crumb-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--nr-text);
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+:root[data-nr-style="dense"] .theme-editor-crumb-unsaved {
+  flex: none;
+  color: var(--nr-waiting-text);
+}
+
+:root[data-nr-style="dense"] .theme-editor-crumb-unsaved::before {
+  content: "\25CF" / "";
+  margin-right: 6px;
+}
+
+:root[data-nr-style="dense"] .theme-editor > .dialog-actions {
+  grid-area: actions;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--nr-line);
+  background: var(--nr-bar-bg);
+}
+
+:root[data-nr-style="dense"] .theme-editor > .dialog-actions button {
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--nr-line-strong);
+  border-radius: 0;
+  background: transparent;
+  color: var(--nr-text);
+}
+
+:root[data-nr-style="dense"] .theme-editor > .dialog-actions button:hover:not(:disabled) {
+  background: var(--editor-hover);
+}
+
+:root[data-nr-style="dense"] .theme-editor > .dialog-actions button:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 1px;
+}
+
+:root[data-nr-style="dense"] .theme-editor > .dialog-actions .primary {
+  padding: 0 10px;
+  border-color: var(--nr-highlight);
+  background: var(--nr-highlight);
+  color: var(--nr-on-highlight);
+  font-weight: 700;
+}
+
+:root[data-nr-style="dense"] .theme-editor > .dialog-actions .primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--nr-highlight) 88%, white);
+}
+
+:root[data-nr-style="dense"] .theme-editor > .dialog-actions .primary:disabled {
+  color: var(--nr-on-highlight);
+  opacity: 0.45;
+}
+
+/* What Save says it cannot do, and why it failed: strips under the body. */
+:root[data-nr-style="dense"] .theme-editor > .settings-hint {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 4px 12px;
+  border-top: 1px solid var(--nr-line);
+  background: var(--nr-bar-bg);
+  font-size: var(--nr-font-size-small);
+  line-height: 16px;
+}
+
+:root[data-nr-style="dense"] .theme-editor > [data-nr-part="theme-editor-fix"] {
+  grid-area: fix;
+}
+
+:root[data-nr-style="dense"] .theme-editor > [data-nr-part="theme-editor-failure"] {
+  grid-area: failure;
+  color: var(--nr-waiting-text);
+}
+
+/* The foot: the word in the highlight (as the space is in the status bar), the name of the theme, and at the right end how many changes are unsaved. */
+:root[data-nr-style="dense"] .theme-editor-footer {
+  display: flex;
+  grid-area: foot;
+  box-sizing: border-box;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 24px;
+  border-top: 1px solid var(--nr-line);
+  background: var(--nr-bar-bg);
+  font-size: var(--nr-font-size-small);
+}
+
+:root[data-nr-style="dense"] .theme-editor-footer-label {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 0 10px;
+  background: var(--nr-highlight);
+  color: var(--nr-on-highlight);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+:root[data-nr-style="dense"] .theme-editor-footer-name {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 10px;
+  overflow: hidden;
+  color: var(--nr-muted);
+  line-height: 23px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-nr-style="dense"] .theme-editor-footer-changes {
+  flex: none;
+  padding: 0 10px;
+  border-left: 1px solid var(--nr-line);
+  color: var(--nr-muted);
+  line-height: 23px;
+}
+
+:root[data-nr-style="dense"] .theme-editor-footer-changes[data-nr-state="unsaved"] {
+  color: var(--nr-waiting-text);
+}
+
+/* The body: the preview at the left (it takes what is left) and the column of boxes at the right. */
+:root[data-nr-style="dense"] .theme-editor-body {
+  grid-area: body;
+  grid-template-columns: minmax(0, 1fr) var(--editor-props);
+  gap: 0;
+}
+
+:root[data-nr-style="dense"] .theme-editor-side {
+  container: editor-side / inline-size;
+  grid-column: 1;
+  grid-row: 1;
+  gap: 12px;
+  box-sizing: border-box;
+  padding: 12px;
+}
+
+:root[data-nr-style="dense"] .theme-editor-side-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+:root[data-nr-style="dense"] .theme-editor-side-head h3 {
+  color: var(--nr-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+:root[data-nr-style="dense"] .theme-editor-hint {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: var(--nr-font-size-small);
+  line-height: 16px;
+}
+
+/* The readings of the contrast of the text and of the muted text on the background: green while they hold the minimum the editor warns about, amber when they do not. */
+:root[data-nr-style="dense"] .theme-editor-contrast {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  color: var(--nr-running-text);
+  font-size: var(--nr-font-size-small);
+  line-height: 16px;
+}
+
+:root[data-nr-style="dense"] .theme-editor-contrast[data-nr-state="low"] {
+  color: var(--nr-waiting-text);
+}
+
+/* The frame of the preview: a line around the window it draws, which fills the room (the backdrop behind it stands for what the system paints behind a window that lets it through). */
+:root[data-nr-style="dense"] .theme-editor .theme-preview {
+  display: flex;
+  flex: 1 1 340px;
+  min-height: 340px;
+  padding: 12px;
+  border: 1px solid var(--nr-line-strong);
+  border-radius: 0;
+}
+
+:root[data-nr-style="dense"] .theme-editor .tp-window {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+:root[data-nr-style="dense"] .theme-editor-notes p {
+  font-size: var(--nr-font-size-small);
+  line-height: 16px;
+}
+
+/* The sixteen colors: a table of eight columns (the names) and two rows (the normal colors and the bright ones), a cell a swatch of 12px and the hex value in a box of 26px. */
+:root[data-nr-style="dense"] .theme-editor .theme-palette {
+  grid-template-columns: 76px repeat(8, minmax(0, 1fr));
+  gap: 0;
+  justify-content: stretch;
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-palette-title {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-palette-name,
+:root[data-nr-style="dense"] .theme-editor .theme-palette-head {
+  min-width: 0;
+  padding: 4px 6px;
+  overflow: hidden;
+  color: var(--nr-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-palette-name {
+  grid-row: 2;
+  grid-column: calc(var(--ansi-at) + 1);
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-palette-head {
+  grid-column: 1;
+  font-size: var(--nr-font-size-small);
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-palette > .theme-palette-head:nth-of-type(2) {
+  grid-row: 3;
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-palette > .theme-palette-head:nth-of-type(3) {
+  grid-row: 4;
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-palette .theme-color {
+  display: block;
+  min-width: 0;
+  padding: 3px;
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-palette-row .theme-color:nth-of-type(1) {
+  grid-row: 3;
+  grid-column: calc(var(--ansi-at) + 1);
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-palette-row .theme-color:nth-of-type(2) {
+  grid-row: 4;
+  grid-column: calc(var(--ansi-at) + 1);
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-palette .theme-color-boxes {
+  box-sizing: border-box;
+  width: 100%;
+  height: 26px;
+  gap: 4px;
+  padding: 0 4px;
+  border: 1px solid var(--nr-line-strong);
+  background: var(--nr-bar-bg);
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-palette .theme-color-boxes:focus-within {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: -1px;
+}
+
+:root[data-nr-style="dense"]
+  .theme-editor
+  .theme-palette
+  .theme-color-boxes:has(input[aria-invalid="true"]) {
+  border-color: var(--nr-highlight);
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-palette input.theme-swatch {
+  width: 12px;
+  height: 12px;
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-palette input.theme-hex {
+  flex: 1;
+  width: 7ch;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 11px;
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-palette .theme-color-problem {
+  padding: 2px 0 0;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+/* Where the preview column is too narrow for eight columns of hex values (under 720px of content: a window under about 1050px, or one under 860px with the column of boxes below the preview) the table is a list: a row for each name, the normal color and the bright one beside it. */
+@container editor-side (max-width: 719px) {
+  :root[data-nr-style="dense"] .theme-editor .theme-palette {
+    grid-template-columns: minmax(0, 1fr) repeat(2, minmax(0, 120px));
+  }
+
+  :root[data-nr-style="dense"] .theme-editor .theme-palette-name {
+    grid-row: calc(var(--ansi-at) + 2);
+    grid-column: 1;
+  }
+
+  :root[data-nr-style="dense"] .theme-editor .theme-palette > .theme-palette-head:nth-of-type(2) {
+    grid-row: 2;
+    grid-column: 2;
+  }
+
+  :root[data-nr-style="dense"] .theme-editor .theme-palette > .theme-palette-head:nth-of-type(3) {
+    grid-row: 2;
+    grid-column: 3;
+  }
+
+  :root[data-nr-style="dense"] .theme-editor .theme-palette-row .theme-color:nth-of-type(1) {
+    grid-row: calc(var(--ansi-at) + 2);
+    grid-column: 2;
+  }
+
+  :root[data-nr-style="dense"] .theme-editor .theme-palette-row .theme-color:nth-of-type(2) {
+    grid-row: calc(var(--ansi-at) + 2);
+    grid-column: 3;
+  }
+}
+
+/* The column of boxes: the groups one under the other, each a heading of 28px over its rows, a line under the group. */
+:root[data-nr-style="dense"] .theme-editor-controls {
+  grid-column: 2;
+  grid-row: 1;
+  gap: 0;
+  box-sizing: border-box;
+  padding: 0;
+  border-left: 1px solid var(--nr-line);
+  background: var(--nr-bar-bg);
+  font-size: var(--nr-font-size);
+}
+
+/* A fieldset is as wide as the widest thing in it unless it is told otherwise: a long name of a picture would stretch the whole column. */
+:root[data-nr-style="dense"] .theme-editor .theme-editor-group {
+  gap: 0;
+  min-width: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--nr-line);
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-editor-group > legend {
+  box-sizing: border-box;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--nr-line);
+  color: var(--nr-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  line-height: 27px;
+  text-transform: uppercase;
+}
+
+/* A sentence that says what is wrong can carry a path with no space in it (the picture that cannot be read): it breaks anywhere instead of leaving the column. */
+:root[data-nr-style="dense"] .theme-editor .settings-hint {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+:root[data-nr-style="dense"] .theme-editor-group > .settings-hint {
+  padding: 6px 12px;
+  font-size: var(--nr-font-size-small);
+  line-height: 16px;
+}
+
+/* A color: its name in a column of 130px, then a swatch of 16px and the box of its hex value. */
+:root[data-nr-style="dense"] .theme-editor-group .theme-color {
+  display: grid;
+  grid-template-columns: var(--editor-label) minmax(0, 1fr);
+  align-items: center;
+  gap: 0;
+  min-height: 30px;
+}
+
+:root[data-nr-style="dense"] .theme-editor-group .theme-color-label {
+  min-width: 0;
+  padding: 0 12px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+:root[data-nr-style="dense"] .theme-editor-group .theme-color-boxes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding-right: 10px;
+}
+
+:root[data-nr-style="dense"] .theme-editor .theme-color-problem {
+  grid-column: 1 / -1;
+  padding: 0 12px 6px;
+}
+
+:root[data-nr-style="dense"] .theme-editor input.theme-swatch {
+  appearance: none;
+  flex: none;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--nr-line-strong);
+  cursor: pointer;
+}
+
+:root[data-nr-style="dense"] .theme-editor input.theme-swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+:root[data-nr-style="dense"] .theme-editor input.theme-swatch::-webkit-color-swatch {
+  border: 0;
+  border-radius: 0;
+}
+
+:root[data-nr-style="dense"] .theme-editor input.theme-swatch:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 2px;
+}
+
+/* The boxes: 22px, a line of 1px, square, over the page. */
+:root[data-nr-style="dense"] .theme-editor-group input.theme-hex,
+:root[data-nr-style="dense"] .theme-editor-group .settings-wide input[type="text"],
+:root[data-nr-style="dense"] .theme-editor-group .settings-number > .settings-option > input {
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--nr-line-strong);
+  border-radius: 0;
+  background: var(--nr-bg);
+  color: var(--nr-text);
+  font: inherit;
+}
+
+:root[data-nr-style="dense"] .theme-editor-group input.theme-hex {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+:root[data-nr-style="dense"] .theme-editor-group input.theme-hex:focus-visible,
+:root[data-nr-style="dense"] .theme-editor-group .settings-wide input[type="text"]:focus-visible,
+:root[data-nr-style="dense"]
+  .theme-editor-group
+  .settings-number
+  > .settings-option
+  > input:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 1px;
+}
+
+:root[data-nr-style="dense"] .theme-editor-group input.theme-hex[aria-invalid="true"],
+:root[data-nr-style="dense"]
+  .theme-editor-group
+  .settings-wide
+  input[type="text"][aria-invalid="true"],
+:root[data-nr-style="dense"]
+  .theme-editor-group
+  .settings-number
+  > .settings-option
+  > input[aria-invalid="true"] {
+  border-color: var(--nr-highlight);
+}
+
+/* A box of a name or a path: its label in the column of 130px and the box beside it. */
+:root[data-nr-style="dense"] .theme-editor-group .settings-wide > .settings-option {
+  display: grid;
+  grid-template-columns: var(--editor-label) minmax(0, 1fr);
+  align-items: center;
+  gap: 0;
+  min-height: 30px;
+  padding-right: 10px;
+}
+
+:root[data-nr-style="dense"] .theme-editor-group .settings-wide > .settings-option > span {
+  min-width: 0;
+  padding: 0 12px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+:root[data-nr-style="dense"] .theme-editor-group .settings-wide > .settings-option > input {
+  width: auto;
+  min-width: 0;
+}
+
+/* The name of the theme, the first box of the first group: its label and its box are two children of the row, the reason it gives (if it does) is under both. */
+:root[data-nr-style="dense"] .theme-editor-group .settings-wide[data-nr-field="name"] {
+  display: grid;
+  grid-template-columns: var(--editor-label) minmax(0, 1fr);
+  align-items: center;
+  gap: 0;
+  min-height: 30px;
+  padding-right: 10px;
+}
+
+:root[data-nr-style="dense"]
+  .theme-editor-group
+  .settings-wide[data-nr-field="name"]
+  > .settings-option {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+:root[data-nr-style="dense"] .theme-editor-group .settings-wide[data-nr-field="name"] > input {
+  width: auto;
+  min-width: 0;
+}
+
+:root[data-nr-style="dense"]
+  .theme-editor-group
+  .settings-wide[data-nr-field="name"]
+  > [role="alert"] {
+  grid-column: 1 / -1;
+  padding: 0 0 6px 12px;
+}
+
+:root[data-nr-style="dense"] .theme-editor-group .settings-wide > [role="alert"] {
+  padding: 0 12px 6px;
+}
+
+/* The kind of the theme: its name in the column of 130px and the two options in one frame, the chosen one filled with the highlight. */
+:root[data-nr-style="dense"] .theme-editor-kind {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0;
+  min-height: 30px;
+  padding-right: 10px;
+}
+
+:root[data-nr-style="dense"] .theme-editor-kind > span:first-child {
+  flex: 0 0 var(--editor-label);
+  box-sizing: border-box;
+  padding: 0 12px;
+  color: var(--nr-text);
+}
+
+:root[data-nr-style="dense"] .theme-editor-kinds {
+  display: flex;
+  box-sizing: border-box;
+  min-width: 0;
+  border: 1px solid var(--nr-line-strong);
+}
+
+:root[data-nr-style="dense"] .theme-editor-kinds > .settings-option {
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 10px;
+  color: var(--nr-text);
+  white-space: nowrap;
+}
+
+:root[data-nr-style="dense"] .theme-editor-kinds > .settings-option + .settings-option {
+  border-left: 1px solid var(--nr-line-strong);
+}
+
+:root[data-nr-style="dense"] .theme-editor-kinds > .settings-option > input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+:root[data-nr-style="dense"] .theme-editor-kinds > .settings-option:hover {
+  background: var(--editor-hover);
+}
+
+:root[data-nr-style="dense"] .theme-editor-kinds > .settings-option:has(input:checked) {
+  background: var(--nr-highlight);
+  color: var(--nr-on-highlight);
+}
+
+:root[data-nr-style="dense"] .theme-editor-kinds > .settings-option:has(input:focus-visible) {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 1px;
+}
+
+/* A number with a range: its label, the slider (filled with the highlight up to its handle) and its number at the end of the row (still a box to type in, drawn as plain text until the pointer or the keyboard is on it). */
+:root[data-nr-style="dense"] .theme-editor-group .settings-number:has(> .settings-slider) {
+  display: grid;
+  grid-template-columns: var(--editor-label) minmax(0, 1fr) 54px;
+  align-items: center;
+  gap: 0 8px;
+  min-height: 30px;
+  padding-right: 10px;
+}
+
+:root[data-nr-style="dense"]
+  .theme-editor-group
+  .settings-number:has(> .settings-slider)
+  > .settings-option {
+  display: contents;
+}
+
+:root[data-nr-style="dense"]
+  .theme-editor-group
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > span {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  padding: 0 12px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+:root[data-nr-style="dense"]
+  .theme-editor-group
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input {
+  grid-column: 3;
+  grid-row: 1;
+  width: 54px;
+  padding: 0 4px;
+  border-color: transparent;
+  background: transparent;
+  text-align: right;
+}
+
+:root[data-nr-style="dense"]
+  .theme-editor-group
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input:hover,
+:root[data-nr-style="dense"]
+  .theme-editor-group
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input:focus-visible {
+  border-color: var(--nr-line-strong);
+  background: var(--nr-bg);
+}
+
+:root[data-nr-style="dense"]
+  .theme-editor-group
+  .settings-number:has(> .settings-slider)
+  > .settings-option
+  > input[aria-invalid="true"] {
+  border-color: var(--nr-highlight);
+}
+
+:root[data-nr-style="dense"]
+  .theme-editor-group
+  .settings-number
+  > .settings-option
+  > input::placeholder {
+  color: var(--nr-muted);
+  opacity: 1;
+}
+
+:root[data-nr-style="dense"] .theme-editor-group .settings-number > .settings-slider {
+  --editor-track: color-mix(in srgb, var(--nr-text) 22%, transparent);
+  appearance: none;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: stretch;
+  width: auto;
+  min-width: 0;
+  height: 14px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+:root[data-nr-style="dense"]
+  .theme-editor-group
+  .settings-number
+  > .settings-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--nr-highlight) calc(7px + (100% - 14px) * var(--nr-slider-fill, 0)),
+    var(--editor-track) 0
+  );
+}
+
+:root[data-nr-style="dense"]
+  .theme-editor-group
+  .settings-number
+  > .settings-slider::-webkit-slider-thumb {
+  appearance: none;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--nr-highlight);
+}
+
+:root[data-nr-style="dense"] .theme-editor-group .settings-number > .settings-slider:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 4px;
+}
+
+:root[data-nr-style="dense"]
+  .theme-editor-group
+  .settings-number:has(> .settings-slider)
+  > [role="alert"] {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  padding: 0 0 6px 12px;
+}
+
+/* The switch: its label at the left and the switch of 36 by 18 at the right end, a line of 1px and a square knob of 12px; on, the line and the knob are the highlight over a tint of it. */
+:root[data-nr-style="dense"] .theme-editor-group .settings-toggle > .settings-option {
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  min-height: 30px;
+  padding: 0 10px 0 12px;
+}
+
+:root[data-nr-style="dense"] .theme-editor .settings-switch {
+  width: 36px;
+  height: 18px;
+  border: 1px solid var(--nr-line-strong);
+  border-radius: 0;
+  background: transparent;
+}
+
+:root[data-nr-style="dense"] .theme-editor .settings-switch::after {
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 0;
+  background: var(--nr-muted);
+}
+
+:root[data-nr-style="dense"] .theme-editor .settings-switch:checked {
+  border-color: var(--nr-highlight);
+  background: color-mix(in srgb, var(--nr-highlight) 14%, transparent);
+}
+
+:root[data-nr-style="dense"] .theme-editor .settings-switch:checked::after {
+  background: var(--nr-highlight);
+  transform: translateX(18px);
+}
+
+:root[data-nr-style="dense"] .theme-editor .settings-switch:focus-visible {
+  outline-color: var(--nr-highlight);
+  outline-offset: 2px;
+}
+
+/* The buttons of the picture: 24px, a line of 1px, square; the one that chooses has the highlight for a line. */
+:root[data-nr-style="dense"] .theme-editor .settings-link {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--nr-line-strong);
+  border-radius: 0;
+  color: var(--nr-text);
+}
+
+:root[data-nr-style="dense"] .theme-editor .settings-link:hover:not(:disabled) {
+  background: var(--editor-hover);
+}
+
+:root[data-nr-style="dense"] .theme-editor .settings-link:focus-visible {
+  outline: 2px solid var(--nr-highlight);
+  outline-offset: 1px;
+}
+
+:root[data-nr-style="dense"] .theme-editor .settings-link:disabled {
+  color: var(--nr-muted);
+  cursor: default;
+}
+
+:root[data-nr-style="dense"] .theme-editor .settings-link[data-nr-part="background-choose"] {
+  border-color: var(--nr-highlight);
+}
+
+/* The picture: the miniature, the name of the file (cut inside its own box) and the two buttons under them. */
+:root[data-nr-style="dense"] .theme-editor-group .background-picker {
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 8px 12px;
+}
+
+:root[data-nr-style="dense"] .theme-editor-group .background-thumb {
+  width: 48px;
+  height: 28px;
+  border-radius: 0;
+  font-size: 0;
+}
+
+:root[data-nr-style="dense"] .theme-editor-group .background-picker-info {
+  flex: 1 1 60px;
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--nr-muted) 30%, var(--nr-text));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-nr-style="dense"] .theme-editor-group .background-picker-buttons {
+  flex: 1 1 100%;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The columns scroll with a thin bar in the color of the text, with no track and no arrows (the bar of the web view is a thick one with arrows that takes 17px from the boxes). */
+:root[data-nr-style="dense"] .theme-editor-controls::-webkit-scrollbar,
+:root[data-nr-style="dense"] .theme-editor-side::-webkit-scrollbar,
+:root[data-nr-style="dense"] .theme-editor-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+:root[data-nr-style="dense"] .theme-editor-controls::-webkit-scrollbar-track,
+:root[data-nr-style="dense"] .theme-editor-side::-webkit-scrollbar-track,
+:root[data-nr-style="dense"] .theme-editor-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:root[data-nr-style="dense"] .theme-editor-controls::-webkit-scrollbar-thumb,
+:root[data-nr-style="dense"] .theme-editor-side::-webkit-scrollbar-thumb,
+:root[data-nr-style="dense"] .theme-editor-body::-webkit-scrollbar-thumb {
+  border-radius: 0;
+  background: color-mix(in srgb, var(--nr-text) 22%, transparent);
+}
+
+:root[data-nr-style="dense"] .theme-editor-controls::-webkit-scrollbar-button,
+:root[data-nr-style="dense"] .theme-editor-side::-webkit-scrollbar-button,
+:root[data-nr-style="dense"] .theme-editor-body::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* A narrow window: the preview goes above the boxes and the body scrolls as one; under 760px the buttons take a row of their own under the title. */
+@media (max-width: 860px) {
+  :root[data-nr-style="dense"] .theme-editor-body {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  :root[data-nr-style="dense"] .theme-editor-side,
+  :root[data-nr-style="dense"] .theme-editor-controls {
+    grid-column: 1;
+    overflow: visible;
+  }
+
+  :root[data-nr-style="dense"] .theme-editor-controls {
+    grid-row: 2;
+    border-top: 1px solid var(--nr-line);
+    border-left: 0;
+  }
+
+  :root[data-nr-style="dense"] .theme-editor .theme-preview {
+    flex: none;
+    min-height: 300px;
+  }
+}
+
+@media (max-width: 760px) {
+  :root[data-nr-style="dense"] .space-dialog.theme-editor {
+    grid-template-rows: 32px auto minmax(0, 1fr) auto auto 24px;
+    grid-template-areas:
+      "title title"
+      "actions actions"
+      "body body"
+      "fix fix"
+      "failure failure"
+      "foot foot";
+  }
+
+  :root[data-nr-style="dense"] .theme-editor > .dialog-actions {
+    justify-content: flex-end;
+    padding: 4px 8px;
+  }
+}
+
+/*
  * The glass style: the surfaces of the main window (NOR-F20-18a, D23). Everything below is under
  * data-nr-style="glass" (the default style), so the dense style keeps the surfaces above as they are.
  * The values are the tokens of style-tokens.css, which come from the approved design of the window:

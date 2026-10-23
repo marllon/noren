@@ -829,7 +829,7 @@ test.describe("the controls", () => {
   });
 });
 
-test("the theme editor, opened from the settings of the dense style, keeps the look it had: its switch and its buttons are the classic ones (the glass editor has its own spec, glass-editor.spec.ts)", async ({
+test("the theme editor, opened from the settings of the dense style, is the dense one and not the glass one: its switch has a line and its buttons are not the 34 px ones (the glass editor has its own spec, glass-editor.spec.ts, the dense one dense-editor.spec.ts)", async ({
   page,
 }) => {
   const screen = await start(page, { style: "dense" });

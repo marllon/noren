@@ -149,36 +149,75 @@ describe("the editor under the glass style (the default)", () => {
   });
 });
 
-describe("the editor under the dense style (as it was)", () => {
+describe("the editor under the dense style (NOR-F20-21c)", () => {
   const dense = (): string => {
     setAppearancePreview({ layout: { style: "dense" } });
     return render(NOREN_DUSK);
   };
 
-  it("has the name in the first group, the hint under the title and no header box", () => {
+  it("keeps the name in the first group, with no box in the header", () => {
     const html = dense();
     expect(html).not.toContain("theme-editor-name");
     const general = between(html, 'data-nr-group="general"', 'data-nr-group="accent"');
     expect(general).toContain('data-nr-field="name"');
-    expect(html.indexOf("theme-editor-hint")).toBeLessThan(
+  });
+
+  it("puts the sentence and the two readings of the contrast in the head of the preview, and the name of the file on the picker", () => {
+    const html = dense();
+    const head = between(html, 'class="theme-editor-side-head"', 'class="theme-preview"');
+    expect(head).toContain("<h3>Preview</h3>");
+    expect(head).toContain("theme-editor-hint");
+    expect(head).toContain('data-nr-part="theme-editor-contrast"');
+    expect(head).toContain('data-nr-part="theme-editor-contrast-muted"');
+    expect(html.indexOf("theme-editor-hint")).toBeGreaterThan(
       html.indexOf('class="theme-editor-body"'),
     );
-    expect(html.indexOf("theme-editor-hint")).toBeGreaterThan(html.indexOf("<h2"));
+    expect(html).toContain("background-picker-name");
   });
 
-  it("has no reading of the contrast and no name on the picker", () => {
+  it("lays the sixteen colors out under the preview, not in the group of the terminal", () => {
     const html = dense();
-    expect(html).not.toContain("theme-editor-contrast");
-    expect(html).not.toContain("background-picker-name");
-    expect(html).toContain("<h3>Preview</h3>");
-    expect(html).not.toContain("theme-editor-side-head");
+    const terminal = between(html, 'data-nr-group="terminal"', 'data-nr-group="font"');
+    expect(terminal).not.toContain("theme-palette");
+    const side = between(html, 'class="theme-editor-side"', 'class="dialog-actions"');
+    expect(side.indexOf('class="theme-preview"')).toBeLessThan(
+      side.indexOf('data-nr-part="theme-palette"'),
+    );
+    // Every row says where its column is (the style sheet lays the table out with it).
+    for (let at = 1; at <= 8; at += 1) expect(side).toContain(`style="--ansi-at:${at}"`);
   });
 
-  it("keeps the buttons after the body, as they were", () => {
+  it("draws the crumb (a picture: it is not part of the name of the dialog) and the foot, and says nothing is unsaved until something is", () => {
+    const html = dense();
+    expect(html).toMatch(
+      /<h2 id="[^"]+">Theme editor<span class="theme-editor-crumb" aria-hidden="true"/,
+    );
+    expect(html).toContain('<span class="theme-editor-crumb-name">Noren Dusk copy</span>');
+    expect(html).not.toContain("theme-editor-crumb-unsaved");
+    const foot = between(html, 'class="theme-editor-footer"', "</div></div></div>");
+    expect(foot).toContain('aria-hidden="true"');
+    expect(foot).toContain(">Theme</span>");
+    expect(foot).toContain("No changes");
+  });
+
+  it("keeps the buttons after the body, as a dialog has them, and the foot after the buttons", () => {
     const html = dense();
     expect(html.indexOf('class="dialog-actions"')).toBeGreaterThan(
       html.indexOf('class="theme-editor-body"'),
     );
+    expect(html.indexOf('class="theme-editor-footer"')).toBeGreaterThan(
+      html.indexOf('class="dialog-actions"'),
+    );
+  });
+
+  it("has none of what only the glass editor draws", () => {
+    const html = dense();
+    expect(html).not.toContain("theme-editor-name-box");
+    setAppearancePreview(undefined);
+    const glass = render(NOREN_DUSK);
+    expect(glass).not.toContain("theme-editor-crumb");
+    expect(glass).not.toContain("theme-editor-footer");
+    expect(glass).not.toContain("theme-editor-contrast-muted");
   });
 });
 

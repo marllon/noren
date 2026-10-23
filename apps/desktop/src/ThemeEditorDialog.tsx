@@ -1,6 +1,6 @@
 import { Check, TriangleAlert } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 import {
   NUMBER_RANGES,
   ansiField,
@@ -25,6 +25,7 @@ import { useT } from "./i18n";
 import { useInterfaceStyle } from "./layout-store";
 import { NumberBox, Toggle } from "./SettingsFields";
 import { ThemePreview } from "./ThemePreview";
+import { themeChanges } from "./theme-changes";
 import { nameProblem } from "./themes-section";
 import type { SaveMode } from "./themes-section";
 
@@ -75,9 +76,12 @@ const ANSI_NAMES = ["black", "red", "green", "yellow", "blue", "magenta", "cyan"
  *
  * Under the glass style (the default) it is a card of glass like the settings screen: a header with
  * the title, the name of the theme and the buttons (Cancel, Save), the preview with the reading of the
- * contrast of the text on the left, and the boxes of the groups in a column on the right. The parts and
- * what each box does are the same in both styles; the dense one keeps its dialog with the name in
- * the first group and the buttons under the boxes.
+ * contrast of the text on the left, and the boxes of the groups in a column on the right. Under the
+ * dense style it is a page of the window under its title bar: a header with the title, the name of the
+ * theme as a crumb (and a mark while there is something unsaved) and the buttons, the preview on the
+ * left with the readings of the contrast and the sixteen colors of the palette under it as a table, the
+ * boxes of the groups in a column on the right (the name is the first of them) and a strip at the foot
+ * with how many changes are unsaved. The parts and what each box does are the same in both styles.
  */
 export function ThemeEditorDialog({
   source,
@@ -88,12 +92,17 @@ export function ThemeEditorDialog({
 }: ThemeEditorDialogProps) {
   const t = useT();
   const glass = useInterfaceStyle() === "glass";
+  const dense = !glass;
   const titleId = useId();
   const nameId = useId();
   const nameProblemId = useId();
   const nameRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<EditState>({ theme: source, typed: {}, problems: {} });
-  const [name, setName] = useState(own ? source.name : t("themes.copyName", { name: source.name }));
+  // The name the editor opens with: the theme's own, or "<name> copy" for one that ships with the app.
+  const [startName] = useState(() =>
+    own ? source.name : t("themes.copyName", { name: source.name }),
+  );
+  const [name, setName] = useState(startName);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string>();
   const { theme } = state;
@@ -231,7 +240,9 @@ export function ThemeEditorDialog({
     </span>
   );
   const hint = <p className="settings-hint theme-editor-hint">{t("themeEditor.hint")}</p>;
-  // The reading of the contrast of the text on the background (the first of the checks that warn), kept to one decimal.
+  // The readings of the contrast of the text (and, under the dense style, of the muted text) on the background, kept to one decimal.
+  const mark = (low: boolean) =>
+    low ? <TriangleAlert size={12} aria-hidden="true" /> : <Check size={12} aria-hidden="true" />;
   const textLow = warnings.some((warning) => warning.check === "text");
   const contrast = (
     <span
@@ -239,13 +250,48 @@ export function ThemeEditorDialog({
       data-nr-part="theme-editor-contrast"
       data-nr-state={textLow ? "low" : "ok"}
     >
-      {textLow ? (
-        <TriangleAlert size={12} aria-hidden="true" />
-      ) : (
-        <Check size={12} aria-hidden="true" />
-      )}
+      {mark(textLow)}
       {t("themeEditor.contrast", { ratio: contrastRatio(theme.ui.text, theme.ui.bg).toFixed(1) })}
     </span>
+  );
+  // The dense editor reads the muted text too, as the design does (the editor warns about it below 3:1).
+  const mutedLow = warnings.some((warning) => warning.check === "muted");
+  const contrastMuted = (
+    <span
+      className="theme-editor-contrast"
+      data-nr-part="theme-editor-contrast-muted"
+      data-nr-state={mutedLow ? "low" : "ok"}
+    >
+      {mark(mutedLow)}
+      {t("themeEditor.contrastMuted", {
+        ratio: contrastRatio(theme.ui.muted, theme.ui.bg).toFixed(1),
+      })}
+    </span>
+  );
+  const changes = themeChanges(source, theme, name, startName);
+
+  /** The sixteen colors: the glass editor keeps them in the group of the terminal, the dense one lays them out as a table under the preview. */
+  const palette = (
+    <div className="theme-palette" data-nr-part="theme-palette">
+      <span className="theme-palette-title">{t("themeEditor.palette")}</span>
+      <span className="theme-palette-head">{t("themeEditor.normal")}</span>
+      <span className="theme-palette-head">{t("themeEditor.bright")}</span>
+      {ANSI_NAMES.map((base, row) => {
+        const normal = row as AnsiIndex;
+        const bright = (row + 8) as AnsiIndex;
+        return (
+          <div
+            key={base}
+            className="theme-palette-row"
+            style={{ "--ansi-at": row + 1 } as CSSProperties}
+          >
+            <span className="theme-palette-name">{ansiName(normal)}</span>
+            {colorBox(ansiField(normal), "", ansiName(normal))}
+            {colorBox(ansiField(bright), "", ansiName(bright))}
+          </div>
+        );
+      })}
+    </div>
   );
 
   return (
@@ -258,8 +304,23 @@ export function ThemeEditorDialog({
         data-nr-part="theme-editor"
         onKeyDown={onKeyDown}
       >
-        <h2 id={titleId}>{t("themeEditor.title")}</h2>
-        {glass ? (
+        <h2 id={titleId}>
+          {t("themeEditor.title")}
+          {dense && (
+            <span
+              className="theme-editor-crumb"
+              aria-hidden="true"
+              data-nr-part="theme-editor-crumb"
+            >
+              <span className="theme-editor-crumb-sep">/</span>
+              <span className="theme-editor-crumb-name">{name.trim() === "" ? "…" : name}</span>
+              {changes > 0 && (
+                <span className="theme-editor-crumb-unsaved">{t("themeEditor.unsaved")}</span>
+              )}
+            </span>
+          )}
+        </h2>
+        {glass && (
           <div className="theme-editor-name" data-nr-field="name">
             <div className="theme-editor-name-box">
               <label htmlFor={nameId}>{t("themeEditor.name")}</label>
@@ -267,8 +328,6 @@ export function ThemeEditorDialog({
             </div>
             {nameProblemLine}
           </div>
-        ) : (
-          hint
         )}
         <div className="theme-editor-body">
           <div className="theme-editor-controls">
@@ -331,22 +390,7 @@ export function ThemeEditorDialog({
               {colorBox("terminal.foreground", t("themeEditor.terminalText"))}
               {colorBox("terminal.cursor", t("themeEditor.cursor"))}
               {colorBox("terminal.selection", t("themeEditor.selection"))}
-              <div className="theme-palette" data-nr-part="theme-palette">
-                <span className="theme-palette-title">{t("themeEditor.palette")}</span>
-                <span className="theme-palette-head">{t("themeEditor.normal")}</span>
-                <span className="theme-palette-head">{t("themeEditor.bright")}</span>
-                {ANSI_NAMES.map((base, row) => {
-                  const normal = row as AnsiIndex;
-                  const bright = (row + 8) as AnsiIndex;
-                  return (
-                    <div key={base} className="theme-palette-row">
-                      <span className="theme-palette-name">{ansiName(normal)}</span>
-                      {colorBox(ansiField(normal), "", ansiName(normal))}
-                      {colorBox(ansiField(bright), "", ansiName(bright))}
-                    </div>
-                  );
-                })}
-              </div>
+              {glass && palette}
             </fieldset>
 
             <fieldset className="settings-field theme-editor-group" data-nr-group="font">
@@ -387,7 +431,7 @@ export function ThemeEditorDialog({
               <legend>{t("themeEditor.picture")}</legend>
               <BackgroundPicker
                 backend={backend}
-                named={glass}
+                named
                 path={textOf("background.image")}
                 onChoose={(path) => change("background.image", path)}
                 onRemove={() => change("background.image", "")}
@@ -408,16 +452,14 @@ export function ThemeEditorDialog({
           </div>
 
           <div className="theme-editor-side">
-            {glass ? (
-              <div className="theme-editor-side-head">
-                <h3>{t("themeEditor.preview")}</h3>
-                {hint}
-                {contrast}
-              </div>
-            ) : (
+            <div className="theme-editor-side-head">
               <h3>{t("themeEditor.preview")}</h3>
-            )}
+              {hint}
+              {contrast}
+              {dense && contrastMuted}
+            </div>
             <ThemePreview theme={theme} picture={picture.status === "ready" ? picture.url : null} />
+            {dense && palette}
             <div role="status" className="theme-editor-notes" data-nr-part="theme-editor-notes">
               {warnings.map((warning) => (
                 <p key={warning.check} className="settings-hint" data-nr-note={warning.check}>
@@ -465,6 +507,26 @@ export function ThemeEditorDialog({
             {saveLabel}
           </button>
         </div>
+        {dense && (
+          <div
+            className="theme-editor-footer"
+            aria-hidden="true"
+            data-nr-part="theme-editor-footer"
+          >
+            <span className="theme-editor-footer-label">{t("themeEditor.footerLabel")}</span>
+            <span className="theme-editor-footer-name">{name.trim() === "" ? "…" : name}</span>
+            <span
+              className="theme-editor-footer-changes"
+              data-nr-state={changes > 0 ? "unsaved" : "none"}
+            >
+              {changes === 0
+                ? t("themeEditor.noChanges")
+                : changes === 1
+                  ? t("themeEditor.changes.one", { count: changes })
+                  : t("themeEditor.changes.other", { count: changes })}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

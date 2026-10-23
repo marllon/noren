@@ -17,8 +17,8 @@ const tokensCss = strip(readFileSync(new URL("style-tokens.css", here), "utf8"))
 const DENSE = ':root[data-nr-style="dense"]';
 /** The first rule of the dense settings section, which comes right after the dense window section. */
 const START = `${DENSE} .dialog-backdrop:has(> .settings-dialog) {`;
-/** The first rule of the glass section, which comes after it. */
-const END = ".glass-backdrop {";
+/** The first rule of the dense theme editor section (NOR-F20-21c), which comes right after it, and so ends it. */
+const END = `${DENSE} .dialog-backdrop:has(> .theme-editor) {`;
 
 const section = (): string => {
   const start = stylesCss.indexOf(START);
@@ -64,11 +64,12 @@ function rule(selector: string): string {
 }
 
 describe("the dense settings section of the stylesheet", () => {
-  it("comes after the dense window section and before the glass section, so the test that keeps the glass section under its own attribute still holds", () => {
+  it("comes after the dense window section and before the dense theme editor section and the glass section, so the test that keeps the glass section under its own attribute still holds", () => {
     const window = stylesCss.indexOf(`${DENSE} .app .titlebar {`);
     expect(window).toBeGreaterThan(0);
     expect(stylesCss.indexOf(START)).toBeGreaterThan(window);
     expect(stylesCss.indexOf(START)).toBeLessThan(stylesCss.indexOf(END));
+    expect(stylesCss.indexOf(END)).toBeLessThan(stylesCss.indexOf(".glass-backdrop {"));
   });
 
   it("keeps every rule under the dense attribute, so the glass style does not move", () => {

@@ -668,6 +668,17 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
       ),
     ),
     weighted(
+      2,
+      target.chain(({ itemId, paneId }) =>
+        fc.record({
+          type: tag("pane/set-shell-folder"),
+          itemId: fc.constant(itemId),
+          paneId: fc.constant(paneId),
+          cwd: fc.constantFrom("/proj", "/home/me", "C:/Users/me", " "),
+        }),
+      ),
+    ),
+    weighted(
       3,
       target.chain(({ itemId, paneId }) =>
         fc.record(

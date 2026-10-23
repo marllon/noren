@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { setPaneHeaders } from "./settings-fixture";
+import { numberTheTabs } from "./numbered-tabs";
+
+test.beforeEach(numberTheTabs);
 
 // Dragging a pane's header onto the middle of another pane swaps them; the header also detaches
 // a pane into a tab of its own.

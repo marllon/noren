@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { openShortcutsScreen } from "./settings-fixture";
+import { numberTheTabs } from "./numbered-tabs";
+
+test.beforeEach(numberTheTabs);
 
 // The Ctrl+Tab switcher: a tap goes to the previous tab, holding Ctrl and pressing Tab again walks
 // the tabs by recent use in an overlay with a preview of each, releasing Ctrl commits and Escape

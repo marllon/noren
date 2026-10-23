@@ -146,6 +146,12 @@ export interface WorkspaceState {
    */
   setPaneLocation(paneId: Id, location: PaneLocation): void;
   /**
+   * Records the folder the shell of a pane reported, the moment it reports it (`Pane.shellCwd`), so the
+   * tab is named after it even while the folder is the one the shell started in. Found by the id of the
+   * pane; a pane that is gone, or a folder it already has, changes nothing.
+   */
+  setPaneFolder(paneId: Id, cwd: string): void;
+  /**
    * Records that the command of a pane started or ended (see `PaneCommandEvent`). Like
    * `setPaneLocation`, the pane is found by its id and a report that changes nothing changes nothing.
    */
@@ -590,6 +596,14 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
           ...(location.cwd !== undefined ? { cwd: location.cwd } : {}),
           ...(location.gitBranch !== undefined ? { gitBranch: location.gitBranch } : {}),
         });
+        retitle(itemId);
+      },
+
+      setPaneFolder(paneId, cwd) {
+        const { workspace, dispatch } = get();
+        const itemId = findItemOfPane(workspace, paneId);
+        if (itemId === undefined) return;
+        dispatch({ type: "pane/set-shell-folder", itemId, paneId, cwd });
         retitle(itemId);
       },
 

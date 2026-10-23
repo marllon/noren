@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { seedConfig } from "./settings-fixture";
+import { numberTheTabs } from "./numbered-tabs";
+
+test.beforeEach(numberTheTabs);
 
 // The library looks in the saved output of the archived and closed tabs, and the start of the app
 // removes the snapshot files that no pane claims. The fake shell of web mode keeps the files in the

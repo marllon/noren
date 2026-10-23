@@ -1,23 +1,39 @@
-import { favoriteLinkRef } from "@noren/model";
+import { favoriteLinkRef, tabLabel } from "@noren/model";
 import type {
   ActionsFileState,
   FavoriteLink,
   FavoriteLinkRef,
   Id,
+  Item,
   ProjectAction,
   ShellProfile,
   Space,
 } from "@noren/model";
 import { t } from "./i18n";
+import { knownHome } from "./known-home";
 import { spaceItemIds } from "./workspace-store";
 
 // The global favorites as the sidebar bar shows them: the favorite tabs, then the profiles and project
 // actions kept next to them. Pure: the bar only draws what this returns.
 
-/** The name of a tab: its title, else a placeholder counted in the order of its space. */
+/**
+ * The name of a tab as every part of the window says it (`tabLabel` of the model): the title of the
+ * person, else the one the shell asked for, else its folder and command, else a placeholder counted in
+ * the order of its space. `index` is the place of the tab among the tabs of its space, from 0.
+ */
+export function itemLabel(item: Item, index: number): string {
+  return tabLabel(item, {
+    index,
+    placeholder: (n) => t("tree.tabDefault", { n }),
+    home: knownHome(),
+  });
+}
+
+/** The name of a tab by its id in its space; the id of a tab that is not there is the placeholder. */
 export function itemTitle(space: Space, itemId: Id): string {
   const item = space.items[itemId];
-  return item?.title ?? t("tree.tabDefault", { n: spaceItemIds(space).indexOf(itemId) + 1 });
+  const index = spaceItemIds(space).indexOf(itemId);
+  return item !== undefined ? itemLabel(item, index) : t("tree.tabDefault", { n: index + 1 });
 }
 
 /** The first letter or digit of a title, upper case, for the tile of a favorite. */

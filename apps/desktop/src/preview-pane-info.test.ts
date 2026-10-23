@@ -66,7 +66,7 @@ describe("a tab with a preview pane", () => {
     expect(autoTitleAction(tabOf([terminal("t1"), file], "v1"))).toEqual({
       type: "item/rename",
       itemId: "i1",
-      title: "npm",
+      title: "proj · npm",
       source: "process",
     });
   });

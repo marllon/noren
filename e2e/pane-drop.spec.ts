@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { seedConfig } from "./settings-fixture";
+import { numberTheTabs } from "./numbered-tabs";
+
+test.beforeEach(numberTheTabs);
 
 // Dragging a tab of the sidebar onto a pane of the tab on screen joins the two tabs.
 

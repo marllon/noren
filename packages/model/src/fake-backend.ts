@@ -184,6 +184,12 @@ export interface FakeBackendOptions {
   profiles?: ShellProfile[];
   /** Host name in the OSC 7 URL. */
   host?: string;
+  /**
+   * Whether the shells tell their folder (OSC 7) at every prompt, as a shell with the integration
+   * does. Defaults to `true`; `false` is a shell that never tells it (cmd, or a shell without the
+   * integration): a tab of it has no folder to be named after, and keeps its number.
+   */
+  reportFolder?: boolean;
   /** Directory sessions start in without `cwd`, and the target of a bare `cd`. */
   home?: string;
   /** Initial content of `state.json`. Defaults to `null` (no saved state). */
@@ -363,6 +369,8 @@ function resolvePath(cwd: string, home: string, target: string): string {
 
 interface SessionHooks {
   host: string;
+  /** The prompt carries the folder (OSC 7). */
+  reportFolder: boolean;
   home: string;
   clock: Clock;
   emit(bytes: Uint8Array): void;
@@ -594,7 +602,8 @@ class FakeSession {
       .split("/")
       .map((part) => encodeURIComponent(part))
       .join("/");
-    return osc(`7;file://${this.hooks.host}${path}`) + osc("133;A") + PROMPT + osc("133;B");
+    const folder = this.hooks.reportFolder ? osc(`7;file://${this.hooks.host}${path}`) : "";
+    return folder + osc("133;A") + PROMPT + osc("133;B");
   }
 
   #write(text: string): void {
@@ -1034,6 +1043,7 @@ export class FakeBackend implements Backend {
   readonly #profiles: ShellProfile[];
   #userProfiles: UserProfile[] = [];
   readonly #host: string;
+  readonly #reportFolder: boolean;
   readonly #home: string;
   readonly #sessions = new Map<SessionId, FakeSession>();
   /** The agent each session has under its shell, as `setSessionAgent` said. */
@@ -1187,6 +1197,7 @@ export class FakeBackend implements Backend {
     this.clock = options.clock ?? new ManualClock();
     this.#profiles = options.profiles ?? [{ id: "fake", name: "Fake shell", default: true }];
     this.#host = options.host ?? "fake-host";
+    this.#reportFolder = options.reportFolder ?? true;
     this.#home = options.home ?? "/home/fake";
   }
 
@@ -1400,6 +1411,7 @@ export class FakeBackend implements Backend {
           : options;
     const session = new FakeSession(id, profile.id, started, {
       host: this.#host,
+      reportFolder: this.#reportFolder,
       home: this.#home,
       clock: this.clock,
       emit: (bytes) => {

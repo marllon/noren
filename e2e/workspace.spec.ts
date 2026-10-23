@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { numberTheTabs } from "./numbered-tabs";
+
+test.beforeEach(numberTheTabs);
 
 const tabs = (page: Page) =>
   page.getByRole("tree", { name: "Tabs", exact: true }).getByRole("treeitem");

@@ -45,8 +45,8 @@ async function twoSpaces(page: Page): Promise<void> {
   await dialog.getByRole("button", { name: "Create space", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(spaceButton(page, "Other")).toHaveAttribute("data-nr-state", "active");
-  // Name the only tab of the new space.
-  await tab(page, "Tab 1").dblclick();
+  // Name the only tab of the new space (called after the folder its shell reports, the home one).
+  await tab(page, "~").dblclick();
   const field = page.getByRole("textbox", { name: "Tab name", exact: true });
   await field.fill("docs-site");
   await page.keyboard.press("Enter");

@@ -22,6 +22,12 @@ export interface PaneLocationTrackerOptions {
   /** Called with the location of the shell, at every prompt and every time the folder changes. */
   onLocation(location: PaneLocation): void;
   /**
+   * Called with the folder the shell reports, the moment it reports it (OSC 7, OSC 9;9) and whether or
+   * not `onLocation` will carry it: `onLocation` waits for the branch to be read and leaves the folder
+   * out while it is the one the shell started in, and the name of the tab needs neither.
+   */
+  onFolder?(cwd: string): void;
+  /**
    * Called when a command starts running (OSC 133;C) and when it ends (OSC 133;D, or the next
    * prompt when the shell never said). The line comes from OSC 633;E, which a shell sends before
    * the command starts; `durationMs` is the time between the two on `clock`.
@@ -174,6 +180,7 @@ export class PaneLocationTracker {
 
   #follow(path: string): void {
     this.#cwd = path;
+    this.#options.onFolder?.(path);
     if (this.#placed) return;
     if (this.#origin === undefined) this.#origin = path;
     else if (!sameFolder(this.#origin, path)) this.#placed = true;

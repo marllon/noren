@@ -35,6 +35,67 @@ function setup(repos: Record<string, GitInfo> = { "/proj": MAIN }, cwd: string |
   return { backend, tracker, locations };
 }
 
+describe("PaneLocationTracker folder", () => {
+  it("tells the folder at once, the one the shell started in too, before the branch is read", async () => {
+    const folders: string[] = [];
+    const locations: PaneLocation[] = [];
+    const tracker = new PaneLocationTracker({
+      gitInfo: () => Promise.resolve(null),
+      onLocation: (location) => locations.push(location),
+      onFolder: (cwd) => folders.push(cwd),
+    });
+    tracker.feed(prompt("/home/me"));
+    // The folder is out before the lookup of the branch answers, and the pane does not keep it.
+    expect(folders).toEqual(["/home/me"]);
+    expect(locations).toEqual([]);
+    await settle();
+    expect(locations).toEqual([{}]);
+    tracker.feed(prompt("/proj"));
+    expect(folders).toEqual(["/home/me", "/proj"]);
+  });
+
+  it("tells a folder from OSC 9;9 of cmd too, and nothing at a prompt that reports none", () => {
+    const folders: string[] = [];
+    const tracker = new PaneLocationTracker({
+      gitInfo: () => Promise.resolve(null),
+      onLocation: () => undefined,
+      onFolder: (cwd) => folders.push(cwd),
+    });
+    tracker.feed(osc("133;A"));
+    expect(folders).toEqual([]);
+    tracker.feed(osc('9;9;"C:\\Users\\ada"'));
+    expect(folders).toEqual(["C:/Users/ada"]);
+  });
+});
+
+describe("PaneLocationTracker against a fake shell", () => {
+  async function folders(reportFolder: boolean | undefined): Promise<string[]> {
+    const backend = new FakeBackend({
+      home: "/home/fake",
+      ...(reportFolder !== undefined ? { reportFolder } : {}),
+    });
+    const told: string[] = [];
+    const tracker = new PaneLocationTracker({
+      gitInfo: (folder) => backend.gitInfo(folder),
+      onLocation: () => undefined,
+      onFolder: (cwd) => told.push(cwd),
+    });
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    backend.onOutput(id, (bytes) => tracker.feed(bytes));
+    await backend.write(id, "cd /srv/api\n");
+    await settle();
+    return told;
+  }
+
+  it("tells the folder of the fake shell at every prompt, the one it started in too", async () => {
+    expect(await folders(undefined)).toEqual(["/home/fake", "/srv/api"]);
+  });
+
+  it("a fake shell that does not report its folder tells none", async () => {
+    expect(await folders(false)).toEqual([]);
+  });
+});
+
 describe("PaneLocationTracker", () => {
   it("reports the folder and its branch at a prompt, with one lookup", async () => {
     const { backend, tracker, locations } = setup();

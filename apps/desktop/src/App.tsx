@@ -97,7 +97,7 @@ import type { SearchHit, SearchTab, TabHits } from "./tab-search";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { LinkPrompt } from "./LinkPrompt";
 import { FavoritesGrid } from "./FavoritesGrid";
-import { actionToRun, itemTitle, resolveBar } from "./favorites";
+import { actionToRun, itemLabel, itemTitle, resolveBar } from "./favorites";
 import type { BarTile } from "./favorites";
 import { useFavoriteActionFiles } from "./use-favorite-actions";
 import {
@@ -603,6 +603,7 @@ function PaneTerminal({
       new PaneLocationTracker({
         gitInfo: (folder) => backend.gitInfo(folder),
         onLocation: (location) => store.getState().setPaneLocation(pane.id, location),
+        onFolder: (cwd) => store.getState().setPaneFolder(pane.id, cwd),
         onCommand: (event) => {
           store.getState().setPaneCommand(pane.id, event);
           // A command that ended takes the agent it started with it, and what it was doing.
@@ -1057,9 +1058,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
       dispatch({ type: "group/rename", groupId: target.id, name: value });
     } else {
       const item = space.items[target.id];
-      // The placeholder ("Tab 3") is not a name the user chose; keep the title unlocked.
-      const placeholder = t("tree.tabDefault", { n: itemIds.indexOf(target.id) + 1 });
-      if (item && !(item.title === undefined && value.trim() === placeholder)) {
+      // What the tab shows ("Tab 3", "api", "api · npm") is not a name the user chose when they leave
+      // it as it is; keep the title unlocked.
+      const shown = item ? itemLabel(item, itemIds.indexOf(target.id)) : undefined;
+      if (item && !(!item.titleLocked && value.trim() === shown)) {
         dispatch({ type: "item/rename", itemId: target.id, title: value });
       }
     }

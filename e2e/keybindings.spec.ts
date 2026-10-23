@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { changeSettings, configText, seedConfig } from "./settings-fixture";
+import { numberTheTabs } from "./numbered-tabs";
+
+test.beforeEach(numberTheTabs);
 
 // The shortcut preset is a setting of `config.jsonc` (`keybindings.preset`), chosen in the settings
 // screen; a new test context starts with no file, which is the safe preset. The user's own chords

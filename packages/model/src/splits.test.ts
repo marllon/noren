@@ -944,6 +944,61 @@ describe("pane/set-status", () => {
   });
 });
 
+describe("pane/set-shell-folder", () => {
+  const paneOf = (ws: Workspace, itemId: Id, paneId: Id) =>
+    must(layoutPanes(itemOf(ws, itemId).layout).find((p) => p.id === paneId));
+  const report = (itemId: Id, paneId: Id, cwd: string): Action => ({
+    type: "pane/set-shell-folder",
+    itemId,
+    paneId,
+    cwd,
+  });
+
+  it("records the folder the shell reported without making it the folder of the pane", () => {
+    const next = applyChecked(fixture(), report("a", "p1", "/home/ada"));
+    expect(paneOf(next, "a", "p1").shellCwd).toBe("/home/ada");
+    expect(paneOf(next, "a", "p1").cwd).toBe(paneOf(fixture(), "a", "p1").cwd);
+    expect(sessionsLost(fixture(), next)).toEqual([]);
+  });
+
+  it("follows the shell, and leaves the other panes and the branch alone", () => {
+    const inRepo = applyChecked(fixture(), {
+      type: "pane/set-location",
+      itemId: "b",
+      paneId: "p3",
+      cwd: "/proj",
+      gitBranch: "main",
+    });
+    const next = applyChecked(inRepo, report("b", "p3", "/proj/src"));
+    expect(paneOf(next, "b", "p3")).toMatchObject({
+      cwd: "/proj",
+      shellCwd: "/proj/src",
+      gitBranch: "main",
+    });
+    expect(paneOf(next, "b", "p2")).toEqual(paneOf(fixture(), "b", "p2"));
+    expect(show(itemOf(next, "b").layout)).toBe("row(40:p2 60:p3)");
+  });
+
+  it("is a no-op when the pane already has the folder", () => {
+    const first = applyChecked(fixture(), report("a", "p1", "/home/ada"));
+    expect(reduce(first, report("a", "p1", "/home/ada"), testContext().ctx)).toBe(first);
+  });
+
+  it("changes nothing when the pane is unknown or the folder is blank", () => {
+    expectUnchanged(fixture(), report("ghost", "p1", "/proj"));
+    expectUnchanged(fixture(), report("a", "ghost", "/proj"));
+    expectUnchanged(fixture(), report("b", "p1", "/proj"));
+    expectUnchanged(fixture(), report("a", "p1", ""));
+    expectUnchanged(fixture(), report("a", "p1", "   "));
+    expectUnchanged(fixture(), {
+      type: "pane/set-shell-folder",
+      itemId: "a",
+      paneId: "p1",
+      cwd: 7,
+    } as unknown as Action);
+  });
+});
+
 describe("pane/set-location", () => {
   const paneOf = (ws: Workspace, itemId: Id, paneId: Id) =>
     must(layoutPanes(itemOf(ws, itemId).layout).find((p) => p.id === paneId));

@@ -79,6 +79,7 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "pane/focus-direction": true,
   "pane/set-status": true,
   "pane/set-location": true,
+  "pane/set-shell-folder": true,
   "pane/command-start": true,
   "pane/command-end": true,
   "pane/notify": true,
@@ -107,6 +108,7 @@ const PANE_ACTIONS = new Set<ActionType>([
   "pane/focus-direction",
   "pane/set-status",
   "pane/set-location",
+  "pane/set-shell-folder",
   "pane/command-start",
   "pane/command-end",
   "pane/notify",
@@ -242,6 +244,7 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "pane/focus":
     case "pane/set-status":
     case "pane/set-location":
+    case "pane/set-shell-folder":
     case "pane/command-start":
     case "pane/command-end":
     case "pane/notify":
@@ -552,6 +555,7 @@ function checkPaneDelta(ws: Workspace, next: Workspace, action: Action, where: (
     case "pane/set-url":
     case "pane/set-status":
     case "pane/set-location":
+    case "pane/set-shell-folder":
     case "pane/command-start":
     case "pane/command-end":
     case "pane/notify":

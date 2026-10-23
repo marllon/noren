@@ -39,6 +39,7 @@ import {
 } from "./sidebar-drop";
 import type { DragSource, DropTarget, OutsideDrop, PaneDrop, PaneZone } from "./sidebar-drop";
 import type { TreeRow } from "./sidebar-tree";
+import { itemLabel } from "./favorites";
 import { t, useT } from "./i18n";
 import { spaceItemIds } from "./workspace-store";
 
@@ -248,7 +249,7 @@ export function TreeDnd({
   /** The name of a tab or group, for what is read aloud and shown on the ghost. */
   const labelOf = (id: Id): string => {
     const item = space.items[id];
-    if (item) return item.title ?? t("tree.tabDefault", { n: order.indexOf(id) + 1 });
+    if (item) return itemLabel(item, order.indexOf(id));
     return treeGroups(space.tree).find((group) => group.id === id)?.name ?? id;
   };
 

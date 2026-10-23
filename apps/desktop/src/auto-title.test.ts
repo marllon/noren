@@ -1,6 +1,6 @@
 import type { Item, LayoutNode, Pane } from "@noren/model";
 import { describe, expect, it } from "vitest";
-import { autoTitleAction, commandName, folderTitle, paneAutoTitle } from "./auto-title";
+import { autoTitleAction } from "./auto-title";
 
 const pane = (id: string, extra: Partial<Pane> = {}): Pane => ({
   id,
@@ -26,88 +26,6 @@ const item = (extra: Partial<Item> = {}, panes: Pane[] = [pane("p1")]): Item => 
   ...extra,
 });
 
-describe("commandName", () => {
-  it("is the program of the command line", () => {
-    expect(commandName("npm run build")).toBe("npm");
-    expect(commandName("  git   status ")).toBe("git");
-    expect(commandName("sleep 5")).toBe("sleep");
-  });
-
-  it("drops the folder, the Windows extension and the quotes", () => {
-    expect(commandName("/usr/bin/python3 app.py")).toBe("python3");
-    expect(commandName("C:\\tools\\Node.EXE app.js")).toBe("Node");
-    expect(commandName('"C:\\Program Files\\x\\tool.cmd" --flag')).toBe("tool");
-    expect(commandName("./run.sh")).toBe("run.sh");
-    expect(commandName("build.ps1")).toBe("build");
-  });
-
-  it("skips leading NAME=value words", () => {
-    expect(commandName("CI=1 NODE_ENV=test npm test")).toBe("npm");
-    expect(commandName("CI=1")).toBeUndefined();
-  });
-
-  it("is none for a blank or missing line", () => {
-    expect(commandName(undefined)).toBeUndefined();
-    expect(commandName("")).toBeUndefined();
-    expect(commandName("   ")).toBeUndefined();
-    expect(commandName('""')).toBeUndefined();
-  });
-
-  it("cuts a very long name", () => {
-    const name = commandName("a".repeat(100));
-    expect(name).toHaveLength(32);
-    expect(name?.endsWith("\u2026")).toBe(true);
-  });
-});
-
-describe("folderTitle", () => {
-  it("is the last part of the folder", () => {
-    expect(folderTitle("/home/ada/proj/noren")).toBe("noren");
-    expect(folderTitle("/proj")).toBe("proj");
-    expect(folderTitle("/srv/api/")).toBe("api");
-    expect(folderTitle("C:\\Users\\ada\\dev\\site")).toBe("site");
-    expect(folderTitle("C:/Users/ada/dev")).toBe("dev");
-  });
-
-  it("is ~ for the home folder, and the name of a folder inside it", () => {
-    expect(folderTitle("/home/ada", "/home/ada")).toBe("~");
-    expect(folderTitle("C:\\Users\\ada", "c:/users/ada")).toBe("~");
-    expect(folderTitle("/home/ada/proj", "/home/ada")).toBe("proj");
-  });
-
-  it("keeps a root as it is", () => {
-    expect(folderTitle("/")).toBe("/");
-    expect(folderTitle("C:\\")).toBe("C:\\");
-  });
-
-  it("is none for a blank or missing folder", () => {
-    expect(folderTitle(undefined)).toBeUndefined();
-    expect(folderTitle("   ")).toBeUndefined();
-  });
-});
-
-describe("paneAutoTitle", () => {
-  it("is the running command, then the folder", () => {
-    expect(paneAutoTitle(pane("p1", { cwd: "/proj", runningCommand: { text: "npm test" } }))).toBe(
-      "npm",
-    );
-    expect(paneAutoTitle(pane("p1", { cwd: "/proj" }))).toBe("proj");
-  });
-
-  it("uses the folder while the running command has no line", () => {
-    expect(paneAutoTitle(pane("p1", { cwd: "/proj", runningCommand: {} }))).toBe("proj");
-  });
-
-  it("is none for a pane with neither", () => {
-    expect(paneAutoTitle(pane("p1"))).toBeUndefined();
-    expect(paneAutoTitle(undefined)).toBeUndefined();
-  });
-
-  it("does not use the last command", () => {
-    expect(paneAutoTitle(pane("p1", { lastCommand: { text: "ls" } }))).toBeUndefined();
-  });
-});
-
 describe("autoTitleAction", () => {
   const rename = (title: string) => ({
     type: "item/rename",
@@ -116,9 +34,20 @@ describe("autoTitleAction", () => {
     source: "process",
   });
 
-  it("names the tab after its running command", () => {
+  it("names the tab after its folder and, while a command runs, the program after it", () => {
     const tab = item({}, [pane("p1", { cwd: "/proj", runningCommand: { text: "sleep 5" } })]);
+    expect(autoTitleAction(tab)).toEqual(rename("proj · sleep"));
+  });
+
+  it("names a tab with no folder yet after its running command alone", () => {
+    const tab = item({}, [pane("p1", { runningCommand: { text: "sleep 5" } })]);
     expect(autoTitleAction(tab)).toEqual(rename("sleep"));
+  });
+
+  it("names the tab after the folder the shell started in, which the pane does not keep", () => {
+    const tab = item({}, [pane("p1", { shellCwd: "/home/ada" })]);
+    expect(autoTitleAction(tab, "/home/ada")).toEqual(rename("~"));
+    expect(autoTitleAction(tab)).toEqual(rename("ada"));
   });
 
   it("names the tab after the folder when nothing runs", () => {
@@ -130,7 +59,7 @@ describe("autoTitleAction", () => {
   });
 
   it("goes from the command back to the folder", () => {
-    const tab = item({ title: "sleep" }, [pane("p1", { cwd: "/proj" })]);
+    const tab = item({ title: "proj · sleep" }, [pane("p1", { cwd: "/proj" })]);
     expect(autoTitleAction(tab)).toEqual(rename("proj"));
   });
 

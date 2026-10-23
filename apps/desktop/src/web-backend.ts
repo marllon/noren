@@ -46,6 +46,14 @@ export const WEB_PROFILES_KEY = "noren.web.profiles";
 export const WEB_GIT_KEY = "noren.web.git";
 
 /**
+ * Key that says the fake shells do not tell their folder in web mode (`"off"`): a tab of such a shell
+ * has no folder to be named after and keeps its number, as one of a shell with no integration does.
+ * The e2e tests that are not about the name of a tab set it before the page loads, to have tabs that
+ * keep a number to be told apart by.
+ */
+export const WEB_FOLDER_REPORT_KEY = "noren.web.folder-report";
+
+/**
  * Key of the text of `config.jsonc` in web mode. The e2e tests seed it before the page loads, and
  * the `setConfig` hook rewrites it, as an edit of the file by another program would.
  */
@@ -586,6 +594,15 @@ export function seededGitRepos(
   }
 }
 
+/** Whether the key `WEB_FOLDER_REPORT_KEY` says the fake shells tell no folder; a blocked storage says no. */
+export function folderReportOff(storage: Pick<Storage, "getItem">): boolean {
+  try {
+    return storage.getItem(WEB_FOLDER_REPORT_KEY) === "off";
+  } catch {
+    return false;
+  }
+}
+
 /** The profiles seeded under `WEB_PROFILES_KEY`, or `undefined` for the fake backend's own. */
 export function seededProfiles(storage: Pick<Storage, "getItem">): ShellProfile[] | undefined {
   try {
@@ -640,6 +657,7 @@ export class WebBackend extends FakeBackend {
       ...(hardware !== undefined ? { hardware } : {}),
       windowEffects: seededWindowEffects(storage),
       config: seededConfig(storage),
+      reportFolder: !folderReportOff(storage),
     });
     this.#storage = storage;
     const plugins = seededPlugins(storage);

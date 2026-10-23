@@ -221,6 +221,13 @@ export interface Pane {
    */
   cwd?: string;
   /**
+   * The folder the shell of this pane reported last, even the folder it started in, which `cwd` does
+   * not keep (a pane started with no folder is not pinned to where its shell happened to begin). Only
+   * used to name the tab (`tabLabel`); it belongs to a shell that is gone, so a restored pane starts
+   * without it.
+   */
+  shellCwd?: string;
+  /**
    * Branch of the git repository `cwd` is in (or the short commit of a detached `HEAD`); only
    * shown. Read again from `.git/HEAD` at every prompt and every folder change.
    */

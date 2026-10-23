@@ -350,6 +350,12 @@ export type Action =
       gitBranch?: string;
     }
   /**
+   * Records the folder the pane's shell reported (`Pane.shellCwd`), the moment it reports it and
+   * whether or not the pane keeps it as its own folder: it names the tab (`tabLabel`) and nothing
+   * else. A blank `cwd`, an unknown pane or a folder the pane already has leave the workspace as it is.
+   */
+  | { type: "pane/set-shell-folder"; itemId: Id; paneId: Id; cwd: string }
+  /**
    * The pane's shell starts running a command (OSC 133;C). `text` is the command line when the
    * shell told it (blank is none, long lines are cut). A pane whose shell exited, an unknown pane
    * or a command the pane already shows as running leave the workspace as it is.

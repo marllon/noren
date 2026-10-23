@@ -95,8 +95,8 @@ async function makeTab(page: Page, name: string, first = false): Promise<Made> {
   const before = (await labels(page)).length;
   if (!first) await page.getByRole("button", { name: "New tab", exact: true }).click();
   await expect.poll(async () => (await labels(page)).length).toBe(before + (first ? 0 : 1));
-  const placeholder = first ? "Tab 1" : `Tab ${before + 1}`;
-  await renameCurrent(page, placeholder, name);
+  // The shell tells the home folder at its first prompt, and a tab nobody named is called after it.
+  await renameCurrent(page, "~", name);
   await waitForPrompt(page);
   const folder = `/srv/${name}`;
   await run(page, `cd ${folder}`);

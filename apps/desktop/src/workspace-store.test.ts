@@ -957,6 +957,7 @@ describe("workspace store", () => {
           gitInfo: (folder) => backend.gitInfo(folder),
           onLocation: (location) =>
             opened.store.getState().setPaneLocation(opened.paneId, location),
+          onFolder: (cwd) => opened.store.getState().setPaneFolder(opened.paneId, cwd),
           onCommand: (event) => opened.store.getState().setPaneCommand(opened.paneId, event),
           clock: backend.clock,
         });
@@ -986,26 +987,42 @@ describe("workspace store", () => {
         expect(paneNow().lastCommand).toMatchObject({ text: "false", exitCode: 1, durationMs: 0 });
       });
 
-      it("the title follows the running command, then the folder, and goes back to none without one", async () => {
-        const { itemNow, type, clock } = await wired("/home/fake");
-        // A fresh tab has no folder yet: nothing to name it after.
-        expect(itemNow()).not.toHaveProperty("title");
+      it("the title is the folder from the first one the shell reports, and the program after it while one runs", async () => {
+        const { itemNow, paneNow, type, clock } = await wired("/home/fake");
+        // The first folder is the one the shell started in: the pane does not keep it as its own, but
+        // the tab is named after it at once.
+        expect(paneNow()).not.toHaveProperty("cwd");
+        expect(paneNow().shellCwd).toBe("/home/fake");
+        expect(itemNow().title).toBe("~");
         await type("sleep 2");
-        expect(itemNow().title).toBe("sleep");
+        expect(itemNow().title).toBe("~ · sleep");
         clock.advance(2000);
         await vi.advanceTimersByTimeAsync(0);
-        expect(itemNow()).not.toHaveProperty("title");
+        expect(itemNow().title).toBe("~");
 
         await type("cd /srv/api");
         expect(itemNow().title).toBe("api");
         await type("sleep 1");
-        expect(itemNow().title).toBe("sleep");
+        expect(itemNow().title).toBe("api · sleep");
         clock.advance(1000);
         await vi.advanceTimersByTimeAsync(0);
         expect(itemNow().title).toBe("api");
         expect(itemNow().titleLocked).toBe(false);
         await type("cd ~");
         expect(itemNow().title).toBe("~");
+      });
+
+      it("without the home folder the folder is named by its last part, and a root by itself", async () => {
+        const { itemNow, type, clock } = await wired();
+        // Without the home folder the first folder is still a name: its last part.
+        expect(itemNow().title).toBe("fake");
+        await type("cd /");
+        expect(itemNow().title).toBe("/");
+        await type("sleep 2");
+        expect(itemNow().title).toBe("/ · sleep");
+        clock.advance(2000);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(itemNow().title).toBe("/");
       });
 
       it("a title the user chose does not change", async () => {

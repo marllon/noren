@@ -5,6 +5,7 @@ import { useAgentOfPane } from "./agent-store";
 import { useAgentStateOfPane } from "./agent-state-store";
 import { useLinkOfPane } from "./session-link-store";
 import { menuPoint } from "./ContextMenu";
+import { itemLabel } from "./favorites";
 import { tabCount, useT } from "./i18n";
 import { indicatorLabels, linkShort, linkText, summarizeItem } from "./pane-info";
 import type { ClickModifiers } from "./sidebar-tree";
@@ -140,7 +141,7 @@ export function TabBar({
   const renderItem = (node: Extract<BarNode, { kind: "item" }>) => {
     const item = space.items[node.id];
     if (!item) return null;
-    const label = item.title ?? t("tree.tabDefault", { n: order.indexOf(node.id) + 1 });
+    const label = itemLabel(item, order.indexOf(node.id));
     const edit: Editing = { kind: "item", id: node.id };
     if (editing?.kind === "item" && editing.id === node.id) {
       return (

@@ -20,6 +20,18 @@ export type {
   Unsubscribe,
   Worktree,
 } from "./backend";
+export {
+  TITLE_SEPARATOR,
+  autoTabTitle,
+  commandName,
+  folderName,
+  paneFolder,
+  paneTitle,
+  shortCwd,
+  speakingPane,
+  tabLabel,
+} from "./tab-label";
+export type { TabLabelOptions } from "./tab-label";
 export type { BranchProblem } from "./worktree";
 export { branchProblem, worktreeDestination, worktreeFolderName } from "./worktree";
 export {

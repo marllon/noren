@@ -334,6 +334,8 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       return setPaneStatus(ws, action);
     case "pane/set-location":
       return setPaneLocation(ws, action);
+    case "pane/set-shell-folder":
+      return setPaneShellFolder(ws, action);
     case "pane/command-start":
       return startPaneCommand(ws, action);
     case "pane/command-end":
@@ -592,13 +594,15 @@ function withoutOldShell(pane: Pane): Pane {
   if (
     pane.status !== "exited" &&
     pane.exitCode === undefined &&
-    pane.runningCommand === undefined
+    pane.runningCommand === undefined &&
+    pane.shellCwd === undefined
   ) {
     return pane;
   }
   const next: Pane = { ...pane, status: pane.status === "exited" ? "idle" : pane.status };
   delete next.exitCode;
   delete next.runningCommand;
+  delete next.shellCwd;
   return next;
 }
 
@@ -1606,6 +1610,21 @@ function setPaneLocation(
   return replaceItem(ws, located.space, {
     ...located.item,
     layout: withPane(located.item.layout, next),
+  });
+}
+
+function setPaneShellFolder(
+  ws: Workspace,
+  action: Extract<Action, { type: "pane/set-shell-folder" }>,
+): Workspace {
+  const { cwd } = action;
+  if (typeof cwd !== "string" || cwd.trim() === "") return ws;
+  const located = locate(ws, action.itemId);
+  const pane = located && findPane(located.item.layout, action.paneId);
+  if (!located || !pane || pane.shellCwd === cwd) return ws;
+  return replaceItem(ws, located.space, {
+    ...located.item,
+    layout: withPane(located.item.layout, { ...pane, shellCwd: cwd }),
   });
 }
 

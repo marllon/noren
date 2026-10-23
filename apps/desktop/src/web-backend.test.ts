@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   WEB_ACTIONS_KEY,
   WEB_CONFIG_KEY,
+  WEB_FOLDER_REPORT_KEY,
   WEB_GIT_KEY,
   WEB_PROFILES_KEY,
   WEB_STATE_KEY,
   WEB_THEMES_KEY,
   WebBackend,
+  folderReportOff,
 } from "./web-backend";
 import type { StateStorage } from "./web-backend";
 
@@ -279,5 +281,35 @@ describe("WebBackend", () => {
       await new WebBackend(storage).listMonospaceFonts();
       expect(storage.keys()).toEqual([]);
     });
+  });
+});
+
+describe("the key that keeps the fake shells from telling their folder", () => {
+  it("is on only for the value off, and a blocked storage leaves the shells telling it", () => {
+    const storage = memoryStorage();
+    expect(folderReportOff(storage)).toBe(false);
+    storage.setItem(WEB_FOLDER_REPORT_KEY, "on");
+    expect(folderReportOff(storage)).toBe(false);
+    storage.setItem(WEB_FOLDER_REPORT_KEY, "off");
+    expect(folderReportOff(storage)).toBe(true);
+    expect(folderReportOff(blockedStorage())).toBe(false);
+  });
+
+  it("makes the shells of the web backend tell no folder", async () => {
+    const told: string[] = [];
+    for (const value of [null, "off"]) {
+      const storage = memoryStorage();
+      if (value !== null) storage.setItem(WEB_FOLDER_REPORT_KEY, value);
+      const backend = new WebBackend(storage);
+      const id = await backend.createSession({ cols: 80, rows: 24 });
+      let text = "";
+      backend.onOutput(id, (bytes) => {
+        text += new TextDecoder().decode(bytes);
+      });
+      await backend.write(id, "true\n");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      told.push(text.includes("\u001b]7;") ? "folder" : "none");
+    }
+    expect(told).toEqual(["folder", "none"]);
   });
 });

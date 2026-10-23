@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { numberTheTabs } from "./numbered-tabs";
 
 // The shell of a pane reports each command (OSC 633;E for the line, 133;C when it starts, 133;D with
 // the exit code when it ends). The sidebar shows the command that runs now and the last one that
@@ -35,7 +36,7 @@ test("a command shows as running, then as the last command with its exit code an
   page,
 }) => {
   await page.goto("/");
-  await expect(title(page)).toHaveText("Tab 1");
+  await expect(title(page)).toHaveText("~");
   // Nothing ran yet: there is no command line.
   await expect(command(page)).toHaveCount(0);
 
@@ -86,27 +87,41 @@ test("the words read by assistive technology follow the command", async ({ page 
   await expect(await describe()).toContainText("Last command sleep 5, exit 0, 5.0s");
 });
 
-test("the tab is named after the running command, then the folder, and goes back to its number", async ({
+test("the tab is named after the folder from the first one the shell reports, and the command after it", async ({
   page,
 }) => {
   await page.goto("/");
-  await expect(title(page)).toHaveText("Tab 1");
+  // The first folder is the one the shell started in (the home folder of the fake one): the tab is
+  // named after it at once, though the pane does not keep it as its own folder.
+  await expect(title(page)).toHaveText("~");
 
-  // A command on a tab with no folder yet: its name while it runs, the number again after.
   await run(page, "sleep 2");
-  await expect(title(page)).toHaveText("sleep");
+  await expect(title(page)).toHaveText("~ · sleep");
   await advance(page, 2000);
-  await expect(title(page)).toHaveText("Tab 1");
+  await expect(title(page)).toHaveText("~");
 
   await run(page, "cd /srv/api");
   await expect(title(page)).toHaveText("api");
   await run(page, "sleep 1");
-  await expect(title(page)).toHaveText("sleep");
+  await expect(title(page)).toHaveText("api · sleep");
   await advance(page, 1000);
   await expect(title(page)).toHaveText("api");
 
   await run(page, "cd ~");
   await expect(title(page)).toHaveText("~");
+});
+
+test("a tab of a shell that tells no folder keeps its number, and its command is the name while it runs", async ({
+  page,
+}) => {
+  await numberTheTabs({ page });
+  await page.goto("/");
+  await expect(title(page)).toHaveText("Tab 1");
+
+  await run(page, "sleep 2");
+  await expect(title(page)).toHaveText("sleep");
+  await advance(page, 2000);
+  await expect(title(page)).toHaveText("Tab 1");
 });
 
 test("a title the user chose does not change, though the command still shows", async ({ page }) => {

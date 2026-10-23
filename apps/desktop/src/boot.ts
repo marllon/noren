@@ -26,6 +26,7 @@ import { CLOSE_PUSH_LIMIT_MS, closeLimitMs, followWindowClose, saveWithin } from
 import { aiProvidersSync, configManager } from "./config-store";
 import { appApiHost } from "./api-bridge";
 import { loadHome } from "./home";
+import { rememberHome } from "./known-home";
 import { liveEntriesOf, startLiveGroups } from "./live-groups-service";
 import { realClock } from "./real-clock";
 import { migrateLegacySettings } from "./legacy-settings";
@@ -152,6 +153,7 @@ export async function bootWorkspace(
     withoutReattachedSnapshots(snapshots?.texts, restored.reattachedPaneIds);
     setRestoredScrollback(snapshots?.texts ?? new Map());
     const home = await loadHome();
+    rememberHome(home);
     const notifier = new SystemNotifier({ backend: target, settings: notificationSettings });
     // Where a new tab goes (NOR-F17-03b, 03c): the first rule of `routing.rules` of the settings that
     // matches, read at every new tab of the window and every call of the local API.

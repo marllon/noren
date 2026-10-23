@@ -181,6 +181,7 @@ async function startPane(
   delete fresh.sessionId;
   delete fresh.exitCode;
   delete fresh.runningCommand;
+  delete fresh.shellCwd;
 
   // A backend that cannot say, or has nothing for the pane, means a new shell.
   const kept = await backend.reattachSession(pane.id).catch(() => undefined);

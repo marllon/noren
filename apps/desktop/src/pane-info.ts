@@ -1,63 +1,9 @@
-import { layoutPanes, treeItemIds } from "@noren/model";
+import { layoutPanes, shortCwd, speakingPane, treeItemIds } from "@noren/model";
 import type { AgentState, GroupNode, Item, Pane, SessionLink, Space } from "@noren/model";
 import { t } from "./i18n";
 
-const ELLIPSIS = "…";
-
-/** A Windows path: a drive letter, or any backslash. */
-function isWindowsPath(path: string): boolean {
-  return /^[A-Za-z]:/.test(path) || path.includes("\\");
-}
-
-/** Path with the separators and the case of the drive normalized, for comparing against `home`. */
-function comparable(path: string, windows: boolean): string {
-  const slashed = windows ? path.replaceAll("\\", "/") : path;
-  const trimmed = slashed.length > 1 ? slashed.replace(/\/+$/, "") : slashed;
-  return windows ? trimmed.toLowerCase() : trimmed;
-}
-
-/**
- * A short form of a working directory for the sidebar: `home` becomes `~`, and a path with more than
- * `maxSegments` segments keeps only the last ones, behind an ellipsis. Both `/` and `\` are read as
- * separators; the result keeps the separator the path used. A path inside `home` is shown as
- * `~/rest` (`~\rest` on Windows); `home` itself is `~`. A Windows path compares with `home`
- * ignoring case and slash direction. A blank `cwd` gives an empty string.
- */
-export function shortCwd(cwd: string, home?: string, maxSegments = 2): string {
-  if (cwd.trim() === "") return "";
-  const windows = isWindowsPath(cwd);
-  const sep = windows && cwd.includes("\\") ? "\\" : "/";
-  const split = (path: string): string[] => path.split(/[\\/]+/).filter((part) => part !== "");
-
-  let root = "";
-  let segments: string[];
-  const homeKey = home !== undefined && home.trim() !== "" ? comparable(home, windows) : undefined;
-  const cwdKey = comparable(cwd, windows);
-  if (cwd === "~" || cwd.startsWith("~/") || cwd.startsWith("~\\")) {
-    root = "~";
-    segments = split(cwd.slice(1));
-  } else if (homeKey !== undefined && (cwdKey === homeKey || cwdKey.startsWith(`${homeKey}/`))) {
-    root = "~";
-    segments = split(cwd).slice(split(home ?? "").length);
-  } else {
-    const drive = /^[A-Za-z]:/.exec(cwd)?.[0];
-    if (drive !== undefined) {
-      root = drive;
-      segments = split(cwd.slice(drive.length));
-    } else {
-      segments = split(cwd);
-      if (cwd.startsWith("/") || cwd.startsWith("\\")) root = sep;
-    }
-  }
-
-  if (segments.length === 0) return root === "~" ? "~" : `${root === sep ? "" : root}${sep}`;
-  const kept = segments.slice(-maxSegments);
-  const body = kept.join(sep);
-  if (segments.length > maxSegments) return `${ELLIPSIS}${sep}${body}`;
-  if (root === "~") return `~${sep}${body}`;
-  if (root === sep) return `${sep}${body}`;
-  return root === "" ? body : `${root}${sep}${body}`;
-}
+// Moved to the model with the name of a tab (NOR-F20-12); the sidebar reads them from here as before.
+export { shortCwd, speakingPane };
 
 /** How long a command took, for the sidebar: `<1s`, `2.5s`, `12s`, `3m 05s`, `1h 02m`. */
 export function formatDuration(ms: number): string {
@@ -81,19 +27,6 @@ export interface CommandInfo {
   exitCode?: number;
   /** The duration in words (see {@link formatDuration}); absent for a command still running. */
   duration?: string;
-}
-
-/**
- * The pane that speaks for a tab: the one with the keyboard, or the first terminal pane when that one
- * is a browser or a preview pane, which have no folder, branch, command or program to name the tab
- * after.
- */
-export function speakingPane(item: Item): Pane | undefined {
-  const panes = layoutPanes(item.layout);
-  const focused = panes.find((pane) => pane.id === item.focusedPaneId) ?? panes[0];
-  return focused !== undefined && focused.type !== "terminal"
-    ? (panes.find((pane) => pane.type === "terminal") ?? focused)
-    : focused;
 }
 
 /** The command a pane shows; `undefined` when it never ran one that the shell reported. */

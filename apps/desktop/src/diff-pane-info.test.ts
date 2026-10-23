@@ -67,7 +67,7 @@ describe("the title of a tab with a diff pane", () => {
     expect(autoTitleAction(tab)).toEqual({
       type: "item/rename",
       itemId: "i1",
-      title: "npm",
+      title: "proj · npm",
       source: "process",
     });
   });

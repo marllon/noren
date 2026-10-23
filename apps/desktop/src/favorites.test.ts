@@ -1,4 +1,4 @@
-import { FakeBackend, createSequentialIds, restoreWorkspace } from "@noren/model";
+import { FakeBackend, createSequentialIds, layoutPanes, restoreWorkspace } from "@noren/model";
 import type { ActionsFileState, FavoriteLink, Id, ProjectAction, Space } from "@noren/model";
 import { describe, expect, it } from "vitest";
 import { actionToRun, itemTitle, resolveBar, resolveFavorites, titleInitial } from "./favorites";
@@ -75,11 +75,38 @@ describe("resolveFavorites", () => {
   });
 });
 
+/** The id of the first pane of a tab. */
+function firstPaneOf(space: Space, itemId: Id | undefined): Id {
+  const item = itemId === undefined ? undefined : space.items[itemId];
+  return (item !== undefined ? layoutPanes(item.layout)[0]?.id : undefined) ?? "";
+}
+
 describe("itemTitle", () => {
   it("numbers an untitled tab from 1 in the order of its space", async () => {
     const { mainSpace, mainIds } = await openStore();
     expect(itemTitle(mainSpace(), mainIds[0])).toBe("Tab 1");
     expect(itemTitle(mainSpace(), mainIds[2])).toBe("Tab 3");
+  });
+
+  it("names a tab after the folder its shell reported, before it has a title", async () => {
+    const { store, mainSpace, mainIds } = await openStore();
+    const paneId = firstPaneOf(mainSpace(), mainIds[0]);
+    store
+      .getState()
+      .dispatch({ type: "pane/set-shell-folder", itemId: mainIds[0], paneId, cwd: "/srv/api" });
+    expect(itemTitle(mainSpace(), mainIds[0])).toBe("api");
+    // The others still have nothing to say and keep their number.
+    expect(itemTitle(mainSpace(), mainIds[1])).toBe("Tab 2");
+  });
+
+  it("the title the person typed wins over the folder and the command", async () => {
+    const { store, mainSpace, mainIds } = await openStore();
+    const paneId = firstPaneOf(mainSpace(), mainIds[0]);
+    const { dispatch } = store.getState();
+    dispatch({ type: "item/rename", itemId: mainIds[0], title: "mine" });
+    dispatch({ type: "pane/set-shell-folder", itemId: mainIds[0], paneId, cwd: "/srv/api" });
+    dispatch({ type: "pane/command-start", itemId: mainIds[0], paneId, text: "pnpm dev" });
+    expect(itemTitle(mainSpace(), mainIds[0])).toBe("mine");
   });
 });
 

@@ -3,6 +3,9 @@ import type { Locator, Page } from "@playwright/test";
 import { seedConfig } from "./settings-fixture";
 import { afterNextFrame } from "./frames";
 import { expectNoAxeViolations } from "./axe-fixture";
+import { numberTheTabs } from "./numbered-tabs";
+
+test.beforeEach(numberTheTabs);
 
 // The Agents panel (Ctrl+Alt+Shift+G) and its shortcut to the agent that waits for you
 // (Ctrl+Alt+Shift+W). Three agents run in three spaces, one in each state; the fake backend plays

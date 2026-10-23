@@ -70,7 +70,7 @@ describe("a tab with a browser pane", () => {
     expect(autoTitleAction(item)).toEqual({
       type: "item/rename",
       itemId: "i1",
-      title: "npm",
+      title: "proj · npm",
       source: "process",
     });
   });

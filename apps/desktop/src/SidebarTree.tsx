@@ -21,6 +21,7 @@ import { useInterfaceStyle } from "./layout-store";
 import { PeekPopover, peekId, usePeek } from "./Peek";
 import { layoutThumbnail, paneEntries } from "./item-panes";
 import type { PaneEntry } from "./item-panes";
+import { itemLabel } from "./favorites";
 import { tabCount, t, useT } from "./i18n";
 import {
   agentLabel,
@@ -621,7 +622,7 @@ export function SidebarTree({
 
     const item = space.items[row.id];
     if (!item) return null;
-    const label = item.title ?? t("tree.tabDefault", { n: order.indexOf(row.id) + 1 });
+    const label = itemLabel(item, order.indexOf(row.id));
     const edit: Editing = { kind: "item", id: row.id };
     if (editing?.kind === "item" && editing.id === row.id) {
       return (

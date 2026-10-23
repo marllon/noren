@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { closeShortcutsScreen, openShortcutsScreen } from "./settings-fixture";
+import { numberTheTabs } from "./numbered-tabs";
+
+test.beforeEach(numberTheTabs);
 
 // The search over the output of every open tab: Ctrl+Shift+Alt+F, the lines grouped by tab, and
 // Enter (or a click) going to the line: switch space if needed, focus the tab, scroll and select it.

@@ -3,6 +3,9 @@ import type { Locator, Page } from "@playwright/test";
 import { closeShortcutsScreen, openShortcutsScreen, seedConfig } from "./settings-fixture";
 import { afterNextFrame } from "./frames";
 import { expectNoAxeViolations } from "./axe-fixture";
+import { numberTheTabs } from "./numbered-tabs";
+
+test.beforeEach(numberTheTabs);
 
 // The Ask panel (Ctrl+Shift+A): chips that read the terminal, the preview of exactly what will be
 // sent (with the secrets already swapped for markers), the answer in pieces drawn as Markdown, the

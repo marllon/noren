@@ -8,6 +8,9 @@ import {
   quiet,
   seedConfig,
 } from "./settings-fixture";
+import { numberTheTabs } from "./numbered-tabs";
+
+test.beforeEach(numberTheTabs);
 
 // Profiles of kind ssh (a shell in a norend on another machine), on the fake backend: the profiles
 // screen creates, edits and removes them, a tab of one shows the state of its connection (nothing

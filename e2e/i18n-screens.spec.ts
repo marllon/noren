@@ -5,6 +5,9 @@ import { ptBR } from "../apps/desktop/src/i18n/pt-BR";
 import { JSON_PROFILES_FILE } from "../packages/model/src/import-fixtures";
 import { seedConfig } from "./settings-fixture";
 import { ACTIONS_CWD, ACTIONS_TEXT, seedActionsFile, seedSidebarState } from "./sidebar-fixture";
+import { numberTheTabs } from "./numbered-tabs";
+
+test.beforeEach(numberTheTabs);
 
 // The rest of the interface in Brazilian Portuguese (the main screens are in `i18n.spec.ts`): every
 // screen below is opened with "language" on "pt-BR" in the file and must show its words in

@@ -16,7 +16,7 @@ import { hostTriple, norendFileName, sidecarFileName } from "./desktop-build-lib
 import { cargoEnv } from "./game-mode.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-// Game mode (NOR-F11-04): CARGO_BUILD_JOBS=8 for both builds while the user is playing.
+// Cargo ceiling (NOR-F20-22, D25): CARGO_BUILD_JOBS=8 for both builds, 4 while the user is playing.
 const env = cargoEnv();
 
 function fail(message) {

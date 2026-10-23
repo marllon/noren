@@ -51,14 +51,35 @@ describe("game mode reader", () => {
     expect(gameModeActive(env, Date.now() + MAX_AGE_MS + 60_000)).toBe(false);
   });
 
-  it("sets the limits only while the signal is valid", () => {
+  it("gives 4, 4 and 4 while the signal is valid", () => {
     const on = { [SIGNAL_ENV]: signal, NOREN_GAME_MODE_ANNOUNCED: "any" };
-    const off = { [SIGNAL_ENV]: join(dir, "missing"), PATH: "p" };
-    expect(vitestWorkers(on)).toBe(8);
+    expect(vitestWorkers(on)).toBe(4);
     expect(playwrightWorkers(on)).toBe(4);
-    expect(cargoEnv(on)["CARGO_BUILD_JOBS"]).toBe("8");
-    expect(vitestWorkers(off)).toBeUndefined();
-    expect(playwrightWorkers(off)).toBeUndefined();
-    expect(cargoEnv(off)).toEqual(off);
+    expect(cargoEnv(on)["CARGO_BUILD_JOBS"]).toBe("4");
+  });
+
+  it("gives the fixed ceiling of 8, 8 and 8 without the signal (missing or old)", () => {
+    const missing = { [SIGNAL_ENV]: join(dir, "missing"), PATH: "p" };
+    expect(vitestWorkers(missing)).toBe(8);
+    expect(playwrightWorkers(missing)).toBe(8);
+    expect(cargoEnv(missing)).toEqual({ ...missing, CARGO_BUILD_JOBS: "8" });
+    const old = new Date(Date.now() - MAX_AGE_MS - 5_000);
+    utimesSync(signal, old, old);
+    const stale = { [SIGNAL_ENV]: signal };
+    expect(vitestWorkers(stale)).toBe(8);
+    expect(playwrightWorkers(stale)).toBe(8);
+    expect(cargoEnv(stale)["CARGO_BUILD_JOBS"]).toBe("8");
+    const fresh = new Date();
+    utimesSync(signal, fresh, fresh);
+  });
+
+  it("keeps a smaller CARGO_BUILD_JOBS the person set and never raises it", () => {
+    const on = { [SIGNAL_ENV]: signal, NOREN_GAME_MODE_ANNOUNCED: "any" };
+    const off = { [SIGNAL_ENV]: join(dir, "missing") };
+    expect(cargoEnv({ ...off, CARGO_BUILD_JOBS: "2" })["CARGO_BUILD_JOBS"]).toBe("2");
+    expect(cargoEnv({ ...off, CARGO_BUILD_JOBS: "32" })["CARGO_BUILD_JOBS"]).toBe("8");
+    expect(cargoEnv({ ...off, CARGO_BUILD_JOBS: "x" })["CARGO_BUILD_JOBS"]).toBe("8");
+    expect(cargoEnv({ ...on, CARGO_BUILD_JOBS: "6" })["CARGO_BUILD_JOBS"]).toBe("4");
+    expect(cargoEnv({ ...on, CARGO_BUILD_JOBS: "3" })["CARGO_BUILD_JOBS"]).toBe("3");
   });
 });

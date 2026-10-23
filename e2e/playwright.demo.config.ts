@@ -14,8 +14,8 @@ export default defineConfig({
   testMatch: "**/*.demo.ts",
   outputDir: "../test-results",
   reporter: [["list"]],
-  // Game mode (NOR-F11-04): 4 workers while the user is playing; otherwise Playwright's own default.
-  ...(workers !== undefined ? { workers } : {}),
+  // Fixed ceiling (NOR-F20-22, D25): at most 8 workers, 4 while the user is playing (game mode).
+  workers,
   use: { baseURL: url, locale: "en-US" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {

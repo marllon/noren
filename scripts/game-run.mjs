@@ -1,5 +1,5 @@
-// Runs a command with the environment of game mode (NOR-F11-04): `CARGO_BUILD_JOBS=8` while the
-// signal is valid. Used by the package.json scripts that call cargo, directly or through Tauri:
+// Runs a command with the cargo ceiling (NOR-F20-22, D25): `CARGO_BUILD_JOBS=8`, or 4 while the
+// game mode signal is valid. Used by the package.json scripts that call cargo, directly or through Tauri:
 //   node scripts/game-run.mjs cargo clippy ...
 //   node scripts/game-run.mjs pnpm --filter @noren/desktop exec tauri build
 // No shell: pnpm is started through the JS entry that pnpm itself exports in npm_execpath.

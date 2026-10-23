@@ -372,11 +372,12 @@ While a game is open, a Windows watcher on the maintainer's machine keeps the fi
 if the file exists and was modified less than 60 s ago. The path can be changed with
 `NOREN_MODO_JOGO_ARQUIVO` (the tests use a temporary file).
 
-When the signal is valid as a command starts, Vitest uses at most 8 workers, Playwright 4 (both
-configs) and cargo gets `CARGO_BUILD_JOBS=8` (`rust:check`, `licenses:check`, `desktop:build` and the
-builds of `pnpm smoke`, through `scripts/game-run.mjs`, which starts the command without a shell). A
-line such as `game mode: CARGO_BUILD_JOBS=8` goes to stderr. Without the signal nothing changes, and
-CI never has the file.
+The parallelism of the tests has a fixed ceiling, signal or not (NOR-F20-22): Vitest uses at most 8
+workers, Playwright 8 (both configs) and cargo gets `CARGO_BUILD_JOBS=8` (`rust:check`,
+`licenses:check`, `desktop:build` and the builds of `pnpm smoke`, through `scripts/game-run.mjs`, which
+starts the command without a shell). When the signal is valid as a command starts, the ceiling drops
+to 4, 4 and 4, and a line such as `game mode: CARGO_BUILD_JOBS=4` goes to stderr (without the signal
+nothing is printed). A smaller `CARGO_BUILD_JOBS` that is already set is kept. CI never has the file.
 
 `pnpm shot` (see [Pictures of the real app](#pictures-of-the-real-app)) is the one command that reads
 the signal differently: it refuses to run while the file exists, of any age, because it draws the real

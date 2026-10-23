@@ -1,11 +1,12 @@
 export const SIGNAL_PATH: string;
 export const SIGNAL_ENV: string;
 export const MAX_AGE_MS: number;
+export const NORMAL_LIMITS: { vitestWorkers: number; playwrightWorkers: number; cargoJobs: number };
 export const LIMITS: { vitestWorkers: number; playwrightWorkers: number; cargoJobs: number };
 export function signalPath(env?: NodeJS.ProcessEnv): string;
 export function gameModeActive(env?: NodeJS.ProcessEnv, now?: number): boolean;
 export function gameModeSignalPresent(env?: NodeJS.ProcessEnv): boolean;
 export function announce(text: string, env?: NodeJS.ProcessEnv): void;
-export function vitestWorkers(env?: NodeJS.ProcessEnv, now?: number): number | undefined;
-export function playwrightWorkers(env?: NodeJS.ProcessEnv, now?: number): number | undefined;
+export function vitestWorkers(env?: NodeJS.ProcessEnv, now?: number): number;
+export function playwrightWorkers(env?: NodeJS.ProcessEnv, now?: number): number;
 export function cargoEnv(env?: NodeJS.ProcessEnv, now?: number): NodeJS.ProcessEnv;

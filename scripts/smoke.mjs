@@ -82,7 +82,7 @@ function fail(message) {
 // pnpm is a .cmd shim on Windows and Node refuses to spawn those without a shell. When started
 // through `pnpm smoke`, npm_execpath points at pnpm's JS entry, which Node can run directly.
 const pnpmEntry = process.env.npm_execpath;
-// Game mode (NOR-F11-04): CARGO_BUILD_JOBS=8 for both cargo builds while the user is playing.
+// Cargo ceiling (NOR-F20-22, D25): CARGO_BUILD_JOBS=8 for both cargo builds, 4 while the user is playing.
 const buildEnv = cargoEnv();
 const runPnpmWithNode = pnpmEntry !== undefined && /\.c?js$/.test(pnpmEntry);
 const buildArgs = [

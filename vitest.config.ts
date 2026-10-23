@@ -13,7 +13,7 @@ export default defineConfig({
       "scripts/packages.vitest.mjs",
       "scripts/shot.vitest.mjs",
     ],
-    // Game mode (NOR-F11-04): at most 8 workers while the user is playing; otherwise Vitest's own default.
-    ...(maxWorkers !== undefined ? { maxWorkers } : {}),
+    // Fixed ceiling (NOR-F20-22, D25): at most 8 workers, 4 while the user is playing (game mode).
+    maxWorkers,
   },
 });

@@ -137,6 +137,56 @@ export function commandWords(info: CommandInfo): string {
   return parts.join(", ");
 }
 
+/**
+ * What the header of a terminal pane under the glass style says about the pane: its folder, the git
+ * branch of the folder and the command (the one running, else the last one). Every part but the
+ * folder is left out when the pane has nothing to say about it.
+ */
+export interface PaneBarInfo {
+  /** The folder as the header writes it (`~/site/api`); empty when no folder is known. */
+  folder: string;
+  /** The folder in full, for the tooltip. */
+  cwd?: string;
+  branch?: string;
+  command?: CommandInfo;
+}
+
+/** How many segments of the folder the header keeps: `~/projects/noren`, `…/site/api/src`. */
+const BAR_SEGMENTS = 3;
+
+/**
+ * The facts the header of a pane shows, or `undefined` for a pane that is not a terminal (a browser,
+ * a preview and a diff pane have a bar of their own). The folder falls back to `defaultCwd`, the
+ * folder of the space, until the shell tells its own.
+ */
+export function paneBarInfo(
+  pane: Pane,
+  defaultCwd: string | undefined,
+  home: string | undefined,
+): PaneBarInfo | undefined {
+  if (pane.type !== "terminal") return undefined;
+  const found = pane.cwd ?? defaultCwd;
+  const cwd = found !== undefined && found.trim() !== "" ? found : undefined;
+  const command = commandInfo(pane);
+  return {
+    folder: cwd !== undefined ? shortCwd(cwd, home, BAR_SEGMENTS) : "",
+    ...(cwd !== undefined ? { cwd } : {}),
+    ...(pane.gitBranch !== undefined && pane.gitBranch !== "" ? { branch: pane.gitBranch } : {}),
+    ...(command !== undefined ? { command } : {}),
+  };
+}
+
+/**
+ * A folder as the header writes it, cut before its last segment: `~/site/` and `api`. The head is
+ * empty for a folder with no separator inside (`~`, `/`, `C:\`), which is then all tail. Both `/` and
+ * `\` are separators.
+ */
+export function folderParts(folder: string): { head: string; tail: string } {
+  const cut = Math.max(folder.lastIndexOf("/"), folder.lastIndexOf("\\"));
+  if (cut < 0 || cut === folder.length - 1) return { head: "", tail: folder };
+  return { head: folder.slice(0, cut + 1), tail: folder.slice(cut + 1) };
+}
+
 /** The connection of a tab whose shell is on another machine, while it is not up. */
 export type ItemLink = Pick<SessionLink, "attempt" | "maxAttempts" | "reason"> & {
   state: "reconnecting" | "failed";

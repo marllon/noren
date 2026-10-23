@@ -6277,3 +6277,276 @@ ul.settings-models {
   background: color-mix(in srgb, var(--nr-text) 8%, transparent);
   color: var(--nr-text);
 }
+
+/*
+ * The glass pane, part by part (NOR-F20-18c, D23): the header of a terminal pane with its folder, the
+ * git branch, the command and the buttons that split and zoom it, the ring in the color of the space
+ * on the pane in focus (above, with the card of the pane), and the ring and the badge of an agent that
+ * waits for you. The numbers are the ones of the approved design of the window; the colors are the
+ * tokens (the text, the muted text pulled toward the text where it sits on a tint, the highlight, the
+ * state colors), so a theme, light or dark, works. A pane can be narrow (a split of eight): the folder
+ * and each chip cut what does not fit with an ellipsis inside their own box, and the buttons never move.
+ */
+
+:root[data-nr-style="glass"] .app .pane-frame {
+  /* The muted text on the glass and on the tints of the chips: pulled toward the text color to keep 4.5:1. */
+  --nr-pane-muted: color-mix(in srgb, var(--nr-muted) 60%, var(--nr-text));
+}
+
+/* The header: a strip of fixed height over the terminal, a line under it. */
+:root[data-nr-style="glass"] .app .pane-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  box-sizing: border-box;
+  gap: 10px;
+  height: 38px;
+  padding: 0 6px 0 14px;
+  border-bottom: 1px solid var(--nr-line);
+  color: var(--nr-pane-muted);
+  container-type: inline-size;
+  font-family: var(--nr-font-ui);
+  font-size: var(--nr-font-size-small);
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-info {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* The folder: an icon, the path in muted text and its last segment in the text color; the head of the path gives way first. */
+:root[data-nr-style="glass"] .app .pane-bar-folder {
+  display: flex;
+  flex: 0 2 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--nr-pane-muted);
+  font-size: var(--nr-font-size);
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-folder svg {
+  flex: none;
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-path {
+  display: flex;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-head {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-tail {
+  flex: 0 0.01 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--nr-text);
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+/* A chip: the branch, the command, the agent badge. In a narrow pane the branch gives way first, then the command, and the badge last. */
+:root[data-nr-style="glass"] .app .pane-bar-chip {
+  display: flex;
+  flex: 0 4 auto;
+  align-items: center;
+  box-sizing: border-box;
+  gap: 6px;
+  min-width: 0;
+  padding: 3px 9px;
+  border-radius: var(--nr-radius-chip);
+  background: color-mix(in srgb, var(--nr-text) 7%, transparent);
+  color: color-mix(in srgb, var(--nr-text) 80%, var(--nr-muted));
+  font-size: var(--nr-font-size-small);
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-chip svg {
+  flex: none;
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The command: a dot that is green while it runs, hollow once it ended; a failure also says its exit code. */
+:root[data-nr-style="glass"] .app .pane-bar-command {
+  flex-shrink: 3;
+  min-width: 56px;
+  font-family: var(--nr-font-mono);
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-branch {
+  flex-shrink: 6;
+  min-width: 56px;
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-dot {
+  flex: none;
+  box-sizing: border-box;
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--nr-pane-muted);
+  border-radius: 50%;
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-command[data-nr-state="running"] {
+  background: color-mix(in srgb, var(--nr-state-running) 13%, transparent);
+  color: color-mix(in srgb, var(--nr-state-running) 55%, var(--nr-text));
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-command[data-nr-state="running"] .pane-bar-dot {
+  border: 0;
+  background: var(--nr-state-running);
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-code {
+  flex: none;
+  color: var(--nr-text);
+  font-family: var(--nr-font-ui);
+}
+
+/* The agent that waits for you: the amber of the state, the same as the dot of its tab. */
+:root[data-nr-style="glass"] .app .pane-bar-agent {
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--nr-state-waiting) 16%, transparent);
+  color: color-mix(in srgb, var(--nr-state-waiting) 45%, var(--nr-text));
+}
+
+/* The buttons at the right end: split right, split down and zoom. */
+:root[data-nr-style="glass"] .app .pane-bar-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-button {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--nr-pane-muted);
+  cursor: pointer;
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--nr-text) 8%, transparent);
+  color: var(--nr-text);
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* The optional header of the settings (title, menu, detach, zoom, close) lets the glass of the pane through. */
+:root[data-nr-style="glass"] .app .pane-header {
+  border-bottom-color: var(--nr-line);
+  background: transparent;
+  color: var(--nr-pane-muted);
+}
+
+/*
+ * What an agent does shows on its pane as a thin ring inside the card: waiting is the amber of the
+ * state (solid), working the green of the state (it pulses), idle the muted color (faint). The ring of
+ * the pane in focus is drawn over it.
+ */
+:root[data-nr-style="glass"] .app .pane-frame[data-nr-agent-state="working"] {
+  --agent-color: var(--nr-state-running);
+}
+
+:root[data-nr-style="glass"] .app .pane-frame[data-nr-agent-state="waiting"] {
+  --agent-color: var(--nr-state-waiting);
+}
+
+:root[data-nr-style="glass"] .app .pane-frame[data-nr-agent-state] > .pane-agent-ring {
+  border-width: 1px;
+  border-color: color-mix(in srgb, var(--agent-color) 45%, transparent);
+  box-shadow: none;
+  opacity: 1;
+}
+
+:root[data-nr-style="glass"] .app .pane-frame[data-nr-agent-state="idle"] > .pane-agent-ring {
+  opacity: 0.5;
+}
+
+/* Too narrow for the chips: the folder and the badge stay. Narrower, the badge keeps only its icon (it never shrinks: a text cut by an ellipsis would hide the one thing the pane has to say; the words are said to assistive technology anyway) and, narrower still, the folder keeps only its last segment, then no icon. */
+@container (max-width: 300px) {
+  :root[data-nr-style="glass"] .app .pane-bar-branch,
+  :root[data-nr-style="glass"] .app .pane-bar-command {
+    display: none;
+  }
+}
+
+@container (max-width: 380px) {
+  :root[data-nr-style="glass"] .app .pane-bar-agent .pane-bar-chip-text {
+    display: none;
+  }
+}
+
+@container (max-width: 240px) {
+  :root[data-nr-style="glass"] .app .pane-bar-head {
+    display: none;
+  }
+}
+
+@container (max-width: 200px) {
+  :root[data-nr-style="glass"] .app .pane-bar-folder svg {
+    display: none;
+  }
+}
+
+/* A pane of a split of eight can be 100 px wide: only the buttons, smaller, and then without zoom (its shortcut and its menu stay). */
+@container (max-width: 150px) {
+  :root[data-nr-style="glass"] .app .pane-bar-info {
+    display: none;
+  }
+
+  :root[data-nr-style="glass"] .app .pane-bar-actions {
+    margin-inline-start: auto;
+  }
+
+  :root[data-nr-style="glass"] .app .pane-bar-button {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+@container (max-width: 100px) {
+  :root[data-nr-style="glass"] .app .pane-bar-button[data-nr-part="pane-bar-zoom"] {
+    display: none;
+  }
+}
+
+/* With the badge of an agent that waits the room goes to it first: the command gives way below 580 px of header, the branch below 480 px. */
+@container (max-width: 580px) {
+  :root[data-nr-style="glass"] .app .pane-bar:has(.pane-bar-agent) .pane-bar-command {
+    display: none;
+  }
+}
+
+@container (max-width: 480px) {
+  :root[data-nr-style="glass"] .app .pane-bar:has(.pane-bar-agent) .pane-bar-branch {
+    display: none;
+  }
+}

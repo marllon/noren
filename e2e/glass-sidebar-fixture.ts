@@ -2,9 +2,18 @@ import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { NOREN_DUSK, NOREN_PAPER } from "../packages/model/src/builtin-themes";
 import { seedConfig } from "./settings-fixture";
-import { ACTIONS_CWD, ACTIONS_TEXT, seedActionsFile, seedSidebarState } from "./sidebar-fixture";
+import { solidPng } from "./solid-png";
+import {
+  ACTIONS_CWD,
+  ACTIONS_TEXT,
+  SIDEBAR_REPOS,
+  SPLIT_FIXTURE,
+  seedActionsFile,
+  seedGitRepos,
+  seedSidebarState,
+} from "./sidebar-fixture";
 
-// What the specs of the glass sidebar (NOR-F20-18b) share: the page started with a style, a theme, a
+// What the specs of the glass sidebar (NOR-F20-18b) and of the glass pane (NOR-F20-18c) share: the page started with a style, a theme, a
 // language, the favorites bar, an agent working or waiting in a pane, names too long for the sidebar and a
 // second space. Not a spec itself, so the specs that import it do not register each other's tests.
 
@@ -49,6 +58,12 @@ export interface StartOptions {
   longNames?: boolean;
   /** Writes a pane as played by the agent after the page is up: `[pane, text]`. */
   agents?: readonly (readonly [string, string])[];
+  /** Fake git repositories (folder to branch) the shells find; the ones of the fixture stay unless a folder is named here. */
+  repos?: Record<string, string>;
+  /** A picture behind the window, the settings name it `pic.png`: its color as `#rrggbb` (white and black are the worst of it). */
+  picture?: string;
+  /** Names far too long for a pane header: the folder and the branch of the first pane of the split tab. */
+  longPane?: boolean;
 }
 
 interface SavedState {
@@ -80,7 +95,8 @@ export async function start(page: Page, options: StartOptions = {}): Promise<voi
   const appearance = [
     `"theme": "${THEME[mode].id}"`,
     `"style": "${style}"`,
-    ...(options.appearance !== undefined ? [options.appearance] : []),
+    ...(options.picture !== undefined ? ['"background": { "image": "pic.png" }'] : []),
+    ...(options.appearance !== undefined && options.appearance !== "" ? [options.appearance] : []),
   ].join(", ");
   await seedConfig(
     page,
@@ -90,11 +106,42 @@ export async function start(page: Page, options: StartOptions = {}): Promise<voi
     (profiles) => window.localStorage.setItem("noren.web.profiles", JSON.stringify(profiles)),
     PROFILES,
   );
+  if (options.picture !== undefined) {
+    const images = { "pic.png": solidPng(options.picture).toString("base64") };
+    await page.addInitScript(
+      (value) => window.localStorage.setItem("noren.web.images", JSON.stringify(value)),
+      images,
+    );
+  }
+  // The repositories of the page first: `seedSidebarState` leaves the ones it finds.
+  if (options.repos !== undefined || options.longPane === true) {
+    await seedGitRepos(page, {
+      ...SIDEBAR_REPOS,
+      ...(options.longPane === true ? { [LONG.cwd]: LONG.branch } : {}),
+      ...options.repos,
+    });
+  }
   await seedSidebarState(page, {
     cwd: ACTIONS_CWD,
     split: true,
     ...(options.secondSpace === true ? { secondSpace: true } : {}),
   });
+  if (options.longPane === true) {
+    await page.addInitScript(
+      ({ long, itemId, paneIndex }) => {
+        const key = "noren.web.state";
+        const state = JSON.parse(window.localStorage.getItem(key) ?? "{}") as {
+          spaces: {
+            items: Record<string, { layout: { children?: { pane: { cwd?: string } }[] } }>;
+          }[];
+        };
+        const pane = state.spaces[0]?.items[itemId]?.layout.children?.[paneIndex]?.pane;
+        if (pane !== undefined) pane.cwd = long;
+        window.localStorage.setItem(key, JSON.stringify(state));
+      },
+      { long: LONG.cwd, itemId: SPLIT_FIXTURE.itemId, paneIndex: 0 },
+    );
+  }
   if (options.actions !== false) {
     await seedActionsFile(page, ACTIONS_CWD, options.actions ?? ACTIONS_TEXT);
   }

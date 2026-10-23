@@ -16,6 +16,8 @@ import { menuPoint } from "./ContextMenu";
 import { useT } from "./i18n";
 import type { MenuPoint } from "./SpaceMenu";
 import type { SplitDir } from "./TreeMenus";
+import { PaneBar } from "./PaneBar";
+import type { PaneBarInfo } from "./pane-info";
 import { usePaneDrag, usePaneDrop } from "./TreeDnd";
 import {
   MIN_PANEL_PERCENT,
@@ -44,6 +46,12 @@ export interface SplitLayoutContext {
    * pane without an agent. The pane draws a ring in the color of the state.
    */
   paneAgent?(pane: Pane): { state: AgentState; label: string } | undefined;
+  /**
+   * What the glass header of a pane says (its folder, branch and command), or `undefined` for a pane
+   * with no header of this kind: every pane under the dense style, and a pane that is not a terminal.
+   * A pane with the header has no hover corner, its split buttons are in the header.
+   */
+  paneBar?(pane: Pane): PaneBarInfo | undefined;
   renderPane(pane: Pane): ReactNode;
   onFocusPane(paneId: Id): void;
   onZoomPane(paneId: Id): void;
@@ -252,6 +260,8 @@ function PaneFrame({ pane, context }: { pane: Pane; context: SplitLayoutContext 
   // terminal is unmounted or moved (a moved terminal remounts and loses its screen).
   const zoomState = zoom === undefined ? undefined : zoom === pane.id ? "zoomed" : "hidden";
   const agent = context.paneAgent?.(pane);
+  const bar = context.paneBar?.(pane);
+  const onSplit = context.onSplitPane;
   return (
     <div
       ref={drop.ref}
@@ -274,8 +284,22 @@ function PaneFrame({ pane, context }: { pane: Pane; context: SplitLayoutContext 
           context={context}
         />
       ) : null}
+      {bar !== undefined && (
+        <PaneBar
+          info={bar}
+          waiting={agent?.state === "waiting"}
+          // With the pane headers on, the zoom button is the header's own (two would have one name).
+          zoomable={context.framed && !context.headers}
+          zoomed={zoom === pane.id}
+          canSplit={context.canSplit !== false}
+          {...(onSplit !== undefined ? { onSplit: (dir: SplitDir) => onSplit(pane.id, dir) } : {})}
+          onZoom={() => context.onZoomPane(pane.id)}
+        />
+      )}
       {context.renderPane(pane)}
-      {pane.type === "terminal" && <PaneCorner pane={pane} context={context} />}
+      {pane.type === "terminal" && bar === undefined && (
+        <PaneCorner pane={pane} context={context} />
+      )}
       {agent !== undefined && (
         <>
           <span className="pane-agent-ring" data-nr-part="pane-agent-ring" aria-hidden="true" />

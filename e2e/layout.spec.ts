@@ -316,6 +316,11 @@ test.describe("compact mode", () => {
     await change(page, (screen) => checkbox(screen, "Compact mode").check());
     await page.reload();
     await expect(sidebar(page)).toHaveAttribute("data-nr-state", "hidden");
+    // The terminal takes the focus once its shell is up, and a focus the test gave before that would be
+    // taken away from the sidebar (which then hides): wait for the terminal to have it first.
+    await expect(
+      page.getByRole("textbox", { name: "Terminal input", exact: true }).first(),
+    ).toBeFocused();
 
     // Tab-focus on a hidden row shows the sidebar; focus leaving hides it.
     await page.keyboard.press("Tab");

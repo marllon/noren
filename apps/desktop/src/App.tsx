@@ -107,7 +107,13 @@ import type { ClickModifiers, Selection } from "./sidebar-tree";
 import { sidebarMode } from "./layout";
 import { useLanguage, t, tabCount } from "./i18n";
 import { refreshLiveGroups, worktreesGroupName } from "./live-groups-service";
-import { agentStateLabel, nothingUnreadNotice, shortCwd, summarizeItem } from "./pane-info";
+import {
+  agentStateLabel,
+  nothingUnreadNotice,
+  paneBarInfo,
+  shortCwd,
+  summarizeItem,
+} from "./pane-info";
 import { peekLinesOfItem } from "./peek-source";
 import { configManager, useConfigState } from "./config-store";
 import { AnnouncerRegion } from "./AnnouncerRegion";
@@ -702,6 +708,8 @@ function ItemView({
   // The limit is a setting: the tab draws again when it changes, so the corner buttons follow it.
   const paneLimit = paneLimitOf(useConfigState().config.terminal);
   const agentStateOf = useAgentStateOfPane();
+  // The glass style gives every terminal pane a header of its own (folder, branch, command).
+  const glass = useInterfaceStyle() === "glass";
   const context: SplitLayoutContext = {
     focusedPaneId: item.focusedPaneId,
     framed: item.layout.kind === "split",
@@ -715,6 +723,7 @@ function ItemView({
         ? { state, label: agentStateLabel(name, state) }
         : undefined;
     },
+    ...(glass ? { paneBar: (pane: Pane) => paneBarInfo(pane, space.defaults.cwd, home) } : {}),
     paneTitle: (pane) => {
       if (pane.type === "browser") return browserTitle(pane.url);
       if (pane.type === "preview") return previewTitle(pane.path);

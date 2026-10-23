@@ -166,7 +166,7 @@ The style never changes the colors of the theme. The lines and the glass are wor
 
 The root element of the window carries the style as `data-nr-style="glass"` or `data-nr-style="dense"`, and the token set of that attribute (the table below) is what the stylesheet reads. Both sets have the same names, so a component never asks which style is on. The page starts as `glass` before the settings are read.
 
-The new look comes in steps. The style itself is the first (task NOR-F20-17): the attribute, the two token sets, the fonts and the switch. The surfaces of the glass window are the second (task NOR-F20-18a, below): the window behind everything, the sidebar and the panes as cards of glass, the highlight, the controls and the opaque panels. What goes inside the sidebar and the header of a pane (the brand, the search, the favorites grid, the rows with their state dots, the focus ring with its seal) and the status bar of the dense style come in the next tasks and are built on these tokens.
+The new look comes in steps. The style itself is the first (task NOR-F20-17): the attribute, the two token sets, the fonts and the switch. The surfaces of the glass window are the second (task NOR-F20-18a, below): the window behind everything, the sidebar and the panes as cards of glass, the highlight, the controls and the opaque panels. The content of the sidebar is the third (task NOR-F20-18b, [the glass sidebar](#the-glass-sidebar)) and the header of a pane with the rings and the badge of an agent is the fourth (task NOR-F20-18c, [the glass pane](#the-glass-pane)). The settings screen, the theme editor and the status bar of the dense style come in the next tasks and are built on these tokens.
 
 ### The fonts
 
@@ -207,6 +207,22 @@ The content of the sidebar under the glass style (task NOR-F20-18b) follows the 
 - **The tabs** (`item`): a state dot at the start of the row (`item-dot`, 8 px: green running, amber waiting, a muted point idle), the title, and a second line (`item-meta`) with the folder, a middle dot and the branch, in 11.5 px. The row is 44 px at least (a third shorter in compact density), with the corners of a control; the tab on screen is a lit row. The marks a tab already had (the agent, a failed command, unread, the bell) stay at the end of the title line, and the line of the last command stays under the second line. A group is a quiet row with its count at the end.
 - **The foot**: **New tab** is a quiet row with a plus and its keycap (`Ctrl ⇧ T`); under a line, `sidebar-base` holds the spaces (34 px, the active one lit), the buttons of a new space and of the space options, and the **Settings** button (`sidebar-settings`) at the right end. The title bar has no Settings button while the sidebar is docked under glass; with the sidebar folded (or the tabs on top) it has it again, so there is always exactly one button of that name on the page.
 - **Long names** are cut by an ellipsis inside their own box (a tab title, a folder, a branch, a group, a space, the label of an action); nothing leaves the card or overlaps the row next to it, from the narrowest sidebar (180 px) to the widest (480 px).
+
+### The glass pane
+
+Under the glass style (task NOR-F20-18c) a terminal pane has a header of its own and two rings, as in the approved design of the window. Nothing the pane does changed: focus, keyboard, mouse, split, zoom, drag, the menu of the right click and what is saved are the same as under the dense style, and everything below is drawn only under `:root[data-nr-style="glass"]`.
+
+- **The header** (`pane-bar`): a strip of 38 px at the top of the card of every terminal pane, a line under it (`--nr-line`) and the terminal under that. Its height never changes with what it says, so a command starting or an agent changing state does not resize the terminal. A browser, a preview and a diff pane have a bar of their own and get none, and neither does a pane in a window of a space. It holds, from the left:
+  - **the folder** (`pane-folder`): the folder icon and the path in the muted text with its last segment in the text color and heavier (up to three segments, `~` for the home folder, the whole path as the tooltip; until the shell tells its folder, the folder of the space; `Terminal` when there is none). The head of the path is cut first, the last segment last;
+  - **the branch** (`pane-branch`): a chip with the branch icon and the name of the git branch of the folder, left out when the folder is not in a repository;
+  - **the command** (`pane-command`): a chip with the command that runs (a green dot, `data-nr-state="running"`) or, once it ended, the last one (a hollow dot, `done`, or `failed` with its `exit N`); left out until the shell tells a command;
+  - **the badge** (`pane-agent-badge`): in amber, **Agent waiting for you**, only while an agent in the pane waits for the person. The words reach a screen reader once, from the status of the pane that already said them; the badge is for the eyes;
+  - **the buttons** (`pane-bar-actions`) at the right end: **Split right** (`pane-bar-split-right`), **Split down** (`pane-bar-split-down`) and, in a tab with more than one pane, **Zoom pane** / **Restore pane** (`pane-bar-zoom`). They are 28 px, always in sight (the dense style keeps its hover corner), and their tooltip carries the shortcut that does the same (`Split right (Ctrl+Shift+D)`), read from the shortcuts the person set. At the limit of panes of a tab (`terminal.maxPanes`) the two split buttons are off.
+- **With the pane headers of the settings on** (`appearance.paneHeaders`) the header with the title, the menu, detach, zoom and close buttons keeps its place above the glass header and lets the glass through; its zoom button is then the only one of the pane, so no button has two of the same name.
+- **The ring of the pane in focus** is the highlight, `--nr-highlight` (the color of the active space), at 55%, 1 px inside the card and following its corners; it is there in a tab with more than one pane, and the pane the mouse presses (the header too) takes it.
+- **The ring of an agent** (`pane-agent-ring`) is a thin line inside the card in the color of what the agent does: **waiting** is the amber of the state (`--nr-state-waiting`, solid), **working** the green (`--nr-state-running`, it pulses unless the person asked for less motion) and **idle** the muted color, faint. The ring of the pane in focus is drawn over it.
+- **Narrow panes.** The header is a container: below 300 px of header the branch and the command give way (the folder and the badge stay), below 240 px the badge keeps only its icon and the folder only its last segment, below 200 px the folder icon goes too, below 150 px only the buttons stay (24 px) and below 100 px zoom goes as well (its shortcut and the menu of the pane stay). A long folder, branch or command is cut by an ellipsis inside its own box; nothing leaves the header or reaches the buttons.
+- **Readable over any picture.** The text of the header keeps 4.5:1 over the hardest pixel a picture can have (white under a dark theme, black under a light one): the chips use the text color pulled toward the color of their state, and the end-to-end tests measure it in the pixels of the page.
 
 ## The window: effect, opacity and background
 
@@ -396,40 +412,49 @@ The token set of the interface style (see [the interface style](#the-interface-s
 
 `data-nr-part` names what an element is. `data-nr-state` (where the table gives values) says what state it is in, and is absent when the element is in none.
 
-| `data-nr-part`       | What it is                                                                                             | `data-nr-state`                                   |
-| -------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| `sidebar`            | The sidebar.                                                                                           | `revealed` or `hidden`, only with compact mode on |
-| `space-switcher`     | The row of spaces at the foot of the sidebar.                                                          |                                                   |
-| `sidebar-head`       | The head of the glass sidebar: the brand and the button that folds it.                                 |                                                   |
-| `sidebar-brand`      | The mark and the name at the head of the glass sidebar.                                                |                                                   |
-| `sidebar-collapse`   | The button that folds the glass sidebar (compact mode), not there with the tabs on top.                |                                                   |
-| `sidebar-search`     | The button of the glass sidebar that opens the command palette.                                        |                                                   |
-| `keycap`             | The keycap of a shortcut beside a row of the glass sidebar (the search, New tab).                      |                                                   |
-| `sidebar-base`       | The foot of the docked glass sidebar: the spaces and the settings button.                              |                                                   |
-| `sidebar-settings`   | The settings button at the foot of the glass sidebar.                                                  |                                                   |
-| `space-header`       | The card of the project actions of the active space, when it has any.                                  |                                                   |
-| `item-dot`           | The state dot at the start of a tab in the glass sidebar.                                              |                                                   |
-| `item-meta`          | The second line of a tab: the folder and the branch.                                                   |                                                   |
-| `item`               | A tab, in the sidebar or in the bar on top.                                                            | `active`                                          |
-| `item-title`         | The title inside a tab.                                                                                |                                                   |
-| `group`              | A group of tabs.                                                                                       | `expanded` or `collapsed`                         |
-| `pinned-list`        | The list of pinned tabs.                                                                               | `over` while a tab is dragged over it             |
-| `favorites`          | The bar of favorites, always on screen.                                                                | `over` while a tab is dragged over it             |
-| `favorites-hint`     | The line that says how to add a favorite, only while none is.                                          |                                                   |
-| `favorite-dot`       | The state dot on the corner of a favorite tile in the glass style, only while it is waiting or busy.   |                                                   |
-| `favorite`           | One tile of the bar: a favorite tab, a profile or an action.                                           | `active`, `running` or `unavailable`              |
-| `tabbar`             | The bar of tabs on top, when the tabs are on top.                                                      |                                                   |
-| `pane`               | One terminal pane.                                                                                     |                                                   |
-| `pane-header`        | The header of a pane, when pane headers are on.                                                        |                                                   |
-| `palette`            | The command palette.                                                                                   |                                                   |
-| `library`            | The library of archived and closed tabs.                                                               |                                                   |
-| `library-row`        | One tab of the library.                                                                                | `selected`                                        |
-| `peek`               | The peek of a tab: its last lines in a popover beside it.                                              |                                                   |
-| `settings`           | The settings screen.                                                                                   |                                                   |
-| `glass-backdrop`     | The illustrated backdrop of the glass window, only while no picture and no system effect is behind it. |                                                   |
-| `background`         | The picture behind the terminals, only while one is on screen.                                         |                                                   |
-| `background-backing` | What the picture is drawn on, only while a picture shows.                                              |                                                   |
-| `background-veil`    | The veil over the picture, only while a picture shows.                                                 |                                                   |
+| `data-nr-part`         | What it is                                                                                             | `data-nr-state`                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| `sidebar`              | The sidebar.                                                                                           | `revealed` or `hidden`, only with compact mode on |
+| `space-switcher`       | The row of spaces at the foot of the sidebar.                                                          |                                                   |
+| `sidebar-head`         | The head of the glass sidebar: the brand and the button that folds it.                                 |                                                   |
+| `sidebar-brand`        | The mark and the name at the head of the glass sidebar.                                                |                                                   |
+| `sidebar-collapse`     | The button that folds the glass sidebar (compact mode), not there with the tabs on top.                |                                                   |
+| `sidebar-search`       | The button of the glass sidebar that opens the command palette.                                        |                                                   |
+| `keycap`               | The keycap of a shortcut beside a row of the glass sidebar (the search, New tab).                      |                                                   |
+| `sidebar-base`         | The foot of the docked glass sidebar: the spaces and the settings button.                              |                                                   |
+| `sidebar-settings`     | The settings button at the foot of the glass sidebar.                                                  |                                                   |
+| `space-header`         | The card of the project actions of the active space, when it has any.                                  |                                                   |
+| `item-dot`             | The state dot at the start of a tab in the glass sidebar.                                              |                                                   |
+| `item-meta`            | The second line of a tab: the folder and the branch.                                                   |                                                   |
+| `item`                 | A tab, in the sidebar or in the bar on top.                                                            | `active`                                          |
+| `item-title`           | The title inside a tab.                                                                                |                                                   |
+| `group`                | A group of tabs.                                                                                       | `expanded` or `collapsed`                         |
+| `pinned-list`          | The list of pinned tabs.                                                                               | `over` while a tab is dragged over it             |
+| `favorites`            | The bar of favorites, always on screen.                                                                | `over` while a tab is dragged over it             |
+| `favorites-hint`       | The line that says how to add a favorite, only while none is.                                          |                                                   |
+| `favorite-dot`         | The state dot on the corner of a favorite tile in the glass style, only while it is waiting or busy.   |                                                   |
+| `favorite`             | One tile of the bar: a favorite tab, a profile or an action.                                           | `active`, `running` or `unavailable`              |
+| `tabbar`               | The bar of tabs on top, when the tabs are on top.                                                      |                                                   |
+| `pane`                 | One terminal pane.                                                                                     |                                                   |
+| `pane-header`          | The header of a pane, when pane headers are on.                                                        |                                                   |
+| `pane-bar`             | The header of a terminal pane in the glass style: the folder, the branch, the command and the buttons. |                                                   |
+| `pane-folder`          | The folder in the header of a glass pane.                                                              |                                                   |
+| `pane-branch`          | The branch chip in the header of a glass pane, only while the folder is in a repository.               |                                                   |
+| `pane-command`         | The command chip in the header of a glass pane, only after the shell told a command.                   | `running`, `done` or `failed`                     |
+| `pane-agent-badge`     | The amber badge "Agent waiting for you" in the header of a glass pane, only while one waits.           |                                                   |
+| `pane-bar-actions`     | The buttons at the right end of the header of a glass pane.                                            |                                                   |
+| `pane-bar-split-right` | The Split right button of a glass pane.                                                                |                                                   |
+| `pane-bar-split-down`  | The Split down button of a glass pane.                                                                 |                                                   |
+| `pane-bar-zoom`        | The Zoom pane or Restore pane button of a glass pane, only in a tab with more than one pane.           |                                                   |
+| `palette`              | The command palette.                                                                                   |                                                   |
+| `library`              | The library of archived and closed tabs.                                                               |                                                   |
+| `library-row`          | One tab of the library.                                                                                | `selected`                                        |
+| `peek`                 | The peek of a tab: its last lines in a popover beside it.                                              |                                                   |
+| `settings`             | The settings screen.                                                                                   |                                                   |
+| `glass-backdrop`       | The illustrated backdrop of the glass window, only while no picture and no system effect is behind it. |                                                   |
+| `background`           | The picture behind the terminals, only while one is on screen.                                         |                                                   |
+| `background-backing`   | What the picture is drawn on, only while a picture shows.                                              |                                                   |
+| `background-veil`      | The veil over the picture, only while a picture shows.                                                 |                                                   |
 
 #### Other attributes
 

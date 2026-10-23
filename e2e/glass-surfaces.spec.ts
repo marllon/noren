@@ -1,10 +1,10 @@
-import { deflateSync } from "node:zlib";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { NOREN_DUSK, NOREN_PAPER } from "../packages/model/src/builtin-themes";
 import { contrastRatio } from "../packages/model/src/theme";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { readPixels } from "./png-pixels";
+import { solidPng } from "./solid-png";
 import { GLASS_GAP, configText, openSettings, seedConfig } from "./settings-fixture";
 import { SPLIT_FIXTURE, seedSidebarState } from "./sidebar-fixture";
 
@@ -87,46 +87,6 @@ function expectColor(actual: Color, expected: string, alpha: number, label: stri
   expect(actual.g, `${label} green`).toBeCloseTo(want.g, -0.5);
   expect(actual.b, `${label} blue`).toBeCloseTo(want.b, -0.5);
   expect(actual.a, `${label} alpha`).toBeCloseTo(alpha, 2);
-}
-
-/** A solid picture of 16 by 16 pixels, a PNG made here (the worst a picture can be: white or black). */
-function solidPng(color: string): Buffer {
-  const { r, g, b } = channels(color);
-  const size = 16;
-  const row = Buffer.concat([
-    Buffer.from([0]),
-    ...Array.from({ length: size }, () => Buffer.from([r, g, b])),
-  ]);
-  const raw = Buffer.concat(Array.from({ length: size }, () => row));
-  const crcTable = Array.from({ length: 256 }, (_, n) => {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    return c >>> 0;
-  });
-  const crc = (buffer: Buffer): number => {
-    let c = 0xffffffff;
-    for (const byte of buffer) c = (crcTable[(c ^ byte) & 0xff] ?? 0) ^ (c >>> 8);
-    return (c ^ 0xffffffff) >>> 0;
-  };
-  const chunk = (type: string, data: Buffer): Buffer => {
-    const head = Buffer.alloc(4);
-    head.writeUInt32BE(data.length);
-    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
-    const tail = Buffer.alloc(4);
-    tail.writeUInt32BE(crc(body));
-    return Buffer.concat([head, body, tail]);
-  };
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(size, 0);
-  header.writeUInt32BE(size, 4);
-  header[8] = 8;
-  header[9] = 2;
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk("IHDR", header),
-    chunk("IDAT", deflateSync(raw)),
-    chunk("IEND", Buffer.alloc(0)),
-  ]);
 }
 
 interface StartOptions {

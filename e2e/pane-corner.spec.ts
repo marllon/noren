@@ -1,12 +1,18 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
-import { changeSettings, seedConfig } from "./settings-fixture";
+import { changeSettings, denseOf, seedConfig } from "./settings-fixture";
 
 // The split buttons in the corner of a pane (NOR-F20-07b): two small buttons, Split right and Split
 // down, that show while the mouse is over a terminal pane (or the keyboard is on one of them) and
 // split that pane, up to `terminal.maxPanes`. They run on the `FakeBackend` of web mode and read the
 // panes from the model through the test hook and the geometry from the boxes, never from pixels.
+//
+// The hover corner is the dense style's. Under the glass style (the default) the two buttons are in the
+// header of every terminal pane, always in sight (NOR-F20-18c, e2e/glass-panes.spec.ts); the tests that
+// are about the corner itself (out of sight until the mouse is over, its geometry, its place under the
+// header of the settings) start from the dense style, and the others (what a button does, the limit, the
+// names) run under both.
 
 interface Hook {
   paneIds(): string[];
@@ -32,9 +38,10 @@ const splitDown = (page: Page, paneId: string, name = "Split down"): Locator =>
   frame(page, paneId).getByRole("button", { name, exact: true });
 const notice = (page: Page): Locator => page.locator('[data-nr-part="pane-notice"]');
 
-/** Opens the app and waits for the first terminal to have drawn its prompt. */
-async function open(page: Page, config?: string): Promise<string> {
-  if (config !== undefined) await seedConfig(page, config);
+/** Opens the app and waits for the first terminal to have drawn its prompt; `dense` starts from the dense style. */
+async function open(page: Page, config?: string, dense = false): Promise<string> {
+  if (dense) await seedConfig(page, denseOf(config ?? "{}"));
+  else if (config !== undefined) await seedConfig(page, config);
   await page.goto("/");
   await expect.poll(() => paneIds(page).then((ids) => ids.length)).toBe(1);
   const [first] = await paneIds(page);
@@ -69,7 +76,7 @@ async function growTo(page: Page, first: string, count: number): Promise<void> {
 
 test.describe("the split buttons in the corner of a pane", () => {
   test("are out of sight until the mouse is over the pane, and are named", async ({ page }) => {
-    const first = await open(page);
+    const first = await open(page, undefined, true);
     await page.mouse.move(2, 2);
     await expect(corner(page, first)).toHaveCSS("opacity", "0");
     await overPane(page, first);
@@ -141,7 +148,7 @@ test.describe("the split buttons in the corner of a pane", () => {
   test("sit in the top right corner and cover nothing of the pane but that corner", async ({
     page,
   }) => {
-    const first = await open(page);
+    const first = await open(page, undefined, true);
     await growTo(page, first, 2);
     for (const id of await paneIds(page)) {
       await overPane(page, id);
@@ -167,7 +174,7 @@ test.describe("the split buttons in the corner of a pane", () => {
   });
 
   test("show when the keyboard is on one of them, with the mouse far away", async ({ page }) => {
-    const first = await open(page);
+    const first = await open(page, undefined, true);
     await page.mouse.move(2, 2);
     await expect(corner(page, first)).toHaveCSS("opacity", "0");
     await splitRight(page, first).focus();
@@ -247,7 +254,7 @@ test.describe("the split buttons in the corner of a pane", () => {
   });
 
   test("start under the header of the pane when the headers are on", async ({ page }) => {
-    const first = await open(page, '{ "appearance": { "paneHeaders": true } }');
+    const first = await open(page, '{ "appearance": { "paneHeaders": true } }', true);
     await growTo(page, first, 2);
     for (const id of await paneIds(page)) {
       await overPane(page, id);
@@ -269,7 +276,7 @@ test.describe("the split buttons in the corner of a pane", () => {
   test("axe: the page has no violation with the buttons on screen, on and off", async ({
     page,
   }) => {
-    const first = await open(page, '{ "terminal": { "maxPanes": 2 } }');
+    const first = await open(page, '{ "terminal": { "maxPanes": 2 } }', true);
     await overPane(page, first);
     await expect(corner(page, first)).toHaveCSS("opacity", "1");
     await expectNoAxeViolations(page, "a pane with the split buttons on");

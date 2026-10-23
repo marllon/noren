@@ -14,12 +14,14 @@ import {
   commandInfo,
   commandWords,
   failureLabel,
+  folderParts,
   formatDuration,
   groupMarks,
   indicatorLabels,
   linkShort,
   linkText,
   marksWords,
+  paneBarInfo,
   shortCwd,
   spaceMarks,
   summarizeItem,
@@ -323,6 +325,89 @@ describe("commandWords", () => {
       "Last command make, exit 2, 12s",
     );
     expect(commandWords({ state: "done", exitCode: 0 })).toBe("Last command, exit 0");
+  });
+});
+
+describe("paneBarInfo", () => {
+  it("is what the header of a terminal pane says: folder, branch and command", () => {
+    const info = paneBarInfo(
+      pane("p1", {
+        cwd: "/home/ada/site/api",
+        gitBranch: "main",
+        runningCommand: { text: "pnpm dev" },
+      }),
+      undefined,
+      "/home/ada",
+    );
+    expect(info).toEqual({
+      folder: "~/site/api",
+      cwd: "/home/ada/site/api",
+      branch: "main",
+      command: { state: "running", text: "pnpm dev" },
+    });
+  });
+
+  it("keeps three segments of a long folder behind an ellipsis, and the whole path as the tooltip", () => {
+    const info = paneBarInfo(
+      pane("p1", { cwd: "/srv/builds/noren/release/linux" }),
+      undefined,
+      "/h",
+    );
+    expect(info?.folder).toBe("…/noren/release/linux");
+    expect(info?.cwd).toBe("/srv/builds/noren/release/linux");
+  });
+
+  it("falls back to the folder of the space until the shell tells its own", () => {
+    expect(paneBarInfo(pane("p1"), "/home/ada/proj", "/home/ada")?.folder).toBe("~/proj");
+    expect(paneBarInfo(pane("p1", { cwd: "/tmp/x" }), "/home/ada/proj", "/home/ada")?.folder).toBe(
+      "/tmp/x",
+    );
+  });
+
+  it("has an empty folder when none is known, and leaves out what the pane has not got", () => {
+    expect(paneBarInfo(pane("p1"), undefined, undefined)).toEqual({ folder: "" });
+    expect(paneBarInfo(pane("p1", { cwd: "  " }), "", undefined)).toEqual({ folder: "" });
+    expect(paneBarInfo(pane("p1", { cwd: "/x", gitBranch: "" }), undefined, undefined)).toEqual({
+      folder: "/x",
+      cwd: "/x",
+    });
+  });
+
+  it("tells the last command that ended when nothing runs", () => {
+    const info = paneBarInfo(
+      pane("p1", { cwd: "/x", lastCommand: { text: "make", exitCode: 2, durationMs: 1200 } }),
+      undefined,
+      undefined,
+    );
+    expect(info?.command).toEqual({
+      state: "failed",
+      text: "make",
+      exitCode: 2,
+      duration: "1.2s",
+    });
+  });
+
+  it("is nothing for a pane that is not a terminal (it has a bar of its own)", () => {
+    for (const type of ["browser", "preview", "diff"] as const) {
+      expect(paneBarInfo(pane("p1", { type, cwd: "/x" }), "/y", undefined)).toBeUndefined();
+    }
+  });
+});
+
+describe("folderParts", () => {
+  it("cuts a folder before its last segment", () => {
+    expect(folderParts("~/site/api")).toEqual({ head: "~/site/", tail: "api" });
+    expect(folderParts("…/noren/release")).toEqual({ head: "…/noren/", tail: "release" });
+    expect(folderParts("D:\\Projetos\\noren")).toEqual({ head: "D:\\Projetos\\", tail: "noren" });
+    expect(folderParts("/tmp")).toEqual({ head: "/", tail: "tmp" });
+  });
+
+  it("is all tail when there is no segment to cut", () => {
+    expect(folderParts("~")).toEqual({ head: "", tail: "~" });
+    expect(folderParts("/")).toEqual({ head: "", tail: "/" });
+    expect(folderParts("C:\\")).toEqual({ head: "", tail: "C:\\" });
+    expect(folderParts("Terminal")).toEqual({ head: "", tail: "Terminal" });
+    expect(folderParts("")).toEqual({ head: "", tail: "" });
   });
 });
 

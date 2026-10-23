@@ -113,6 +113,7 @@ export const en = {
   "pane.agentState.working": "Agent {name} is working",
   "pane.agentState.waiting": "Agent {name} is waiting for you",
   "pane.agentState.idle": "Agent {name} is idle",
+  "pane.agentWaitingBadge": "Agent waiting for you",
   "pane.runningLabel": "Running",
   "pane.link.reconnecting": "Reconnecting, attempt {attempt} of {max}. What you type is not sent.",
   "pane.link.reconnectingBare": "Reconnecting. What you type is not sent.",

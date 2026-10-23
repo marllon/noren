@@ -115,6 +115,7 @@ export const ptBR: Dictionary = {
   "pane.agentState.working": "O agente {name} está trabalhando",
   "pane.agentState.waiting": "O agente {name} está esperando você",
   "pane.agentState.idle": "O agente {name} está ocioso",
+  "pane.agentWaitingBadge": "Agente esperando você",
   "pane.runningLabel": "Em execução",
   "pane.link.reconnecting":
     "Reconectando, tentativa {attempt} de {max}. O que você digitar não é enviado.",

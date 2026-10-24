@@ -75,6 +75,10 @@ Tips:
 
 - Vitest does not type-check. Always run `pnpm typecheck` as well (`pnpm verify` does).
 - After adding imports, run `pnpm exec eslint --fix .` and then `pnpm format`.
+- A machine that sets `NOREN_NO_LOCAL_TESTS=1` runs no tests: Vitest, Playwright, `pnpm smoke`,
+  `scripts/perf.mjs`, `pnpm test:ssh` and `cargo test` through `scripts/game-run.mjs` print
+  "Tests are disabled on this machine (NOREN_NO_LOCAL_TESTS=1). They run in CI." and exit with 1;
+  leave it unset and nothing changes.
 - Never run a dev server as part of an automated step; tests that need a server start and stop it
   themselves.
 

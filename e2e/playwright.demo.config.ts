@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 import { playwrightWorkers } from "../scripts/game-mode.mjs";
+import { refuseLocalTests } from "../scripts/local-tests.mjs";
+
+if (process.env["NOREN_NO_LOCAL_TESTS"] === "1") refuseLocalTests();
 
 // The e2e of the web demo (NOR-F12-02): it runs on the build in `dist-demo/` (`pnpm demo:build`),
 // never on the normal build. Its port is not the one of `playwright.config.ts` (4791), so both can

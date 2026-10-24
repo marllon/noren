@@ -1,5 +1,8 @@
 import { defineConfig } from "vitest/config";
 import { vitestWorkers } from "./scripts/game-mode.mjs";
+import { refuseLocalTests } from "./scripts/local-tests.mjs";
+
+if (process.env["NOREN_NO_LOCAL_TESTS"] === "1") refuseLocalTests();
 
 const maxWorkers = vitestWorkers();
 

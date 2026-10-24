@@ -70,6 +70,9 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cargoEnv } from "./game-mode.mjs";
+import { refuseLocalTests } from "./local-tests.mjs";
+
+if (process.env.NOREN_NO_LOCAL_TESTS === "1") refuseLocalTests();
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const isWindows = process.platform === "win32";

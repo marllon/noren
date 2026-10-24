@@ -5,11 +5,22 @@
 // No shell: pnpm is started through the JS entry that pnpm itself exports in npm_execpath.
 import { spawnSync } from "node:child_process";
 import { cargoEnv } from "./game-mode.mjs";
+import { refuseLocalTests } from "./local-tests.mjs";
 
 const [command, ...args] = process.argv.slice(2);
 if (command === undefined) {
   console.error("usage: node scripts/game-run.mjs <command> [args...]");
   process.exit(2);
+}
+
+// Only the test commands of cargo are refused; clippy, fmt, build and deny still run.
+const cargoSubcommand = args.find((arg) => !arg.startsWith("+"));
+if (
+  process.env.NOREN_NO_LOCAL_TESTS === "1" &&
+  command === "cargo" &&
+  (cargoSubcommand === "test" || cargoSubcommand === "nextest")
+) {
+  refuseLocalTests();
 }
 
 const env = cargoEnv();

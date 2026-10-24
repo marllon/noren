@@ -47,6 +47,9 @@ import {
   testEnvironment,
   unixLines,
 } from "./test-ssh-lib.mjs";
+import { refuseLocalTests } from "./local-tests.mjs";
+
+if (process.env.NOREN_NO_LOCAL_TESTS === "1") refuseLocalTests();
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const fixture = join(root, "scripts", "ssh-test");

@@ -15,8 +15,9 @@ use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -170,6 +171,8 @@ impl ConfigStore {
         // look now closes that gap.
         let _ = signal.send(());
         let path = self.path.clone();
+        let stopped = Arc::new(AtomicBool::new(false));
+        let stop = Arc::clone(&stopped);
         thread::spawn(move || {
             let mut last = initial;
             // The senders live in the watcher: when it is dropped the loop ends.
@@ -178,19 +181,34 @@ impl ConfigStore {
                 let Ok(text) = read_text_patiently(&path) else {
                     continue;
                 };
+                // The watching of the OS stops a moment after the drop; what it still reports
+                // must not reach the caller.
+                if stop.load(Ordering::Acquire) {
+                    continue;
+                }
                 if text != last {
                     last = text.clone();
                     on_change(text);
                 }
             }
         });
-        Ok(ConfigWatcher { _watcher: watcher })
+        Ok(ConfigWatcher {
+            _watcher: watcher,
+            stopped,
+        })
     }
 }
 
 /// Keeps the watching of a [`ConfigStore`] alive; dropping it stops it.
 pub struct ConfigWatcher {
     _watcher: RecommendedWatcher,
+    stopped: Arc<AtomicBool>,
+}
+
+impl Drop for ConfigWatcher {
+    fn drop(&mut self) {
+        self.stopped.store(true, Ordering::Release);
+    }
 }
 
 impl fmt::Debug for ConfigWatcher {

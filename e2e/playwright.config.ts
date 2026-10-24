@@ -20,9 +20,15 @@ const workers =
 // for a condition still ends the moment the condition is true.
 const testTimeout = process.env["CI"] === undefined ? 30_000 : 90_000;
 
+// The throughput floor measures the machine, so it cannot share the cores with other workers. CI
+// leaves it out of the main run with this variable and runs it in a step of its own, alone (as
+// `scripts/perf.mjs` does); everywhere else it is part of the run.
+const skipPerf = process.env["NOREN_E2E_SKIP_PERF"] === "1";
+
 export default defineConfig({
   testDir: ".",
   testMatch: "**/*.spec.ts",
+  testIgnore: skipPerf ? /perf\.spec\.ts/ : [],
   outputDir: "../test-results",
   reporter: [["list"]],
   // Fixed ceiling (NOR-F20-22): at most 8 workers, 4 while the user is playing (game mode).
@@ -31,17 +37,7 @@ export default defineConfig({
   // the browser's language decides, so it is fixed here (the language tests set their own).
   use: { baseURL: url, locale: "en-US" },
   timeout: testTimeout,
-  projects: [
-    { name: "chromium", testIgnore: /perf\.spec\.ts/, use: { ...devices["Desktop Chrome"] } },
-    // The throughput floor measures the machine, so it runs alone, after everything else, with no
-    // other worker competing for the cores (`scripts/perf.mjs` runs it alone too).
-    {
-      name: "perf",
-      testMatch: /perf\.spec\.ts/,
-      dependencies: ["chromium"],
-      use: { ...devices["Desktop Chrome"] },
-    },
-  ],
+  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     command: `pnpm --filter @noren/desktop exec vite preview --host 127.0.0.1 --port ${port} --strictPort`,
     url,

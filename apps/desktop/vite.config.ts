@@ -1,5 +1,6 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { preloadMainWindow } from "./src/preload-main-window";
 
 // `vite build --mode demo` builds the static web demo (NOR-F12-02) into `dist-demo/` at the root of
 // the repository, with relative asset paths so it can be served from a sub-path (GitHub Pages). The
@@ -9,7 +10,7 @@ import { defineConfig } from "vite";
 export default defineConfig(({ mode }) => {
   const demo = mode === "demo";
   return {
-    plugins: [react()],
+    plugins: [react(), preloadMainWindow()],
     clearScreen: false,
     base: demo ? "./" : "/",
     define: {

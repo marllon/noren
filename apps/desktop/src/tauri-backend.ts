@@ -1,5 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { takeEarlyRead } from "./early-reads";
 import { WINDOW_CLOSED_EVENT, windowIdOfPayload } from "./window-events";
 import {
   AI_ERROR_KINDS,
@@ -116,7 +117,9 @@ export interface TauriBridge {
 /** The bridge on top of the real `@tauri-apps/api`. */
 export function tauriBridge(): TauriBridge {
   return {
-    invoke: (command, args) => invoke(command, args),
+    // A read the page asked for ahead of the boot (`early-reads.ts`) is answered once from that.
+    invoke: <T>(command: string, args?: Record<string, unknown>) =>
+      takeEarlyRead<T>(command, args) ?? invoke<T>(command, args),
     listen: (event, handler) => listen(event, handler),
     createChannel: <T>() => new Channel<T>(),
   };

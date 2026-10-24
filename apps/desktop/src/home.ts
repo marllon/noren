@@ -4,11 +4,18 @@ import { insideTauri } from "./backend";
 /** Home folder of the in-memory backend (web mode), the one `FakeBackend` starts shells in. */
 export const WEB_HOME = "/home/fake";
 
-/** The home folder of the user, so folders under it show as `~`; `undefined` when unknown. */
+let asked: Promise<string | undefined> | undefined;
+
+/**
+ * The home folder of the user, so folders under it show as `~`; `undefined` when unknown. It is
+ * asked once: `main.tsx` asks at the first line of the page script, and the boot and the window
+ * read the same answer (the folder cannot change while the app runs).
+ */
 export function loadHome(): Promise<string | undefined> {
   if (!insideTauri) return Promise.resolve(WEB_HOME);
-  return homeDir().then(
+  asked ??= homeDir().then(
     (path) => path,
     () => undefined,
   );
+  return asked;
 }

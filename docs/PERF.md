@@ -1,12 +1,13 @@
 # Performance
 
-The targets of the product, how each one is measured, and what was measured. Six tasks fill this
+The targets of the product, how each one is measured, and what was measured. Eight tasks fill this
 page: NOR-F11-01a (the measurements that need no window, rows 1 to 4 of "Results"), NOR-F11-01b
 (the ones that need the real app in a release build: the first prompt and the memory of 30 tabs,
 rows 5 and 6), NOR-F11-01c (why the first switch of space was sometimes slow, and the fix, row 4),
 NOR-F11-01d (where the time to the first prompt went, and the cuts, row 5), NOR-F11-01e (what
-"total memory" counts, and the verdict of row 6) and NOR-F20-04 (the harder targets of version 1,
-row 7, and the report on the renderer in [RENDERER.md](RENDERER.md)).
+"total memory" counts, and the verdict of row 6) NOR-F20-04 (the harder targets of version 1,
+row 7, and the report on the renderer in [RENDERER.md](RENDERER.md)), NOR-F20-14a (the start with many
+tabs saved, row 8) and NOR-F20-14b (the first prompt with one tab, row 9).
 
 ## Targets
 
@@ -22,10 +23,10 @@ The first table is the targets of the first release; the harder ones of version 
 
 Version 1 (NOR-F20-04), same definitions, same release build, row 7 below:
 
-| #   | Target (version 1)                                                  | Measured in | Status                                                                                                            |
-| --- | ------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------- |
-| v1a | Opening the app to the first prompt: under 500 ms (median of 5)     | NOR-F20-04  | **not met, borderline**: 526, 478, 491 and 495 ms in four series of 5 (497 over all 20; 9 of 20 runs over 500 ms) |
-| v1b | 100 tabs open: total memory under 800 MB (same definition as row 3) | NOR-F20-04  | **met**: 467.5 MB median (465.7 to 472.7), 41 % under the target; whole tree 10,434 MB of WS                      |
+| #   | Target (version 1)                                                  | Measured in | Status                                                                                                                        |
+| --- | ------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| v1a | Opening the app to the first prompt: under 500 ms (median of 5)     | NOR-F20-14b | **met**: 432, 421 and 460 ms in three series of 5 (433 ms over all 15; it was 511 and 536 ms in two series before); see row 9 |
+| v1b | 100 tabs open: total memory under 800 MB (same definition as row 3) | NOR-F20-04  | **met**: 467.5 MB median (465.7 to 472.7), 41 % under the target; whole tree 10,434 MB of WS                                  |
 
 ## Machine
 
@@ -553,7 +554,7 @@ slowest is 572. The median of all 20 is 497, 3 ms under the line, and the differ
 first after the build, and the disk cache of the machine may have been colder; it was not
 isolated. The figure has no room for anything that is slower on another computer or in a window
 that is shown (not verified, D19: `apps/desktop/src-tauri/src/main.rs:207`, `tauri.conf.json:20`).
-It stays **not met** until a series with a margin says otherwise. Row 5 measured 621 ms on the day
+It stays **not met** until a series with a margin says otherwise (section 9 is that series). Row 5 measured 621 ms on the day
 of NOR-F11-01d; the machine is noisy from one day to the next (see there), so the two days are not
 compared.
 
@@ -717,6 +718,159 @@ start is never needed to use a tab.
 Not verified (D19): the numbers with the window shown (see the limits below);
 `apps/desktop/src/pending-panes.ts` starts the queue from the first prompt, and a tab opened before
 that is started at once by `ItemView` (`apps/desktop/src/App.tsx`).
+
+### 9. The first prompt with one tab, second cut (NOR-F20-14b)
+
+Row 7 left the first prompt at the line of its target (478 to 526 ms in four series, 497 over all 20).
+This task cut the way to it again, measuring each step, and the target is met with room: **432, 421
+and 460 ms** in three series of 5 cold starts, **433 ms over the 15**. Nothing the person sees was
+changed: the picture of the real app (`noren --smoke-shot`, one tab) is the same file, byte for byte,
+from the build of the commit before and from this one, and so is the picture of the web build.
+
+What was done, each one measured before it was kept (`node scripts/perf.mjs --only-app --no-build
+--first-only`, and builds started in turn, see "How it was measured"):
+
+1. **The shell of the tab on screen starts without waiting for `wsl.exe` (`prespawn.rs`,
+   `AppState::find_profile_early`, `detect_system_profiles_without_wsl` in
+   `crates/noren-core/src/profiles.rs`).** The shell started ahead had to know the profile it was for,
+   and the list of profiles waited for `wsl.exe -l -q` (about 70 ms) although the distros only come
+   after the other shells and never change which shell is the default. The set of the other shells is
+   found alone now (file checks, a few ms) and used for a profile that is one of them, and for the
+   default one while one of them can be it; a distro, an unknown id or a profile of the user in force
+   waits for the full list, as before. The profile found is the one the full list gives (a test over
+   the machine checks it). The shell was spawned at 151 ms and its prompt bytes were ready at 432 ms;
+   now 112 and 336 ms. The page was later than the shell in both cases, so this did not move the first
+   prompt by itself; it is what keeps the shell from being the next wall now that the page is earlier.
+2. **The reads of the boot are asked for when the page script runs (`early-reads.ts`, `tauriBridge`
+   in `tauri-backend.ts`, `main.tsx`).** The boot asked the app for the settings, the themes, the mods
+   and the saved state one after the other, each after the one before had answered, once the scripts of
+   the app were in: 64 ms from `boot-start` to `boot-done`, most of it the answers of the app (the
+   settings alone took 20 ms the first time). The four commands that only read, with no arguments
+   (`config_load`, `theme_list`, `mod_list`, `state_load`), and the home folder, are asked for at the
+   first line of the page script of the main window, side by side; the boot finds the answers in (each
+   is handed over once, then every call goes to the app as before). `boot-start` to `boot-done` is 22
+   ms.
+3. **`index.html` names the scripts of the app (`preload-main-window.ts`, a build plugin of Vite).**
+   `main.tsx` imports the app when it runs, so the app, the terminal, the layout and the boot (about
+   1.2 MB) were asked for after the entry script had been fetched and read. They are `rel="modulepreload"`
+   links now, fetched with the entry and read while it runs: from `page-script` to `boot-start` it was
+   24 ms, now 8. The quick window and the other windows load the same page, so they fetch these scripts
+   too and run none of them.
+4. **The browser process of the web view starts on a thread from the first line of `main`
+   (`web_view_warm.rs`).** The 197 to 227 ms between the builder and the first navigation of row 7 are
+   WebView2: the event loop makes the window, wry creates the environment (the runtime library is
+   loaded and the browser process started), then the controller. Making the environment is a call that
+   starts the process and answers later, so a thread makes one from `main`, with the folder and the
+   options wry uses, and the environment wry makes some milliseconds later finds the process there. That
+   lead is all there is to take: the first navigation comes 13 ms sooner (272 to 259 ms in the median of
+   10 and 8 clean runs, builds started in turn; the first prompt 439 to 424 ms). The environment of the
+   thread is kept 8 s so the process outlives the wait for the window. It only works while the two
+   environments agree, because WebView2 refuses a second one on the same folder with other options (the
+   window would not open): the doc of the module says where in wry the options come from, and
+   `pnpm smoke` is what tells a wry that changed them.
+
+Tried and not kept:
+
+- **Loading the dialogs and panels the first terminal does not draw only when opened** (the hypothesis
+  (b) of the roadmap: settings with the theme editor, the palette, the ask panels, the library, the
+  agents panel, the worktree dialogs, the space dialogs, about 250 KB of the 590 KB of the app chunk),
+  with `React.lazy` and a read of them in the idle time after the first prompt. Measured in turn against
+  the build without it, 10 runs each: **418.5 ms against 421.5 ms**, and `page-script` to `boot-start`
+  8 ms in both. With the scripts of the app fetched ahead (item 3) the extra code is read off the path
+  and cutting it saves nothing a run can tell from the noise, so the code stayed as it was.
+- **A WebGL context made in a worker while the scripts load**, to have the connection to the graphics
+  process made before the terminal asks for its context: the settings took 37 ms to read instead of 9
+  in the same run (the answers of the app waited), and the first prompt came 26 ms later. Dropped.
+
+#### How it was measured
+
+Release builds (`tauri build --no-bundle`) of the commit before this task (`7e9de9d`) and of this one,
+same machine and same day (23 to 24 Oct 2026), the window hidden, no signal of game mode before or
+after any series. **Before**: two series of 5 (`node scripts/perf.mjs --only-app --no-build
+--first-only`); **after**: three series of 5, then the series of 30 tabs below. Because this machine
+drifts (the old build read 511 and 536 ms at 23:40 and 430 ms at 01:30, with the machine used for
+something else in between) the two builds were also started in turn, one run each per round, 8 rounds
+(`NOREN_PERF_BINARY` with `NOREN_PERF_REPS=1`), which is the comparison that counts.
+
+First prompt, ms from the creation of the process, 1 tab:
+
+| Series                            | 1    | 2   | 3    | 4   | 5   | Median  | Min / max   |
+| --------------------------------- | ---- | --- | ---- | --- | --- | ------- | ----------- |
+| Before, series 1                  | 519  | 485 | 511  | 511 | 535 | **511** | 485 / 535   |
+| Before, series 2                  | 512  | 478 | 536  | 561 | 537 | **536** | 478 / 561   |
+| **After, series 1**               | 475  | 425 | 4989 | 424 | 432 | **432** | 424 / 4,989 |
+| **After, series 2**               | 403  | 416 | 421  | 433 | 441 | **421** | 403 / 441   |
+| **After, series 3**               | 2297 | 428 | 460  | 527 | 441 | **460** | 428 / 2,297 |
+| Before, all 10 runs               |      |     |      |     |     | 515.5   | 478 / 561   |
+| **After, all 15 runs**            |      |     |      |     |     | **433** | 403 / 4,989 |
+| Interleaved, before (6 of 8 runs) | 427  | 428 | 428  | 432 | 441 | 430     | 427 / 479   |
+| Interleaved, after (6 of 8 runs)  | 399  | 401 | 406  | 408 | 409 | 407     | 399 / 415   |
+
+(The interleaved rows list 5 of the 6 runs and the median and the range of all 6: the sixth of the
+old build is 479 and of the new one 415.)
+
+**Target: under 500 ms in the median of every series, and under 480 ms in the median of all 15.
+Verdict: met** (432, 421 and 460; 433 over the 15; the worst median is 40 ms under the line, where the
+four series of row 7 were 22, 9, 5 ms under it and 26 over). On the same day, with the two builds
+started in turn, the first prompt came 23 ms sooner (430 to 407 ms).
+
+The 4,989 and 2,297 ms (and two runs of about 2.7 s in each build in the interleaved rounds) are not
+the app: in each, `main` came 4.6, 1.9 and about 2.3 s after the creation of the process, before any
+code of the app runs (the loader of the system, most likely the scan of a program that had just been
+written; not isolated), and every mark after it is on the usual schedule. They are kept in the medians
+of 5, which absorb them; without them (13 of 15) the median is the same 432.
+
+Where the time goes, median ms from the creation of the process (before: the 10 runs, after: the 15):
+
+| Step (stamp)                                       | Before | After  | What the step is                                  |
+| -------------------------------------------------- | ------ | ------ | ------------------------------------------------- |
+| `main` starts, builder done (`built`)              | 79, 86 | 79, 87 | the process, the loader, the builder              |
+| shell started ahead (`shell-spawned`)              | 151    | 112    | now without the wait for `wsl.exe` (off the path) |
+| prompt bytes ready (`shell-prompt-bytes`)          | 432    | 336    | off the path: the page is later                   |
+| web view navigates (`page-navigation-start`)       | 313    | 278    | WebView2: the process starts sooner               |
+| page script runs (`page-script`)                   | 372    | 332    | HTML, entry scripts (about 55 ms in both)         |
+| boot begins (`boot-start`)                         | 394    | 339    | the scripts of the app, fetched ahead             |
+| boot ends (`boot-done`)                            | 442    | 359    | the reads side by side                            |
+| terminal mounts (`terminal-mount`)                 | 470    | 369    | render of the app                                 |
+| terminal open, listening (`terminal-listening`)    | 492    | 408    | xterm opens, the WebGL context (see below)        |
+| page says it is up (`app-ready`)                   | 496    | 411    |                                                   |
+| **prompt taken in by xterm (`perf-prompt-shown`)** | 516    | 433    | 24 ms after the terminal listens                  |
+
+(The two columns come from series taken at different hours, so part of the difference between them is
+the machine; the interleaved run above is the one to read the gain from.)
+
+What the stamps and the extra marks of the probe builds (made for this task and removed, so no build
+carries them) say about what is left, in a quiet run of the new build, ms from the creation of the
+process: the first navigation is at 250 to 260 (the browser process of the old build was made at about
+130 ms; the new one was not timed), so WebView2 is 190 ms of the 400 and the one block that is not the app's to cut; the page script runs at
+305 (54 ms for the HTML, the fetch of the entry scripts and 30 of reading them); the boot ends at 332;
+`new Terminal` takes 2 ms and `term.open` 27 (it makes the first layout of the whole window), the WebGL
+addon 8 and the fit 2; the held output at the first prompt is 291 bytes, so what comes after
+`terminal-listening` (24 ms) is not reading it: 5 ms of the effects of the app, about 7 until the first
+frame (`requestAnimationFrame` at +12 ms), 4 of the frame, and the write itself 8 after the timer. The
+resource timeline of the page (`performance.getEntriesByType("resource")`, stamped for the probe) shows
+the scripts of the app fetched in 8 to 17 ms.
+
+#### The 30-tab series (the 14a start did not get worse)
+
+`node scripts/perf.mjs --only-app --no-build --app-tabs 30`, 5 runs of 1 tab and 5 of 30 in turn:
+
+| Measure (30 tabs saved)                         | Section 8 (14a, median) | This build, median (min / max) |
+| ----------------------------------------------- | ----------------------- | ------------------------------ |
+| First prompt of any tab                         | 504 ms                  | 471 ms (441 / 4,971)           |
+| Last prompt (the start is over)                 | 1,471 ms                | 1,350 ms (1,330 / 5,855)       |
+| Memory, total by the definition of row 6        | 302.0 MB                | 332.1 MB (308.1 / 336.0)       |
+| The 1-tab runs of the same series, first prompt | 486 ms                  | 427 ms (399 / 443)             |
+
+The start is not slower: the first prompt and the last are sooner than in section 8 (the largest values
+are the run whose `main` came seconds late, as above). **The memory with 30 tabs is 30 MB higher** (+10
+%, still 168 MB under the 500 MB of row 3); the cause was not isolated. Candidates: the quick window,
+which loads the same page and now fetches the scripts of the app ahead too, and the environment the
+thread of item 4 keeps for 8 s. It is written as an open finding in the report of the round.
+
+Not verified (D19): the numbers with the window shown (see the limits below). `web_view_warm.rs` and
+`tauri.conf.json:20` (`"visible": false`) are what the hidden runs share with a normal start; the warm
+thread does not depend on the window.
 
 ## Limits of these numbers
 

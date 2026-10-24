@@ -35,6 +35,7 @@ mod smoke_shot;
 mod smoke_window;
 mod tray;
 mod update;
+mod web_view_warm;
 mod window_effect;
 mod windows;
 
@@ -74,6 +75,10 @@ fn main() {
     if perf::has_perf_flag(&args) {
         perf::enable();
     }
+    // The browser process of the web view starts now, on a thread, while the rest of the setup runs
+    // (NOR-F20-14b): the window that makes its own environment later finds it there.
+    let mut context = tauri::generate_context!();
+    web_view_warm::start(&context.config().identifier);
     let smoke = args.iter().skip(1).any(|arg| arg == smoke::SMOKE_FLAG);
     let smoke_deeplink = deeplink::has_smoke_deeplink_flag(&args);
     // The deep-link check needs a link with a folder before anything starts.
@@ -138,7 +143,6 @@ fn main() {
     // The configuration of the windows, as it was built in. Every smoke run asks for windows that
     // never ask for the focus (see `smoke_focus::quiet_windows`); a normal start keeps it as it is.
     debug_assert_eq!(any_smoke, smoke_focus::is_smoke_run(&args));
-    let mut context = tauri::generate_context!();
     if any_smoke {
         smoke_focus::quiet_windows(context.config_mut());
     }

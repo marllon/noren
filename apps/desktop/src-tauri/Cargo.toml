@@ -103,7 +103,10 @@ webview2-com = "0.39"
 # `Win32_System_Registry` is for one read only call (`window_effect::transparency_reduced`): the
 # "Transparency effects" switch of Windows, which the glass interface style obeys even where the web
 # view does not report it as `prefers-reduced-transparency`. A feature of the same crate, no new crate.
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+# `Win32_System_Com` and `Win32_Globalization` are for `web_view_warm.rs` (NOR-F20-14b): the thread that starts the
+# browser process of the web view needs `CoInitializeEx` and the language of the system, as wry has them. Features of
+# the same crate, already switched on by wry; no new crate and no change to the lockfile.
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Globalization", "Win32_System_Com", "Win32_System_Registry", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 # The mock runtime of `tauri::test`, so the tests can call a command through the same path the

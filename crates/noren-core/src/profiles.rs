@@ -279,6 +279,36 @@ pub fn detect_system_profiles() -> ProfileSet {
     detect_profiles(&SystemEnv, Platform::current())
 }
 
+/// A machine that answers as `E` does except that it never asks `wsl.exe` for its distros.
+struct WithoutWsl<E>(E);
+
+impl<E: ProbeEnv> ProbeEnv for WithoutWsl<E> {
+    fn var(&self, name: &str) -> Option<String> {
+        self.0.var(name)
+    }
+
+    fn file_exists(&self, path: &str) -> bool {
+        self.0.file_exists(path)
+    }
+
+    fn wsl_list(&self) -> Option<Vec<u8>> {
+        None
+    }
+
+    fn read_etc_shells(&self) -> Option<String> {
+        self.0.read_etc_shells()
+    }
+}
+
+/// The shells of this machine as [`detect_system_profiles`] finds them, without asking `wsl.exe`
+/// for its distros (that takes ~70 ms and the distros come last in the list). Every profile in it
+/// is the same one the full detection finds, and so is the default, unless this set has none: the
+/// distros only add profiles after the others and the default is chosen among the others first. So
+/// whatever starts from a profile found here starts exactly what the full detection would give it.
+pub fn detect_system_profiles_without_wsl() -> ProfileSet {
+    detect_profiles(&WithoutWsl(SystemEnv), Platform::current())
+}
+
 /// Detects shells through `env` for the given platform.
 pub fn detect_profiles(env: &dyn ProbeEnv, platform: Platform) -> ProfileSet {
     match platform {
@@ -916,6 +946,47 @@ mod tests {
         let set = detect_profiles(&env, Platform::Windows);
         assert_eq!(ids(&set), ["wsl-Debian"]);
         assert_eq!(set.default_id.as_deref(), Some("wsl-Debian"));
+    }
+
+    #[test]
+    fn the_set_without_wsl_is_the_full_set_less_the_distros_with_the_same_default() {
+        let mut machine = windows_base()
+            .var("PATH", "C:\\Tools;C:\\Apps\\PS7")
+            .file("C:\\Apps\\PS7\\pwsh.exe")
+            .file("C:\\Program Files\\Git\\bin\\bash.exe");
+        machine.wsl = Some(utf16le("Ubuntu\r\nDebian\r\n", true));
+        let full = detect_profiles(&machine, Platform::Windows);
+        let without = detect_profiles(&WithoutWsl(machine), Platform::Windows);
+        assert_eq!(
+            ids(&full),
+            [
+                "pwsh",
+                "powershell",
+                "cmd",
+                "git-bash",
+                "wsl-Ubuntu",
+                "wsl-Debian"
+            ]
+        );
+        assert_eq!(ids(&without), ["pwsh", "powershell", "cmd", "git-bash"]);
+        // The profiles that are in both are the same ones, and so is the default.
+        for profile in &without.profiles {
+            assert_eq!(full.get(&profile.id), Some(profile));
+        }
+        assert_eq!(without.default_id, full.default_id);
+    }
+
+    #[test]
+    fn the_set_without_wsl_has_no_default_when_the_distros_are_all_there_is() {
+        let machine = FakeEnv {
+            wsl: Some(utf16le("Ubuntu\r\n", true)),
+            ..FakeEnv::default()
+        };
+        let full = detect_profiles(&machine, Platform::Windows);
+        let without = detect_profiles(&WithoutWsl(machine), Platform::Windows);
+        assert_eq!(full.default_id.as_deref(), Some("wsl-Ubuntu"));
+        assert_eq!(without.default_id, None);
+        assert!(without.default_profile().is_none());
     }
 
     #[test]

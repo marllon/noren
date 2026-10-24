@@ -23,7 +23,7 @@ use serde_json::Value;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Manager, Runtime};
 
-use crate::bridge::{AppState, launch, session_spec};
+use crate::bridge::{AppState, launch, session_spec, session_spec_for};
 use crate::perf;
 
 /// The size `restoreWorkspace` gives the sessions it starts (the view fits them to the real size).
@@ -227,15 +227,23 @@ fn run<R: Runtime>(app: &AppHandle<R>, state_file: &PathBuf) -> Option<()> {
     if state.has_kept_shell(&wanted.pane_id) {
         return None;
     }
-    let (_, spec) = session_spec(
-        app,
-        &state,
-        wanted.profile_id.as_deref(),
-        wanted.cwd.as_deref(),
-        wanted.env,
-        COLS,
-        ROWS,
-    )
+    // The shell is started without waiting for the distros of WSL to be listed (`wsl.exe -l -q`,
+    // ~70 ms) whenever the profile it is for does not depend on them (NOR-F20-14b); a profile that
+    // does (a distro, or no other shell to be the default) waits for the list, as before.
+    let (_, spec) = match state.find_profile_early(wanted.profile_id.as_deref()) {
+        Some(profile) => {
+            session_spec_for(app, profile, wanted.cwd.as_deref(), wanted.env, COLS, ROWS)
+        }
+        None => session_spec(
+            app,
+            &state,
+            wanted.profile_id.as_deref(),
+            wanted.cwd.as_deref(),
+            wanted.env,
+            COLS,
+            ROWS,
+        ),
+    }
     .ok()?;
 
     let backlog = Arc::new(Mutex::new(Some(Vec::new())));

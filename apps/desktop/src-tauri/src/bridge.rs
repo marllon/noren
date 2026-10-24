@@ -19,8 +19,9 @@ use noren_core::{
     SCROLLBACK_DIR_NAME, ScrollbackStore, SessionEvent, SessionId, SpaceFileLink, SpaceFileWrite,
     SpaceFolder, SpawnSpec, SshProfile, StateStore, SyncRepo, SyncStatus, SystemProcesses,
     THEMES_DIR_NAME, ThemeStore, UserProfile, WindowEffect, Worktree, check_catalog,
-    create_worktree, detect_system_profiles, list_running_containers, list_worktrees, native_path,
-    read_head, read_project_file, read_ssh_hosts, remove_worktree, run_short, scan_sessions,
+    create_worktree, detect_system_profiles, detect_system_profiles_without_wsl,
+    list_running_containers, list_worktrees, native_path, read_head, read_project_file,
+    read_ssh_hosts, remove_worktree, run_short, scan_sessions,
 };
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -54,6 +55,8 @@ pub struct AppState {
     /// from the start of the program (it asks `wsl.exe`, which takes ~70 ms) and the first reader
     /// waits for it, which is long after it ended.
     detected: LazyLock<ProfileSet, DetectedProfiles>,
+    /// The shells found without waiting for the distros of WSL (see [`AppState::find_profile_early`]).
+    early: EarlyProfiles,
     /// The detected shells followed by the profiles of the user: what is listed and what starts.
     /// `None` until the user's profiles are handed over: the detected set is the list then.
     profiles: RwLock<Option<ProfileSet>>,
@@ -85,6 +88,9 @@ fn process_env(name: &str) -> Option<String> {
 /// How the detected profiles are produced the first time they are read.
 type DetectedProfiles = Box<dyn FnOnce() -> ProfileSet + Send + Sync>;
 
+/// How the shells that do not need the distros of WSL are found, each time they are asked for.
+type EarlyProfiles = Box<dyn Fn() -> ProfileSet + Send + Sync>;
+
 impl AppState {
     /// Starts detecting the system profiles (once, on a thread of its own), starts looking for the
     /// session daemon the same way when `host` asks for one, and starts with no session and no
@@ -103,6 +109,7 @@ impl AppState {
                         default_id: None,
                     })
             }),
+            Box::new(detect_system_profiles_without_wsl),
             host,
         )
     }
@@ -117,13 +124,19 @@ impl AppState {
     /// The same, with the sessions where `host` says.
     #[cfg(test)]
     pub fn with_detected_in(detected: ProfileSet, host: Host) -> Self {
-        Self::with_detection(Box::new(move || detected), host)
+        let known = detected.clone();
+        Self::with_detection(
+            Box::new(move || detected),
+            Box::new(move || known.clone()),
+            host,
+        )
     }
 
-    fn with_detection(detection: DetectedProfiles, host: Host) -> Self {
+    fn with_detection(detection: DetectedProfiles, early: EarlyProfiles, host: Host) -> Self {
         Self {
             sessions: Sessions::new(host),
             detected: LazyLock::new(detection),
+            early,
             profiles: RwLock::new(None),
             routes: Arc::default(),
             prespawn: Mutex::default(),
@@ -155,6 +168,32 @@ impl AppState {
                 .cloned()
                 .ok_or_else(|| "no shell profile was found on this machine".to_owned()),
         })
+    }
+
+    /// The profile `id`, or the default one for `None`, as the shells of this machine give it
+    /// without waiting for the distros of WSL (NOR-F20-14b): the first prompt does not wait for
+    /// `wsl.exe` to list them. `None` unless the answer is certain to be the one [`find_profile`]
+    /// gives once the distros are in: a profile of the user is in force, the profile is not among
+    /// the shells found without WSL (a distro, an unknown id), or none of those shells can be the
+    /// default (then a distro would be). The distros only come after the other shells, and the
+    /// default is chosen among the others first, so for the rest they change nothing.
+    ///
+    /// [`find_profile`]: AppState::find_profile
+    pub fn find_profile_early(&self, id: Option<&str>) -> Option<Profile> {
+        if self
+            .profiles
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some()
+        {
+            return None;
+        }
+        let shells = (self.early)();
+        match id {
+            Some(id) => shells.get(id),
+            None => shells.default_profile(),
+        }
+        .cloned()
     }
 
     /// Where the output of the session `id` goes; `None` for a session that never started or ended.
@@ -462,7 +501,18 @@ pub fn session_spec<R: Runtime>(
     cols: u16,
     rows: u16,
 ) -> Result<(Profile, SpawnSpec), String> {
-    let profile = state.find_profile(profile_id)?;
+    session_spec_for(app, state.find_profile(profile_id)?, cwd, env, cols, rows)
+}
+
+/// The same for a profile already found.
+pub fn session_spec_for<R: Runtime>(
+    app: &AppHandle<R>,
+    profile: Profile,
+    cwd: Option<&str>,
+    env: Option<HashMap<String, String>>,
+    cols: u16,
+    rows: u16,
+) -> Result<(Profile, SpawnSpec), String> {
     if profile.remote.is_some() {
         return Err(format!(
             "'{}' is a profile on another machine: it has no command to start here",
@@ -2622,6 +2672,37 @@ mod tests {
             .into_iter()
             .map(|p| (p.id, p.is_default))
             .collect()
+    }
+
+    #[test]
+    fn a_profile_found_before_the_distros_are_listed_is_the_one_found_after() {
+        // The real machine: whatever the early set finds, the full detection (with the distros of WSL
+        // in, and joined) gives the same profile for the same id, and the same default.
+        let state = AppState::detect(Host::InProcess);
+        for id in [
+            None,
+            Some("pwsh"),
+            Some("powershell"),
+            Some("cmd"),
+            Some("git-bash"),
+            Some("shell-bash"),
+            Some("wsl-Ubuntu"),
+            Some("nothing-like-this"),
+        ] {
+            if let Some(early) = state.find_profile_early(id) {
+                assert_eq!(state.find_profile(id), Ok(early), "profile {id:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn no_profile_is_found_early_once_the_profiles_of_the_user_are_in_force() {
+        let state = detected_state();
+        state
+            .set_user_profiles(&[user("dev-shell", "sh")])
+            .expect("valid");
+        assert_eq!(state.find_profile_early(None), None);
+        assert_eq!(state.find_profile_early(Some("dev-shell")), None);
     }
 
     #[test]

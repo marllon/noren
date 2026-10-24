@@ -111,7 +111,7 @@ jobs:
 
       - name: Rust tests
         if: ${{ !cancelled() }}
-        run: cargo test --workspace
+        run: cargo test --workspace --no-fail-fast
 
       - name: End-to-end tests
         if: ${{ !cancelled() }}

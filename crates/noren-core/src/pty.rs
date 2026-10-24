@@ -266,7 +266,14 @@ impl SessionManager {
         // The one place where a session without a folder gets one: the process of the app or of
         // `norend` sits in the install folder (or wherever it was launched from), which is not a
         // place for a new shell to open.
-        if let Some(cwd) = spec.cwd.clone().or_else(|| start_dir_of(&spec.env)) {
+        // With no folder at all the child gets the one of this process, spelled out: left unset,
+        // the pty library starts it in $HOME on Unix, and a $HOME that is gone fails the spawn.
+        if let Some(cwd) = spec
+            .cwd
+            .clone()
+            .or_else(|| start_dir_of(&spec.env))
+            .or_else(|| std::env::current_dir().ok())
+        {
             cmd.cwd(cwd);
         }
         cmd.env("TERM", "xterm-256color");

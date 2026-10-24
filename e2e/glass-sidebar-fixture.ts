@@ -22,7 +22,7 @@ interface Hook {
   sendOutput(paneId: string, text: string): boolean;
   setPaneAgent(paneId: string, agentId: string | undefined): Promise<boolean>;
 }
-type HookWindow = Window & { __norenTest?: Hook };
+type HookWindow = Window & { __norenTest?: Hook; __norenPending?: { count(): number } };
 
 export type Mode = "dark" | "light";
 export const THEME: Record<Mode, typeof NOREN_DUSK> = { dark: NOREN_DUSK, light: NOREN_PAPER };
@@ -176,6 +176,11 @@ export async function start(page: Page, options: StartOptions = {}): Promise<voi
   await expect
     .poll(() => page.evaluate(() => (window as HookWindow).__norenTest?.paneIds().length ?? 0))
     .toBeGreaterThan(0);
+  // The tabs behind the one on screen get their shells in the background (NOR-F20-14a): an agent is
+  // put on a pane once it has one.
+  await expect
+    .poll(() => page.evaluate(() => (window as HookWindow).__norenPending?.count() ?? 0))
+    .toBe(0);
   if (options.agents !== undefined) {
     for (const [pane, text] of options.agents) {
       await page.evaluate(

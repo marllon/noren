@@ -52,6 +52,8 @@ import {
 } from "react";
 import { useStore } from "zustand";
 import { insideTauri } from "./backend";
+import { pendingPanes, usePaneWaiting } from "./pending-panes";
+import { noteAppReady } from "./restore-settled";
 import { perfMark, perfMarkOnce } from "./perf-probe";
 import { backend, booted } from "./boot";
 import type { BootResult } from "./boot";
@@ -566,11 +568,28 @@ interface PaneTerminalProps {
 }
 
 /**
- * One terminal bound to one pane. The tracker turns the output of the session into the folder and
+ * One terminal bound to one pane. While the restore has not started the shell of the pane (the tab was
+ * not on screen at the start, see `pending-panes.ts`) only the empty region is drawn; the terminal
+ * mounts when the shell is there, and is given everything the shell printed meanwhile.
+ */
+function PaneTerminal(props: PaneTerminalProps) {
+  const waiting = usePaneWaiting(props.pane.id);
+  if (waiting) {
+    return (
+      <div className="terminal-view" data-nr-pending="true">
+        <div className="terminal-host" role="region" aria-label={props.label} />
+      </div>
+    );
+  }
+  return <StartedPaneTerminal {...props} />;
+}
+
+/**
+ * The terminal of a pane whose shell exists. The tracker turns the output of the session into the folder and
  * git branch of the pane (OSC 7 and 133 from the integrated shell); it is made once per pane, and
  * the session it listens to is the one the terminal starts or attaches.
  */
-function PaneTerminal({
+function StartedPaneTerminal({
   store,
   space,
   pane,
@@ -710,6 +729,10 @@ function ItemView({
 }: ItemViewProps) {
   const dispatch = useStore(store, (state) => state.dispatch);
   const { paneHeaders } = useLayout();
+  // A tab the person opens before the background start reached its shells is started first.
+  useEffect(() => {
+    if (shown) pendingPanes.prioritize(layoutPanes(item.layout).map((pane) => pane.id));
+  }, [shown, item.layout]);
   // The limit is a setting: the tab draws again when it changes, so the corner buttons follow it.
   const paneLimit = paneLimitOf(useConfigState().config.terminal);
   const agentStateOf = useAgentStateOfPane();
@@ -2348,6 +2371,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
       // Tells the Rust side the interface is mounted (used by `noren --smoke`).
       perfMark("app-ready");
       emit("app-ready").catch(() => undefined);
+      noteAppReady();
     }
   }, [store]);
 

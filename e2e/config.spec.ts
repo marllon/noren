@@ -21,7 +21,11 @@ interface Hook {
   setWindowFocused(focused: boolean): void;
   advanceClock(ms: number): void;
 }
-type HookWindow = Window & { __norenTest?: Hook; __stillHere?: boolean };
+type HookWindow = Window & {
+  __norenTest?: Hook;
+  __stillHere?: boolean;
+  __norenPending?: { count(): number };
+};
 
 const WEB_STATE_KEY = "noren.web.state";
 const WEB_CONFIG_KEY = "noren.web.config";
@@ -73,6 +77,10 @@ async function open(page: Page, file?: string, provisional?: Record<string, unkn
   await expect
     .poll(() => page.evaluate(() => (window as HookWindow).__norenTest !== undefined))
     .toBe(true);
+  // The tabs out of sight get their shells in the background (NOR-F20-14a); a test sends output to one.
+  await expect
+    .poll(() => page.evaluate(() => (window as HookWindow).__norenPending?.count() ?? 0))
+    .toBe(0);
 }
 
 /** Replaces the text of the file, as another program saving it would. */

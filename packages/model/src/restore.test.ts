@@ -7,6 +7,7 @@ import { restoreWorkspace } from "./restore";
 import { layoutPanes } from "./sessions";
 import { serializeWorkspace } from "./state";
 import { STATE_V0_FIXTURE, richWorkspace } from "./state-fixtures";
+import { createPane, createTab } from "./factories";
 import type { Pane, Workspace } from "./types";
 
 /** The fixtures use the profile "bash"; the fake backend only knows the profiles it is given. */
@@ -414,5 +415,137 @@ describe("restoreWorkspace and the shells the backend kept (NOR-F14-02b)", () =>
     expect(restored.status).toBe("idle");
     expect(restored).not.toHaveProperty("runningCommand");
     expect(restored.lastCommand).toEqual({ text: "ls", exitCode: 0, durationMs: 4 });
+  });
+});
+
+describe("restoreWorkspace with start: visible (NOR-F20-14a)", () => {
+  // richWorkspace: the active space s1 shows the tab i2 (panes p2 and p3); i1 (pane p1) is behind it.
+  const visible = { start: "visible" } as const;
+
+  it("starts the shells of the tab on screen only, and lists the others as pending", async () => {
+    const backend = new FakeBackend({ profiles: BASH, state: serializeWorkspace(richWorkspace()) });
+    const result = await restoreWorkspace(backend, visible);
+
+    expect(backend.callsTo("createSession")).toHaveLength(2);
+    expect(backend.callsTo("reattachSession").map((call) => call.args[0])).toEqual(["p2", "p3"]);
+    expect(paneById(result.workspace, "p2").sessionId).toBeDefined();
+    expect(paneById(result.workspace, "p3").sessionId).toBeDefined();
+    const p1 = paneById(result.workspace, "p1");
+    expect(p1.sessionId).toBeUndefined();
+    expect(p1.status).toBe("idle");
+    expect(p1.cwd).toBe("/work/app");
+    expect(result.pending.map((pane) => pane.paneId)).toEqual(["p1"]);
+    expect(result.failedPaneIds).toEqual([]);
+    expect(checkInvariants(result.workspace)).toEqual([]);
+  });
+
+  it("starts every shell when asked for all, or when nothing is said", async () => {
+    for (const options of [{ start: "all" } as const, {}]) {
+      const backend = new FakeBackend({
+        profiles: BASH,
+        state: serializeWorkspace(richWorkspace()),
+      });
+      const result = await restoreWorkspace(backend, options);
+      expect(backend.callsTo("createSession")).toHaveLength(3);
+      expect(result.pending).toEqual([]);
+    }
+  });
+
+  it("starts a pending pane as the restore would: its folder, its profile, its space's environment", async () => {
+    const backend = new FakeBackend({ profiles: BASH, state: serializeWorkspace(richWorkspace()) });
+    const result = await restoreWorkspace(backend, visible);
+    const started = await (result.pending[0] as NonNullable<(typeof result.pending)[0]>).start();
+
+    expect(started.reattached).toBe(false);
+    expect(started.pane.status).toBe("idle");
+    const session = backend.session(Number(started.pane.sessionId));
+    expect(session?.cwd).toBe("/work/app");
+    expect(backend.callsTo("createSession").at(-1)?.args[0]).toMatchObject({
+      paneId: "p1",
+      env: { MODE: "dev" },
+      cols: 80,
+      rows: 24,
+    });
+  });
+
+  it("gives a pending pane the shell the backend kept, and says so", async () => {
+    const backend = new FakeBackend({ profiles: BASH, state: serializeWorkspace(richWorkspace()) });
+    const id = await backend.createSession({ cols: 80, rows: 24 });
+    backend.holdSessionForPane("p1", id);
+    const before = backend.callsTo("createSession").length;
+    const result = await restoreWorkspace(backend, visible);
+    // The kept shell is not asked for at the start: the pane waits.
+    expect(result.reattachedPaneIds).toEqual([]);
+
+    const started = await (result.pending[0] as NonNullable<(typeof result.pending)[0]>).start();
+    expect(started.reattached).toBe(true);
+    expect(started.pane.sessionId).toBe(String(id));
+    // Two shells for p2 and p3 at the start, none for p1.
+    expect(backend.callsTo("createSession")).toHaveLength(before + 2);
+  });
+
+  it("hands back the command a pending pane was running when its shell starts", async () => {
+    const saved = richWorkspace();
+    paneById(saved, "p1").runningCommand = { text: "claude --continue" };
+    const backend = new FakeBackend({ profiles: BASH, state: serializeWorkspace(saved) });
+    const result = await restoreWorkspace(backend, visible);
+    // Not before: the pane has no shell to type into yet.
+    expect(result.savedCommands).toEqual([]);
+    expect(paneById(result.workspace, "p1")).not.toHaveProperty("runningCommand");
+
+    const started = await (result.pending[0] as NonNullable<(typeof result.pending)[0]>).start();
+    expect(started.savedCommand).toEqual({ paneId: "p1", text: "claude --continue" });
+  });
+
+  it("falls back to the default folder when the folder of a pending pane is gone, and exits one that cannot start", async () => {
+    const backend = new FakeBackend({ profiles: BASH, state: serializeWorkspace(richWorkspace()) });
+    const create = backend.createSession.bind(backend);
+    const result = await restoreWorkspace(backend, visible);
+    const pane = result.pending[0] as NonNullable<(typeof result.pending)[0]>;
+
+    backend.createSession = (options: CreateSessionOptions) =>
+      options.cwd === "/work/app" ? Promise.reject(new Error("gone")) : create(options);
+    const moved = await pane.start();
+    expect(moved.pane.sessionId).toBeDefined();
+    expect(moved.pane).not.toHaveProperty("cwd");
+
+    backend.createSession = () => Promise.reject(new Error("no shell"));
+    const failed = await pane.start();
+    expect(failed.pane.sessionId).toBeUndefined();
+    expect(failed.pane.status).toBe("exited");
+    expect(failed).not.toHaveProperty("savedCommand");
+  });
+
+  it("starts every tab of a space that a window of its own shows", async () => {
+    const saved = richWorkspace();
+    const other = saved.spaces[1] as NonNullable<(typeof saved.spaces)[1]>;
+    other.items = {
+      i5: createTab("i5", createPane("p5", "bash", "/work/one"), 10),
+      i6: createTab("i6", createPane("p6", "bash", "/work/two"), 20),
+    };
+    other.tree = [
+      { kind: "item", id: "i5" },
+      { kind: "item", id: "i6" },
+    ];
+    other.activeItemId = "i5";
+    saved.windows = [{ id: "win-1", spaceId: "s2" }];
+    const backend = new FakeBackend({ profiles: BASH, state: serializeWorkspace(saved) });
+    const result = await restoreWorkspace(backend, visible);
+
+    // p2, p3 (the tab on screen), p5 and p6 (the window's space); only p1 waits.
+    expect(result.pending.map((pane) => pane.paneId)).toEqual(["p1"]);
+    expect(paneById(result.workspace, "p5").sessionId).toBeDefined();
+    expect(paneById(result.workspace, "p6").sessionId).toBeDefined();
+  });
+
+  it("shows the first tab of a space whose active tab is gone", async () => {
+    const saved = richWorkspace();
+    const main = saved.spaces[0] as NonNullable<(typeof saved.spaces)[0]>;
+    delete main.activeItemId;
+    const backend = new FakeBackend({ profiles: BASH, state: serializeWorkspace(saved) });
+    const result = await restoreWorkspace(backend, visible);
+    // The pinned tab is the first one: i1 (p1) is the one on screen.
+    expect(paneById(result.workspace, "p1").sessionId).toBeDefined();
+    expect(result.pending.map((pane) => pane.paneId).sort()).toEqual(["p2", "p3"]);
   });
 });

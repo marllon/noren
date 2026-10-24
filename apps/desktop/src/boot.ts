@@ -36,7 +36,10 @@ import { recordPluginTraffic, startPlugins } from "./plugin-host";
 import { osNameOf } from "./os-name";
 import { windowPreviewEnabled } from "./quick";
 import { notificationSettings } from "./notification-settings";
+import { pendingPanes } from "./pending-panes";
+import { queuePendingPanes } from "./pending-start";
 import { perfMark } from "./perf-probe";
+import { reportRestoreSettled } from "./restore-settled";
 import { getProfiles, startProfiles } from "./profiles-store";
 import { loadScrollbackForRestore, setRestoredScrollback } from "./scrollback-restore";
 import {
@@ -132,6 +135,9 @@ export async function bootWorkspace(
     const { restored } = await restoreKeepingSessions(target, configManager, {
       defaults: { newId, clock },
       maxPanes: MAX_MAX_PANES,
+      // Only the tab on screen gets its shell before the first frame; the other tabs are started
+      // once the first prompt shows (NOR-F20-14a), so the start does not grow with the tabs saved.
+      start: "visible",
     });
     perfMark("boot-restore");
     // A pane that had an agent running when the state was saved and got a new shell (the machine
@@ -185,6 +191,32 @@ export async function bootWorkspace(
       // A failed notification (the system refused) is not worth an error on screen.
       notifier,
     });
+    if (target instanceof FakeBackend) {
+      // The web build: a test can keep the tabs waiting (set `__norenHoldPending` before the page
+      // loads) to look at the window before their shells start, and lets them go when it is done.
+      if (window.__norenHoldPending === true) pendingPanes.hold();
+      window.__norenPending = {
+        count: () => pendingPanes.count,
+        release: () => {
+          pendingPanes.unhold();
+          pendingPanes.release();
+        },
+      };
+    }
+    // The shells of the tabs the restore left for later: started in the background after the first
+    // prompt, or at once when their tab opens (a terminal mounts when its shell is there).
+    queuePendingPanes({
+      pending: restored.pending,
+      workspace: restored.workspace,
+      store,
+      queue: pendingPanes,
+      scrollback: snapshots?.texts,
+      settings: () => agentSettingsOf(configManager.state.config.agents),
+      backend: target,
+      resume: resumeService,
+    });
+    // When every pane has had its shell the app side may end the daemon shells no pane came back for.
+    pendingPanes.whenSettled(reportRestoreSettled);
     // The snapshots of the scrollback: every minute for the panes with activity, and when the window
     // closes. This listens to the closing before the state is flushed below, so the notes it makes on
     // the panes are in the state that is written then.
@@ -321,9 +353,19 @@ export interface CloseTestHook {
   run(): Promise<{ outcome: PushOnCloseOutcome | undefined; log: string[] }>;
 }
 
+/** What the e2e tests of the web build use to see the tabs whose shell is left for later. */
+export interface PendingTestHook {
+  /** How many panes still wait for their shell. */
+  count(): number;
+  /** Lets the waiting panes start (after `__norenHoldPending` kept them). */
+  release(): void;
+}
+
 declare global {
   interface Window {
     __norenClose?: CloseTestHook;
+    __norenHoldPending?: boolean;
+    __norenPending?: PendingTestHook;
   }
 }
 

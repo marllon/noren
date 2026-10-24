@@ -84,8 +84,9 @@ test.describe("the screen reader mode of the terminal", () => {
   test("on in the file: every terminal has the accessibility tree of xterm", async ({ page }) => {
     await openApp(page, { terminal: { screenReaderMode: true } });
     await expect(accessibilityTrees(page).first()).toBeAttached();
-    // One tree for each terminal that is open (the three tabs of the space on screen, at least).
-    expect(await accessibilityTrees(page).count()).toBeGreaterThanOrEqual(3);
+    // One tree for each terminal that is open (the three tabs of the space on screen, at least). The
+    // terminals of the tabs out of sight mount when their shells start in the background (NOR-F20-14a).
+    await expect.poll(() => accessibilityTrees(page).count()).toBeGreaterThanOrEqual(3);
   });
 
   test("the key in the settings turns it on and off in the running terminals, without a new session", async ({

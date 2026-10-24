@@ -640,6 +640,84 @@ tabs did not bring the app or the machine down: all 100 prompts arrived in every
 script's wait for the report scales with the tabs (`resultWaitSeconds`), and no `noren.exe` was left.
 Not verified (D19): the memory with the window shown; the margin to the target is 332 MB.
 
+### 8. Starting with many tabs saved (NOR-F20-14a)
+
+Row 7 left a cost of 26 to 30 ms per saved tab on the first prompt: the restore started the shell
+of every tab, one after the other, and mounted a terminal (with its WebGL context) for every tab,
+all before the first one showed. Now `restoreWorkspace` is asked for `start: "visible"`: only the
+shells of the tab on screen (and of every tab of a space that has a window of its own) are started
+before the first frame, and the other terminal panes come back as `pending`
+(`packages/model/src/restore.ts`). `pending-panes.ts` starts them in the background once the first
+prompt is on screen (12 at a time, the active space first), or at once when their tab is opened,
+and a pane draws its terminal only when its shell is there, given everything the shell printed
+meanwhile (a session holds its output until a terminal subscribes), so a restored tab clicked later
+shows what the shell printed while it was out of sight and takes typing. The orphan sweep of the
+daemon (`reap_orphans`) now waits for the event `restore-settled`, sent when every pane has had its
+turn, instead of `app-ready`. Nothing changes with one tab, nor for what the person sees.
+
+Measured as in row 7: `node scripts/perf.mjs --only-app --no-build --app-tabs 100` and `--app-tabs 30`
+(the 1-tab runs and the many-tabs runs alternating, 5 each, hidden window, no game-mode signal
+before or after either series). **Before** is the release build of `6e39416` (the commit this task
+started from), **after** the release build of the commit of this task, same machine, same day
+(23 Oct 2026). Times are ms from the creation of the `noren.exe` process; each cell is the median
+of 5, with the worst case (the slowest of the 5) after it. The 1 tab row is the 1-tab runs of the
+same series, so it is the reference of that series.
+
+First prompt (the earliest prompt of any tab):
+
+| Tabs saved | Before, median (worst) | After, median (worst) | Extra over 1 tab, per tab: before | after |
+| ---------- | ---------------------- | --------------------- | --------------------------------- | ----- |
+| 1 (100 s.) | 483 (549)              | 494 (505)             |                                   |       |
+| 1 (30 s.)  | 536 (585)              | 486 (513)             |                                   |       |
+| 30         | 1,312 (1,433)          | 504 (522)             | 26.8 ms                           | 0.6   |
+| 100        | 3,943 (4,022)          | 539 (544)             | 34.9 ms                           | 0.5   |
+
+Last prompt (every tab has its shell and its prompt in the daemon or the page; this is when the
+start is over):
+
+| Tabs saved | Before, median (worst) | After, median (worst) | Per tab over 1 tab: before | after   |
+| ---------- | ---------------------- | --------------------- | -------------------------- | ------- |
+| 30         | 1,412 (1,622)          | 1,471 (1,509)         | 30.2 ms                    | 34.0 ms |
+| 100        | 4,098 (4,294)          | 4,532 (4,617)         | 36.5 ms                    | 40.8 ms |
+
+Memory, total by the definition of row 6 (MB, private working set of Noren, its web view and the
+console hosts):
+
+| Tabs saved | Before, median (worst) | After, median (worst) |
+| ---------- | ---------------------- | --------------------- |
+| 30         | 301.5 (304.6)          | 302.0 (326.9)         |
+| 100        | 506.1 (599.6)          | 593.9 (596.2)         |
+
+Memory is not measured with 1 tab by this script (row 7 has about 149 MB from earlier runs, not
+compared). Another series of the same code, taken a few minutes earlier in the round that wrote it
+(23 Oct 2026, 22:16 and 22:18, same machine, no signal), gave 533 ms and 4,445 ms for 100 tabs
+(memory 593.0 MB) and 527 ms and 1,539 ms for 30 tabs (305.5 MB): the same picture.
+
+**Read as follows.** The first prompt with 100 saved tabs is 539 ms, 45 ms over the 494 ms of a
+single tab (0.5 ms per extra tab, against 35 ms before): it no longer grows with the tabs saved,
+and it was 3,943 ms. With 30 tabs it is 504 ms (0.6 ms per tab, against 27). The 1-tab figure is
+unchanged by this task and stays at the line of the target (494 and 486 here, 505 and 513 the
+slowest): that is NOR-F20-14b, not this one. Where the rest of the time goes (the marks of the
+many-tabs runs, now listed by the script as `app-marks-many`, against the 1-tab marks of the same
+series): up to `app-render` the two match (424 ms with 100 tabs, 420 with 1), `terminal-mount`
+comes 32 ms later (475, against 443) and the prompt 44 ms later (539, against 495). The small
+rest is spent between the render and the mount, most likely drawing the sidebar of 100 tabs (not
+profiled).
+
+**What got worse, measured and not part of the criterion.** The whole start (the last of the 100
+prompts) takes 4,532 ms against 4,098 ms before (+434 ms, 10 %; the same in the other series,
+4,445), and with 30 tabs 1,471 against 1,412. The memory with 100 tabs is 593.9 MB against
+506.1 (+88 MB, +17 %; the web view processes grew from 690 to 771 MB, and the cause was not
+looked for). Both are still far from the target of row 7 (800 MB) and of no
+consequence to the first prompt, which is what a person waits for, but they are the price of
+starting the other tabs while the page is up; they are written as open findings in the report of
+the round. A tab the person opens before its turn starts at once, so waiting for the background
+start is never needed to use a tab.
+
+Not verified (D19): the numbers with the window shown (see the limits below);
+`apps/desktop/src/pending-panes.ts` starts the queue from the first prompt, and a tab opened before
+that is started at once by `ItemView` (`apps/desktop/src/App.tsx`).
+
 ## Limits of these numbers
 
 - **Headless Chromium, not the app.** The web build is the same interface, but the shell is the

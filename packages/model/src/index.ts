@@ -594,7 +594,7 @@ export type { Direction, Rect } from "./geometry";
 export { reduce, validEnv } from "./reducer";
 export { DEFAULT_KEEP_SESSIONS, keepSessionsAllowed } from "./keep-sessions";
 export { restoreWorkspace } from "./restore";
-export type { RestoreOptions, RestoreResult } from "./restore";
+export type { PaneStart, PendingPane, RestoreOptions, RestoreResult } from "./restore";
 export {
   DEFAULT_SAVE_SCROLLBACK,
   MAX_SCROLLBACK_BYTES,

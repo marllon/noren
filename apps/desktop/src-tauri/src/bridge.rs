@@ -5402,6 +5402,41 @@ mod tests {
     }
 
     #[test]
+    fn a_shell_the_run_never_took_back_stays_the_panes_when_the_app_closes_before_its_turn() {
+        let _turn = crate::daemon_link::ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (daemon, name) = a_daemon();
+        let book = a_book_file("closed-before-its-turn");
+        let app = tauri::test::mock_app();
+
+        let first = a_run_on(&name, Some(&book), true);
+        let (a, _) = start_pane_shell(&app, &first, Some("pane-a"));
+        first.end_sessions_on_exit();
+        drop(first);
+
+        // A start with many tabs takes the shells back in the background: this run is closed before
+        // the page got to the pane, so it never asked for it.
+        let second = a_run_on(&name, Some(&book), true);
+        wait_until_nobody_is_attached(&second, &[a]);
+        second.end_sessions_on_exit();
+        drop(second);
+        assert_eq!(daemon.session_count(), 1, "the shell is still there");
+
+        let third = a_run_on(&name, Some(&book), true);
+        wait_until_nobody_is_attached(&third, &[a]);
+        let (output, _heard) = collecting();
+        assert_eq!(
+            third.reattach_pane(app.handle(), "pane-a", output),
+            Some(SessionId(a)),
+            "the pane still finds its shell"
+        );
+
+        third.sessions.kill(SessionId(a)).expect("clean up");
+        let _ = std::fs::remove_dir_all(book.parent().unwrap());
+    }
+
+    #[test]
     fn with_the_setting_off_nothing_is_taken_over_and_what_was_left_is_ended() {
         let _turn = crate::daemon_link::ONE_AT_A_TIME
             .lock()

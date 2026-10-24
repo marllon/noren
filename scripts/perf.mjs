@@ -269,25 +269,31 @@ async function measureApp() {
     }
   }
   const summary = appSummary(first, many, MANY_TABS, summarize);
-  // Where the time goes: each mark of the 1-tab runs, median over the repetitions (NOR-F11-01d).
-  const markNames = [...new Set(first.flatMap((entry) => Object.keys(entry.marks)))];
-  const markRows = markNames
-    .map((name) => {
-      const seen = first.filter((entry) => name in entry.marks).map((entry) => entry.marks[name]);
-      return { name, ...summarize(seen) };
-    })
-    .sort((a, b) => a.median - b.median);
-  console.log("\n== real app: marks, 1 tab (ms from process creation) ==");
-  for (const row of markRows) {
-    const r = (v) => Math.round(v * 10) / 10;
-    console.log(
-      `${row.name}: median ${r(row.median)}, min ${r(row.min)}, max ${r(row.max)}, n ${row.n}`,
-    );
+  // Where the time goes: each mark of the runs, median over the repetitions (NOR-F11-01d). The
+  // many-tabs runs are listed too (NOR-F20-14a), to see which step grows with the tabs.
+  const r = (v) => Math.round(v * 10) / 10;
+  for (const [label, name, runs] of [
+    ["1 tab", "app-marks", first],
+    [`${MANY_TABS} tabs`, "app-marks-many", many],
+  ]) {
+    if (runs.length === 0) continue;
+    const markNames = [...new Set(runs.flatMap((entry) => Object.keys(entry.marks)))];
+    const markRows = markNames
+      .map((mark) => {
+        const seen = runs.filter((entry) => mark in entry.marks).map((entry) => entry.marks[mark]);
+        return { name: mark, ...summarize(seen) };
+      })
+      .sort((a, b) => a.median - b.median);
+    console.log(`\n== real app: marks, ${label} (ms from process creation) ==`);
+    for (const row of markRows) {
+      console.log(
+        `${row.name}: median ${r(row.median)}, min ${r(row.min)}, max ${r(row.max)}, n ${row.n}`,
+      );
+    }
+    appendFileSync(out, `${JSON.stringify({ name, marks: markRows })}\n`);
   }
-  appendFileSync(out, `${JSON.stringify({ name: "app-marks", marks: markRows })}\n`);
   console.log("\n== real app: summary (median, min, max) ==");
   for (const [name, s] of Object.entries(summary)) {
-    const r = (v) => Math.round(v * 10) / 10;
     console.log(`${name}: median ${r(s.median)}, min ${r(s.min)}, max ${r(s.max)}, n ${s.n}`);
   }
   appendFileSync(out, `${JSON.stringify({ name: "app-summary", summary })}\n`);

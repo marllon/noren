@@ -18,6 +18,7 @@ import { requestExternalLink } from "./link-prompt";
 import { parseOsc7 } from "./osc7";
 import { decidePaste, insertableText } from "./paste";
 import { watchFirstPrompt } from "./first-prompt";
+import { pendingPanes } from "./pending-panes";
 import { perfMark, reportPromptShown } from "./perf-probe";
 import { pathLinksOfRow } from "./terminal-paths";
 import { isTranslucent } from "./theme";
@@ -604,8 +605,13 @@ export function TerminalView({
       cleanups.push(
         backend.onOutput(id, (bytes) => {
           // The first prompt is reported once xterm has taken the chunk in (`noren --smoke-perf`).
-          if (firstPrompt(bytes)) term.write(bytes, () => reportPromptShown(id));
-          else term.write(bytes);
+          if (firstPrompt(bytes)) {
+            term.write(bytes, () => {
+              reportPromptShown(id);
+              // The first prompt is on screen: the shells of the tabs left for later may start.
+              pendingPanes.release();
+            });
+          } else term.write(bytes);
           onOutputRef.current?.(bytes);
         }),
       );

@@ -203,22 +203,30 @@ impl AppState {
             return;
         }
         let bound: HashSet<u64> = lock(&self.pane_book).sessions().into_iter().collect();
-        let staying: Vec<SessionId> = self
-            .sessions
-            .list()
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|info| {
-                info.exit.is_none()
-                    && bound.contains(&info.session.0)
-                    && self.sessions.owns(info.session)
-            })
+        let listed = self.sessions.list().unwrap_or_default();
+        let alive_bound = |info: &&noren_core::daemon::SessionInfo| {
+            info.exit.is_none() && bound.contains(&info.session.0)
+        };
+        let staying: Vec<SessionId> = listed
+            .iter()
+            .filter(alive_bound)
+            .filter(|info| self.sessions.owns(info.session))
+            .map(|info| info.session)
+            .collect();
+        // A shell the daemon kept that this run never took back (the app closed before the page got
+        // to its pane: a start with many tabs reattaches them in the background) is still the pane's:
+        // its binding stays for the next run.
+        let waiting: Vec<SessionId> = listed
+            .iter()
+            .filter(alive_bound)
+            .filter(|info| !self.sessions.owns(info.session))
             .map(|info| info.session)
             .collect();
         self.sessions.detach(&staying);
         let mut book = lock(&self.pane_book);
         for session in bound {
-            if !staying.contains(&SessionId(session)) {
+            let id = SessionId(session);
+            if !staying.contains(&id) && !waiting.contains(&id) {
                 book.unbind_session(session);
             }
         }

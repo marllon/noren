@@ -140,6 +140,14 @@ export interface WorkspaceState {
   /** Records the session the view started for a pane. Not saved: sessions die with the process. */
   attachSession(paneId: Id, sessionId: Id): void;
   /**
+   * Records the outcome of the shell of a pane the restore left for later (`PendingPane.start`): its
+   * session, or none and the status `exited` (it could not start, and is listed in `failedPaneIds`
+   * from then on), and the folder it ended up in (the restore falls back to the default when the
+   * folder of the pane is gone). The pane may have closed meanwhile: the session is then ended.
+   * Several panes at once make one change of the state, so the interface draws once for them.
+   */
+  settlePanes(settled: readonly { paneId: Id; started: Pane }[]): void;
+  /**
    * Records where the shell of a pane is (its folder and git branch, as the shell reported them; no
    * folder keeps the pane's own). The pane may have moved to another tab since the report started;
    * it is found by its id. A pane that is gone, or a location the pane already has, changes nothing.
@@ -309,6 +317,40 @@ function withSession(layout: LayoutNode, paneId: Id, sessionId: Id): LayoutNode 
   return children.some((child, index) => child !== layout.children[index])
     ? { ...layout, children }
     : layout;
+}
+
+/**
+ * Copy of the layout with the outcome of the late start of a shell on the pane (its session, status
+ * and folder; the rest of the pane stays); the same object when the pane is absent.
+ */
+function withStart(layout: LayoutNode, paneId: Id, started: Pane): LayoutNode {
+  if (layout.kind === "pane") {
+    if (layout.pane.id !== paneId || layout.pane.type !== "terminal") return layout;
+    const pane = { ...layout.pane, status: started.status };
+    if (started.sessionId !== undefined) pane.sessionId = started.sessionId;
+    else delete pane.sessionId;
+    if (started.cwd !== undefined) pane.cwd = started.cwd;
+    else delete pane.cwd;
+    return { kind: "pane", pane };
+  }
+  const children = layout.children.map((child) => withStart(child, paneId, started));
+  return children.some((child, index) => child !== layout.children[index])
+    ? { ...layout, children }
+    : layout;
+}
+
+function settleInWorkspace(ws: Workspace, paneId: Id, started: Pane): Workspace {
+  let changed = false;
+  const spaces = ws.spaces.map((space) => {
+    const items: Record<Id, Item> = {};
+    for (const [id, item] of Object.entries(space.items)) {
+      const layout = withStart(item.layout, paneId, started);
+      if (layout !== item.layout) changed = true;
+      items[id] = layout === item.layout ? item : { ...item, layout };
+    }
+    return { ...space, items };
+  });
+  return changed ? { ...ws, spaces } : ws;
 }
 
 function attachToWorkspace(ws: Workspace, paneId: Id, sessionId: Id): Workspace {
@@ -583,6 +625,27 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
           startCommands.delete(paneId);
           options.onStartCommand?.(paneId, sessionId, command);
         }
+      },
+
+      settlePanes(settled) {
+        const { workspace, failedPaneIds } = get();
+        let next = workspace;
+        const failed: Id[] = [];
+        for (const { paneId, started } of settled) {
+          const after = settleInWorkspace(next, paneId, started);
+          if (after === next) {
+            // The pane closed while its shell was starting: nobody owns the session.
+            if (started.sessionId !== undefined) kill(started.sessionId);
+            continue;
+          }
+          next = after;
+          if (started.sessionId === undefined) failed.push(paneId);
+        }
+        if (next === workspace) return;
+        set({
+          workspace: next,
+          ...(failed.length > 0 ? { failedPaneIds: [...failedPaneIds, ...failed] } : {}),
+        });
       },
 
       setPaneLocation(paneId, location) {

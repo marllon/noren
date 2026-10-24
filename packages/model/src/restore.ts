@@ -5,7 +5,9 @@ import { DEFAULT_PROFILE_ID } from "./factories";
 import type { InvariantOptions } from "./invariants";
 import { layoutPanes } from "./sessions";
 import { parseState, workspaceWithoutSessions } from "./state";
+import { spaceItemIds } from "./tree";
 import type { Id, LayoutNode, Pane, Space, Workspace } from "./types";
+import { windowShowing } from "./windows";
 import type { SavedPaneCommand } from "./agent-resume";
 
 export interface RestoreOptions extends InvariantOptions {
@@ -14,6 +16,14 @@ export interface RestoreOptions extends InvariantOptions {
   rows?: number;
   /** Id source and clock for the default workspace, when the saved state cannot be used. */
   defaults?: DefaultWorkspaceOptions;
+  /**
+   * Which terminal panes get their shell during the call. `all` (the default): every one, one after
+   * the other. `visible`: only the panes a window is showing (the tab the active space shows, and
+   * every tab of a space that has a window of its own); every other pane comes back with no session
+   * and is listed in `pending`, to be started later (`PendingPane.start`). Starting a hundred shells
+   * one after the other is what a start with a hundred tabs waited for before its first prompt.
+   */
+  start?: "all" | "visible";
 }
 
 export interface RestoreResult {
@@ -44,6 +54,29 @@ export interface RestoreResult {
    * pane is made new. `planAgentResume` turns it into the resume commands.
    */
   savedCommands: SavedPaneCommand[];
+  /**
+   * The panes `start: "visible"` left without a shell, in the order of the workspace; empty when
+   * every pane was started. They are not in `failedPaneIds`, `reattachedPaneIds` or `savedCommands`:
+   * what their `start` says takes their place.
+   */
+  pending: PendingPane[];
+}
+
+/** A terminal pane whose shell the restore did not start yet. */
+export interface PendingPane {
+  paneId: Id;
+  /** Starts the shell of the pane as the restore would have (see `startPane`) and says what came of it. */
+  start(): Promise<PaneStart>;
+}
+
+/** What starting the shell of a pane came to. */
+export interface PaneStart {
+  /** The pane as the restore leaves it: with its session, or with status `exited` and none. */
+  pane: Pane;
+  /** True when the pane got back the shell it had before the app was closed. */
+  reattached: boolean;
+  /** The command line the pane was running when the state was saved, when it got a session. */
+  savedCommand?: SavedPaneCommand;
 }
 
 type RestoreBackend = Pick<
@@ -87,12 +120,17 @@ export async function restoreWorkspace(
     }
   }
 
-  const { workspace, failedPaneIds, reattachedPaneIds, savedCommands } = await startSessions(
-    base,
-    backend,
-    options,
-  );
-  return { workspace, source, ...extra, failedPaneIds, reattachedPaneIds, savedCommands };
+  const { workspace, failedPaneIds, reattachedPaneIds, savedCommands, pending } =
+    await startSessions(base, backend, options);
+  return {
+    workspace,
+    source,
+    ...extra,
+    failedPaneIds,
+    reattachedPaneIds,
+    savedCommands,
+    pending,
+  };
 }
 
 /**
@@ -107,17 +145,38 @@ async function startSessions(
   failedPaneIds: Id[];
   reattachedPaneIds: Id[];
   savedCommands: SavedPaneCommand[];
+  pending: PendingPane[];
 }> {
   const started = new Map<Id, Pane>();
   const failedPaneIds: Id[] = [];
   const reattachedPaneIds: Id[] = [];
   const savedCommands: SavedPaneCommand[] = [];
+  const pending: PendingPane[] = [];
+  const shown = options.start === "visible" ? visiblePaneIds(ws) : undefined;
   for (const space of ws.spaces) {
     for (const item of Object.values(space.items)) {
       for (const pane of layoutPanes(item.layout)) {
         // A browser pane, a preview pane and a diff pane have no shell to start: the page is shown
         // from its address, the file is read from its path and the diff is read from its folder.
         if (pane.type !== "terminal") continue;
+        if (shown !== undefined && !shown.has(pane.id)) {
+          started.set(pane.id, withoutSession(pane));
+          pending.push({
+            paneId: pane.id,
+            start: async () => {
+              const { pane: next, reattached } = await startPane(pane, space, backend, options);
+              const command = pane.runningCommand?.text;
+              const saved =
+                next.sessionId !== undefined && command !== undefined && command.trim() !== "";
+              return {
+                pane: next,
+                reattached,
+                ...(saved ? { savedCommand: { paneId: pane.id, text: command } } : {}),
+              };
+            },
+          });
+          continue;
+        }
         const { pane: next, reattached } = await startPane(pane, space, backend, options);
         if (next.sessionId === undefined) failedPaneIds.push(pane.id);
         if (reattached) reattachedPaneIds.push(pane.id);
@@ -149,7 +208,41 @@ async function startSessions(
     failedPaneIds,
     reattachedPaneIds,
     savedCommands,
+    pending,
   };
+}
+
+/**
+ * The terminal panes a window shows at the start: the tab the active space shows, and every tab of
+ * a space another window shows (the page of that window takes the session of a pane from the
+ * workspace, and would start a shell of its own for one that has none).
+ */
+function visiblePaneIds(ws: Workspace): Set<Id> {
+  const active = ws.spaces.find((space) => space.id === ws.activeSpaceId) ?? ws.spaces[0];
+  const ids = new Set<Id>();
+  for (const space of ws.spaces) {
+    const inWindow = windowShowing(ws, space.id) !== undefined;
+    if (space !== active && !inWindow) continue;
+    const chosen = space.activeItemId;
+    const shownId =
+      chosen !== undefined && space.items[chosen] !== undefined ? chosen : spaceItemIds(space)[0];
+    const items = inWindow ? Object.values(space.items) : [space.items[shownId ?? ""]];
+    for (const item of items) {
+      if (item === undefined) continue;
+      for (const pane of layoutPanes(item.layout)) ids.add(pane.id);
+    }
+  }
+  return ids;
+}
+
+/** The pane as a restore leaves it before its shell: the old session, exit code and reports are gone. */
+function withoutSession(pane: Pane): Pane {
+  const fresh: Pane = { ...pane, status: "idle" };
+  delete fresh.sessionId;
+  delete fresh.exitCode;
+  delete fresh.runningCommand;
+  delete fresh.shellCwd;
+  return fresh;
 }
 
 type RestoreSessions = Pick<Backend, "createSession" | "reattachSession">;
@@ -177,11 +270,7 @@ async function startPane(
     ...(Object.keys(space.defaults.env).length > 0 ? { env: space.defaults.env } : {}),
   };
   // The old session, exit code and (for a pane that failed) cwd belong to a process that is gone.
-  const fresh: Pane = { ...pane, status: "idle" };
-  delete fresh.sessionId;
-  delete fresh.exitCode;
-  delete fresh.runningCommand;
-  delete fresh.shellCwd;
+  const fresh = withoutSession(pane);
 
   // A backend that cannot say, or has nothing for the pane, means a new shell.
   const kept = await backend.reattachSession(pane.id).catch(() => undefined);

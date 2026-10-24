@@ -567,11 +567,16 @@ fn main() {
         prespawn::start(app.handle(), file);
         // The page asks for its shells before it says it is up; one nobody claimed ends here.
         let handle = app.handle().clone();
+        let claimed = handle.clone();
         app.once("app-ready", move |_| {
-            handle.state::<AppState>().close_prespawn();
-            // Every pane has had its shell by now (the ones it had before the app was closed taken
-            // over, new ones for the rest): what the daemon still holds belongs to no pane. This
-            // can wait on the daemon, so it does not hold the event up.
+            claimed.state::<AppState>().close_prespawn();
+        });
+        // The page starts the shell of the tab on screen before it says it is up, and the shells of
+        // the other tabs after it (NOR-F20-14a). When every pane has had its shell (the ones it had
+        // before the app was closed taken over, new ones for the rest) it says so, and what the
+        // daemon still holds belongs to no pane. This can wait on the daemon, so it does not hold the
+        // event up. A page that never says it leaves the shells to the next run.
+        app.once("restore-settled", move |_| {
             let handle = handle.clone();
             std::thread::spawn(move || {
                 handle.state::<AppState>().reap_orphans();

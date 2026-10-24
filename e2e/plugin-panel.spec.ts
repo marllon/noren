@@ -204,9 +204,17 @@ test("a plugin that fails takes its panel with it, and the app and the other plu
       "fragile",
       ["palette.actions", "panel"],
       `${register("show", "Show fragile")}
-globalThis.onmessage = () => {
-  globalThis.postMessage({ version: 1, id: "panel", method: "panel.open", params: { title: "Fragile", html: "<p id='f'>here</p>" } });
-  setTimeout(() => { throw new Error("fragile broke"); }, 400);
+let chosen = 0;
+globalThis.onmessage = (event) => {
+  // The host also answers the plugin's own requests: only a chosen action counts. The first one
+  // opens the panel and the second one breaks the plugin, so the test decides when it fails.
+  if (!event.data || event.data.event !== "action") return;
+  chosen += 1;
+  if (chosen === 1) {
+    globalThis.postMessage({ version: 1, id: "panel", method: "panel.open", params: { title: "Fragile", html: "<p id='f'>here</p>" } });
+  } else {
+    throw new Error("fragile broke");
+  }
 };`,
     ),
     panelPlugin("steady", ["palette.actions", "panel"], "Steady", "<p>steady</p>"),
@@ -218,7 +226,8 @@ globalThis.onmessage = () => {
   await choose(page, "show fragile");
   await expect(panel(page)).toBeVisible();
   await expect(panel(page).getByRole("heading", { name: "Fragile" })).toBeVisible();
-  // The Worker throws: the panel goes and the status says why.
+  // The same action again: the Worker throws, the panel goes and the status says why.
+  await choose(page, "show fragile");
   await expect(panel(page)).toHaveCount(0);
   await expect
     .poll(async () => (await statuses(page)).find((s) => s.folder === "fragile")?.state)

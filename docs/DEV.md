@@ -145,6 +145,14 @@ Settings > Apps.
 Uninstall: Settings > Apps > Noren, or `%LOCALAPPDATA%\Noren\uninstall.exe` (`/S` for silent).
 The interactive uninstaller offers to delete the app data; the silent one keeps it.
 
+## Portable copy (Windows)
+
+```sh
+pnpm desktop:portable
+```
+
+`scripts/desktop-portable.mjs` builds `norend` (`cargo build -p norend --release --locked`) and the app (`tauri build --no-bundle`, release), then recreates `dist-portable/Noren/` from scratch with `noren.exe`, `norend.exe` and `resources/shell-integration/**`, and zips it as `dist-portable/Noren-portable.zip` with the system `tar -a -c -f`. Both are ignored by git. The app finds `norend.exe` next to itself and the shell scripts under `resources/` next to the program, so the folder runs from any place and writes nothing to the registry when it opens (the `noren://` link is only written by the installers). The script fails with the names of the files the build did not leave. The release build uses the Windows subsystem and prints nothing to a console, so to read the output of `noren.exe --smoke` redirect it: `./noren.exe --smoke > out.txt 2>&1`.
+
 Where data lives (identifier `io.github.marllon.noren`):
 
 | What                                                                                      | Where                                               |

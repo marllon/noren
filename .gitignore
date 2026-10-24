@@ -2,6 +2,8 @@ node_modules/
 target/
 dist/
 dist-demo/
+# The portable folder and zip made by scripts/desktop-portable.mjs.
+dist-portable/
 test-results/
 playwright-report/
 .env

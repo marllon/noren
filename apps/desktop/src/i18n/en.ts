@@ -556,7 +556,7 @@ export const en = {
   "settings.keyboardShortcuts": "Keyboard shortcuts",
   "settings.deepLink": "Register the noren:// link on this computer",
   "settings.deepLinkHint":
-    "Lets a click on a noren:// link open Noren. Off by default: Noren registers nothing when it opens. Turning this on writes the link for your user account; turning it off removes it.",
+    "Lets a click on a noren:// link open Noren. Nothing is registered when Noren opens.",
   "settings.deepLinkFailed": "The link was not changed: {reason}",
   "settings.notifications": "Notifications",
   "settings.systemNotifications": "System notifications",

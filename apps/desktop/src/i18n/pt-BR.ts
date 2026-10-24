@@ -561,7 +561,7 @@ export const ptBR: Dictionary = {
   "settings.keyboardShortcuts": "Atalhos de teclado",
   "settings.deepLink": "Registrar o link noren:// neste computador",
   "settings.deepLinkHint":
-    "Deixa um clique num link noren:// abrir o Noren. Desligado por padrão: o Noren não registra nada ao abrir. Ligar grava o link para a sua conta de usuário; desligar o remove.",
+    "Deixa um clique num link noren:// abrir o Noren. Nada é registrado quando o Noren abre.",
   "settings.deepLinkFailed": "O link não foi alterado: {reason}",
   "settings.notifications": "Notificações",
   "settings.systemNotifications": "Notificações do sistema",

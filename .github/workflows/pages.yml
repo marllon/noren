@@ -2,8 +2,7 @@ name: Pages
 
 # Builds the web demo (`pnpm demo:build`, into dist-demo/) and deploys it to GitHub Pages. It runs
 # only when a maintainer starts it by hand from the Actions tab: nothing is published by a push or a
-# tag, and GitHub Pages itself is switched on by hand in the repository settings. There is no hosted
-# runner: the only runner of this repository is the self-hosted one on the studio VPS.
+# tag, and GitHub Pages itself is switched on by hand in the repository settings.
 on:
   workflow_dispatch:
 
@@ -15,15 +14,20 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
-# Same runner setup as ci.yml: Node 24 with corepack is installed once on the machine, so no step
-# here uses sudo, apt, setup-node or a hosted cache.
 jobs:
   build:
     name: build
-    runs-on: [self-hosted, linux, noren]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # pnpm comes from the `packageManager` field of package.json, through corepack.
+      - run: corepack enable
 
       - run: pnpm install --frozen-lockfile
 
@@ -39,7 +43,7 @@ jobs:
   deploy:
     name: deploy
     needs: build
-    runs-on: [self-hosted, linux, noren]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       pages: write

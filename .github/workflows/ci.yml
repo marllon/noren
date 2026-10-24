@@ -12,23 +12,67 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# The only runner of this repository is the self-hosted one on the studio VPS (label `noren`).
-# Its toolchain (Rust, Node 24 with corepack, cargo-deny, Chromium for Playwright, Tauri system
-# libraries) is installed once on the machine, so no step here uses sudo, apt, setup-node or a
-# hosted cache. The Cargo target lives outside the workspace so incremental builds survive runs.
 env:
-  CARGO_BUILD_JOBS: 2
-  CARGO_TARGET_DIR: /home/noren-ci/.cache/noren-target
+  CARGO_TERM_COLOR: always
 
 jobs:
   ci:
     name: ci
-    runs-on: [self-hosted, linux, noren]
-    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # pnpm comes from the `packageManager` field of package.json, through corepack.
+      - run: corepack enable
+
+      - id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      # System libraries of the Tauri shell (WebKitGTK and friends).
+      - name: Install the Tauri system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libappindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf
+
       - run: pnpm install --frozen-lockfile
+
+      - id: playwright
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - run: pnpm exec playwright install --with-deps chromium
 
       # apps/desktop/dist is gitignored and Tauri's generate_context requires frontendDist (../dist).
       - run: pnpm --filter @noren/desktop build

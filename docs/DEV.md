@@ -172,9 +172,10 @@ resets the app to a fresh install.
 ## Release workflow
 
 `.github/workflows/release.yml` starts only when a maintainer pushes a tag `v*` (for example
-`v0.1.0`); it has no other trigger. It runs on the self-hosted runner (`[self-hosted, linux, noren]`,
-the only runner of this repository) and uses no sudo or apt: the toolchain, the Tauri system
-libraries and the GitHub CLI (`gh`) are expected on the machine. There is no Windows or macOS job.
+`v0.1.0`); it has no other trigger. It runs on a GitHub-hosted runner (`ubuntu-latest`), which
+starts clean, so the job installs Node 24 (`actions/setup-node`), pnpm through corepack, the Rust
+stable toolchain and the Tauri system libraries (`sudo apt-get install`); the GitHub CLI (`gh`) is
+already on the runner. There is no Windows or macOS job.
 
 Steps of the single `linux` job:
 
@@ -198,8 +199,8 @@ Cutting a release, in order:
    `pnpm packages:generate --deb <the deb>` and submit them by hand; see [PACKAGES.md](PACKAGES.md).
    The generator writes under `target/packages/<version>/` and submits nothing.
 
-`pnpm workflows:check` validates every file in `.github/workflows` (YAML syntax, the runner label
-`[self-hosted, linux, noren]` on every job, no sudo, apt or hosted runner label, the tag and draft
+`pnpm workflows:check` validates every file in `.github/workflows` (YAML syntax, a GitHub-hosted
+runner label such as `ubuntu-latest` on every job and no self-hosted runner, the tag and draft
 contract of `release.yml`, and that `pages.yml` starts only by `workflow_dispatch`).
 
 ## Web demo

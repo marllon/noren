@@ -1,7 +1,9 @@
-// Workflow gate: every file in .github/workflows must parse as YAML and run only on the
-// self-hosted runner, with no hosted runner label, no sudo and no apt. release.yml is also held to
-// its contract: it starts only on a tag `v*` and creates the release as a draft. pages.yml starts
-// only by hand (`workflow_dispatch`), so nothing is published by a push.
+// Workflow gate: every file in .github/workflows must parse as YAML and run only on GitHub-hosted
+// runners (`ubuntu-latest` and the like); a self-hosted runner is not allowed, because the
+// repository is public and a pull request from anyone would run code on it. Hosted runners start
+// clean, so sudo and apt are fine. release.yml is also held to its contract: it starts only on a
+// tag `v*` and creates the release as a draft. pages.yml starts only by hand
+// (`workflow_dispatch`), so nothing is published by a push.
 // YAML is parsed with Prettier (already a dev dependency); the runner and trigger rules are read
 // from the non-comment lines, which is enough for the plain block style these files use.
 import { readFileSync, readdirSync } from "node:fs";
@@ -11,12 +13,8 @@ import { format } from "prettier";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dir = join(root, ".github", "workflows");
-const RUNNER = "[self-hosted, linux, noren]";
-const FORBIDDEN = [
-  [/\bsudo\b/, "sudo"],
-  [/\bapt(-get)?\b/, "apt"],
-  [/\b(ubuntu|windows|macos)-(latest|\d)/, "a hosted runner label"],
-];
+const HOSTED_RUNNER = /^(ubuntu|windows|macos)-(latest|\d+(\.\d+)?)(-arm|-xlarge)?$/;
+const FORBIDDEN = [[/self-hosted/i, "a self-hosted runner"]];
 
 const problems = [];
 const files = readdirSync(dir).filter((name) => /\.ya?ml$/.test(name));
@@ -48,8 +46,10 @@ for (const name of files) {
     problems.push(`${name}: ${jobs.length} job(s) but ${runners.length} runs-on line(s)`);
   }
   for (const line of runners) {
-    if (line.replace(/^\s*runs-on:\s*/, "").trim() !== RUNNER) {
-      problems.push(`${name}: runs-on must be exactly ${RUNNER}, found "${line.trim()}"`);
+    if (!HOSTED_RUNNER.test(line.replace(/^\s*runs-on:\s*/, "").trim())) {
+      problems.push(
+        `${name}: runs-on must be a GitHub-hosted runner such as ubuntu-latest, found "${line.trim()}"`,
+      );
     }
   }
   for (const line of lines) {

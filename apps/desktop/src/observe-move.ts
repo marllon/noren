@@ -83,3 +83,35 @@ export function observeMove(element: Element, onMove: () => void): MoveObserver 
     },
   };
 }
+
+/** The events that say a CSS animation or transition is over (it ran to its end or was cut short). */
+export const SETTLE_EVENTS = [
+  "animationend",
+  "animationcancel",
+  "transitionend",
+  "transitioncancel",
+] as const;
+
+/**
+ * Calls `onSettle` when an animation or a transition of `element`, or of anything above it, is over.
+ * The watch in `observeMove` cannot tell an element that ends an animation a fraction of a pixel from
+ * where its last look put it (it sits inside the slack of the watched rectangle), yet the position
+ * the web view takes is rounded and that fraction can be a whole pixel; the end of the animation is
+ * the moment to look again. Returns the function that stops listening.
+ */
+export function observeSettle(
+  element: Element,
+  onSettle: () => void,
+  scope: Pick<EventTarget, "addEventListener" | "removeEventListener"> = document,
+): () => void {
+  const listener = (event: Event): void => {
+    const target = event.target as { contains?: (other: unknown) => boolean } | null;
+    if (target !== null && typeof target.contains === "function" && target.contains(element)) {
+      onSettle();
+    }
+  };
+  for (const name of SETTLE_EVENTS) scope.addEventListener(name, listener, true);
+  return () => {
+    for (const name of SETTLE_EVENTS) scope.removeEventListener(name, listener, true);
+  };
+}

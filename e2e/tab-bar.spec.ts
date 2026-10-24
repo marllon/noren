@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { afterAnimations } from "./frames";
 import { seedSidebarState } from "./sidebar-fixture";
 import {
   GLASS_GAP,
@@ -55,14 +56,7 @@ async function startWithTopTabs(page: Page, extra: Record<string, unknown> = {})
 
 /** Waits for the sidebar to stop moving: it slides out when the mode changes. */
 async function settled(page: Page): Promise<void> {
-  await expect
-    .poll(async () => {
-      const before = await box(sidebar(page));
-      await page.waitForTimeout(80);
-      const after = await box(sidebar(page));
-      return before.x === after.x && before.width === after.width;
-    })
-    .toBe(true);
+  await afterAnimations(page);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -263,6 +257,11 @@ test("the keyboard reaches the bar: arrows move between tabs and group headers, 
   await startWithTopTabs(page);
   await page.goto("/");
 
+  // A terminal takes the keyboard when its shell is up and it mounts (on the page's first tab and
+  // on any tab shown for the first time), which would pull the focus away from a bar the test
+  // already focused: wait for that before taking the keyboard to the bar.
+  const terminalInput = page.getByRole("textbox", { name: "Terminal input", exact: true });
+  await expect(terminalInput).toBeFocused();
   await barTab(page, "notes").focus();
   await page.keyboard.press("ArrowRight");
   await expect(header(page)).toBeFocused();
@@ -273,7 +272,8 @@ test("the keyboard reaches the bar: arrows move between tabs and group headers, 
   await page.keyboard.press("Enter");
   await expect(barTab(page, "build")).toHaveAttribute("aria-current", "true");
 
-  // Activating a tab sends the focus to its terminal; come back to the bar.
+  // Activating a tab sends the focus to its terminal, once the terminal is there; come back to the bar.
+  await expect(terminalInput).toBeFocused();
   await barTab(page, "build").focus();
   await page.keyboard.press("End");
   await expect(newTab(page)).toBeFocused();

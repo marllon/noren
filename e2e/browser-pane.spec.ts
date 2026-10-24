@@ -365,6 +365,47 @@ test.describe("after a reload", () => {
     // One shell for the terminal; none for the page.
     expect(await shells(page)).toBe(1);
   });
+
+  test("the web view sits on the area once the space has slid in, however far into a pixel it stopped", async ({
+    page,
+  }) => {
+    const id = await start(page);
+    await openPane(page, id);
+    await expectInSight(page);
+
+    // After a reload the space slides in for 160 ms and the area moves with it. The watch for a move
+    // sees the area as still in place while it stays inside the pixels around where it was last
+    // measured, and the web view takes the rounded place: an animation that ends a fraction of a pixel
+    // from its last measure left the view a pixel off. The page holds the slide (playback rate 0),
+    // stops it where the area is at a fraction of a pixel, waits for the view to follow, and lets it end.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Animation.enable");
+    await cdp.send("Animation.setPlaybackRate", { playbackRate: 0 });
+    await page.reload();
+    await expect(browserPane(page)).toBeVisible();
+    const stoppedAt = await page.evaluate(() => {
+      const host = document.querySelector("[data-nr-part=browser-view]");
+      if (host === null) throw new Error("no area");
+      const slides = document.getAnimations();
+      const at = (time: number): number => {
+        for (const slide of slides) slide.currentTime = time;
+        return host.getBoundingClientRect().left;
+      };
+      // Where the slide ends, then the last moment the area is a fraction of a pixel short of it.
+      const end = at(160);
+      for (let time = 159; time >= 0; time -= 1) {
+        const apart = at(time) - end;
+        if (apart >= 0.55 && apart <= 0.9) return time;
+      }
+      throw new Error("the area is never at a fraction of a pixel in the slide");
+    });
+    expect(stoppedAt).toBeGreaterThan(0);
+    await expectInSight(page);
+    await page.evaluate(() => {
+      for (const slide of document.getAnimations()) slide.finish();
+    });
+    await expectInSight(page);
+  });
 });
 
 test.describe("the web view follows its pane", () => {

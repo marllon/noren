@@ -6,7 +6,7 @@ import { BrowserPaneView } from "./browser-view";
 import type { BrowserViewBackend } from "./browser-view";
 import { useT } from "./i18n";
 import { useWindowCovered } from "./native-cover";
-import { observeMove } from "./observe-move";
+import { observeMove, observeSettle } from "./observe-move";
 
 interface BrowserPaneProps {
   backend: BrowserViewBackend;
@@ -108,8 +108,15 @@ export function BrowserPane({ backend, pane, visible, onNavigate }: BrowserPaneP
       mover.refresh();
     });
     observer.observe(host);
+    // An animation above the pane (the space sliding in) ends where the watch for a move may not
+    // notice it: the web view would stay a pixel off. Look again, and watch from the new place.
+    const stopSettle = observeSettle(host, () => {
+      follow();
+      mover.refresh();
+    });
     window.addEventListener("resize", follow);
     return () => {
+      stopSettle();
       observer.disconnect();
       mover.stop();
       window.removeEventListener("resize", follow);

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { afterAnimations } from "./frames";
 import { seedSidebarState } from "./sidebar-fixture";
 import {
   DENSE_CONFIG,
@@ -36,14 +37,7 @@ async function box(locator: ReturnType<typeof sidebar>) {
 
 /** Waits for the sidebar to stop moving, since a change of mode or side slides it. */
 async function settled(page: Page): Promise<void> {
-  await expect
-    .poll(async () => {
-      const before = await box(sidebar(page));
-      await page.waitForTimeout(80);
-      const after = await box(sidebar(page));
-      return before.x === after.x && before.width === after.width;
-    })
-    .toBe(true);
+  await afterAnimations(page);
 }
 
 /** Changes settings in the screen, saves them and waits for the sidebar to settle. */
@@ -297,8 +291,9 @@ test.describe("compact mode", () => {
     });
 
     await page.mouse.move(700, 400);
-    await page.waitForTimeout(300);
     await expect(sidebar(page)).not.toHaveAttribute("data-nr-state", /.*/);
+    // The sidebar slides back into the layout (and the content with it): measure it where it stops.
+    await afterAnimations(page);
     const side = await box(sidebar(page));
     expect(side.x).toBe(0);
     expect(side.width).toBe(200);

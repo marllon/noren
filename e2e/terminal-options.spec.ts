@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { WEB_CONFIG_KEY, configText, openShortcutsScreen, seedConfig } from "./settings-fixture";
-import { openCommandPalette } from "./palette-fixture";
+import { chooseFirstOption, openCommandPalette } from "./palette-fixture";
 
 // The terminal takes its font, cursor, scrollback and bell from the `terminal` settings of
 // config.jsonc, and Ctrl+= / Ctrl+- / Ctrl+0 zoom the font of every terminal of the window without
@@ -411,7 +411,9 @@ test.describe("the zoom of the font", () => {
 
     await openCommandPalette(page);
     await page.getByRole("combobox", { name: "Command palette", exact: true }).fill("reset font");
-    await page.keyboard.press("Enter");
+    // Enter takes the row that is selected: wait for the list to be the filtered one, with its first
+    // row selected, or the key runs the row the unfiltered list had selected.
+    await chooseFirstOption(page, "Reset font size");
     await expect.poll(() => size(page)).toBe(14);
   });
 

@@ -67,7 +67,10 @@ function SpaceButton({ space, index, active, onActivate, onMenu }: SpaceButtonPr
         </span>
       )}
       {words.length > 0 && (
-        <span id={descriptionId} className="sr-only">
+        // Hidden from the tree on purpose: the button is named by `aria-label` and this is read as its
+        // description (`aria-describedby` reads hidden content); left in the tree, its text counts as
+        // visible text of the button that the name does not hold (axe label-content-name-mismatch).
+        <span id={descriptionId} className="sr-only" aria-hidden="true">
           {words.join(". ")}
         </span>
       )}

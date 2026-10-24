@@ -31,6 +31,20 @@ test("axe: the main window with the sidebar and a terminal has no axe violation"
   await expectNoAxeViolations(page, "main window");
 });
 
+test("axe: a space button with a mark has no axe violation, and still says the mark", async ({
+  page,
+}) => {
+  await openMain(page);
+  const main = page
+    .getByRole("navigation", { name: "Spaces", exact: true })
+    .getByRole("button", { name: "Main", exact: true });
+  // The seeded tabs that are not on screen carry marks (unread output and a bell), and the space
+  // shows them: its button holds the words for them, which are not part of its name.
+  await expect(main.locator("[data-nr-indicator]").first()).toBeVisible();
+  await expect(main).toHaveAccessibleDescription(/Unread output|Bell/);
+  await expectNoAxeViolations(page, "space button with a mark");
+});
+
 test("axe: the command palette has no axe violation", async ({ page }) => {
   await openMain(page);
   await openCommandPalette(page);

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { afterNextFrame } from "./frames";
 
 type Start = { profileId?: string; cwd?: string; env?: Record<string, string> };
 type TestHook = { writeCalls(): number; sessionStarts(): Start[] };
@@ -92,10 +93,15 @@ test("one gesture moves one space even when the wheel keeps going", async ({ pag
   await expectActive(page, "Main");
   await pointAtSidebar(page);
 
-  for (let i = 0; i < 6; i += 1) await page.mouse.wheel(100, 0);
+  // One gesture is events less than 200 ms apart. Sent one after the other, each wheel call waits for
+  // the page to take its event, which is 60 to 200 ms in a run with little load and more in a loaded
+  // one: the gaps would end the gesture and the next event would start another. Sent together they
+  // reach the page together, as the events of a wheel that keeps turning do.
+  await Promise.all(Array.from({ length: 6 }, () => page.mouse.wheel(100, 0)));
   await expectActive(page, "Alpha");
-  // Give the rest of the events time to land: it must not have gone on to Beta.
-  await page.waitForTimeout(150);
+  // Every event has been taken by the page when the calls return; a frame later, the app has had its
+  // say on all of them: it must not have gone on to Beta.
+  await afterNextFrame(page);
   await expectActive(page, "Alpha");
 });
 

@@ -36,6 +36,17 @@ fn powershell_profile() -> Option<Profile> {
 
 /// Reads output until `needle` (raw text) shows up after the first `from` bytes already seen.
 fn wait_for(rx: &Receiver<Vec<u8>>, seen: &mut Vec<u8>, needle: &str, from: usize) -> usize {
+    wait_for_each(rx, seen, needle, from, &mut |_| {})
+}
+
+/// [`wait_for`] that also hands every new chunk of output to `on_chunk` as it arrives.
+fn wait_for_each(
+    rx: &Receiver<Vec<u8>>,
+    seen: &mut Vec<u8>,
+    needle: &str,
+    from: usize,
+    on_chunk: &mut dyn FnMut(&[u8]),
+) -> usize {
     let deadline = Instant::now() + STEP_TIMEOUT;
     loop {
         let text = String::from_utf8_lossy(seen).into_owned();
@@ -44,13 +55,38 @@ fn wait_for(rx: &Receiver<Vec<u8>>, seen: &mut Vec<u8>, needle: &str, from: usiz
         }
         let left = deadline.saturating_duration_since(Instant::now());
         match rx.recv_timeout(left) {
-            Ok(bytes) => seen.extend_from_slice(&bytes),
+            Ok(bytes) => {
+                // The last 3 bytes already seen come along: a sequence can be split between chunks.
+                let tail = seen.len().saturating_sub(3);
+                seen.extend_from_slice(&bytes);
+                on_chunk(&seen[tail..]);
+            }
             Err(_) => panic!(
                 "{needle:?} not found within {STEP_TIMEOUT:?}; output so far: {:?}",
                 String::from_utf8_lossy(seen)
             ),
         }
     }
+}
+
+/// [`wait_for`] for PowerShell: on Linux its line editor asks where the cursor is (`ESC [ 6 n`)
+/// and reads the answer from the input, so what is typed in the meantime is eaten and the
+/// prompt is drawn over. A terminal always answers; the test does too, once per question.
+fn wait_for_pwsh(
+    manager: &SessionManager,
+    id: noren_core::SessionId,
+    rx: &Receiver<Vec<u8>>,
+    seen: &mut Vec<u8>,
+    needle: &str,
+    from: usize,
+) -> usize {
+    let mut answer = |chunk: &[u8]| {
+        let questions = chunk.windows(4).filter(|part| *part == b"[6n").count();
+        for _ in 0..questions {
+            let _ = manager.write(id, b"[1;1R");
+        }
+    };
+    wait_for_each(rx, seen, needle, from, &mut answer)
 }
 
 fn run() {
@@ -79,7 +115,7 @@ fn run() {
 
     let mut seen = Vec::new();
     // The first prompt: folder, prompt start and prompt end, and no command ended before it.
-    let mut at = wait_for(&rx, &mut seen, "\x1b]133;B\x07", 0);
+    let mut at = wait_for_pwsh(&manager, id, &rx, &mut seen, "\x1b]133;B\x07", 0);
     let first = String::from_utf8_lossy(&seen).into_owned();
     assert!(first.contains("\x1b]7;file://"), "OSC 7 missing: {first:?}");
     assert!(
@@ -97,7 +133,7 @@ fn run() {
     #[cfg(not(windows))]
     let failing: &[u8] = b"sh -c 'exit 3'\r";
     manager.write(id, failing).expect("write the command");
-    at = wait_for(&rx, &mut seen, "\x1b]133;D;3\x07", at);
+    at = wait_for_pwsh(&manager, id, &rx, &mut seen, "\x1b]133;D;3\x07", at);
 
     let text = String::from_utf8_lossy(&seen).into_owned();
     let command_line = text.find("\x1b]633;E;").expect("OSC 633;E missing");
@@ -110,19 +146,19 @@ fn run() {
     #[cfg(windows)]
     assert!(text.contains("\x1b]633;E;cmd /c exit 3\x07"), "{text:?}");
     // The next prompt follows the end of the command.
-    at = wait_for(&rx, &mut seen, "\x1b]133;B\x07", at);
+    at = wait_for_pwsh(&manager, id, &rx, &mut seen, "\x1b]133;B\x07", at);
 
     // A command that succeeds ends with code 0, and a line with a ';' is escaped.
     manager
         .write(id, b"$null = 'a'; $null = 'b'\r")
         .expect("write the command");
-    at = wait_for(&rx, &mut seen, "\x1b]133;D;0\x07", at);
+    at = wait_for_pwsh(&manager, id, &rx, &mut seen, "\x1b]133;D;0\x07", at);
     let text = String::from_utf8_lossy(&seen).into_owned();
     assert!(
         text.contains("\x1b]633;E;$null = 'a'\\x3b $null = 'b'\x07"),
         "{text:?}"
     );
-    wait_for(&rx, &mut seen, "\x1b]133;B\x07", at);
+    wait_for_pwsh(&manager, id, &rx, &mut seen, "\x1b]133;B\x07", at);
 
     manager.kill(id).expect("kill the session");
     assert_eq!(manager.live_threads(), 0);
@@ -172,17 +208,31 @@ fn run_with_user_prompt() {
         .expect("spawn PowerShell");
 
     let mut seen = Vec::new();
-    let mut at = wait_for(&rx, &mut seen, "MINE:True> \x1b]133;B\x07", 0);
+    let mut at = wait_for_pwsh(&manager, id, &rx, &mut seen, "MINE:True> \x1b]133;B\x07", 0);
     #[cfg(windows)]
     let failing: &[u8] = b"cmd /c exit 3\r";
     #[cfg(not(windows))]
     let failing: &[u8] = b"sh -c 'exit 3'\r";
     manager.write(id, failing).expect("write the command");
-    at = wait_for(&rx, &mut seen, "MINE:False> \x1b]133;B\x07", at);
+    at = wait_for_pwsh(
+        &manager,
+        id,
+        &rx,
+        &mut seen,
+        "MINE:False> \x1b]133;B\x07",
+        at,
+    );
     manager
         .write(id, b"$null = 1\r")
         .expect("write the command");
-    wait_for(&rx, &mut seen, "MINE:True> \x1b]133;B\x07", at);
+    wait_for_pwsh(
+        &manager,
+        id,
+        &rx,
+        &mut seen,
+        "MINE:True> \x1b]133;B\x07",
+        at,
+    );
     let text = String::from_utf8_lossy(&seen).into_owned();
     assert!(text.contains("\x1b]133;D;3\x07"), "{text:?}");
     manager.kill(id).expect("kill the session");

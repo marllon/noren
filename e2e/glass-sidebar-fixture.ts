@@ -1,4 +1,4 @@
-import { expect } from "@playwright/test";
+import { expect } from "./test";
 import type { Page } from "@playwright/test";
 import { NOREN_DUSK, NOREN_PAPER } from "../packages/model/src/builtin-themes";
 import { seedConfig } from "./settings-fixture";

@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Locator, Page } from "@playwright/test";
 import { closeSettings, changeSettings, openSettings, seedConfig } from "./settings-fixture";
 import { seedSidebarState } from "./sidebar-fixture";

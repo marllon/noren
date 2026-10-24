@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, newServedContext, test } from "./test";
 import type { Locator, Page } from "@playwright/test";
 import { clicksReachThePage, seedSidebarState } from "./sidebar-fixture";
 import { openCommandPalette } from "./palette-fixture";
@@ -445,8 +445,9 @@ test("in a browser without a second window, dragging out does nothing and the pa
 
 test("Portuguese: the notice and the palette command are in the language of the page", async ({
   browser,
+  baseURL,
 }) => {
-  const context = await browser.newContext({ locale: "pt-BR" });
+  const context = await newServedContext(browser, baseURL, { locale: "pt-BR" });
   const page = await context.newPage();
   await seedSidebarState(page, { secondSpace: true });
   await page.goto("/");

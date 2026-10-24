@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Page } from "@playwright/test";
 
 // After the machine restarts (NOR-F14-03): the layout comes back with a new shell in the folder of

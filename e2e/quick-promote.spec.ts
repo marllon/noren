@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Page } from "@playwright/test";
 
 // A shell the quick window opened is promoted to a tab of the main window without restarting it.

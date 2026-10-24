@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Locator, Page } from "@playwright/test";
 import { FAKE_GALLERY_LAGOON } from "../packages/model/src/gallery-fixture";
 import { expectNoAxeViolations } from "./axe-fixture";

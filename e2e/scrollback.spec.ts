@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, newServedContext, test } from "./test";
 import type { Page } from "@playwright/test";
 
 // The scrollback of a pane is saved when the window closes and every minute for the panes that had
@@ -410,6 +410,7 @@ test("turning the setting off while the app runs removes the files at once and n
 
 test("the saved text is cleaned: a sequence that would change the terminal or make it answer does nothing", async ({
   browser,
+  baseURL,
   page,
 }) => {
   const hostile = [
@@ -429,7 +430,7 @@ test("the saved text is cleaned: a sequence that would change the terminal or ma
   // A real terminal answers a request for the cursor position by typing the answer to the shell, so
   // the harness sees a write. Checked first, on a page of its own with nothing to restore, so the
   // zero below means something.
-  const control = await (await browser.newContext()).newPage();
+  const control = await (await newServedContext(browser, baseURL)).newPage();
   await control.goto("/");
   await waitForPrompt(control);
   await control.evaluate(() => {

@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect } from "@playwright/test";
+import { expect } from "./test";
 import type { Page } from "@playwright/test";
 
 // The axe-core check the accessibility tests share. It fails on a violation of any impact

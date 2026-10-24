@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import { manyTabsState } from "./many-tabs-fixture";
 
 // NOR-F11-01c: a start with 30 tabs mounts 30 terminals at once. The WebGL context of a tab out of

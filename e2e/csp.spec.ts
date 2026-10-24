@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Page } from "@playwright/test";
 import { plugin, seedPlugins } from "./plugins-fixture";
 import { openSettings, seedConfig } from "./settings-fixture";

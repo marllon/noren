@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Locator, Page } from "@playwright/test";
 import type { BenchRun } from "../packages/model/src/bench-runner";
 import { BENCH_CSV_HEADER } from "../packages/model/src/bench-scoreboard";

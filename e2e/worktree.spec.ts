@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Locator, Page } from "@playwright/test";
 import { seedGitRepos } from "./sidebar-fixture";
 import { runPaletteCommand } from "./palette-fixture";

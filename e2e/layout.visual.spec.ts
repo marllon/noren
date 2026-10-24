@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import { seedConfig } from "./settings-fixture";
 import { seedSidebarState } from "./sidebar-fixture";
 

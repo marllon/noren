@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Page } from "@playwright/test";
 import { WEB_CONFIG_KEY, configText, openShortcutsScreen, seedConfig } from "./settings-fixture";
 import { chooseFirstOption, openCommandPalette } from "./palette-fixture";

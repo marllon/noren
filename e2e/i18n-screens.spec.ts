@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Locator, Page } from "@playwright/test";
 import { en } from "../apps/desktop/src/i18n/en";
 import { ptBR } from "../apps/desktop/src/i18n/pt-BR";

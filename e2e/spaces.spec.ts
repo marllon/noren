@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Page } from "@playwright/test";
 
 type Start = { profileId?: string; cwd?: string; env?: Record<string, string> };

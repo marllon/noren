@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, newServedContext, test } from "./test";
 import type { Browser, Locator, Page } from "@playwright/test";
 import { seedSidebarState } from "./sidebar-fixture";
 import { manyTabsState } from "./many-tabs-fixture";
@@ -119,7 +119,7 @@ async function freshPage(
   baseURL: string | undefined,
   state?: string,
 ): Promise<Page> {
-  const page = await (await browser.newContext(baseURL === undefined ? {} : { baseURL })).newPage();
+  const page = await (await newServedContext(browser, baseURL)).newPage();
   if (state !== undefined) {
     await page.addInitScript(
       ({ key, value }) => {

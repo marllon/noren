@@ -1,4 +1,4 @@
-import { expect } from "@playwright/test";
+import { expect } from "./test";
 import type { Locator, Page } from "@playwright/test";
 
 // Helpers for the tests that use the settings screen: it is the only place the layout, the

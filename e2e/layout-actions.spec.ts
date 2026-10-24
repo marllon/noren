@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Locator, Page } from "@playwright/test";
 import { changeSettings, configText, openShortcutsScreen, seedConfig } from "./settings-fixture";
 import { afterNextFrame } from "./frames";

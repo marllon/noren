@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Page } from "@playwright/test";
 
 // A terminal never grows past its window (NOR-F20-15d, finding 376).

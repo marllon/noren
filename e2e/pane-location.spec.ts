@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Page } from "@playwright/test";
 import { SIDEBAR_REPOS, SPLIT_FIXTURE, seedGitRepos, seedSidebarState } from "./sidebar-fixture";
 

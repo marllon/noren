@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { expect, test } from "@playwright/test";
+import { expect, newServedContext, test } from "./test";
 import type { Locator, Page } from "@playwright/test";
 import { NOREN_DUSK, NOREN_PAPER } from "../packages/model/src/builtin-themes";
 import { contrastRatio } from "../packages/model/src/theme";
@@ -923,8 +923,7 @@ test.describe("what the editor does is what it did", () => {
     baseURL,
   }) => {
     const dense = await flow(page, "dense");
-    const context = await browser.newContext({
-      ...(baseURL === undefined ? {} : { baseURL }),
+    const context = await newServedContext(browser, baseURL, {
       viewport: { width: 1280, height: 800 },
     });
     try {

@@ -1,4 +1,4 @@
-import { expect } from "@playwright/test";
+import { expect } from "./test";
 import type { Locator, Page } from "@playwright/test";
 import { afterNextFrame } from "./frames";
 

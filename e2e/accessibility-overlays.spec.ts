@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Locator, Page } from "@playwright/test";
 import { JSON_PROFILES_FILE } from "../packages/model/src/import-fixtures";
 import { expectNoAxeViolations } from "./axe-fixture";

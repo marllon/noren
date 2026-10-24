@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Locator, Page } from "@playwright/test";
 import { BENCH_MODEL_CATALOG, recommendedBenchModels } from "../packages/model/src/bench-models";
 import type { BenchHardware } from "../packages/model/src/bench-models";

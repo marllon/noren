@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Page } from "@playwright/test";
 
 // Values of the Noren Dusk and Noren Paper themes (apps/desktop/src/theme.ts).

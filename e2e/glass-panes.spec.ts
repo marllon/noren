@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import type { Locator, Page } from "@playwright/test";
 import { contrastRatio } from "../packages/model/src/theme";
 import { expectNoAxeViolations } from "./axe-fixture";

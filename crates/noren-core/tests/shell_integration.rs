@@ -7,8 +7,10 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[cfg(windows)]
+use noren_core::is_cmd;
 use noren_core::{
-    BASH_SCRIPT, Profile, SessionEvent, SessionManager, detect_system_profiles, is_bash, is_cmd,
+    BASH_SCRIPT, Profile, SessionEvent, SessionManager, detect_system_profiles, is_bash,
     is_powershell,
 };
 

@@ -495,6 +495,10 @@ export class TauriBackend implements Backend {
     await this.#bridge.invoke("quick_shortcut_set", { chord });
   }
 
+  async setLinkRegistered(registered: boolean): Promise<void> {
+    await this.#bridge.invoke("deep_link_register_set", { registered });
+  }
+
   async write(id: SessionId, data: string | Uint8Array): Promise<void> {
     await this.#bridge.invoke("session_write", {
       id,

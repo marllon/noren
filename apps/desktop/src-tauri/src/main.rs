@@ -157,7 +157,8 @@ fn main() {
     // No web view of the app may navigate away from the pages the app serves.
     builder = builder.plugin(navigation::guard());
     // The scheme itself is declared in tauri.conf.json (plugins > deep-link) and written by the
-    // installer. Nothing here registers it at run time or touches the registry.
+    // installer. Nothing here registers it at run time or touches the registry: that is the
+    // option of the settings, which calls `deeplink::deep_link_register_set` when it is changed.
     builder = builder.plugin(tauri_plugin_deep_link::init());
     // Only the Rust side of the plugin is used (see notify.rs); nothing is shown until asked.
     builder = builder.plugin(tauri_plugin_notification::init());
@@ -318,6 +319,7 @@ fn main() {
             notify::window_is_focused,
             deeplink::deep_link_take_waiting,
             deeplink::deep_link_applied,
+            deeplink::deep_link_register_set,
             api_bridge::api_respond,
             api_bridge::api_ready,
             api_events::api_agent_state,

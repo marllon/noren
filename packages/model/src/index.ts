@@ -274,6 +274,7 @@ export { codeBlocksOf, markdownText, parseMarkdown } from "./markdown";
 export type { MdBlock, MdCode, MdInline } from "./markdown";
 export {
   ConfigSchema,
+  DEFAULT_DEEP_LINK_REGISTERED,
   LANGUAGES,
   LANGUAGE_SETTINGS,
   SIDEBAR_MAX_WIDTH,

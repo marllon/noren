@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { configJsonSchema } from "./index";
+import { DEFAULT_DEEP_LINK_REGISTERED, configJsonSchema, parseConfigText } from "./index";
 
 // `docs/config.schema.json` is what an editor reads to complete and check `config.jsonc`. It is
 // generated from the zod schema in `config.ts`; this test fails when the two differ. To update it,
@@ -34,6 +34,31 @@ describe("docs/config.schema.json", () => {
       expect(schema.properties[group]?.additionalProperties).toBe(false);
       expect(schema.properties[group]?.required ?? []).toEqual([]);
     }
+  });
+
+  it("leaves the noren:// link unregistered unless the file says so", () => {
+    const schema = configJsonSchema() as {
+      properties: {
+        deepLink: {
+          additionalProperties: boolean;
+          properties: { registered: { type: string; default: boolean } };
+        };
+      };
+    };
+    expect(DEFAULT_DEEP_LINK_REGISTERED).toBe(false);
+    expect(schema.properties.deepLink.additionalProperties).toBe(false);
+    expect(schema.properties.deepLink.properties.registered).toMatchObject({
+      type: "boolean",
+      default: false,
+    });
+    // A file that says nothing about the link leaves it unset, which the settings read as off.
+    expect(parseConfigText("{}")).toEqual({ ok: true, config: {} });
+    expect(parseConfigText('{ "deepLink": {} }')).toEqual({ ok: true, config: { deepLink: {} } });
+    expect(parseConfigText('{ "deepLink": { "registered": true } }')).toEqual({
+      ok: true,
+      config: { deepLink: { registered: true } },
+    });
+    expect(parseConfigText('{ "deepLink": { "registered": "yes" } }').ok).toBe(false);
   });
 
   it("describes the sidebar position and its range of width", () => {

@@ -14,6 +14,7 @@ import { BELL_FLASH_MS, beep, beeps, flashes } from "./bell";
 import { attachCommandMarks, markColors } from "./command-marks-view";
 import type { CommandMarkInfo, CommandOutput, TerminalCommandMarks } from "./command-marks-view";
 import type { ExplainRequest } from "./ask-panel";
+import { limitGrid } from "./fit-limit";
 import { requestExternalLink } from "./link-prompt";
 import { parseOsc7 } from "./osc7";
 import { decidePaste, insertableText } from "./paste";
@@ -463,9 +464,29 @@ export function TerminalView({
     if (start0.webglFirst || hasSize()) attachWebgl();
     else leaveQueue = preloadWebgl(attachWebgl);
 
+    // The grid that fits the host, never larger than the window. The host has the size of its pane
+    // while the page is styled; without that (a stylesheet that did not load) it takes the size of the
+    // terminal inside it, and every fit would make the terminal taller than the one before.
+    const fitInsideWindow = () => {
+      const proposed = fit.proposeDimensions();
+      if (proposed === undefined || Number.isNaN(proposed.cols) || Number.isNaN(proposed.rows)) {
+        return;
+      }
+      const screen = term.element?.querySelector<HTMLElement>(".xterm-screen");
+      const cell = {
+        width: screen === null || screen === undefined ? 0 : screen.offsetWidth / term.cols,
+        height: screen === null || screen === undefined ? 0 : screen.offsetHeight / term.rows,
+      };
+      const area = { width: window.innerWidth, height: window.innerHeight };
+      const limited = limitGrid(proposed, cell, area);
+      if (limited.cols === proposed.cols && limited.rows === proposed.rows) fit.fit();
+      else if (limited.cols !== term.cols || limited.rows !== term.rows) {
+        term.resize(limited.cols, limited.rows);
+      }
+    };
     const safeFit = () => {
       try {
-        fit.fit();
+        fitInsideWindow();
       } catch {
         // The container has no size yet (hidden or detached); the next observation fits.
       }

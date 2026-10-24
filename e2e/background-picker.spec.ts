@@ -86,6 +86,23 @@ const thumbnailFacts = (within: Locator): Promise<{ src: string; width: number; 
     return { src: image.src, width: image.naturalWidth, height: image.naturalHeight };
   });
 
+/**
+ * The preview once the picture is decoded. The element is on screen (and visible) a moment before
+ * its bytes are read and decoded, so the size, which is `0` until then, is waited for and never
+ * read at once.
+ */
+async function decodedThumbnail(
+  within: Locator,
+): Promise<{ src: string; width: number; height: number }> {
+  await expect
+    .poll(async () => {
+      const size = await thumbnailFacts(within);
+      return [size.width, size.height];
+    })
+    .toEqual([48, 32]);
+  return thumbnailFacts(within);
+}
+
 const backgroundSection = (screen: Locator): Locator =>
   screen.locator('[data-nr-part="settings-background"]');
 
@@ -163,9 +180,8 @@ test.describe("on a dark system", () => {
       // The preview is the picture itself, read by the app and held in memory (not fetched), and
       // the box shows the path that was chosen.
       await expect(thumbnail(section)).toBeVisible();
-      const facts = await thumbnailFacts(section);
+      const facts = await decodedThumbnail(section);
       expect(facts.src).toMatch(/^blob:/);
-      expect([facts.width, facts.height]).toEqual([48, 32]);
       await expect(thumbnail(section)).toHaveAttribute("alt", "Preview of the image");
       await expect(imageBox(section)).toHaveValue(PICTURE);
       await expect(remove).toBeEnabled();
@@ -248,7 +264,7 @@ test.describe("on a dark system", () => {
       const section = backgroundSection(screen);
       await imageBox(section).fill(OTHER);
       await expect(thumbnail(section)).toBeVisible();
-      expect((await thumbnailFacts(section)).width).toBe(48);
+      expect((await decodedThumbnail(section)).width).toBe(48);
       // A path that cannot be a background has no preview and asks the backend for nothing; the
       // box tells why, as before.
       await imageBox(section).fill("https://example.com/sky.png");
@@ -351,15 +367,7 @@ test.describe("on a dark system", () => {
         { title: "Choose a background image", filter: "Pictures" },
       ]);
       await expect(thumbnail(dialog)).toBeVisible();
-      // The picture is decoded a moment after the element is on screen (the glass window is slower to
-      // paint than the plain one was), so its size is waited for and not read at once.
-      await expect
-        .poll(async () => {
-          const size = await thumbnailFacts(dialog);
-          return [size.width, size.height];
-        })
-        .toEqual([48, 32]);
-      const facts = await thumbnailFacts(dialog);
+      const facts = await decodedThumbnail(dialog);
       expect(facts.src).toMatch(/^blob:/);
       await expect(imageBox(dialog, "Image file")).toHaveValue(PICTURE);
       await expect(layer(page)).toHaveCount(0);

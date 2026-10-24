@@ -276,7 +276,13 @@ impl BenchStore {
             // `symlink_metadata` also sees a link that points nowhere: a name taken is a name taken.
             match fs::symlink_metadata(&path) {
                 Ok(_) => continue,
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                // A path under a file is "not a directory" on Unix and "not found" on Windows:
+                // either way the name is free, and the write below says what is wrong.
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                    ) => {}
                 Err(error) => return Err(BenchError::Read(error)),
             }
             write_atomic(&path, text.as_bytes()).map_err(BenchError::Write)?;

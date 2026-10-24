@@ -18,6 +18,7 @@
     "shot": "node scripts/shot.mjs",
     "test:ssh": "node scripts/test-ssh.mjs",
     "desktop:build": "node scripts/desktop-build.mjs",
+    "desktop:portable": "node scripts/desktop-portable.mjs",
     "packages:generate": "node scripts/packages.mjs",
     "workflows:check": "node scripts/check-workflows.mjs",
     "licenses:check": "node scripts/check-licenses.mjs && node scripts/game-run.mjs cargo deny check licenses",

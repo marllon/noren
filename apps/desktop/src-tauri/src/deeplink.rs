@@ -251,6 +251,71 @@ pub fn deep_link_applied(links: State<'_, Links>, folder: Option<String>) {
     links.report(folder);
 }
 
+/// The scheme as the plugin spells it, without `://`.
+const SCHEME: &str = "noren";
+
+/// What the "register the link" option needs from the system: write the scheme in, take it out.
+/// The system implements it through the plugin; the tests use a list.
+trait LinkRegistry {
+    fn register(&self) -> Result<(), String>;
+    fn unregister(&self) -> Result<(), String>;
+}
+
+/// The registration of the system, through the deep-link plugin.
+struct SystemLinks<'a>(&'a AppHandle);
+
+#[cfg(any(windows, target_os = "linux"))]
+impl LinkRegistry for SystemLinks<'_> {
+    fn register(&self) -> Result<(), String> {
+        use tauri_plugin_deep_link::DeepLinkExt;
+        self.0
+            .deep_link()
+            .register(SCHEME)
+            .map_err(|e| format!("could not register the {SCHEME}:// link: {e}"))
+    }
+
+    fn unregister(&self) -> Result<(), String> {
+        use tauri_plugin_deep_link::DeepLinkExt;
+        self.0
+            .deep_link()
+            .unregister(SCHEME)
+            .map_err(|e| format!("could not remove the {SCHEME}:// link: {e}"))
+    }
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+impl LinkRegistry for SystemLinks<'_> {
+    fn register(&self) -> Result<(), String> {
+        Err(format!(
+            "registering the {SCHEME}:// link is not supported on this system"
+        ))
+    }
+
+    fn unregister(&self) -> Result<(), String> {
+        Err(format!(
+            "removing the {SCHEME}:// link is not supported on this system"
+        ))
+    }
+}
+
+/// Turns the link on (`true`) or off. Exactly one of the two calls is made, and its error is the
+/// answer.
+fn apply_registration<L: LinkRegistry>(links: &L, registered: bool) -> Result<(), String> {
+    if registered {
+        links.register()
+    } else {
+        links.unregister()
+    }
+}
+
+/// The person turned the option "Register the noren:// link on this computer" on or off in the
+/// settings. This is the only place that writes the scheme in the system or takes it out: nothing
+/// calls it at start, to bring the system in line with the file, or in a smoke run.
+#[tauri::command]
+pub fn deep_link_register_set(app: AppHandle, registered: bool) -> Result<(), String> {
+    apply_registration(&SystemLinks(&app), registered)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -482,5 +547,64 @@ mod tests {
         links.report(None);
         assert_eq!(rx.try_recv().unwrap().as_deref(), Some("/srv/proj"));
         assert_eq!(rx.try_recv().unwrap(), None);
+    }
+
+    /// A registry that only counts the calls it gets, and can refuse them.
+    #[derive(Default)]
+    struct CountingLinks {
+        calls: std::cell::RefCell<Vec<&'static str>>,
+        refuse: bool,
+    }
+
+    impl LinkRegistry for CountingLinks {
+        fn register(&self) -> Result<(), String> {
+            self.calls.borrow_mut().push("register");
+            if self.refuse {
+                Err("refused".into())
+            } else {
+                Ok(())
+            }
+        }
+
+        fn unregister(&self) -> Result<(), String> {
+            self.calls.borrow_mut().push("unregister");
+            if self.refuse {
+                Err("refused".into())
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn turning_the_link_on_registers_and_turning_it_off_removes() {
+        let on = CountingLinks::default();
+        assert_eq!(apply_registration(&on, true), Ok(()));
+        assert_eq!(*on.calls.borrow(), ["register"]);
+
+        let off = CountingLinks::default();
+        assert_eq!(apply_registration(&off, false), Ok(()));
+        assert_eq!(*off.calls.borrow(), ["unregister"]);
+    }
+
+    #[test]
+    fn a_refusal_of_the_system_is_the_answer() {
+        let links = CountingLinks {
+            refuse: true,
+            ..CountingLinks::default()
+        };
+        assert_eq!(apply_registration(&links, true), Err("refused".to_string()));
+        assert_eq!(*links.calls.borrow(), ["register"]);
+    }
+
+    #[test]
+    fn nothing_registers_the_link_at_start() {
+        // The plugin is loaded in `main.rs` to receive links; writing the scheme in the system is
+        // only done by `deep_link_register_set`, when the person changes the option.
+        let main = include_str!("main.rs");
+        assert!(!main.contains("register_all"));
+        assert!(!main.contains("deep_link().register"));
+        assert!(!main.contains("deep_link().unregister"));
+        assert!(main.contains("deeplink::deep_link_register_set"));
     }
 }

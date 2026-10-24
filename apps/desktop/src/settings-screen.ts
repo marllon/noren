@@ -1,5 +1,6 @@
 import {
   AI_FUNCTIONS,
+  DEFAULT_DEEP_LINK_REGISTERED,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_WINDOW_EFFECT,
   MAX_BACKGROUND_BLUR,
@@ -50,6 +51,8 @@ export interface SettingsValues extends Layout {
   notifications: boolean;
   /** A command that runs longer than this many seconds notifies when it ends out of sight. */
   longCommandSeconds: number;
+  /** Whether the person registered the `noren://` link on this computer. */
+  deepLink: boolean;
   /** The effect the system paints behind the window. */
   windowEffect: WindowEffect;
   /** The language of the interface: one of ours, or the language of the system. */
@@ -72,6 +75,7 @@ export const SETTING_PATHS: Readonly<Record<SettingKey, readonly string[]>> = {
   preset: ["keybindings", "preset"],
   notifications: ["notifications", "enabled"],
   longCommandSeconds: ["notifications", "longCommandSeconds"],
+  deepLink: ["deepLink", "registered"],
   windowEffect: ["appearance", "window", "effect"],
   language: ["language"],
 };
@@ -83,6 +87,7 @@ export const DEFAULT_SETTINGS: SettingsValues = {
   preset: "safe",
   notifications: DEFAULT_NOTIFICATION_SETTINGS.enabled,
   longCommandSeconds: DEFAULT_NOTIFICATION_SETTINGS.longCommandMs / 1000,
+  deepLink: DEFAULT_DEEP_LINK_REGISTERED,
   windowEffect: DEFAULT_WINDOW_EFFECT,
   language: SYSTEM_LANGUAGE,
 };
@@ -99,6 +104,7 @@ export function settingsOf(config: Config): SettingsValues {
     ...(config.notifications?.longCommandSeconds !== undefined
       ? { longCommandSeconds: config.notifications.longCommandSeconds }
       : {}),
+    ...(config.deepLink?.registered !== undefined ? { deepLink: config.deepLink.registered } : {}),
     ...(config.appearance?.window?.effect !== undefined
       ? { windowEffect: config.appearance.window.effect }
       : {}),
@@ -112,6 +118,7 @@ export function settingsSetBy(config: Config): ReadonlySet<SettingKey> {
   if (config.keybindings?.preset !== undefined) set.add("preset");
   if (config.notifications?.enabled !== undefined) set.add("notifications");
   if (config.notifications?.longCommandSeconds !== undefined) set.add("longCommandSeconds");
+  if (config.deepLink?.registered !== undefined) set.add("deepLink");
   if (config.appearance?.window?.effect !== undefined) set.add("windowEffect");
   if (config.language !== undefined) set.add("language");
   return set;

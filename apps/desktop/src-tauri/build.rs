@@ -95,6 +95,7 @@ const COMMANDS: &[&str] = &[
     "window_is_focused",
     "deep_link_take_waiting",
     "deep_link_applied",
+    "deep_link_register_set",
     "api_respond",
     "api_ready",
     "api_agent_state",

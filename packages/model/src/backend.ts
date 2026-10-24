@@ -218,6 +218,12 @@ export interface Backend {
    * another program has it). Resolves without registering anything when the run is a smoke run.
    */
   setQuickShortcut(chord: string | null): Promise<void>;
+  /**
+   * Writes the `noren://` link into the system, so a click on such a link opens Noren (`true`), or
+   * takes it out (`false`). Called only when the person changes the option in the settings, never
+   * at start. Rejects with the reason, for example on a system where the link cannot be registered.
+   */
+  setLinkRegistered(registered: boolean): Promise<void>;
   /** Sends keyboard input (text) or raw bytes (for example a paste) to the shell. */
   write(id: SessionId, data: string | Uint8Array): Promise<void>;
   resize(id: SessionId, cols: number, rows: number): Promise<void>;

@@ -51,6 +51,7 @@ const EVERYTHING: Config = {
   },
   keybindings: { preset: "browser" },
   notifications: { enabled: false, longCommandSeconds: 90 },
+  deepLink: { registered: true },
 };
 
 describe("settingsOf", () => {
@@ -61,6 +62,7 @@ describe("settingsOf", () => {
       preset: "safe",
       notifications: true,
       longCommandSeconds: 30,
+      deepLink: false,
       windowEffect: "none",
       language: "system",
     });
@@ -80,6 +82,7 @@ describe("settingsOf", () => {
       preset: "browser",
       notifications: false,
       longCommandSeconds: 90,
+      deepLink: true,
       windowEffect: "mica",
       language: "pt-BR",
     });
@@ -93,6 +96,30 @@ describe("settingsOf", () => {
     const set = settingsOf({ notifications: { enabled: false, longCommandSeconds: 0 } });
     expect(set.notifications).toBe(false);
     expect(set.longCommandSeconds).toBe(0);
+  });
+});
+
+describe("the noren:// link setting", () => {
+  it("is off for a file that says nothing about it", () => {
+    expect(DEFAULT_SETTINGS.deepLink).toBe(false);
+    expect(settingsOf({}).deepLink).toBe(false);
+    expect(settingsOf({ deepLink: {} }).deepLink).toBe(false);
+    expect(shownSettings({}, {}).deepLink).toBe(false);
+    expect(settingsSetBy({}).has("deepLink")).toBe(false);
+  });
+
+  it("is on only when the file says so, and is written at its place in the file", () => {
+    expect(settingsOf({ deepLink: { registered: true } }).deepLink).toBe(true);
+    expect(settingsSetBy({ deepLink: { registered: false } }).has("deepLink")).toBe(true);
+    expect(SETTING_PATHS.deepLink).toEqual(["deepLink", "registered"]);
+    expect(planSave({}, { deepLink: true }).changes).toEqual([
+      { path: ["deepLink", "registered"], value: true },
+    ]);
+    expect(planSave({ deepLink: { registered: true } }, { deepLink: false }).changes).toEqual([
+      { path: ["deepLink", "registered"], value: false },
+    ]);
+    // Off over off writes nothing.
+    expect(planSave({}, { deepLink: false }).changes).toEqual([]);
   });
 });
 

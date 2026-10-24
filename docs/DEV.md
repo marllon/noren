@@ -151,7 +151,7 @@ The interactive uninstaller offers to delete the app data; the silent one keeps 
 pnpm desktop:portable
 ```
 
-`scripts/desktop-portable.mjs` builds `norend` (`cargo build -p norend --release --locked`) and the app (`tauri build --no-bundle`, release), then recreates `dist-portable/Noren/` from scratch with `noren.exe`, `norend.exe` and `resources/shell-integration/**`, and zips it as `dist-portable/Noren-portable.zip` with the system `tar -a -c -f`. Both are ignored by git. The app finds `norend.exe` next to itself and the shell scripts under `resources/` next to the program, so the folder runs from any place and writes nothing to the registry when it opens (the `noren://` link is only written by the installers). The script fails with the names of the files the build did not leave. The release build uses the Windows subsystem and prints nothing to a console, so to read the output of `noren.exe --smoke` redirect it: `./noren.exe --smoke > out.txt 2>&1`.
+`scripts/desktop-portable.mjs` builds `norend` (`cargo build -p norend --release --locked`) and the app (`tauri build --no-bundle`, release), then recreates `dist-portable/Noren/` from scratch with `noren.exe`, `norend.exe` and `resources/shell-integration/**`, and zips it as `dist-portable/Noren-portable.zip` with the system `tar -a -c -f`. Both are ignored by git. The app finds `norend.exe` next to itself and the shell scripts under `resources/` next to the program, so the folder runs from any place and writes nothing to the registry when it opens (the `noren://` link is written by the installers or, in a portable copy, by the option **Register the noren:// link on this computer** of the settings, which is off by default). The script fails with the names of the files the build did not leave. The release build uses the Windows subsystem and prints nothing to a console, so to read the output of `noren.exe --smoke` redirect it: `./noren.exe --smoke > out.txt 2>&1`.
 
 Where data lives (identifier `io.github.marllon.noren`):
 
@@ -161,8 +161,9 @@ Where data lives (identifier `io.github.marllon.noren`):
 | Interface preferences (theme, layout, pane headers), kept in the WebView's `localStorage` | `%LOCALAPPDATA%\io.github.marllon.noren\EBWebView\` |
 
 `noren://` links: the installer registers the scheme for the current user (`Software\Classes\noren`)
-and the uninstaller removes it; a debug or `target/` build registers nothing (see
-[DEEP_LINKS.md](DEEP_LINKS.md)). `pnpm smoke` runs `noren --smoke` and then
+and the uninstaller removes it; a debug or `target/` build registers nothing, and neither does opening
+any build, unless the person turns on the option **Register the noren:// link on this computer** in
+the settings (see [DEEP_LINKS.md](DEEP_LINKS.md)). `pnpm smoke` runs `noren --smoke` and then
 `noren --smoke-deeplink <link>`, both with a hidden window; the second keeps its state in a temp
 folder, never in the real `state.json`. The first also gives the hidden window Mica (vibrancy on
 macOS) and prints what the system answered, `SMOKE window effect mica applied` or the opaque

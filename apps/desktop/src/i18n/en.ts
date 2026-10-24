@@ -554,6 +554,10 @@ export const en = {
   "settings.preset.safe": "Safe",
   "settings.preset.browser": "Browser",
   "settings.keyboardShortcuts": "Keyboard shortcuts",
+  "settings.deepLink": "Register the noren:// link on this computer",
+  "settings.deepLinkHint":
+    "Lets a click on a noren:// link open Noren. Nothing is registered when Noren opens.",
+  "settings.deepLinkFailed": "The link was not changed: {reason}",
   "settings.notifications": "Notifications",
   "settings.systemNotifications": "System notifications",
   "settings.longCommand": "Long command limit (seconds)",
@@ -1459,6 +1463,9 @@ export const en = {
   "field.notifications.enabled": "Off: Noren never asks the system to show a notification.",
   "field.notifications.longCommandSeconds":
     "A command that runs longer than this many seconds notifies when it ends out of sight.",
+  "field.deepLink": "The noren:// link.",
+  "field.deepLink.registered":
+    "On: the noren:// link is registered on this computer, so a click on such a link opens Noren. Off by default, and opening Noren never registers it. The link is written into the system or removed when you change this in the settings; editing this file alone does not change the computer.",
   "field.archive":
     "Auto-archive: tabs that nobody uses go to the archive with their saved output, and come back from the library.",
   "field.archive.enabled":

@@ -26,6 +26,7 @@ import type {
 import { ConfirmDialog } from "./ConfirmDialog";
 import { configManager, useConfigState } from "./config-store";
 import { LANGUAGE_NAMES, t, useT } from "./i18n";
+import { changeLink } from "./link-option";
 import { effectName } from "./i18n/names";
 import { resolveBindings } from "./keybindings";
 import type { Preset } from "./keybindings";
@@ -251,6 +252,7 @@ interface SettingsDialogProps {
     | "syncLinkSpaceFiles"
     | "listUserThemes"
     | "listMods"
+    | "setLinkRegistered"
   >;
   /**
    * The spaces and profiles of the window, for the Sync section: a push writes every space as a
@@ -349,6 +351,8 @@ export function SettingsDialog({
   // What the system did with the effect that is saved (not with the one in the draft).
   const effectNote = windowEffectNote(useWindowEffectReport());
   const [importStatus, setImportStatus] = useState("");
+  // What the system said the last time the person changed the noren:// link option; empty if it worked.
+  const [linkNote, setLinkNote] = useState("");
   const [importPlan, setImportPlan] = useState<ProfileImportPlan>();
   // The monospaced fonts this computer has, which the Terminal section offers for the font box.
   const [fonts, setFonts] = useState<readonly string[]>([]);
@@ -454,6 +458,17 @@ export function SettingsDialog({
   // A choice is written at once; a text or a number on its way waits a moment (see `SettingsWriter`).
   const change = (patch: SettingsDraft) => edit((now) => ({ ...now, ...patch }));
   const typeIn = (patch: SettingsDraft) => edit((now) => ({ ...now, ...patch }), TYPING_WAIT_MS);
+  // The noren:// link is the one setting that acts on the computer: the system is asked when the
+  // switch is changed (and only then), and the choice is kept only if it did it.
+  const changeDeepLink = async (deepLink: boolean) => {
+    const result = await changeLink(backend, deepLink);
+    if (result.ok) {
+      setLinkNote("");
+      change({ deepLink });
+    } else {
+      setLinkNote(t("settings.deepLinkFailed", { reason: result.reason }));
+    }
+  };
   const changeTerminal = (patch: NonNullable<SettingsDraft["terminal"]>, wait?: number) =>
     edit((now) => ({ ...now, terminal: { ...now.terminal, ...patch } }), wait);
   const typeTerminal = (patch: NonNullable<SettingsDraft["terminal"]>) =>
@@ -1275,6 +1290,28 @@ export function SettingsDialog({
               {t("settings.keyboardShortcuts")}
             </button>
           </ActionRow>,
+        ),
+        row(
+          "deepLink",
+          [t("settings.deepLink"), t("settings.deepLinkHint")],
+          <>
+            <Toggle
+              label={t("settings.deepLink")}
+              field="deepLink.registered"
+              hint={t("settings.deepLinkHint")}
+              checked={shown.deepLink}
+              onChange={(deepLink) => void changeDeepLink(deepLink)}
+            />
+            {linkNote !== "" && (
+              <p
+                role="status"
+                className="settings-hint settings-row-note"
+                data-nr-part="settings-deep-link-note"
+              >
+                {linkNote}
+              </p>
+            )}
+          </>,
         ),
       ],
     },

@@ -391,6 +391,19 @@ const keybindingsSchema = z
   })
   .meta({ description: "Keyboard shortcuts." });
 
+/** Whether the `noren://` link is registered on the computer when the file says nothing: no. */
+export const DEFAULT_DEEP_LINK_REGISTERED = false;
+
+const deepLinkSchema = z
+  .strictObject({
+    registered: setting(
+      z.boolean(),
+      "On: the noren:// link is registered on this computer, so a click on such a link opens Noren. Off by default, and opening Noren never registers it. The link is written into the system or removed when you change this in the settings; editing this file alone does not change the computer.",
+      DEFAULT_DEEP_LINK_REGISTERED,
+    ),
+  })
+  .meta({ description: "The noren:// link." });
+
 /** The shells of your own, which join the ones Noren finds on the machine. */
 const profilesSchema = z
   .array(UserProfileSchema)
@@ -521,6 +534,7 @@ export const ConfigSchema = z
     profiles: profilesSchema.optional(),
     keybindings: keybindingsSchema.optional(),
     notifications: notificationsSchema.optional(),
+    deepLink: deepLinkSchema.optional(),
     archive: archiveSchema.optional(),
     agents: agentsSchema.optional(),
     ai: aiSchema.optional(),

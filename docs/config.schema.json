@@ -431,6 +431,18 @@
       "additionalProperties": false,
       "description": "System notifications."
     },
+    "deepLink": {
+      "type": "object",
+      "properties": {
+        "registered": {
+          "description": "On: the noren:// link is registered on this computer, so a click on such a link opens Noren. Off by default, and opening Noren never registers it. The link is written into the system or removed when you change this in the settings; editing this file alone does not change the computer.",
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "description": "The noren:// link."
+    },
     "archive": {
       "type": "object",
       "properties": {

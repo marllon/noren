@@ -559,6 +559,10 @@ export const ptBR: Dictionary = {
   "settings.preset.safe": "Seguro",
   "settings.preset.browser": "Navegador",
   "settings.keyboardShortcuts": "Atalhos de teclado",
+  "settings.deepLink": "Registrar o link noren:// neste computador",
+  "settings.deepLinkHint":
+    "Deixa um clique num link noren:// abrir o Noren. Nada é registrado quando o Noren abre.",
+  "settings.deepLinkFailed": "O link não foi alterado: {reason}",
   "settings.notifications": "Notificações",
   "settings.systemNotifications": "Notificações do sistema",
   "settings.longCommand": "Limite de comando longo (segundos)",
@@ -1474,6 +1478,9 @@ export const ptBR: Dictionary = {
     "Desligado: o Noren nunca pede ao sistema que mostre uma notificação.",
   "field.notifications.longCommandSeconds":
     "Um comando que roda por mais do que este número de segundos notifica quando termina fora de vista.",
+  "field.deepLink": "O link noren://.",
+  "field.deepLink.registered":
+    "Ligado: o link noren:// está registrado neste computador, então um clique num link assim abre o Noren. Desligado por padrão, e abrir o Noren nunca o registra. O link é gravado no sistema ou removido quando você muda isto nas configurações; editar só este arquivo não muda o computador.",
   "field.archive":
     "Arquivamento automático: abas que ninguém usa vão para o arquivo com a saída guardada e voltam pela biblioteca.",
   "field.archive.enabled":

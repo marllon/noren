@@ -95,6 +95,7 @@
     "allow-window-is-focused",
     "allow-deep-link-take-waiting",
     "allow-deep-link-applied",
+    "allow-deep-link-register-set",
     "allow-api-respond",
     "allow-api-ready",
     "allow-api-agent-state",

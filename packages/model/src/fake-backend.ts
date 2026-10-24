@@ -989,6 +989,8 @@ class FakeAi implements AiBackend {
  *   of a tab moved to one, as the Rust side asks the page of a native window
  * - the quick terminal window is a flag: `quickToggle` flips `quickVisible` (hidden at first) and
  *   `setQuickShortcut` keeps the chord in `quickShortcut`; nothing is ever shown or registered
+ * - the `noren://` link is a flag too: `setLinkRegistered` sets `linkRegistered`, and
+ *   `setLinkFailure` makes it reject
  * - `config.jsonc` lives in memory: `loadConfig` answers its text, `saveConfig` replaces it as the
  *   app does and `setConfig` as an edit made by another program would; both tell whoever called
  *   `watchConfig`
@@ -1143,6 +1145,8 @@ export class FakeBackend implements Backend {
   #quickVisible = false;
   #quickShortcut: string | null = null;
   #quickShortcutFailure: Error | undefined;
+  #linkRegistered = false;
+  #linkFailure: Error | undefined;
   /** What the app was last told about keeping the shells of the panes (it starts by ending them). */
   #keepSessions = false;
   /** Sessions held over from an earlier run, by the pane they belong to (see `holdSessionForPane`). */
@@ -1508,6 +1512,22 @@ export class FakeBackend implements Backend {
     this.#record("setQuickShortcut", chord);
     if (this.#quickShortcutFailure !== undefined) throw this.#quickShortcutFailure;
     this.#quickShortcut = chord;
+  }
+
+  async setLinkRegistered(registered: boolean): Promise<void> {
+    this.#record("setLinkRegistered", registered);
+    if (this.#linkFailure !== undefined) throw this.#linkFailure;
+    this.#linkRegistered = registered;
+  }
+
+  /** Whether the fake system has the `noren://` link registered (it is not at first). */
+  get linkRegistered(): boolean {
+    return this.#linkRegistered;
+  }
+
+  /** Makes `setLinkRegistered` reject with `error`; `undefined` undoes it. */
+  setLinkFailure(error: Error | undefined): void {
+    this.#linkFailure = error;
   }
 
   /** Whether the fake quick window shows (it starts hidden). */

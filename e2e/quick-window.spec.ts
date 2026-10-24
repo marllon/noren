@@ -7,6 +7,7 @@ import {
   openShortcutsScreen,
   shortcutsScreen,
 } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The quick terminal window, drawn as a panel next to the app (`/?quick-preview`): one page, one
 // in-memory backend and one bus, as the two windows share the sessions and the events in the real
@@ -237,7 +238,7 @@ test("the key inside the window and the palette entry show and hide the quick wi
   await expect.poll(() => app(page, "quickToggles")).toBe(1);
   expect(await app(page, "quickVisible")).toBe(true);
 
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page
     .locator('[data-nr-part="palette"]')
     .getByRole("combobox", { name: "Command palette", exact: true })

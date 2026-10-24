@@ -94,6 +94,38 @@ const NUM_RUNS = 150;
 const SMALL_RUNS = 50;
 const SEQUENCE_TIMEOUT_MS = 60_000;
 
+/**
+ * The seed every property of this file plays with. A random seed made the coverage checks below (each
+ * action applied for real, a split over the limit, a browser tab taken to a window) fail one run in
+ * about fifteen, and a failure of those checks says nothing about the seed that caused it. A fixed
+ * seed makes every run of the file play the same sequences, so it passes or fails the same way
+ * everywhere. `NOREN_PROPERTY_SEED=<number>` plays other sequences (to look for a counterexample
+ * with a new seed); a failing property prints its seed (fast-check) and the coverage checks name it,
+ * so the failure is played again with the same number.
+ */
+const DEFAULT_SEED = 20261024;
+const SEED = seedOf(process.env["NOREN_PROPERTY_SEED"]);
+
+/** The seed asked for in the environment, or the fixed one; an invalid value is an error, not a fallback. */
+function seedOf(value: string | undefined): number {
+  if (value === undefined || value === "") return DEFAULT_SEED;
+  const seed = Number(value);
+  if (!Number.isSafeInteger(seed))
+    throw new Error(`NOREN_PROPERTY_SEED is not an integer: ${value}`);
+  return seed;
+}
+
+/** What a run of `playSequences` counted: the same seed must give the same numbers. */
+interface Played {
+  generated: Record<string, number>;
+  applied: Record<string, number>;
+  noops: number;
+  overLimit: number;
+  previewsSeen: number;
+  diffsSeen: number;
+  browserTabsInWindows: number;
+}
+
 /** Actions whose effect on the panes `checkPaneDelta` knows. */
 const PANE_ACTIONS = new Set<ActionType>([
   "pane/split",
@@ -711,22 +743,20 @@ function checkWindows(ws: Workspace, next: Workspace, action: Action, where: () 
   }
 }
 
+interface Kinds {
+  browserPanes?: boolean;
+  previewPanes?: boolean;
+  diffPanes?: boolean;
+  windows?: boolean;
+}
+
 /**
- * Plays `STEPS` random actions per run on random workspaces. `maxPanes` goes both to the
- * generated workspaces and to the reducer; absent means the default of 4. `browserPanes`,
- * `previewPanes` and `diffPanes` make every third pane of the generated workspaces a browser, a
- * preview or a diff pane.
+ * Plays `STEPS` random actions per run on random workspaces, checking the invariants at every
+ * step. `maxPanes` goes both to the generated workspaces and to the reducer; absent means the
+ * default of 4. `browserPanes`, `previewPanes` and `diffPanes` make every third pane of the
+ * generated workspaces a browser, a preview or a diff pane. Returns what the sequences covered.
  */
-function playSequences(
-  numRuns: number,
-  maxPanes?: number,
-  kinds: {
-    browserPanes?: boolean;
-    previewPanes?: boolean;
-    diffPanes?: boolean;
-    windows?: boolean;
-  } = {},
-): void {
+function play(numRuns: number, maxPanes: number | undefined, kinds: Kinds, seed: number): Played {
   const generated = new Map<ActionType, number>();
   const applied = new Map<ActionType, number>();
   let noops = 0;
@@ -847,22 +877,47 @@ function playSequences(
         }
       },
     ),
-    { numRuns },
+    { numRuns, seed },
   );
 
-  // The sequences must exercise every action for real, and the invalid paths too.
-  const neverApplied = TYPES.filter((type) => (applied.get(type) ?? 0) === 0);
-  expect(neverApplied).toEqual([]);
-  expect(noops).toBeGreaterThan(0);
-  expect(overLimit).toBeGreaterThan(0);
-  expect([...generated.values()].reduce((sum, n) => sum + n, 0)).toBe(numRuns * STEPS);
+  return {
+    generated: Object.fromEntries(generated),
+    applied: Object.fromEntries(applied),
+    noops,
+    overLimit,
+    previewsSeen,
+    diffsSeen,
+    browserTabsInWindows,
+  };
+}
+
+/** Plays the sequences of `play` and checks they covered what the property is about. */
+function playSequences(
+  numRuns: number,
+  maxPanes?: number,
+  kinds: Kinds = {},
+  seed: number = SEED,
+): Played {
+  const played = play(numRuns, maxPanes, kinds, seed);
+  // The sequences must exercise every action for real, and the invalid paths too. Each check names
+  // the seed, so a failure is played again with NOREN_PROPERTY_SEED.
+  const why = `seed ${seed}`;
+  const neverApplied = TYPES.filter((type) => (played.applied[type] ?? 0) === 0);
+  expect(neverApplied, why).toEqual([]);
+  expect(played.noops, why).toBeGreaterThan(0);
+  expect(played.overLimit, why).toBeGreaterThan(0);
+  expect(
+    Object.values(played.generated).reduce((sum, n) => sum + n, 0),
+    why,
+  ).toBe(numRuns * STEPS);
   // A run asked to have preview panes must have had them to play with.
-  if (kinds.previewPanes === true) expect(previewsSeen).toBeGreaterThan(0);
-  if (kinds.diffPanes === true) expect(diffsSeen).toBeGreaterThan(0);
+  if (kinds.previewPanes === true) expect(played.previewsSeen, why).toBeGreaterThan(0);
+  if (kinds.diffPanes === true) expect(played.diffsSeen, why).toBeGreaterThan(0);
   // A run with windows and browser panes must have taken a tab with a browser pane to a window.
   if (kinds.windows === true && kinds.browserPanes === true) {
-    expect(browserTabsInWindows).toBeGreaterThan(0);
+    expect(played.browserTabsInWindows, why).toBeGreaterThan(0);
   }
+  return played;
 }
 
 describe("reducer properties", () => {
@@ -948,6 +1003,13 @@ describe("reducer properties", () => {
     SEQUENCE_TIMEOUT_MS,
   );
 
+  it("property: the same seed plays the same sequences, another seed plays others", () => {
+    const kinds = { browserPanes: true, previewPanes: true, diffPanes: true, windows: true };
+    const first = play(3, undefined, kinds, 1234);
+    expect(play(3, undefined, kinds, 1234)).toEqual(first);
+    expect(play(3, undefined, kinds, 4321)).not.toEqual(first);
+  });
+
   it("property: input that is not an action never throws and never breaks the invariants", () => {
     const keys = [
       "spaceId",
@@ -981,7 +1043,7 @@ describe("reducer properties", () => {
           expect(checkInvariants(next)).toEqual([]);
         },
       ),
-      { numRuns: 500 },
+      { numRuns: 500, seed: SEED },
     );
   });
 });

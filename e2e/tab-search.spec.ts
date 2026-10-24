@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { closeShortcutsScreen, openShortcutsScreen } from "./settings-fixture";
 import { numberTheTabs } from "./numbered-tabs";
+import { openCommandPalette } from "./palette-fixture";
 
 test.beforeEach(numberTheTabs);
 
@@ -259,6 +260,7 @@ test("no shortcut acts while the search box has the keyboard", async ({ page }) 
   await page.keyboard.press("Control+Shift+Alt+F");
   await expect(box(page)).toBeFocused();
   await page.keyboard.press("Control+Shift+D");
+  // The palette must stay shut here (the search box has the keyboard), so it is the key itself.
   await page.keyboard.press("Control+Shift+P");
   await page.keyboard.type("d");
   await expect(panel(page)).toBeVisible();
@@ -271,7 +273,7 @@ test("the palette lists the action and running it opens the search with the box 
   page,
 }) => {
   await threeTabs(page);
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type(">search all");
   const options = page.locator('[data-nr-part="palette"]').getByRole("option");
   await expect(options).toHaveCount(1);

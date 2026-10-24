@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { plugin, seedPlugins } from "./plugins-fixture";
 import { openSettings, seedConfig } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The Content Security Policy of the desktop app (apps/desktop/src-tauri/tauri.conf.json) applied to
 // the web build. The web build is the same page, so serving it with the policy of the app shows what
@@ -117,7 +118,7 @@ test("the app runs under the policy: terminal, palette, settings, mods and a pic
   await expect(page.locator("style[data-nr-mod='tint.css']")).toHaveCount(1);
   await expect(page.locator(".xterm").first()).toBeVisible();
 
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(page.getByRole("dialog", { name: /command palette/i })).toBeVisible();
   await page.keyboard.press("Escape");
 
@@ -227,7 +228,7 @@ test("a plugin runs under the policy: its Worker comes from a blob and opens a t
   await expect(tabs).toHaveCount(1);
 
   await page.locator('[data-nr-part="pane"]:visible').click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   const palette = page.locator('[data-nr-part="palette"]');
   await expect(palette).toBeVisible();
   await palette
@@ -271,7 +272,7 @@ said("done: yes");`,
   ]);
   await start(page);
   await page.locator('[data-nr-part="pane"]:visible').click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   const palette = page.locator('[data-nr-part="palette"]');
   await expect(palette).toBeVisible();
   const results = palette.locator('[data-nr-kind="plugin"] .palette-title');
@@ -290,7 +291,7 @@ said("done: yes");`,
 /** Opens the palette on a plugin action by its words and chooses it. */
 async function choosePluginAction(page: Page, query: string): Promise<void> {
   await page.locator('[data-nr-part="pane"]:visible').click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   const palette = page.locator('[data-nr-part="palette"]');
   await expect(palette).toBeVisible();
   await palette.getByRole("combobox", { name: "Command palette", exact: true }).fill(query);

@@ -4,6 +4,7 @@ import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { configText, seedConfig } from "./settings-fixture";
 import { ACTIONS_CWD, ACTIONS_TEXT, seedActionsFile, seedSidebarState } from "./sidebar-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The interface style (NOR-F20-17): `appearance.style` is "glass" (the default) or "dense". It is chosen
 // in the Appearance section of the settings screen (a row of two buttons) or from the palette, kept in
@@ -182,14 +183,6 @@ async function styleRow(screen: Locator, words: Words): Promise<Locator> {
   return group;
 }
 
-/** Opens the palette (pressing again if the page was not ready for the first press). */
-async function openPalette(page: Page): Promise<void> {
-  await expect(async () => {
-    if (!(await palette(page).isVisible())) await page.keyboard.press("Control+Shift+P");
-    await expect(palette(page)).toBeVisible({ timeout: 1500 });
-  }).toPass();
-}
-
 /** The page has drawn with `style`: the attribute, the fonts, the corners and the highlight. */
 async function expectStyle(page: Page, style: "glass" | "dense", mode: Mode): Promise<void> {
   const want = TOKENS[style];
@@ -339,7 +332,7 @@ for (const lang of ["en", "pt-BR"] as const) {
     const words = await start(page, lang);
     await expectStyle(page, "glass", "dark");
     const before = (await configText(page)) ?? "";
-    await openPalette(page);
+    await openCommandPalette(page);
     await palette(page).getByRole("combobox").fill(`>${words.command}`);
     await expect(palette(page).getByRole("option").first()).toContainText(words.command);
     await page.keyboard.press("Enter");
@@ -349,7 +342,7 @@ for (const lang of ["en", "pt-BR"] as const) {
     const written = (await configText(page)) ?? "";
     expect(written.replace(/,?\s*"style":\s*"dense",?/, "")).toEqual(before);
 
-    await openPalette(page);
+    await openCommandPalette(page);
     await palette(page).getByRole("combobox").fill(`>${words.command}`);
     await expect(palette(page).getByRole("option").first()).toContainText(words.command);
     await page.keyboard.press("Enter");

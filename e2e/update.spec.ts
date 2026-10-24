@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { closeSettings, openSettings } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The update of the app in the web build (NOR-F20-02a): no screen drives it yet (the button, the
 // palette command and the notice of a new version are NOR-F20-02b), so these tests hold the two
@@ -59,7 +60,7 @@ test("the page never checks for an update or installs one by itself", async ({ p
   // Used the way a person uses it: the settings screen, the palette, a second tab.
   await openSettings(page);
   await closeSettings(page);
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(page.locator('[data-nr-part="palette"]')).toBeVisible();
   await page.keyboard.press("Escape");
   await page.keyboard.press("Control+T");

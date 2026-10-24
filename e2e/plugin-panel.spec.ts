@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { answersTo, plugin, seedPlugins, statuses } from "./plugins-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The panel of a plugin (NOR-F18-01d). The page is the web build with the fake backend, which lists
 // the example plugin (examples/plugins/new-tab-action) unless a test seeds other folders; each plugin
@@ -34,7 +35,7 @@ async function start(page: Page): Promise<void> {
 
 /** Opens the palette, finds one plugin action by its words and chooses it. */
 async function choose(page: Page, query: string): Promise<void> {
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   await palette(page).getByRole("combobox", { name: "Command palette", exact: true }).fill(query);
   await expect(pluginEntries(page)).toHaveCount(1);

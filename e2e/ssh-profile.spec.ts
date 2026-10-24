@@ -9,6 +9,7 @@ import {
   seedConfig,
 } from "./settings-fixture";
 import { numberTheTabs } from "./numbered-tabs";
+import { openCommandPalette } from "./palette-fixture";
 
 test.beforeEach(numberTheTabs);
 
@@ -90,7 +91,7 @@ async function start(page: Page, config: string = CONFIG): Promise<void> {
 async function openBuildBox(page: Page): Promise<void> {
   const before = (await sshSessions(page)).length;
   await page.locator('[data-nr-part="pane"]:visible').first().click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   await paletteBox(page).fill(">new build box");
   await expect(options(page)).toHaveCount(1);
@@ -305,7 +306,7 @@ test.describe("the profiles screen with ssh profiles", () => {
 
     // It is in the list of the palette and opens a tab whose session is the ssh kind, on that machine.
     await page.locator('[data-nr-part="pane"]:visible').first().click();
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     await paletteBox(page).fill(">new staging");
     await expect(options(page)).toHaveCount(1);
     await expect(options(page).first()).toHaveText(/New Staging tab/);
@@ -423,7 +424,7 @@ test.describe("the profiles screen with ssh profiles", () => {
     expect(JSON.parse((await configText(page)) ?? "{}")).toEqual({ profiles: [] });
 
     await page.locator('[data-nr-part="pane"]:visible').first().click();
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     await paletteBox(page).fill(">new build box");
     await expect(options(page)).toHaveCount(0);
   });

@@ -3,6 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { changeSettings, configText, openShortcutsScreen, seedConfig } from "./settings-fixture";
 import { afterNextFrame } from "./frames";
 import { seedSidebarState } from "./sidebar-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The layout modes (side, width, density, compact mode, keeping the sidebar open, tabs on top)
 // are actions of the registry, so the palette runs them, and the settings screen sets the same
@@ -72,7 +73,7 @@ async function runAction(page: Page, title: string): Promise<void> {
   // after it closes; opening the palette before that would lose the focus to the terminal.
   await expect(page.locator("textarea.xterm-helper-textarea:focus")).toHaveCount(1);
   await afterNextFrame(page);
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   const box = palette(page).getByRole("combobox", { name: "Command palette", exact: true });
   await expect(box).toBeFocused();

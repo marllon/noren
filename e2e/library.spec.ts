@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { seedConfig } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The auto-archive and the library. A tab nobody uses goes to the archive after `archive.afterHours`
 // (a short wait in these tests), with its place and its output, and comes back from the library
@@ -362,7 +363,7 @@ test("the library opens from the palette and from its shortcut (the browser pres
   await expect(page.getByRole("textbox", { name: "Terminal input", exact: true })).toBeFocused();
 
   // And the palette lists it with the chord in force.
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   const palette = page.locator('[data-nr-part="palette"]');
   await expect(palette).toBeVisible();
   await palette

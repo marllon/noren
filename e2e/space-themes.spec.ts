@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { configText, seedConfig, withoutAlpha } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The theme of a space: a space can have its own theme, which shows while it is the active space;
 // with none, the global theme (`appearance.theme` of the file, else the system's) shows. It is
@@ -99,7 +100,7 @@ async function checkedInMenu(page: Page, spaceName: string): Promise<string> {
 
 async function openPalette(page: Page): Promise<void> {
   await page.locator('[data-nr-part="pane"]:visible').first().click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   await expect(box(page)).toBeFocused();
 }

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { SPLIT_FIXTURE, seedSidebarState } from "./sidebar-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The sidebar is an ARIA tree driven by the keyboard alone: one row is in the Tab order, Up and
 // Down walk the rows, Left and Right fold, unfold and go to the parent, Enter activates, F2 renames
@@ -20,7 +21,7 @@ const focusedPaneId = (page: Page): Promise<string | undefined> =>
  * so the action "Focus sidebar" is run from the palette.
  */
 async function focusTree(page: Page): Promise<void> {
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.getByRole("combobox", { name: "Command palette", exact: true }).fill("Focus sidebar");
   await page.keyboard.press("Enter");
   await expect(tabStops(page)).toBeFocused();

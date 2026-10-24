@@ -6,6 +6,7 @@ import { createSequentialIds } from "../packages/model/src/ids";
 import { reduce } from "../packages/model/src/reducer";
 import { exportSpace } from "../packages/model/src/space-file";
 import { closeSettings, openSettings } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The spaces in the sync (NOR-F19-01c). The sync is the in-memory one of the web build, seeded under
 // `noren.web.sync`, so nothing runs git or touches a network. A push writes every space as a
@@ -102,7 +103,7 @@ async function connect(page: Page): Promise<void> {
 /** Runs the palette command whose title is `title`, found by typing `query`. */
 async function runCommand(page: Page, query: string, title: string): Promise<void> {
   await page.locator('[data-nr-part="pane"]:visible').first().click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   await expect(box(page)).toBeFocused();
   await box(page).fill(`>${query}`);

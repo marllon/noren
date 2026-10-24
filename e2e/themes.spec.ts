@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { configText, seedConfig, withoutAlpha } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The global theme: eight built-in themes, picked in the command palette, saved as
 // `appearance.theme` in `config.jsonc` (the web build keeps that text under `noren.web.config`)
@@ -68,7 +69,7 @@ const samePage = (page: Page): Promise<boolean | undefined> =>
   page.evaluate(() => (window as HookWindow).__stillHere);
 
 async function openPalette(page: Page): Promise<void> {
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   await expect(box(page)).toBeFocused();
 }

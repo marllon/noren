@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { clicksReachThePage } from "./sidebar-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The browser pane in a window besides the main one (NOR-F15-04e). A tab with a browser pane goes to
 // a window by dragging it out or by "Move tab to new window", and the page of the window draws the
@@ -345,7 +346,7 @@ test("Move tab to new window does the same for a tab that is only a browser pane
 }) => {
   await open(page);
   await show(page, "solo");
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type("Move tab to new");
   await page.keyboard.press("Enter");
   await expect(panels(page)).toHaveCount(1);

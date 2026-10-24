@@ -4,6 +4,7 @@ import { JSON_PROFILES_FILE } from "../packages/model/src/import-fixtures";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { openSettings, seedConfig } from "./settings-fixture";
 import { ACTIONS_CWD, ACTIONS_TEXT, seedActionsFile, seedSidebarState } from "./sidebar-fixture";
+import { runPaletteCommand, openCommandPalette } from "./palette-fixture";
 
 // axe-core on the menus, dialogs and overlays of the window (NOR-F20-01b): the context menus of the
 // tab, the group, the space and the pane, the confirmation, space, picture, paste, "ask for a
@@ -53,16 +54,6 @@ async function open(page: Page, tabsOnTop = false): Promise<void> {
   await expect.poll(() => paneIds(page).then((ids) => ids.length)).toBeGreaterThan(0);
   await expect(page.locator("textarea.xterm-helper-textarea").first()).toBeAttached();
   if (!tabsOnTop) await expect(tab(page, "api")).toBeVisible();
-}
-
-/** Opens a command of the palette by typing its name. */
-async function runFromPalette(page: Page, name: string): Promise<void> {
-  await page.keyboard.press("Control+Shift+P");
-  await expect(palette(page)).toBeVisible();
-  await paletteBox(page).fill(name);
-  await expect(palette(page).getByRole("option").first()).toContainText(name);
-  await page.keyboard.press("Enter");
-  await expect(palette(page)).toBeHidden();
 }
 
 test.describe("menus", () => {
@@ -171,7 +162,7 @@ test.describe("dialogs", () => {
     );
     await open(page);
     await page.locator('[data-nr-part="pane"]:visible').first().click();
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     await expect(palette(page)).toBeVisible();
     await paletteBox(page).fill("? list the files");
     await page.keyboard.press("Enter");
@@ -210,7 +201,7 @@ test.describe("dialogs", () => {
     await expect(
       tree(page).locator('[data-nr-part="item-cwd"]').filter({ hasText: "/work/repo" }),
     ).toHaveCount(1);
-    await runFromPalette(page, "New worktree");
+    await runPaletteCommand(page, "New worktree");
     await expect(page.getByRole("dialog", { name: "New worktree", exact: true })).toBeVisible();
     await expectNoAxeViolations(page, "new worktree dialog");
   });
@@ -247,13 +238,13 @@ test.describe("more dialogs", () => {
     await expect(
       tree(page).locator('[data-nr-part="item-cwd"]').filter({ hasText: "/work/repo" }),
     ).toHaveCount(1);
-    await runFromPalette(page, "New worktree");
+    await runPaletteCommand(page, "New worktree");
     const make = page.getByRole("dialog", { name: "New worktree", exact: true });
     await make.getByRole("textbox", { name: "Branch", exact: true }).fill("feature/axe");
     await make.getByRole("button", { name: "Create worktree", exact: true }).click();
     await expect(make).toBeHidden();
 
-    await runFromPalette(page, "Remove worktree");
+    await runPaletteCommand(page, "Remove worktree");
     const remove = page.getByRole("dialog", { name: "Remove worktree", exact: true });
     await expect(remove.getByRole("list", { name: "Worktrees", exact: true })).toBeVisible();
     await expectNoAxeViolations(page, "remove worktree dialog");
@@ -293,7 +284,7 @@ test.describe("overlays", () => {
     page,
   }) => {
     await open(page);
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     await paletteBox(page).fill("new");
     await expect(palette(page).getByRole("option").first()).toBeVisible();
     await expectNoAxeViolations(page, "palette with a query");

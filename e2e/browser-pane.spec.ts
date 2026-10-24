@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { openSettings, seedConfig, settingsScreen } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The browser pane (NOR-F15-01b). Ctrl+click on an address in the output opens a pane beside the
 // terminal with an address bar; the page itself is a native web view laid over the window, which web
@@ -453,7 +454,7 @@ test.describe("the web view follows its pane", () => {
     await openPane(page, id);
 
     // The command palette.
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     await expect(page.locator('[data-nr-part="palette"]')).toBeVisible();
     await expectOutOfSight(page);
     await page.keyboard.press("Escape");

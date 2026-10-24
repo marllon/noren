@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { closeSettings, configText, openSettings, seedConfig } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The sync through a secret GitHub gist in the Sync section of the settings screen, in the palette
 // commands "Pull settings" and "Push settings" and in the push when the app closes (NOR-F19-02b).
@@ -128,7 +129,7 @@ const close = (page: Page) =>
 /** Runs the palette command whose title is `title`, found by typing `query`. */
 async function runCommand(page: Page, query: string, title: string): Promise<void> {
   await page.locator('[data-nr-part="pane"]:visible').first().click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   await expect(box(page)).toBeFocused();
   await box(page).fill(`>${query}`);

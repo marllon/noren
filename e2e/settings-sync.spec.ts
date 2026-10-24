@@ -3,6 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { FAKE_GALLERY_LAGOON } from "../packages/model/src/gallery-fixture";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { closeSettings, configText, openSettings, seedConfig } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The Sync section of the settings screen and the "Pull settings" and "Push settings" commands of
 // the palette (NOR-F19-01b). The sync is the in-memory one of the web build, seeded under
@@ -87,7 +88,7 @@ const stored = (page: Page, key: string): Promise<Record<string, string>> =>
 /** Runs the palette command whose title is `title`, found by typing `query`. */
 async function runCommand(page: Page, query: string, title: string): Promise<void> {
   await page.locator('[data-nr-part="pane"]:visible').first().click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   await expect(box(page)).toBeFocused();
   await box(page).fill(`>${query}`);

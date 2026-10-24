@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { closeSettings, changeSettings, openSettings, seedConfig } from "./settings-fixture";
 import { seedSidebarState } from "./sidebar-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // Screen reader support (NOR-F20-01a). The option `terminal.screenReaderMode` turns on the
 // accessibility tree of xterm (`.xterm-accessibility`) in the terminals that are running, with no
@@ -60,7 +61,7 @@ async function run(page: Page, line: string): Promise<void> {
 /** Runs the palette command whose title is `title`, found by typing `query`. */
 async function runCommand(page: Page, query: string, title: string): Promise<void> {
   await page.locator('[data-nr-part="pane"]:visible').first().click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   const box = palette(page).getByRole("combobox", { name: "Command palette", exact: true });
   await expect(box).toBeFocused();

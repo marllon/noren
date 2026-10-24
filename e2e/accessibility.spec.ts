@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { openSettings, openShortcutsScreen, seedConfig } from "./settings-fixture";
 import { seedSidebarState } from "./sidebar-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // axe-core on the main screens, in web mode with the in-memory backend: the window with the sidebar
 // and a terminal, the command palette, the settings screen and the shortcuts screen, and the window
@@ -32,7 +33,7 @@ test("axe: the main window with the sidebar and a terminal has no axe violation"
 
 test("axe: the command palette has no axe violation", async ({ page }) => {
   await openMain(page);
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(page.locator('[data-nr-part="palette"]')).toBeVisible();
   await expectNoAxeViolations(page, "palette");
 });

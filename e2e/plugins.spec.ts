@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { EXAMPLE, answersTo, plugin, seedPlugins, statuses } from "./plugins-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // Plugins in a Worker and their actions in the palette (NOR-F18-01c). The page is the web build with
 // the fake backend, and the plugins are the example of examples/plugins and fixtures; each runs in a
@@ -28,7 +29,7 @@ async function start(page: Page): Promise<void> {
 }
 
 async function openPalette(page: Page, query = ""): Promise<void> {
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   if (query !== "") {
     await palette(page).getByRole("combobox", { name: "Command palette", exact: true }).fill(query);

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { openCommandPalette } from "./palette-fixture";
 
 // A tab that closes goes to the stack of closed tabs with the place it had (space, group and
 // position) and its scrollback; reopening it (Ctrl+Shift+Alt+T, or the palette) puts it back there,
@@ -253,7 +254,7 @@ test("the palette reopens the tab closed last, and a tab of another space return
   // Go to the first space, and reopen from the palette: the tab returns to "Other", which shows.
   await page.keyboard.press("Control+Alt+Digit1");
   await expect(tab(page, "alpha")).toBeVisible();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   const palette = page.locator('[data-nr-part="palette"]');
   await expect(palette).toBeVisible();
   await palette

@@ -9,6 +9,7 @@ import {
   PLIST_MISSING_COLOR,
 } from "../packages/model/src/import-fixtures";
 import { configText, seedConfig, withoutAlpha } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // "Import color scheme..." in the palette: the person picks a file, the importers read it by what
 // is in it (an XML property list, JSON with comments, or `key = value` text, with or without an
@@ -82,7 +83,7 @@ async function start(page: Page, config: string | null = null): Promise<void> {
 
 async function openPalette(page: Page): Promise<void> {
   await page.locator('[data-nr-part="pane"]:visible').first().click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   await expect(box(page)).toBeFocused();
 }

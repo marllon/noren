@@ -3,6 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { seedConfig, setPaneHeaders } from "./settings-fixture";
+import { runPaletteCommand } from "./palette-fixture";
 
 // The diff pane (NOR-F15-03): a pane that shows the git diff of a folder, with the files that
 // changed in a list and the one picked side by side. The state is restored with panes of type
@@ -224,7 +225,6 @@ const rows = (page: Page): Locator => content(page).locator("tr[data-nr-row]");
 const changeRows = (page: Page): Locator => content(page).locator('tr[data-nr-row="change"]');
 const problem = (page: Page): Locator => shown(page).locator('[data-nr-part="diff-problem"]');
 const notice = (page: Page): Locator => page.locator('[data-nr-part="pane-notice"]');
-const palette = (page: Page): Locator => page.locator('[data-nr-part="palette"]');
 
 async function pick(page: Page, path: string): Promise<void> {
   await fileButton(page, path).click();
@@ -244,17 +244,6 @@ async function side(
     text: text.slice(1).replace(/\xa0/g, ""),
     kind: await cell.getAttribute("data-nr-kind"),
   };
-}
-
-/** Runs a command of the palette by typing its name. */
-async function runFromPalette(page: Page, name: string, label = "Command palette"): Promise<void> {
-  await page.keyboard.press("Control+Shift+P");
-  await expect(palette(page)).toBeVisible();
-  const box = palette(page).getByRole("combobox", { name: label, exact: true });
-  await box.fill(name);
-  await expect(palette(page).getByRole("option").first()).toContainText(name);
-  await page.keyboard.press("Enter");
-  await expect(palette(page)).toBeHidden();
 }
 
 const WORK: TabSeed[] = [
@@ -581,7 +570,7 @@ test.describe("opening a diff from the palette", () => {
   }) => {
     await start(page, TERMINAL);
     expect(await shells(page)).toBe(1);
-    await runFromPalette(page, OPEN);
+    await runPaletteCommand(page, OPEN);
 
     await expect.poll(async () => (await paneIds(page)).length).toBe(2);
     await expect(shown(page)).toHaveCount(1);
@@ -625,7 +614,7 @@ test.describe("opening a diff from the palette", () => {
     await start(page, [{ id: "i1", title: "work", panes: [{ id: "t1", kind: "terminal" }] }], {
       spaceCwd: REPO,
     });
-    await runFromPalette(page, OPEN);
+    await runPaletteCommand(page, OPEN);
     await expect.poll(async () => (await paneIds(page)).length).toBe(2);
     await expect(fileButtons(page)).toHaveCount(SAMPLE_FILES.length);
     await expect
@@ -637,7 +626,7 @@ test.describe("opening a diff from the palette", () => {
     await start(page, [
       { id: "i1", title: "work", panes: [{ id: "t1", kind: "terminal", cwd: "/tmp/plain" }] },
     ]);
-    await runFromPalette(page, OPEN);
+    await runPaletteCommand(page, OPEN);
     await expect.poll(async () => (await paneIds(page)).length).toBe(2);
     await expect(problem(page)).toHaveText("This folder is not in a git repository.");
     expect(await shells(page)).toBe(1);
@@ -645,7 +634,7 @@ test.describe("opening a diff from the palette", () => {
 
   test("says so and makes no pane when the pane has no folder", async ({ page }) => {
     await start(page, [{ id: "i1", title: "work", panes: [{ id: "t1", kind: "terminal" }] }]);
-    await runFromPalette(page, OPEN);
+    await runPaletteCommand(page, OPEN);
     await expect(notice(page)).toHaveText(
       "This pane has no known folder, so there is no diff to show.",
     );
@@ -665,7 +654,7 @@ test.describe("opening a diff from the palette", () => {
         panes: [{ id: "t1", kind: "terminal", cwd: "\\\\server\\share\\repo" }],
       },
     ]);
-    await runFromPalette(page, OPEN);
+    await runPaletteCommand(page, OPEN);
     await expect(notice(page)).toHaveText(
       "The folder of this pane is not one a diff can be read in.",
     );
@@ -690,7 +679,7 @@ test.describe("opening a diff from the palette", () => {
       },
     ]);
     expect(await paneIds(page)).toHaveLength(4);
-    await runFromPalette(page, OPEN);
+    await runPaletteCommand(page, OPEN);
     await expect(notice(page)).toHaveText(
       "A tab holds at most 4 panes, so the diff was not opened.",
     );
@@ -945,7 +934,7 @@ test.describe("in Portuguese", () => {
     await start(page, [
       { id: "i1", title: "work", panes: [{ id: "t1", kind: "terminal", cwd: REPO }] },
     ]);
-    await runFromPalette(page, OPEN, PALETTE);
+    await runPaletteCommand(page, OPEN, PALETTE);
     await expect.poll(async () => (await paneIds(page)).length).toBe(2);
     await expect(fileButtons(page)).toHaveCount(SAMPLE_FILES.length);
     expect(await shells(page)).toBe(1);
@@ -953,7 +942,7 @@ test.describe("in Portuguese", () => {
 
   test("tells a pane with no folder that there is no diff to show", async ({ page }) => {
     await start(page, [{ id: "i1", title: "work", panes: [{ id: "t1", kind: "terminal" }] }]);
-    await runFromPalette(page, OPEN, PALETTE);
+    await runPaletteCommand(page, OPEN, PALETTE);
     await expect(notice(page)).toHaveText(
       "Este painel não tem uma pasta conhecida, então não há diff para mostrar.",
     );
@@ -976,7 +965,7 @@ test.describe("in Portuguese", () => {
         ],
       },
     ]);
-    await runFromPalette(page, OPEN, PALETTE);
+    await runPaletteCommand(page, OPEN, PALETTE);
     await expect(notice(page)).toHaveText(
       "Uma aba tem no máximo 4 painéis, então o diff não foi aberto.",
     );
@@ -992,7 +981,7 @@ test.describe("in Portuguese", () => {
         panes: [{ id: "t1", kind: "terminal", cwd: "\\\\server\\share\\repo" }],
       },
     ]);
-    await runFromPalette(page, OPEN, PALETTE);
+    await runPaletteCommand(page, OPEN, PALETTE);
     await expect(notice(page)).toHaveText(
       "A pasta deste painel não é uma em que um diff possa ser lido.",
     );

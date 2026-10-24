@@ -11,6 +11,7 @@ import {
   settingsScreen,
 } from "./settings-fixture";
 import { sidebarState } from "./sidebar-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The settings screen: appearance and layout, terminal, profiles, shortcuts, notifications,
 // auto-archive and AI. It is opened from the title bar and from the palette. There is no Save
@@ -122,7 +123,7 @@ test.describe("opening the screen", () => {
   }) => {
     await start(page);
     await page.locator('[data-nr-part="pane"]:visible').click();
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     await page.keyboard.type(">open settings");
     const palette = page.locator('[data-nr-part="palette"]');
     const option = palette.getByRole("option");
@@ -639,7 +640,7 @@ const addProfile = (screen: Locator) =>
 /** The titles of the profile entries of the palette; the palette is closed again. */
 async function profileTitles(page: Page): Promise<string[]> {
   await page.locator('[data-nr-part="pane"]:visible').first().click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   const palette = page.locator('[data-nr-part="palette"]');
   await expect(palette).toBeVisible();
   const titles = await palette.locator('[data-nr-kind="profile"] .palette-title').allTextContents();

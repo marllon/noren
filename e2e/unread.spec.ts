@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { openShortcutsScreen } from "./settings-fixture";
 import { sidebarState } from "./sidebar-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // A program in a tab that is not on screen rings the bell or sends a notification (OSC 9, OSC 777):
 // the tab gets the unread mark, and so do its group and its space in the switcher. Ctrl+Shift+U
@@ -205,7 +206,7 @@ test("the palette and the shortcuts screen list the action on Ctrl+Shift+U", asy
   // filtered.
   const search = async (): Promise<void> => {
     await page.locator('[data-nr-part="pane"]:visible').first().click();
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     await expect(palette).toBeVisible();
     await expect(palette.getByRole("combobox")).toBeFocused();
     await page.keyboard.type(">last unread");

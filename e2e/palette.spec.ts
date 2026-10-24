@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { openShortcutsScreen, seedConfig } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The command palette: Ctrl+Shift+P, tabs of every space, spaces and registry actions, the prefixes
 // that limit the list, and the keyboard going back to the terminal when it closes.
@@ -62,7 +63,7 @@ test("Ctrl+Shift+P, part of a tab name from another space and Enter switch space
   page,
 }) => {
   await twoSpaces(page);
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   await expect(searchBox(page)).toBeFocused();
 
@@ -85,7 +86,7 @@ test("clicking an entry runs it too, and the active terminal gets the keyboard",
   page,
 }) => {
   await twoSpaces(page);
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type("#oth");
   await expect(options(page)).toHaveCount(1);
   await options(page).first().click();
@@ -99,7 +100,7 @@ test("the Split right action run from the palette splits the pane and shows its 
 }) => {
   await twoSpaces(page);
   expect(await paneIds(page)).toHaveLength(1);
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type(">split right");
   await expect(options(page)).toHaveCount(1);
   await expect(options(page).first()).toContainText("Split right");
@@ -115,14 +116,14 @@ test("the chord shown follows the preset", async ({ page }) => {
   await page.goto("/");
   await expect.poll(() => paneIds(page).then((ids) => ids.length)).toBe(1);
   await page.locator('[data-nr-part="pane"]:visible').click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type(">new tab");
   await expect(options(page).first().locator("kbd")).toHaveText("Ctrl+T");
 });
 
 test("the prefixes > @ # limit the list to actions, tabs or spaces", async ({ page }) => {
   await twoSpaces(page);
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   // Nothing typed: every kind is listed (the last is the action of the example plugin).
   await expect
     .poll(() => kinds(page))
@@ -146,7 +147,7 @@ test("the prefixes > @ # limit the list to actions, tabs or spaces", async ({ pa
 
 test("text that matches nothing says so", async ({ page }) => {
   await twoSpaces(page);
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type("zzzzqq");
   await expect(options(page)).toHaveCount(0);
   await expect(palette(page).getByText("No results", { exact: true })).toBeVisible();
@@ -156,21 +157,21 @@ test("Escape closes the palette without running anything and gives the keyboard 
   page,
 }) => {
   await twoSpaces(page);
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type(">split right");
   await page.keyboard.press("Escape");
   await expect(palette(page)).toBeHidden();
   expect(await paneIds(page)).toHaveLength(1);
   await expect(terminalFocused(page)).toHaveCount(1);
   // And it opens again.
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   await expect(searchBox(page)).toHaveValue("");
 });
 
 test("no shortcut acts while the palette search box has the keyboard", async ({ page }) => {
   await twoSpaces(page);
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(searchBox(page)).toBeFocused();
   const before = await writeCalls(page);
   await page.keyboard.press("Control+Shift+T");

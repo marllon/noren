@@ -6,6 +6,7 @@ import { JSON_PROFILES_FILE } from "../packages/model/src/import-fixtures";
 import { seedConfig } from "./settings-fixture";
 import { ACTIONS_CWD, ACTIONS_TEXT, seedActionsFile, seedSidebarState } from "./sidebar-fixture";
 import { numberTheTabs } from "./numbered-tabs";
+import { openCommandPalette } from "./palette-fixture";
 
 test.beforeEach(numberTheTabs);
 
@@ -517,7 +518,7 @@ test.describe("the AI", () => {
   test("the dialog that asks for a command", async ({ page }) => {
     await startAi(page, FILE_ON, ["llama3"]);
     await page.evaluate(() => (window as HookWindow).__norenTest?.setAiReply("```sh\nls -la\n```"));
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     const palette = page.getByRole("combobox", { name: "Paleta de comandos", exact: true });
     await expect(palette).toBeVisible();
     await palette.fill("? listar os arquivos");
@@ -548,7 +549,7 @@ test.describe("the AI", () => {
     page,
   }) => {
     await startAi(page, FILE_ON, ["llama3"]);
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     const palette = page.getByRole("combobox", { name: "Paleta de comandos", exact: true });
     await palette.fill(`? ${"x".repeat(20000)}`);
     await page.keyboard.press("Enter");
@@ -564,7 +565,7 @@ test.describe("the AI", () => {
     page,
   }) => {
     await startAi(page, FILE_UNNAMED, null);
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     const palette = page.getByRole("combobox", { name: "Paleta de comandos", exact: true });
     await palette.fill("? listar os arquivos");
     await page.keyboard.press("Enter");

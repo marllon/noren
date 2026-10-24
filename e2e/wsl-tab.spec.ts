@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { seedGitRepos } from "./sidebar-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // A tab of a WSL profile (NOR-F20-13). The shell inside the distro is the bash of the distro with the
 // integration script, and what it writes reaches the window like any other shell's: the folder as
@@ -69,7 +70,7 @@ async function openWslTab(page: Page): Promise<string> {
   await page.goto("/");
   await expect(tabs(page)).toHaveCount(1);
   await page.locator('[data-nr-part="pane"]:visible').click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   const palette = page.locator('[data-nr-part="palette"]');
   await expect(palette).toBeVisible();
   await page.keyboard.type(">new wsl: ubuntu");

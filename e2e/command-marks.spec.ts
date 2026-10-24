@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { openShortcutsScreen, setPaneHeaders } from "./settings-fixture";
+import { chooseFirstOption, openCommandPalette, waitForPaletteClosed } from "./palette-fixture";
 
 // The shell of a pane reports where each prompt starts and how each command ended (OSC 133 A, C and
 // D). The terminal marks every command at its prompt, draws a red mark in the ruler beside the
@@ -108,12 +109,11 @@ const isRed = ([r = 0, g = 0, b = 0]: number[]): boolean => r > g + 40 && r > b 
 
 /** Runs an action of the palette by its title. */
 async function paletteRun(page: Page, title: string): Promise<void> {
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   const box = page.getByRole("combobox", { name: "Command palette", exact: true });
   await box.fill(`> ${title}`);
-  await expect(page.getByRole("option").first()).toContainText(title);
-  await page.keyboard.press("Enter");
-  await expect(box).toBeHidden();
+  await chooseFirstOption(page, title);
+  await waitForPaletteClosed(page);
 }
 
 test("three commands, one failing, show exactly one red mark, in the margin and in the ruler", async ({

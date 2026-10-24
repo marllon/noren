@@ -9,6 +9,7 @@ import {
   seedActionsFile,
   seedSidebarState,
 } from "./sidebar-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The Favorites bar at the top of the window (NOR-F20-11c): `appearance.favorites` is "sidebar" (the
 // bar is the top of the sidebar, as in 11a and 11b) or "top" (the bar leaves the sidebar and takes a
@@ -211,14 +212,6 @@ async function closeSettings(page: Page, words: Words): Promise<void> {
   const screen = page.getByRole("dialog", { name: words.settings, exact: true });
   await screen.getByRole("button", { name: words.close, exact: true }).click();
   await expect(screen).toHaveCount(0);
-}
-
-/** Opens the palette (pressing again if the page was not ready for the first press). */
-async function openPalette(page: Page): Promise<void> {
-  await expect(async () => {
-    if (!(await palette(page).isVisible())) await page.keyboard.press("Control+Shift+P");
-    await expect(palette(page)).toBeVisible({ timeout: 1500 });
-  }).toPass();
 }
 
 /** Right click on a tab of the tree, then the item that makes it a favorite. */
@@ -675,7 +668,7 @@ for (const lang of ["en", "pt-BR"] as const) {
     const words = await start(page, lang);
     await expectInSidebar(page);
     const before = (await configText(page)) ?? "";
-    await openPalette(page);
+    await openCommandPalette(page);
     await palette(page).getByRole("combobox").fill(`>${words.command}`);
     await expect(palette(page).getByRole("option").first()).toContainText(words.command);
     await page.keyboard.press("Enter");
@@ -687,7 +680,7 @@ for (const lang of ["en", "pt-BR"] as const) {
       before.replace(/,?\s*"favorites": "top",?/, ""),
     );
 
-    await openPalette(page);
+    await openCommandPalette(page);
     await palette(page).getByRole("combobox").fill(`>${words.command}`);
     await expect(palette(page).getByRole("option").first()).toContainText(words.command);
     await page.keyboard.press("Enter");

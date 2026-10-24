@@ -2,6 +2,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { openCommandPalette } from "../palette-fixture";
 
 // The media of the README (NOR-F12-03): one run of a script over the web demo, with a fixed window,
 // that writes the screenshots and the video into `docs/media/` under stable names. It is not a test
@@ -168,7 +169,7 @@ test("records the screenshots and the video of the README", async ({ browser }) 
 
   // 4. The command palette, then the theme of the space changed from it.
   await panes(page).first().click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   await expect(searchBox(page)).toBeFocused();
   await page.keyboard.type("split", { delay: 90 });

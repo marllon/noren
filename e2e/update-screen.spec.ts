@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { closeSettings, openSettings, seedConfig, settingsScreen } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The screen of the update of the app (NOR-F20-02b), in the web build with the `FakeBackend` and
 // the release seeded under `noren.web.update`: the Updates section of the settings, the palette
@@ -88,7 +89,7 @@ const palette = (page: Page): Locator => page.locator('[data-nr-part="palette"]'
 
 async function runCommand(page: Page, query: string, title: string): Promise<void> {
   await page.locator('[data-nr-part="pane"]:visible').first().click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   const box = palette(page).getByRole("combobox", { name: "Command palette", exact: true });
   await expect(box).toBeFocused();

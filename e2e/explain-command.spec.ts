@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { seedConfig } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The two ways into the AI that do not start at the Ask panel: the Explain button on the mark of a
 // command that failed (it opens the panel with that command and its output as a chip), and `? text`
@@ -137,7 +138,7 @@ async function run(page: Page, line: string): Promise<void> {
 
 /** Opens the palette on `? <text>` and waits for its entry. */
 async function askInPalette(page: Page, text: string): Promise<void> {
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(paletteBox(page)).toBeVisible();
   await paletteBox(page).fill(`? ${text}`);
 }
@@ -502,7 +503,7 @@ test.describe("? text in the palette", () => {
     page,
   }) => {
     await start(page);
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     await expect(paletteBox(page)).toHaveAttribute("placeholder", /\? ask for a command/);
     await paletteBox(page).fill("> new tab");
     await expect(page.getByRole("option").first()).toBeVisible();
@@ -518,7 +519,7 @@ test.describe("? text where the AI is off", () => {
 
   test("off in the settings the question mark is an ordinary search", async ({ page }) => {
     await start(page, { file: FILE_OFF });
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     await expect(paletteBox(page)).not.toHaveAttribute("placeholder", /ask for a command/);
     await paletteBox(page).fill("? list the big files");
     await expect(page.getByRole("option", { name: /Ask for a command/ })).toHaveCount(0);

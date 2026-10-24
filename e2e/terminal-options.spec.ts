@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { WEB_CONFIG_KEY, configText, openShortcutsScreen, seedConfig } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The terminal takes its font, cursor, scrollback and bell from the `terminal` settings of
 // config.jsonc, and Ctrl+= / Ctrl+- / Ctrl+0 zoom the font of every terminal of the window without
@@ -394,7 +395,7 @@ test.describe("the zoom of the font", () => {
 
   test("the palette lists the three actions with their keys and runs them", async ({ page }) => {
     await open(page);
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     const palette = page.locator('[data-nr-part="palette"]');
     await expect(palette).toBeVisible();
     await page.getByRole("combobox", { name: "Command palette", exact: true }).fill("font size");
@@ -408,7 +409,7 @@ test.describe("the zoom of the font", () => {
     await expect(palette).toBeHidden();
     await expect.poll(() => size(page)).toBe(15);
 
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     await page.getByRole("combobox", { name: "Command palette", exact: true }).fill("reset font");
     await page.keyboard.press("Enter");
     await expect.poll(() => size(page)).toBe(14);

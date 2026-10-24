@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
+import { runPaletteCommand } from "./palette-fixture";
 
 // The live group of SSH hosts (NOR-F17-04c): "New group of SSH hosts" in the palette makes a group
 // whose entries are the hosts of the ~/.ssh/config. In web mode the fake backend answers with its
@@ -10,24 +11,12 @@ const tree = (page: Page): Locator => page.getByRole("tree", { name: "Tabs", exa
 const tabs = (page: Page): Locator => tree(page).locator('[data-nr-part="item"]');
 const entries = (page: Page): Locator => tree(page).locator('[data-nr-part="live-entry"]');
 const groups = (page: Page): Locator => tree(page).locator('[data-nr-part="group"]');
-const palette = (page: Page): Locator => page.locator('[data-nr-part="palette"]');
-
-/** Runs a command of the palette by typing its name. */
-async function runFromPalette(page: Page, name: string): Promise<void> {
-  await page.keyboard.press("Control+Shift+P");
-  await expect(palette(page)).toBeVisible();
-  const box = palette(page).getByRole("combobox", { name: "Command palette", exact: true });
-  await box.fill(name);
-  await expect(palette(page).getByRole("option").first()).toContainText(name);
-  await page.keyboard.press("Enter");
-  await expect(palette(page)).toBeHidden();
-}
 
 test("the command makes a live group whose entries are the SSH hosts", async ({ page }) => {
   await page.goto("/");
   await expect(tabs(page)).toHaveCount(1);
   await expect(groups(page)).toHaveCount(0);
-  await runFromPalette(page, "New group of SSH hosts");
+  await runPaletteCommand(page, "New group of SSH hosts");
 
   await expect(groups(page).first()).toContainText("SSH hosts");
   await expect(entries(page)).toHaveCount(3);
@@ -43,7 +32,7 @@ test("the command makes a live group whose entries are the SSH hosts", async ({ 
 test("clicking a host opens one tab of the group and types ssh <host> in it", async ({ page }) => {
   await page.goto("/");
   await expect(tabs(page)).toHaveCount(1);
-  await runFromPalette(page, "New group of SSH hosts");
+  await runPaletteCommand(page, "New group of SSH hosts");
   await expect(entries(page)).toHaveCount(3);
 
   await tree(page).getByRole("treeitem", { name: "db.internal", exact: true }).click();
@@ -66,7 +55,7 @@ test("axe: a group of SSH hosts has no violation", async ({ page }) => {
   await page.goto("/");
   await expect(tabs(page)).toHaveCount(1);
   await expect(page.locator("textarea.xterm-helper-textarea").first()).toBeAttached();
-  await runFromPalette(page, "New group of SSH hosts");
+  await runPaletteCommand(page, "New group of SSH hosts");
   await expect(entries(page)).toHaveCount(3);
   await expectNoAxeViolations(page, "live group of SSH hosts");
 });

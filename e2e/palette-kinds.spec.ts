@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { seedConfig } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The palette entries for shell profiles, recent folders (from OSC 7) and themes.
 
@@ -31,7 +32,7 @@ async function openApp(page: Page): Promise<void> {
 }
 
 async function openPalette(page: Page): Promise<void> {
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
 }
 

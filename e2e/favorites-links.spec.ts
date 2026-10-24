@@ -9,6 +9,7 @@ import {
   seedActionsFile,
   seedSidebarState,
 } from "./sidebar-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The profiles and project actions of the Favorites bar (NOR-F20-11b): put in the bar with the right
 // click of a profile row of the palette and of an action row of the header, taken out with the right
@@ -188,7 +189,7 @@ const PWSH_LINK = { kind: "profile", profileId: "pwsh", label: "PowerShell" };
 
 /** Opens the palette and narrows it to the profile "PowerShell". */
 async function paletteProfileRow(page: Page, lang: Words["lang"]): Promise<Locator> {
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   await page.keyboard.type(">powershell");
   const row = palette(page).locator('[data-nr-kind="profile"]');
@@ -510,7 +511,7 @@ test("the menu key and Shift+F10 open the menu of the highlighted profile row, a
 
 test("a row of the palette that is not a profile has no menu", async ({ page }) => {
   await start(page, "en");
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   await palette(page).locator('[data-nr-kind="tab"]').first().click({ button: "right" });
   await expect(page.getByRole("menu")).toHaveCount(0);

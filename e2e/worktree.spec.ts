@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { seedGitRepos } from "./sidebar-fixture";
+import { runPaletteCommand } from "./palette-fixture";
 
 // "New worktree" and "Remove worktree" in the palette, over the repository of the folder of the
 // pane in use. In web mode the fake backend answers from the repositories seeded under
@@ -14,7 +15,6 @@ const REPO = "/work/repo";
 const tabs = (page: Page): Locator =>
   page.getByRole("tree", { name: "Tabs", exact: true }).locator('[data-nr-part="item"]');
 const cwdOf = (tab: Locator): Locator => tab.locator('[data-nr-part="item-cwd"]');
-const palette = (page: Page): Locator => page.locator('[data-nr-part="palette"]');
 
 /** Types a line into the terminal in use. */
 async function run(page: Page, line: string): Promise<void> {
@@ -32,17 +32,6 @@ async function startInRepo(page: Page): Promise<void> {
   await expect(cwdOf(tabs(page).first())).toHaveText(REPO);
 }
 
-/** Runs a command of the palette by typing its name. */
-async function runFromPalette(page: Page, name: string): Promise<void> {
-  await page.keyboard.press("Control+Shift+P");
-  await expect(palette(page)).toBeVisible();
-  const box = palette(page).getByRole("combobox", { name: "Command palette", exact: true });
-  await box.fill(name);
-  await expect(palette(page).getByRole("option").first()).toContainText(name);
-  await page.keyboard.press("Enter");
-  await expect(palette(page)).toBeHidden();
-}
-
 const newDialog = (page: Page): Locator =>
   page.getByRole("dialog", { name: "New worktree", exact: true });
 const removeDialog = (page: Page): Locator =>
@@ -52,7 +41,7 @@ const confirm = (page: Page): Locator =>
 
 /** Makes a worktree on `branch` through the palette and the dialog; the new tab opens in it. */
 async function createWorktree(page: Page, branch: string): Promise<void> {
-  await runFromPalette(page, "New worktree");
+  await runPaletteCommand(page, "New worktree");
   const dialog = newDialog(page);
   await expect(dialog).toBeVisible();
   await dialog.getByRole("textbox", { name: "Branch", exact: true }).fill(branch);
@@ -64,7 +53,7 @@ test("New worktree asks for the branch, makes it next to the repository and open
   page,
 }) => {
   await startInRepo(page);
-  await runFromPalette(page, "New worktree");
+  await runPaletteCommand(page, "New worktree");
 
   const dialog = newDialog(page);
   await expect(dialog.getByRole("textbox", { name: "Branch", exact: true })).toBeFocused();
@@ -93,7 +82,7 @@ test("a branch that git refuses stays in the dialog with the reason, and nothing
   page,
 }) => {
   await startInRepo(page);
-  await runFromPalette(page, "New worktree");
+  await runPaletteCommand(page, "New worktree");
   const dialog = newDialog(page);
   // `main` is checked out in the main worktree.
   await dialog.getByRole("textbox", { name: "Branch", exact: true }).fill("main");
@@ -111,7 +100,7 @@ test("outside a repository the dialog says so and cannot create", async ({ page 
   await expect(tabs(page)).toHaveCount(1);
   await run(page, "cd /tmp");
   await expect(cwdOf(tabs(page).first())).toHaveText("/tmp");
-  await runFromPalette(page, "New worktree");
+  await runPaletteCommand(page, "New worktree");
   const dialog = newDialog(page);
   await expect(dialog.getByRole("alert")).toContainText("not inside a git repository");
   await dialog.getByRole("textbox", { name: "Branch", exact: true }).fill("x");
@@ -125,7 +114,7 @@ test("Remove worktree asks first: Cancel keeps it, Remove deletes it and says so
   await createWorktree(page, "topic");
   await expect(tabs(page)).toHaveCount(2);
 
-  await runFromPalette(page, "Remove worktree");
+  await runPaletteCommand(page, "Remove worktree");
   const dialog = removeDialog(page);
   // Only the linked worktree is on the list, never the main one.
   const list = dialog.getByRole("list", { name: "Worktrees", exact: true });
@@ -144,7 +133,7 @@ test("Remove worktree asks first: Cancel keeps it, Remove deletes it and says so
   await expect(dialog).toBeHidden();
 
   // It is still there: the dialog lists it again.
-  await runFromPalette(page, "Remove worktree");
+  await runPaletteCommand(page, "Remove worktree");
   await expect(
     removeDialog(page).getByRole("list", { name: "Worktrees", exact: true }).getByRole("listitem"),
   ).toHaveCount(1);
@@ -159,7 +148,7 @@ test("Remove worktree asks first: Cancel keeps it, Remove deletes it and says so
   // gone), so the first tab, in the repository, is the one the question is asked from.
   await tabs(page).first().click();
   await expect(cwdOf(tabs(page).first())).toHaveText(REPO);
-  await runFromPalette(page, "Remove worktree");
+  await runPaletteCommand(page, "Remove worktree");
   await expect(
     removeDialog(page).getByText("This repository has no other worktree."),
   ).toBeVisible();
@@ -172,7 +161,7 @@ test("a worktree with changes is refused with the message of git and stays", asy
     (window as HookWindow).__norenTest?.setWorktreeDirty("/work/repo-dirty", true),
   );
 
-  await runFromPalette(page, "Remove worktree");
+  await runPaletteCommand(page, "Remove worktree");
   const dialog = removeDialog(page);
   await dialog.getByRole("button", { name: /dirty/ }).click();
   await confirm(page).getByRole("button", { name: "Remove worktree", exact: true }).click();

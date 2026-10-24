@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { configText, openSettings, closeSettings, seedConfig } from "./settings-fixture";
 import { seedSidebarState } from "./sidebar-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The languages of the interface: English and Brazilian Portuguese, with no library. With
 // "language" on "system" (or not in the file) the language of the browser decides and English is
@@ -44,7 +45,7 @@ async function expectPortuguese(page: Page): Promise<void> {
   await expect(page.getByRole("group", { name: "Fixadas", exact: true })).toBeVisible();
 
   // The palette: its name, its groups and the names of the actions.
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   const palette = page.locator('[data-nr-part="palette"]');
   await expect(
     palette.getByRole("combobox", { name: "Paleta de comandos", exact: true }),

@@ -10,6 +10,7 @@ import {
 } from "../packages/model/src/gallery-fixture";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { closeSettings, openSettings } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The gallery section of the settings screen (NOR-F18-02b): the index (here a fixture seeded under
 // `noren.web.gallery`, so nothing touches the network) set against what is installed, an Install
@@ -147,7 +148,7 @@ test("installing a theme puts it among the themes of the app", async ({ page }) 
 
   await closeSettings(page);
   await page.locator('[data-nr-part="pane"]:visible').click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type(">theme: lagoon");
   const options = page.locator('[data-nr-part="palette"]').getByRole("option");
   await expect(options).toHaveCount(1);
@@ -197,7 +198,7 @@ test("a theme that passes the hash but is not a theme is said so and left out of
 
   await closeSettings(page);
   await page.locator('[data-nr-part="pane"]:visible').click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type(">theme: broken");
   await expect(page.locator('[data-nr-part="palette"]').getByRole("option")).toHaveCount(0);
 });

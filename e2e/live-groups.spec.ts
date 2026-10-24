@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { seedGitRepos } from "./sidebar-fixture";
+import { runPaletteCommand } from "./palette-fixture";
 
 // Live groups in the sidebar (NOR-F17-04b): "New group of worktrees" in the palette makes a group
 // whose entries are the worktrees of the repository of the folder in use; clicking an entry opens
@@ -16,7 +17,6 @@ const tree = (page: Page): Locator => page.getByRole("tree", { name: "Tabs", exa
 const tabs = (page: Page): Locator => tree(page).locator('[data-nr-part="item"]');
 const entries = (page: Page): Locator => tree(page).locator('[data-nr-part="live-entry"]');
 const groups = (page: Page): Locator => tree(page).locator('[data-nr-part="group"]');
-const palette = (page: Page): Locator => page.locator('[data-nr-part="palette"]');
 const cwdOf = (tab: Locator): Locator => tab.locator('[data-nr-part="item-cwd"]');
 
 /** Types a line into the terminal in use. */
@@ -35,20 +35,9 @@ async function startInRepo(page: Page): Promise<void> {
   await expect(cwdOf(tabs(page).first())).toHaveText(REPO);
 }
 
-/** Runs a command of the palette by typing its name. */
-async function runFromPalette(page: Page, name: string): Promise<void> {
-  await page.keyboard.press("Control+Shift+P");
-  await expect(palette(page)).toBeVisible();
-  const box = palette(page).getByRole("combobox", { name: "Command palette", exact: true });
-  await box.fill(name);
-  await expect(palette(page).getByRole("option").first()).toContainText(name);
-  await page.keyboard.press("Enter");
-  await expect(palette(page)).toBeHidden();
-}
-
 /** Makes a worktree on `branch` through the palette and the dialog; the new tab opens in it. */
 async function createWorktree(page: Page, branch: string): Promise<void> {
-  await runFromPalette(page, "New worktree");
+  await runPaletteCommand(page, "New worktree");
   const dialog = page.getByRole("dialog", { name: "New worktree", exact: true });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("textbox", { name: "Branch", exact: true }).fill(branch);
@@ -64,7 +53,7 @@ test("the command makes a live group whose entries are the worktrees of the fold
 }) => {
   await startInRepo(page);
   await expect(groups(page)).toHaveCount(0);
-  await runFromPalette(page, "New group of worktrees");
+  await runPaletteCommand(page, "New group of worktrees");
 
   const group = groups(page).first();
   await expect(group).toBeVisible();
@@ -85,7 +74,7 @@ test("clicking an entry makes a tab in the group once, and later only shows it",
   page,
 }) => {
   await startInRepo(page);
-  await runFromPalette(page, "New group of worktrees");
+  await runPaletteCommand(page, "New group of worktrees");
   await expect(entries(page)).toHaveCount(1);
 
   await entries(page).first().click();
@@ -112,7 +101,7 @@ test("clicking an entry makes a tab in the group once, and later only shows it",
 
 test("a worktree the app makes shows up under the group", async ({ page }) => {
   await startInRepo(page);
-  await runFromPalette(page, "New group of worktrees");
+  await runPaletteCommand(page, "New group of worktrees");
   await expect(entries(page)).toHaveCount(1);
 
   await createWorktree(page, "feature/login");
@@ -130,7 +119,7 @@ test("the arrows walk from the group into its entries and Delete leaves them alo
   page,
 }) => {
   await startInRepo(page);
-  await runFromPalette(page, "New group of worktrees");
+  await runPaletteCommand(page, "New group of worktrees");
   await expect(entries(page)).toHaveCount(1);
 
   // The terminal takes the keyboard back after the palette closes; the tree is reached after that.
@@ -149,7 +138,7 @@ test("the arrows walk from the group into its entries and Delete leaves them alo
 
 test("axe: a sidebar with a live group has no violation", async ({ page }) => {
   await startInRepo(page);
-  await runFromPalette(page, "New group of worktrees");
+  await runPaletteCommand(page, "New group of worktrees");
   await expect(entries(page)).toHaveCount(1);
   await expectNoAxeViolations(page, "sidebar with a live group");
 });
@@ -162,7 +151,7 @@ test("a folder with no repository makes a group that says why it lists nothing",
   await expect(tabs(page)).toHaveCount(1);
   await run(page, "cd /elsewhere");
   await expect(cwdOf(tabs(page).first())).toHaveText("/elsewhere");
-  await runFromPalette(page, "New group of worktrees");
+  await runPaletteCommand(page, "New group of worktrees");
   await expect(groups(page).first()).toContainText("Worktrees of elsewhere");
   await expect(entries(page)).toHaveCount(0);
   await expect(tree(page).locator('[data-nr-part="live-error"]')).toContainText(
@@ -173,7 +162,7 @@ test("a folder with no repository makes a group that says why it lists nothing",
 test("with no known folder the command only says so and makes no group", async ({ page }) => {
   await page.goto("/");
   await expect(tabs(page)).toHaveCount(1);
-  await runFromPalette(page, "New group of worktrees");
+  await runPaletteCommand(page, "New group of worktrees");
   await expect(
     page
       .locator('[data-nr-part="pane-notice"], [role="status"]')
@@ -188,7 +177,7 @@ test("axe: a group that says why it lists nothing has no violation", async ({ pa
   await expect(tabs(page)).toHaveCount(1);
   await run(page, "cd /elsewhere");
   await expect(cwdOf(tabs(page).first())).toHaveText("/elsewhere");
-  await runFromPalette(page, "New group of worktrees");
+  await runPaletteCommand(page, "New group of worktrees");
   await expect(tree(page).locator('[data-nr-part="live-error"]')).toContainText(
     "Could not update:",
   );

@@ -14,6 +14,7 @@ import {
   seedConfig,
   settingsScreen,
 } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // Importing from the settings screen. "Import profiles..." reads a settings file (JSON with
 // comments), shows the profiles it would add with their command lines (the hidden ones are
@@ -82,7 +83,7 @@ async function start(page: Page, config: string | null = CONFIG): Promise<void> 
 
 async function openPalette(page: Page): Promise<void> {
   await page.locator('[data-nr-part="pane"]:visible').first().click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   await expect(box(page)).toBeFocused();
 }

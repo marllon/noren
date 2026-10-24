@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { clicksReachThePage, seedSidebarState } from "./sidebar-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // A tab dragged out of the window (NOR-F15-04b): letting go of a tab beyond the edge of the page
 // makes a window with a space of its own and takes the tab there; the page of that window draws the
@@ -220,7 +221,7 @@ test("Move tab to new window in the palette takes the tab on screen to a window 
 }) => {
   await open(page);
   await row(page, "build").click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   const palette = page.locator('[data-nr-part="palette"]');
   await expect(palette).toBeVisible();
   await page.keyboard.type("Move tab to new");
@@ -416,7 +417,7 @@ test("a tab with a browser pane goes to a window like any other, by dragging and
   await clicksReachThePage(page);
   await row(page, "plain").click();
   await expect(row(page, "plain")).toHaveAttribute("aria-current", "true");
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type("Move tab to new");
   await page.keyboard.press("Enter");
   await expect(panels(page)).toHaveCount(2);
@@ -435,7 +436,7 @@ test("in a browser without a second window, dragging out does nothing and the pa
   expect((await saved(page)).windows).toBeUndefined();
 
   await row(page, "build").click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type("Move tab to new");
   await page.keyboard.press("Enter");
   await expect(notice(page)).toHaveText("Other windows need the desktop app.");
@@ -452,7 +453,7 @@ test("Portuguese: the notice and the palette command are in the language of the 
   await expect(
     page.locator('[data-nr-part="item-title"]').filter({ hasText: "api" }),
   ).toBeVisible();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type("Levar a aba");
   await expect(
     page.locator('[data-nr-part="palette"]').getByRole("option", {

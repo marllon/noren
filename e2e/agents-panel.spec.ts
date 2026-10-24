@@ -4,6 +4,7 @@ import { seedConfig } from "./settings-fixture";
 import { afterNextFrame } from "./frames";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { numberTheTabs } from "./numbered-tabs";
+import { openCommandPalette } from "./palette-fixture";
 
 test.beforeEach(numberTheTabs);
 
@@ -257,7 +258,7 @@ test("with two waiting, the shortcut picks the one that has waited longest", asy
 test("the palette lists both commands with their shortcuts and runs them", async ({ page }) => {
   const { beta, alpha } = await threeAgents(page);
   const palette = page.locator('[data-nr-part="palette"]');
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type(">agent");
   const options = palette.getByRole("option");
   await expect(options.filter({ hasText: "Open agents panel" })).toContainText("Ctrl+Alt+Shift+G");
@@ -272,7 +273,7 @@ test("the palette lists both commands with their shortcuts and runs them", async
 
   await spaceButton(page, "Two").click();
   await expect.poll(() => focusedPane(page)).toBe(beta);
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type(">waiting for you");
   await expect(options).toHaveCount(1);
   await page.keyboard.press("Enter");
@@ -321,7 +322,7 @@ test("the panel and the commands are in Portuguese when the language is", async 
   ).toBeVisible();
   await page.keyboard.press("Escape");
 
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type(">agente");
   const options = page.locator('[data-nr-part="palette"]').getByRole("option");
   await expect(options.filter({ hasText: "Abrir o painel de agentes" })).toBeVisible();

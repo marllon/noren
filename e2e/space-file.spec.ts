@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { configText, seedConfig } from "./settings-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // "Export space" and "Import space..." in the palette (NOR-F18-03b). Export hands the active space
 // to the system as a `.noren-space.json` download, with the variables that look like secrets left
@@ -66,7 +67,7 @@ async function start(page: Page, config: string | null = CONFIG): Promise<void> 
 
 async function openPalette(page: Page): Promise<void> {
   await page.locator('[data-nr-part="pane"]:visible').first().click();
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await expect(palette(page)).toBeVisible();
   await expect(box(page)).toBeFocused();
 }

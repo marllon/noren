@@ -3,6 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { clicksReachThePage } from "./sidebar-fixture";
+import { openCommandPalette } from "./palette-fixture";
 
 // The preview and diff panes in a window besides the main one (NOR-F15-04d). A tab with one of
 // them goes to a window by dragging it out or by "Move tab to new window", and the page of the
@@ -314,7 +315,7 @@ test("Move tab to new window does the same for a tab with a diff pane: the files
   await row(page, "changes").click();
   await expect(row(page, "changes")).toHaveAttribute("aria-current", "true");
   const before = (await gitDiffReads(page)).length;
-  await page.keyboard.press("Control+Shift+P");
+  await openCommandPalette(page);
   await page.keyboard.type("Move tab to new");
   await page.keyboard.press("Enter");
   await expect(panels(page)).toHaveCount(1);

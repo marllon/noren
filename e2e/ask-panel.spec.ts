@@ -4,6 +4,7 @@ import { closeShortcutsScreen, openShortcutsScreen, seedConfig } from "./setting
 import { afterNextFrame } from "./frames";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { numberTheTabs } from "./numbered-tabs";
+import { openCommandPalette } from "./palette-fixture";
 
 test.beforeEach(numberTheTabs);
 
@@ -177,7 +178,7 @@ test.describe("the context chips and the preview", () => {
     await start(page);
     await say(page, "one-line");
     // Select the output of the last command (the palette action), then open the panel.
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     const palette = page.getByRole("combobox", { name: "Command palette", exact: true });
     await palette.fill("> Select command output");
     await page.keyboard.press("Enter");
@@ -517,7 +518,7 @@ test.describe("where the AI is off", () => {
   const askEntry = (page: Page) => page.getByRole("option", { name: /Ask the AI/ });
 
   async function paletteAsk(page: Page): Promise<Locator> {
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     const box = page.getByRole("combobox", { name: "Command palette", exact: true });
     await box.fill("> ask the ai");
     return box;
@@ -642,7 +643,7 @@ test.describe("opening, closing and the shortcut", () => {
 
   test("the palette lists Ask the AI with its key and opens the panel", async ({ page }) => {
     await start(page);
-    await page.keyboard.press("Control+Shift+P");
+    await openCommandPalette(page);
     const box = page.getByRole("combobox", { name: "Command palette", exact: true });
     await box.fill("> ask the ai");
     const entry = page.getByRole("option", { name: /Ask the AI/ });

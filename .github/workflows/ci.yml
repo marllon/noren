@@ -77,8 +77,44 @@ jobs:
       # apps/desktop/dist is gitignored and Tauri's generate_context requires frontendDist (../dist).
       - run: pnpm --filter @noren/desktop build
 
-      - run: pnpm verify
+      # One step per check, each one run even when an earlier one failed, so a single failure does
+      # not hide the results of the others.
+      - name: Typecheck
+        if: ${{ !cancelled() }}
+        run: pnpm typecheck
 
-      - run: pnpm e2e
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: pnpm lint
 
-      - run: pnpm licenses:check
+      - name: Format check
+        if: ${{ !cancelled() }}
+        run: pnpm format:check
+
+      - name: README links
+        if: ${{ !cancelled() }}
+        run: pnpm readme:check
+
+      - name: Unit tests
+        if: ${{ !cancelled() }}
+        run: pnpm test
+
+      - name: Rust format
+        if: ${{ !cancelled() }}
+        run: cargo fmt --all --check
+
+      - name: Rust clippy
+        if: ${{ !cancelled() }}
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Rust tests
+        if: ${{ !cancelled() }}
+        run: cargo test --workspace
+
+      - name: End-to-end tests
+        if: ${{ !cancelled() }}
+        run: pnpm e2e
+
+      - name: Licenses
+        if: ${{ !cancelled() }}
+        run: pnpm licenses:check

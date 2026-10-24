@@ -152,6 +152,7 @@ pub fn transparency_reduced() -> bool {
 }
 
 /// The rule on the value of `EnableTransparency`: only an explicit 0 turns the effects off.
+#[cfg(any(windows, test))]
 fn reduced_from_value(value: Option<u32>) -> bool {
     value == Some(0)
 }

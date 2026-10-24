@@ -1,4 +1,4 @@
-// The numbers of the glass interface style (`appearance.style` "glass", D23) that are not a color or a
+// The numbers of the glass interface style (`appearance.style` "glass") that are not a color or a
 // size of the stylesheet: how see-through the glass is when nothing says, how much more the sidebar
 // lets through than the panels, and the veil that keeps text readable over any picture. Pure. The
 // stylesheet (`style-tokens.css`) works the fills out from `--nr-opacity` the same way

@@ -2,7 +2,7 @@ import { expect, test } from "./test";
 import type { Locator, Page } from "@playwright/test";
 import { seedConfig } from "./settings-fixture";
 
-// Baselines are per operating system (Windows only, D7): `pnpm e2e:visual`. The settings screen of the
+// Baselines are per operating system (Windows only): `pnpm e2e:visual`. The settings screen of the
 // dense style (NOR-F20-21b): the page of the window with its header, its numbered column of sections,
 // its search, its boxes of rows and its strip at the foot, at its Appearance (the two cards of the
 // interface style first, in the glass screen's baseline of the dense Appearance), Themes, Background,

@@ -1779,7 +1779,7 @@ function clearUnread(
 /**
  * The panes on screen have nothing unread: showing a tab (or a space, or a pane that zoom hid)
  * is reading it. The main window shows the tab of the active space and every other window the tab
- * of its own space, each is looked at, so each is read (finding 241). Runs after every action that
+ * of its own space, each is looked at, so each is read. Runs after every action that
  * changed the workspace, so no action has to know.
  */
 function clearViewed(ws: Workspace): Workspace {

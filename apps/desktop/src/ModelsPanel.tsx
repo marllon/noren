@@ -26,7 +26,7 @@ interface ModelsPanelProps {
  * The local models that fit this computer, inside the AI section of the settings screen: the memory
  * is read once when the screen opens, `recommendedBenchModels` chooses the list, and each model has an
  * install button that shows the `ollama pull` command and asks first. Only after the person confirms
- * is the command put at the prompt of the focused terminal, and never with Enter (D8): nothing here
+ * is the command put at the prompt of the focused terminal, and never with Enter: nothing here
  * runs it.
  */
 export function ModelsPanel({ backend, onInsert }: ModelsPanelProps) {

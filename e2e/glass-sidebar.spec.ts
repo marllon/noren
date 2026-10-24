@@ -4,7 +4,7 @@ import { expectNoAxeViolations } from "./axe-fixture";
 import { AGENT_STATES, start } from "./glass-sidebar-fixture";
 import { configText, openSettings, settingsScreen } from "./settings-fixture";
 
-// The content of the glass sidebar (NOR-F20-18b, D23), part by part as in the design of the window
+// The content of the glass sidebar (NOR-F20-18b), part by part as in the design of the window
 // (`vidro-janela`): the brand and the button that folds the sidebar, the search with the shortcut of the
 // palette, the favorites as a grid of four with a state dot, the card of the project actions, the tree
 // with a state dot and a second line (folder and branch) on every tab, and the foot with the New tab row,
@@ -806,7 +806,7 @@ test.describe("the foot: New tab, the spaces and the settings", () => {
   });
 });
 
-test.describe("the colors of a space: the four of the design are offered (finding 345)", () => {
+test.describe("the colors of a space: the four of the design are offered", () => {
   const DESIGN = [
     ["Mint", "rgb(94, 230, 200)"],
     ["Lilac", "rgb(169, 155, 255)"],

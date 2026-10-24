@@ -1,4 +1,4 @@
-// The pure part of scripts/shot.mjs (`pnpm shot`, NOR-F20-05, D22 item 1): the arguments, the refusal
+// The pure part of scripts/shot.mjs (`pnpm shot`, NOR-F20-05): the arguments, the refusal
 // while the person is playing, the settings and the picture of the second print, the lines the app
 // must say and how a leftover daemon is told. Nothing here starts a program; the tests are in
 // scripts/shot.vitest.mjs.
@@ -8,7 +8,7 @@
 // every monitor, and writes the PNG that its own web view gives. No program is started with a
 // window of its own, no key or mouse is sent to the system (the key events of `--split-keys` and the
 // calls that open the settings screen and the theme editor are made inside the page) and no desktop is
-// captured (D19 still holds; this mode is the one exception D22 makes).
+// captured (this mode is the one that shows nothing on the desktop).
 import { crc32, deflateSync } from "node:zlib";
 import { gameModeSignalPresent, signalPath } from "./game-mode.mjs";
 
@@ -205,9 +205,9 @@ export function backgroundSettings() {
  * [`backgroundPng`]), one of a tab split by the shortcuts Ctrl+Shift+D and Ctrl+Shift+E, which
  * the app sends to its own page as key events (NOR-F20-07b), the settings screen at its Themes section
  * and the theme editor open on Noren Dusk with two boxes typed into, both opened from inside the page
- * (NOR-F20-09b, finding 326). The second one's settings are written while the app runs, the way the settings
+ * (NOR-F20-09b). The second one's settings are written while the app runs, the way the settings
  * screen writes them: the picture named in the settings file the app starts with does not show yet
- * (finding 309: the page asks for it before the store has its backend), and asking for it that way
+ * (the page asks for it before the store has its backend), and asking for it that way
  * is still possible with `--settings`, which fails with what the page says.
  */
 export const BUILTIN_SCENARIOS = [

@@ -130,7 +130,7 @@ describe("bench/tasks", () => {
   });
 });
 
-describe("the check never runs a command (D8)", () => {
+describe("the check never runs a command", () => {
   it("imports nothing that can start a process", () => {
     const source = readFileSync(new URL("./bench-suite.ts", import.meta.url), "utf8");
     expect(source).not.toMatch(

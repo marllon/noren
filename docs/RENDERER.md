@@ -3,11 +3,11 @@
 Which program draws the characters of a terminal, what Noren uses now, and whether a native renderer
 (libghostty) or WebGPU should replace it. This is the report of NOR-F20-04. It is an evaluation:
 nothing was prototyped, no dependency was added and no code of the app changed. Changing the
-renderer is a decision of the owner of the project, not of the loop; the
+renderer is a decision of the owner of the project; the
 [Recommendation](#recommendation) is what the evidence supports, for that decision.
 
 The numbers quoted come from [PERF.md](PERF.md) (rows 1 to 7), measured on one machine, in the release
-build, with the window hidden (D19: nothing here was seen in a shown window).
+build, with the window hidden (nothing here was seen in a shown window).
 
 ## What the app uses today
 
@@ -46,7 +46,7 @@ limited by it:
 | Memory (rows 6 and 7)       | 2.9 MB per tab of Noren's own between 30 and 100 tabs, 1.8 MB of it in the web view (presumably the terminal of each tab in the page: buffer, WebGL context; not split further) | Partly. The web view is about 60 % of the growth per tab; 100 tabs are 467.5 MB against a target of 800 MB, so there is room              |
 | First prompt (rows 5 and 7) | 478 to 526 ms; opening the terminal, WebGL context included, is 21 to 24 ms of it                                                                                               | Marginally. The renderer is under 5 % of the time; the web view start (about 40 %) and the page scripts (about 20 %) are not the renderer |
 
-What the measurements cannot say, and are not verified (D19): how fast the WebGL renderer draws in a
+What the measurements cannot say, and are not verified in a visible window: how fast the WebGL renderer draws in a
 window that is shown on a real GPU, the frame time while a heavy program scrolls, input latency
 (key to pixel), and the cost on a machine without a good GPU, where the DOM fallback is used. These
 are the numbers a renderer change would be judged on, and none of them was taken, because they need
@@ -56,7 +56,7 @@ a visible window. They are listed under "What is missing to know".
 
 1. **Throughput and memory**, from PERF.md (above): a new renderer has to beat the numbers that
    renderer can change, and none of the measured ones is limited by it.
-2. **License** allowed by `CLAUDE.md` for production dependencies (MIT, Apache-2.0, BSD, ISC, ...).
+2. **License** allowed by the project rules for production dependencies (MIT, Apache-2.0, BSD, ISC, ...).
 3. **Maturity and a stable API**: something the app can depend on without carrying the maintenance
    of someone else's moving internals.
 4. **Windows first**, then macOS and Linux: Noren uses the web view of each system, so what works on
@@ -65,7 +65,7 @@ a visible window. They are listed under "What is missing to know".
    (NOR-F20-01b, 01c) and has a manual script for NVDA and Narrator ([ACCESSIBILITY.md](ACCESSIBILITY.md)).
    The terminal's screen reader mode must stay.
 6. **Effort**, in sizes (S: days, M: a few weeks, L: months; estimates, not measurements).
-7. **Risk of the rewrite that `CLAUDE.md` forbids**: "do not ... write a custom terminal renderer".
+7. **Risk of the rewrite that the project rules forbid**: "do not ... write a custom terminal renderer".
    An option that needs Noren to write its own renderer is outside the rules until the owner changes
    them.
 
@@ -79,7 +79,7 @@ a visible window. They are listed under "What is missing to know".
   `preloadWebgl` but not removed (#137). The drawing runs on the page's main thread (JavaScript
   prepares the cells; the GPU draws them), so it shares that thread with React. Third-party
   rendering code that Noren does not control.
-- **What is missing to know.** Frame time and input latency in a shown window on a real GPU (D19), and
+- **What is missing to know.** Frame time and input latency in a shown window on a real GPU, and
   the cost of the DOM fallback on a machine with no usable GPU.
 
 ## Option B: WebGPU in the web view
@@ -88,7 +88,7 @@ Draw the terminal with WebGPU instead of WebGL, in the same web view.
 
 - **What exists.** The sources found for this report do not show a WebGPU renderer or addon for
   xterm.js: the WebGL addon is the GPU path. So this option means either (B1) writing a WebGPU renderer
-  for xterm.js, which is a custom terminal renderer by the rule of `CLAUDE.md`, or (B2) waiting for
+  for xterm.js, which is a custom terminal renderer by the project rules, or (B2) waiting for
   upstream to ship one.
 - **Pros.** WebGPU can draw the whole grid of cells in one pass with less per-call driver cost than
   WebGL, can use compute for the glyph atlas, and does not carry the limit of 16 contexts per page the
@@ -111,19 +111,19 @@ libghostty is the library that the Ghostty terminal is made of, so that other pr
 its terminal emulation and, over time, its renderer.
 
 - **What exists** (public documentation and discussions found in October 2026, not re-read from the
-  repository in this round): the part meant for embedding today is `libghostty-vt`, the emulation core
+  repository for this document): the part meant for embedding today is `libghostty-vt`, the emulation core
   (the parser and the state of the screen), with a C API that is described as work in progress and
   not stable. The rest of the library is described as used mainly by the macOS app, with its API
   free to change between releases. Its renderers are Metal on macOS and OpenGL on Linux; there is
   no Windows renderer and no Windows frontend, and the discussions put the first Windows work late in
   2026 with no commitment. It is written in Zig, so using it adds the Zig toolchain to the build
-  (outside the stack of D5: Rust and TypeScript). The license of the project is MIT (to be confirmed
+  (outside the stack: Rust and TypeScript). The license of the project is MIT (to be confirmed
   against the repository before any decision).
 - **Two ways to use it.**
   - **C1: `libghostty-vt` as the emulator, drawing still done by Noren.** This replaces xterm.js's
     parser and buffer, so the search, serialize, links, command marks, screen reader tree and the agent
     state would all have to be rebuilt on a new buffer, and the drawing would be a renderer written by
-    Noren (the thing `CLAUDE.md` forbids) or a return to xterm.js, which cannot take another
+    Noren (the thing the project rules forbid) or a return to xterm.js, which cannot take another
     emulator's buffer.
   - **C2: a native surface drawn by libghostty, placed over or beside the web view.** The
     interface (React, in the web view) and the terminal (a native window) would live in separate
@@ -146,15 +146,15 @@ its terminal emulation and, over time, its renderer.
 
 ## Comparison
 
-| Criterion                       | A: xterm.js + WebGL (now)     | B: WebGPU in the web view                         | C: libghostty                               |
-| ------------------------------- | ----------------------------- | ------------------------------------------------- | ------------------------------------------- |
-| Throughput, memory              | Not the limit (PERF.md)       | Same limits (PTY and web view); small gain        | Same limits; moves terminals off the page   |
-| License                         | MIT                           | MIT if upstream's; B1 would be Noren's own        | MIT (to confirm); adds the Zig toolchain    |
-| Maturity, stable API            | Stable, widely used           | No renderer found; WebGPU uneven across web views | C API not stable; no Windows renderer       |
-| Windows first                   | Yes (WebView2)                | Likely (Chromium, D3D12); not verified            | No renderer on Windows today                |
-| Screen reader, axe              | Works, has a script and tests | Same tree; unchanged                              | Rebuilt: native provider, new tests         |
-| Effort                          | none                          | M (adopt upstream) / L (write one)                | L                                           |
-| Forbidden rewrite (`CLAUDE.md`) | No                            | B1 yes, B2 no                                     | C1 and C2 need a renderer or a new emulator |
+| Criterion                         | A: xterm.js + WebGL (now)     | B: WebGPU in the web view                         | C: libghostty                               |
+| --------------------------------- | ----------------------------- | ------------------------------------------------- | ------------------------------------------- |
+| Throughput, memory                | Not the limit (PERF.md)       | Same limits (PTY and web view); small gain        | Same limits; moves terminals off the page   |
+| License                           | MIT                           | MIT if upstream's; B1 would be Noren's own        | MIT (to confirm); adds the Zig toolchain    |
+| Maturity, stable API              | Stable, widely used           | No renderer found; WebGPU uneven across web views | C API not stable; no Windows renderer       |
+| Windows first                     | Yes (WebView2)                | Likely (Chromium, D3D12); not verified            | No renderer on Windows today                |
+| Screen reader, axe                | Works, has a script and tests | Same tree; unchanged                              | Rebuilt: native provider, new tests         |
+| Effort                            | none                          | M (adopt upstream) / L (write one)                | L                                           |
+| Forbidden rewrite (project rules) | No                            | B1 yes, B2 no                                     | C1 and C2 need a renderer or a new emulator |
 
 ## Recommendation
 
@@ -168,7 +168,7 @@ open a renderer task.**
    [PERF.md](PERF.md).
 2. **Neither alternative can be adopted under the rules and the state of the art.** libghostty has
    no Windows renderer and no stable API; its use means Noren writing a renderer or dropping
-   xterm.js, which `CLAUDE.md` forbids and which breaks the screen reader mode, the axe tests, the
+   xterm.js, which the project rules forbid and which breaks the screen reader mode, the axe tests, the
    search, the links and the saved scrollback. A WebGPU addon does not exist upstream; writing it is
    a custom renderer too, for a gain the numbers do not show.
 3. **The cost of waiting is low.** The fallbacks work (the DOM renderer when WebGL is missing), the
@@ -177,14 +177,14 @@ open a renderer task.**
 
 **What would change the recommendation** (re-open the question when one of these holds):
 
-- a measurement in a shown window, by the owner (D19 keeps the loop from taking it), of frame time
+- a measurement in a shown window, by the owner (not taken so far, since it needs a visible window), of frame time
   or input latency with a heavy program that is over the target, so that the renderer is shown to be
   the limit;
 - upstream xterm.js ships a WebGPU renderer, or libghostty announces a stable embedding API with a
   Windows renderer and a documented way to place its surface in a Tauri window, with the
   accessibility problem solved;
-- the owner decides to accept a second language (Zig) or a custom renderer, and edits the rules
-  of `CLAUDE.md` to say so.
+- the owner decides to accept a second language (Zig) or a custom renderer, and edits the project
+  rules to say so.
 
 **Cheap steps that need no decision and break no rule**, for a later task if the owner wants them:
 a hidden `--smoke` mode that reads `navigator.gpu` and the WebGL renderer string in the real

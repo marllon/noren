@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn the_main_window_is_asked_to_close_with_a_browser_pane_open() {
         // The web view of a pane is a child of the main window, which Tauri then stops calling a
-        // webview window; the quit of the tray still has to find it (finding 256).
+        // webview window; the quit of the tray still has to find it.
         let app = tauri::test::mock_app();
         app.manage(an_app_state());
         WebviewWindowBuilder::new(&app, MAIN_LABEL, WebviewUrl::default())

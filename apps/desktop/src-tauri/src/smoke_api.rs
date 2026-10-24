@@ -20,12 +20,12 @@
 //!    that session arrives with what the shell printed by itself, its prompt (NOR-F17-01f, 02a);
 //! 6. `notify` answers a result (NOR-F17-02a). The folder of the run holds a settings file that turns
 //!    the notifications off, so the answer must be `shown: false` and no notification of the system
-//!    appears on the desktop of whoever runs the checks (D19); that a notification is shown when the
+//!    appears on the desktop of whoever runs the checks; that a notification is shown when the
 //!    settings allow it is covered by the unit tests, not by this run;
 //! 7. nothing was shown (the main window is hidden, no global shortcut, no tray icon) and the daemon
 //!    of the run stops.
 //!
-//! No call types into a terminal, so no Enter is sent (D8), and no window is shown or clicked (D19).
+//! No call types into a terminal, so no Enter is sent, and no window is shown or clicked.
 //! The page saves the workspace it makes, so the run keeps the files of the app in a folder of its
 //! own, removed when it ends. Every step prints a `SMOKE API ...` line; `scripts/smoke.mjs` requires
 //! the ones that matter.

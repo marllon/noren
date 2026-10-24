@@ -224,7 +224,7 @@ fn a_tab_of_an_ssh_profile_lives_in_the_container_gets_nothing_of_this_machine_a
     let (page, in_page) = collecting();
 
     // The call the page makes: the folder of the space and the environment of the tab are both
-    // from this machine, and neither may reach the shell in the container (finding 198).
+    // from this machine, and neither may reach the shell in the container.
     let this_folder = std::env::current_dir().expect("a folder");
     let env = HashMap::from([
         (
@@ -326,7 +326,7 @@ fn a_tab_of_an_ssh_profile_lives_in_the_container_gets_nothing_of_this_machine_a
     );
 
     // The line printed meanwhile is in the page, once, and nothing already shown came again
-    // (finding 197): the replay the daemon sent was cut down to what follows what the page had.
+    //: the replay the daemon sent was cut down to what follows what the page had.
     wait_for_page(&in_page, "the line printed while down", |text| {
         text.contains("late-line-42").then_some(())
     });

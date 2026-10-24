@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { seedConfig } from "./settings-fixture";
 import { ACTIONS_CWD, ACTIONS_TEXT, seedActionsFile, seedSidebarState } from "./sidebar-fixture";
 
-// Baselines are per operating system (Windows only, D7): `pnpm e2e:visual`. The glass style is the
+// Baselines are per operating system (Windows only): `pnpm e2e:visual`. The glass style is the
 // default, so the baselines of every other visual test already show it (with Geist); these two show
 // the dense style (JetBrains Mono, square corners) in the dark and the light scheme (NOR-F20-17).
 

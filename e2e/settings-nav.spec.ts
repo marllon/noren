@@ -7,7 +7,7 @@ import { WEB_CONFIG_KEY, closeSettings, denseOf, seedConfig } from "./settings-f
 // the sections and the rows that have its words, and one column of rows (label and explanation on
 // the left, control on the right) on a grid of 8 px. The screen is the same form as before, so the
 // controls and Save keep working; this file covers what is new: the column, the search, the grid,
-// the screen that no longer scrolls sideways (finding 329) and axe on every section.
+// the screen that no longer scrolls sideways and axe on every section.
 
 type HookWindow = Window & { __norenTest?: { paneIds(): string[] } };
 
@@ -426,7 +426,7 @@ test.describe("the search", () => {
 test.describe("the explanations", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
-  // The explanation of a field is short and gray, under its label (D22, item 7): at most 130
+  // The explanation of a field is short and gray, under its label: at most 130
   // characters under a label, at most 165 in a paragraph of a panel, in both languages.
   for (const language of ["en", "pt-BR"] as const) {
     test(`${language}: every explanation under a label or in a panel is short`, async ({
@@ -648,7 +648,7 @@ test.describe("the grid", () => {
   });
 });
 
-test.describe("no sideways scroll (finding 329)", () => {
+test.describe("no sideways scroll", () => {
   for (const language of ["en", "pt-BR"] as const) {
     for (const mode of ["dark", "light"] as const) {
       for (const width of [1280, 900] as const) {

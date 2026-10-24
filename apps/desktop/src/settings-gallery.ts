@@ -49,7 +49,7 @@ export function galleryRows(
 
 /**
  * Why the theme `id` is not usable now that it sits in the themes folder, or `undefined` when it is.
- * The core installs a theme once its hash matches, without reading what is in it (finding 279), so
+ * The core installs a theme once its hash matches, without reading what is in it, so
  * this is where its content is held to the whole schema: `texts` are the theme files as the backend
  * lists them. A file that is not JSON cannot be told from another file, so it is not blamed here.
  */

@@ -278,7 +278,7 @@ fn require_keep(state: &AppState) -> Result<(), String> {
 }
 
 /// Waits until every session this run holds has printed something. On Windows, closing a pseudo
-/// console right after another session was created can stall for a long time (finding 168), so
+/// console right after another session was created can stall for a long time, so
 /// nothing is ended or detached before each shell has had its first output.
 fn wait_for_first_output(state: &AppState, deadline: Instant) -> Result<(), String> {
     loop {

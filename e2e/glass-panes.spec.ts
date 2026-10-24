@@ -7,7 +7,7 @@ import type { Mode, StartOptions } from "./glass-sidebar-fixture";
 import { readPixels } from "./png-pixels";
 import { SPLIT_FIXTURE } from "./sidebar-fixture";
 
-// The pane of the glass style (NOR-F20-18c, D23), as in the design of the window (`vidro-janela`): the
+// The pane of the glass style (NOR-F20-18c), as in the design of the window (`vidro-janela`): the
 // header of a terminal pane with its folder, the git branch, the command and the buttons that split and
 // zoom it; the ring in the color of the space on the pane in focus; and the ring and the badge "Agent
 // waiting for you" of an agent that waits. What the pane does (focus, keyboard, mouse, split, zoom,

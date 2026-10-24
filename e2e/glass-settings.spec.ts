@@ -10,7 +10,7 @@ import {
   seedConfig,
 } from "./settings-fixture";
 
-// The settings screen of the glass style (NOR-F20-19, D23), as in the approved design
+// The settings screen of the glass style (NOR-F20-19), as in the approved design
 // (`vidro-configuracoes`): one card of glass over the window, a header with the title, the search and
 // the X, a column of sections with an icon on each, and rows of a label with its explanation on the
 // left and its control on the right, with the controls of the design (a switch, a row of buttons in a

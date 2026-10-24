@@ -11,7 +11,7 @@ export default defineConfig({
   testMatch: "**/*.spec.ts",
   outputDir: "../test-results",
   reporter: [["list"]],
-  // Fixed ceiling (NOR-F20-22, D25): at most 8 workers, 4 while the user is playing (game mode).
+  // Fixed ceiling (NOR-F20-22): at most 8 workers, 4 while the user is playing (game mode).
   workers,
   // The tests and the visual baselines read the interface in English: with "language" on "system"
   // the browser's language decides, so it is fixed here (the language tests set their own).

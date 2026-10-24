@@ -264,7 +264,7 @@ function watchRequests(page: Page): void {
 }
 
 /**
- * What a page that never got its stylesheet looks like here (finding 381): the area of a browser
+ * What a page that never got its stylesheet looks like here: the area of a browser
  * pane is a block with nothing in it, so it has no height and no web view is ever laid on it. The
  * failure says so, with the requests that failed, so it is not read as a layout that did not settle.
  */

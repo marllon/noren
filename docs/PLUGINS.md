@@ -150,7 +150,7 @@ The panel closes by itself if the plugin fails, and never stays behind a plugin 
 | actions per plugin                       | 64                                    |
 | `html` of a panel                        | 20,000 characters                     |
 
-The app puts no limit yet on the size or the rate of the messages a plugin sends, or on a plugin that never answers (finding 276 in `docs/SECURITY_REVIEW.md`): a plugin can use the memory or the time of the page, though it cannot run anything outside its Worker.
+The app puts no limit yet on the size or the rate of the messages a plugin sends, or on a plugin that never answers (see `docs/SECURITY_REVIEW.md`): a plugin can use the memory or the time of the page, though it cannot run anything outside its Worker.
 
 ## Isolation
 

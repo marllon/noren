@@ -7,7 +7,7 @@ import type { UpdateEvent, UpdatePhase } from "./update-screen";
 // of the palette. Nothing here starts by itself, and the install is a method of its own that only
 // the Install button calls. Before the package is asked for, the app saves what closing it would
 // save (`saveBeforeExit`), because the installer ends the app without the close of the window
-// (finding 302). The state lives here, outside the components, so a check started from the palette
+//. The state lives here, outside the components, so a check started from the palette
 // goes on while the settings screen opens and shows it.
 
 export type UpdateBackend = Pick<

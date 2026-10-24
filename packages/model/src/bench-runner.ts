@@ -15,7 +15,7 @@ import { checkBenchAnswer, type BenchKind, type BenchTask } from "./bench-suite"
 // provider through `AiBackend.chat`, checks each answer with `checkBenchAnswer` and measures it. Pure:
 // no DOM, no Tauri, no files and no network of its own. Everything that reaches a provider goes
 // through the injected `AiBackend`, and the clock is injected too, so a test sets the latencies.
-// It only reads the answers: a command that a model wrote is compared with text and never run (D8).
+// It only reads the answers: a command that a model wrote is compared with text and never run.
 // The run is only for a provider on this computer (see `benchProviderProblem`).
 
 /** The version of the result format; a file of another version is not read as this one. */

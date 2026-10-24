@@ -367,7 +367,7 @@ fn run(
     print_line("SMOKE browser pane open, the main window still found and hidden");
 
     // Changing the theme or the effect of the window works with the pane open: the command
-    // `window_effect_set` takes the caller as a `Window`, as this call does (finding 259). A system
+    // `window_effect_set` takes the caller as a `Window`, as this call does. A system
     // that cannot paint the effect keeps the window opaque, which is an answer and not a failure.
     let outcome = crate::smoke::apply_smoke_effect(app)?;
     print_line(&format!(

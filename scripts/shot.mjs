@@ -1,4 +1,4 @@
-// `pnpm shot` (NOR-F20-05, D22 item 1): pictures of the real app. It builds the debug app like
+// `pnpm shot` (NOR-F20-05): pictures of the real app. It builds the debug app like
 // `pnpm smoke` does, then runs `noren --smoke-shot <png>` once per picture. Each run draws the main
 // window out of sight (outside every monitor, with no focus, off the taskbar and Alt+Tab, shown
 // without activating it), asks its own web view for the PNG, checks that the window never had the
@@ -35,7 +35,7 @@
 // (`target/shots` by default).
 //
 // It refuses to run, with exit code 3 and before it builds anything, while the signal of game mode
-// exists (D:/Projetos/.modo-jogo, any age; NOREN_MODO_JOGO_ARQUIVO names another file, D20). Any
+// exists (D:/Projetos/.modo-jogo, any age; NOREN_MODO_JOGO_ARQUIVO names another file). Any
 // other failure exits with 1.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";

@@ -9,7 +9,7 @@ import { expectNoAxeViolations } from "./axe-fixture";
 import { readPixels } from "./png-pixels";
 import { seedConfig } from "./settings-fixture";
 
-// The theme editor of the dense style (NOR-F20-21c, D23), as in the approved design
+// The theme editor of the dense style (NOR-F20-21c), as in the approved design
 // (`denso-editor-de-tema`): a page of the window under its title bar with a header of 32 px (the title,
 // the name of the theme as a crumb with a mark while something is unsaved, and the buttons, the one that
 // saves filled with the highlight), the preview on the left with the readings of the contrast and the

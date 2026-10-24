@@ -1,4 +1,4 @@
-# cargo-deny: license gate for crates (see _loop/REGRAS.md, "Licenças permitidas").
+# cargo-deny: license gate for crates (see the project license policy).
 # A license outside this list is never added as an exception: it is a decision for the maintainer.
 
 [graph]

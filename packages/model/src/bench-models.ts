@@ -4,7 +4,7 @@ import { z } from "zod";
 // catalog fit in the RAM or the video memory of this computer, in what order, and the one command
 // that installs a model. Pure: no DOM, no Tauri, no file and no network, and nothing here runs a
 // command. `ollamaPullCommand` only gives the text; the screen of NOR-F16-04c shows it and puts it
-// in a terminal only after the person confirms (D8). Reading the memory of the machine is
+// in a terminal only after the person confirms. Reading the memory of the machine is
 // NOR-F16-04b; here the memory is an argument.
 
 const GB = 1_000_000_000;
@@ -334,7 +334,7 @@ export type OllamaPullResult =
  * PowerShell and in bash.
  *
  * This only returns text. It never runs the command: the screen shows it and puts it in a terminal
- * only after the person confirms (D8).
+ * only after the person confirms.
  */
 export function ollamaPullCommand(
   id: unknown,

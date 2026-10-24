@@ -77,7 +77,7 @@ describe("FakeBackend SSH profiles", () => {
   });
 
   it("sends nothing of this machine: not the folder, not the environment of the call", async () => {
-    // Finding 198: a remote shell must not get the Windows folder or environment of the app.
+    // A remote shell must not get the Windows folder or environment of the app.
     const backend = await started(box, bare);
     const withFolder = await backend.createSession({
       profileId: "build-box",

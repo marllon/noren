@@ -5,7 +5,7 @@ import { UpdateController } from "./update-controller";
 import type { UpdateBackend } from "./update-controller";
 
 // The steps behind the screen of the update, over the fake backend: the check and the install are
-// the person's, the install saves first (finding 302), the progress reaches the phase, and every
+// the person's, the install saves first, the progress reaches the phase, and every
 // refusal ends in a phase the screen can draw.
 
 const RELEASE = { version: "0.2.0", notes: "Fixes", publishedAt: 1_792_584_000, bytes: 4000 };
@@ -97,7 +97,7 @@ describe("UpdateController", () => {
     expect(down.controller.phase).toMatchObject({ kind: "available" });
   });
 
-  it("saves before it asks for the install, and installs only after the save ended (finding 302)", async () => {
+  it("saves before it asks for the install, and installs only after the save ended", async () => {
     const { controller, log, fake } = make();
     await controller.check();
     await controller.install();

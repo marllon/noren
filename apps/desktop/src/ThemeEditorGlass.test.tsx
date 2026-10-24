@@ -237,7 +237,7 @@ describe("what the editor adds to the tokens", () => {
   });
 });
 
-describe("the base rule of the editor (finding 352)", () => {
+describe("the base rule of the editor", () => {
   it("defines the unit the switch is drawn in, which only the settings dialog defined", () => {
     expect(rule(stylesCss, ".space-dialog.theme-editor")).toContain("--su: 8px");
     // The settings dialog still defines its own, and the switch still asks for it.
@@ -349,7 +349,7 @@ describe("docs/THEMING.md", () => {
   it("describes the glass editor and what it leaves out of the design", () => {
     expect(doc).toContain("### The glass theme editor");
     expect(doc).toContain("`theme-editor-contrast`");
-    expect(doc).toContain("finding 352");
+    expect(doc).toContain("**The switch in the dense editor**");
     expect(doc).toContain("the list of themes on the left");
   });
 

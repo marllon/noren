@@ -63,7 +63,7 @@ impl Profile {
     /// The [`SpawnSpec`] a profile of kind `ssh` sends to the `norend` on the other machine, and
     /// nothing else: no environment (the daemon there has its own, and a Windows `PATH` or
     /// `USERPROFILE` is wrong in a Linux shell), no folder of this machine, no shell integration
-    /// script of this machine (finding 198). The program, its arguments and the folder are what the
+    /// script of this machine. The program, its arguments and the folder are what the
     /// profile says; without a program it is the login shell of the user there, and without a
     /// folder the shell opens in the home folder of that user (a pseudo terminal starts a program
     /// that has no folder in the home folder).
@@ -1454,7 +1454,7 @@ mod tests {
 
     #[test]
     fn a_remote_session_gets_what_the_profile_says_and_nothing_of_this_machine() {
-        // Finding 198: not the environment, not the folder, not the shell integration.
+        // Not the environment, not the folder, not the shell integration.
         let mut profile = ProfileSet::default()
             .with_user_profiles(&[ssh_user("box")], &no_env)
             .expect("valid")

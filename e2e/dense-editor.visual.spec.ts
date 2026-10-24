@@ -6,7 +6,7 @@ import type { Theme } from "../packages/model/src/theme";
 import { serializeTheme } from "../packages/model/src/user-themes";
 import { seedConfig } from "./settings-fixture";
 
-// Baselines are per operating system (Windows only, D7): `pnpm e2e:visual`. The theme editor of the
+// Baselines are per operating system (Windows only): `pnpm e2e:visual`. The theme editor of the
 // dense style (NOR-F20-21c): the page under the title bar with its header, the preview with the
 // readings of the contrast and the table of the sixteen colors, the column of boxes and the foot, at
 // its top (the kind, the colors), in the dark and the light scheme and in both languages; at its Font

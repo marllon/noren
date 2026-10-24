@@ -1,7 +1,7 @@
 import { expect, test } from "./test";
 import type { Page } from "@playwright/test";
 
-// A terminal never grows past its window (NOR-F20-15d, finding 376).
+// A terminal never grows past its window (NOR-F20-15d).
 //
 // The fit addon reads the size of the element that holds the terminal and divides it by the size of a
 // cell. While the page is styled that element has the size of its pane. When the stylesheet does not

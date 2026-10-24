@@ -339,7 +339,7 @@ test.describe("on a dark system", () => {
       page,
     }) => {
       await start(page, configWith(`{ "image": "${PICTURE}", "opacity": 0.4 }`));
-      // The window draws it from the first moment (finding 309: it used to ask for the picture
+      // The window draws it from the first moment (it used to ask for the picture
       // before the app had given the store its backend, and never again).
       await expect(layer(page)).toHaveCount(1);
       expect(await layerStyle(page, "background-image")).toMatch(/^url\("blob:/);

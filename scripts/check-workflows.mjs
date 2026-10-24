@@ -1,4 +1,4 @@
-// Workflow gate (D17): every file in .github/workflows must parse as YAML and run only on the
+// Workflow gate: every file in .github/workflows must parse as YAML and run only on the
 // self-hosted runner, with no hosted runner label, no sudo and no apt. release.yml is also held to
 // its contract: it starts only on a tag `v*` and creates the release as a draft. pages.yml starts
 // only by hand (`workflow_dispatch`), so nothing is published by a push.

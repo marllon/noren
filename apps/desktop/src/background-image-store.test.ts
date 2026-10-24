@@ -81,7 +81,7 @@ describe("the picture behind the terminals", () => {
     expect(pictureUrl(getPicture())).toBeNull();
   });
 
-  // Finding 309: in the app the window asks for the picture the settings name as soon as the
+  // In the app the window asks for the picture the settings name as soon as the
   // settings are read, and the backend reaches the store a moment after that. The ask used to fail
   // with "No backend is available" and never be made again, so the picture of the settings file
   // never showed at the start. The ask now waits, and is made when the backend is handed over.

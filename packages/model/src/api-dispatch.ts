@@ -28,7 +28,7 @@ import { encodeUtf8 } from "./utf8";
 // (and a group in it); with no match, or no rules, the tab goes to the active space. A `space` in the
 // call is taken as it is and the rules are not looked at.
 //
-// D8: a call sends what it carries and nothing else. Text is written as given, a key is the bytes
+// A call sends what it carries and nothing else. Text is written as given, a key is the bytes
 // of its name, and no Enter is ever added; a command runs only if the caller wrote the line end.
 
 /** The limits of `api/protocol.rs`, in the same units (characters, or bytes where it says so). */

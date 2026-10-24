@@ -228,7 +228,7 @@ describe("the built-in themes", () => {
   });
 
   it("keep the names of the schemes they come from out of the interface and the ids", () => {
-    // The origin of a port is named in THIRD_PARTY_NOTICES.md only (rule D9). The names to keep
+    // The origin of a port is named in THIRD_PARTY_NOTICES.md only. The names to keep
     // out are read from there, so this test does not name them either.
     const rows = notices();
     expect(rows.map((row) => row.theme)).toEqual(

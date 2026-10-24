@@ -382,7 +382,7 @@ describe("the local API over the app's workspace", () => {
     });
     expect(outcome).toEqual({ result: { shown: true, terminal: pane.id } });
     expect(backend.notifications).toEqual([{ title: "Build done", body: "all green" }]);
-    // Nothing is typed into the terminal by it (D8).
+    // Nothing is typed into the terminal by it.
     expect(backend.callsTo("write")).toHaveLength(0);
   });
 
@@ -417,7 +417,7 @@ describe("the local API over the app's workspace", () => {
     expect(await call("not.a.method", {})).toMatchObject({ error: { code: "unknown_method" } });
   });
 
-  it("types into the shell of a pane exactly what the call carries, and never an Enter (D8)", async () => {
+  it("types into the shell of a pane exactly what the call carries, and never an Enter", async () => {
     const { store, backend, call } = await openApp();
     const { pane } = firstPane(store);
     const terminal = pane.id;

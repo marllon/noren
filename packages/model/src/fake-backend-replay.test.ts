@@ -3,7 +3,7 @@ import { FAKE_REPLAY_BYTES, FakeBackend } from "./fake-backend";
 
 // `attachSession(id, { replay: true })`: the terminal that is about to be drawn for a session that
 // printed already (a window that got the tab, the main window getting it back) is shown what the
-// session printed before, ahead of what it prints next (NOR-F15-04c, finding 239).
+// session printed before, ahead of what it prints next (NOR-F15-04c).
 
 const text = (chunks: Uint8Array[]): string =>
   chunks.map((c) => new TextDecoder().decode(c)).join("");

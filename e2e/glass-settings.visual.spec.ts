@@ -2,7 +2,7 @@ import { expect, test } from "./test";
 import type { Locator, Page } from "@playwright/test";
 import { seedConfig } from "./settings-fixture";
 
-// Baselines are per operating system (Windows only, D7): `pnpm e2e:visual`. The settings screen of the
+// Baselines are per operating system (Windows only): `pnpm e2e:visual`. The settings screen of the
 // glass style (NOR-F20-19): the card of glass over the window with its header, its column of sections
 // and its rows, at its Appearance (the cards of the interface style first), Themes and Background
 // sections, in the dark and the light scheme and in both languages; and the same screen under the

@@ -8,7 +8,7 @@ import { expectNoAxeViolations } from "./axe-fixture";
 import { readPixels } from "./png-pixels";
 import { seedConfig } from "./settings-fixture";
 
-// The theme editor of the glass style (NOR-F20-20, D23), as in the approved design
+// The theme editor of the glass style (NOR-F20-20), as in the approved design
 // (`vidro-editor-de-tema`): a card of glass over the settings, a header with the title, the name of
 // the theme in its box and the buttons, the preview on the left with the reading of the contrast of
 // the text, and a column of boxes on the right (a color is a swatch and its hex value in one box, a
@@ -753,7 +753,7 @@ test.describe("the boxes of the groups", () => {
     expect(column.x + column.width - 18 - (at.x + at.width)).toBeCloseTo(0, 0);
   });
 
-  test("finding 352: the switch of the editor has its size in the dense style too (it was 2 by 2 px, it is the 36 by 18 of the dense screens now)", async ({
+  test("the switch of the editor has its size in the dense style too (it was 2 by 2 px, it is the 36 by 18 of the dense screens now)", async ({
     page,
   }) => {
     await start(page, { style: "dense", themes: [MINE] });

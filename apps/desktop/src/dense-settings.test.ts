@@ -167,7 +167,7 @@ describe("the dense settings section of the stylesheet", () => {
     );
   });
 
-  it("gives a section name one line, cut inside its own box if the column is narrower than its name (finding 343)", () => {
+  it("gives a section name one line, cut inside its own box if the column is narrower than its name", () => {
     const item = rule(`${DENSE} .settings-nav-item`);
     expect(item).toContain("white-space: nowrap");
     expect(item).toContain("text-overflow: ellipsis");

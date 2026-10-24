@@ -270,7 +270,7 @@ mod tests {
     #[test]
     fn the_main_window_is_brought_up_with_or_without_a_browser_pane_open() {
         // A link or a second launch brings the window up; the web view of a pane makes Tauri stop
-        // calling the main window a webview window, and it must be found all the same (finding 256).
+        // calling the main window a webview window, and it must be found all the same.
         let app = a_mock_app_with_the_main_window();
         assert!(focus_main_window(app.handle()));
         crate::browser_pane::open_a_pane_in_main(app.handle());

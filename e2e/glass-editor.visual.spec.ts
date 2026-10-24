@@ -6,7 +6,7 @@ import type { Theme } from "../packages/model/src/theme";
 import { serializeTheme } from "../packages/model/src/user-themes";
 import { seedConfig } from "./settings-fixture";
 
-// Baselines are per operating system (Windows only, D7): `pnpm e2e:visual`. The theme editor of the
+// Baselines are per operating system (Windows only): `pnpm e2e:visual`. The theme editor of the
 // glass style (NOR-F20-20): the card of glass with its header, the preview over the night landscape
 // and the column of boxes, at its top (the kind, the colors), in the dark and the light scheme and in
 // both languages; at its Font group (the sliders and the switch) and at its picture (the card, with

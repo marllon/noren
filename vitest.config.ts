@@ -13,7 +13,7 @@ export default defineConfig({
       "scripts/packages.vitest.mjs",
       "scripts/shot.vitest.mjs",
     ],
-    // Fixed ceiling (NOR-F20-22, D25): at most 8 workers, 4 while the user is playing (game mode).
+    // Fixed ceiling (NOR-F20-22): at most 8 workers, 4 while the user is playing (game mode).
     maxWorkers,
   },
 });

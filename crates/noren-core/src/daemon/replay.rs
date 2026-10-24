@@ -1,4 +1,4 @@
-//! Showing the output of a session again after the connection came back (finding 197).
+//! Showing the output of a session again after the connection came back.
 //!
 //! When a [`ReconnectingClient`](super::ReconnectingClient) attaches a session again, the daemon
 //! answers with everything it kept of the output (up to 1 MiB), which includes what the client had

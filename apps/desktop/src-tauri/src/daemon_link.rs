@@ -188,7 +188,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 /// Taken by a test that creates and ends shells, for as long as it runs. On Windows, closing a
 /// pseudo console can stall for a long time when another session was created a few milliseconds
-/// before (finding 168), so the tests that run shells take turns, as the tests of the daemon do.
+/// before, so the tests that run shells take turns, as the tests of the daemon do.
 #[cfg(test)]
 pub(crate) static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 

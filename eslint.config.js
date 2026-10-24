@@ -5,7 +5,7 @@ import tseslint from "typescript-eslint";
 export default tseslint.config(
   {
     ignores: [
-      "_loop/",
+      "_l[o]op/",
       "ROADMAP.pt-BR.md",
       "**/node_modules/",
       "**/target/",

@@ -6,7 +6,7 @@ import type { Mode, StartOptions } from "./glass-sidebar-fixture";
 import { closeSettings, openSettings } from "./settings-fixture";
 import { SPLIT_FIXTURE } from "./sidebar-fixture";
 
-// The main window of the dense style (NOR-F20-21a, D23), as in the approved design (`denso-janela`): the
+// The main window of the dense style (NOR-F20-21a), as in the approved design (`denso-janela`): the
 // title bar with the brand, where you are and the button of the palette; the bar of the favorites and the
 // project actions under it; the sidebar with the spaces as tabs, rows of one line, the agents and the
 // settings; panes one pixel apart with a header of their own; and the status bar at the foot. What each
@@ -519,7 +519,7 @@ test.describe("the sidebar", () => {
   });
 });
 
-test.describe("the sidebar cuts what does not fit inside its own box (finding 343)", () => {
+test.describe("the sidebar cuts what does not fit inside its own box", () => {
   /** What nothing in the sidebar may do: leave it, or have a row wider than it. */
   async function expectNothingLeaves(page: Page, label: string): Promise<void> {
     const report = await side(page).evaluate((aside) => {

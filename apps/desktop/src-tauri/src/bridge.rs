@@ -476,7 +476,7 @@ pub fn create_session<R: Runtime>(
     let profile = state.find_profile(profile_id)?;
     // A profile of kind `ssh` opens its shell in a `norend` on another machine. The folder and the
     // environment of this call belong to this machine (the folder of the space, the variables of
-    // the tab), so they are not sent there: the shell gets what the profile says (finding 198).
+    // the tab), so they are not sent there: the shell gets what the profile says.
     if let Some(machine) = &profile.remote {
         let id = launch_remote(app, state, machine, profile.remote_spec(cols, rows), output)?;
         return Ok((id.0, profile.id.clone()));
@@ -3395,7 +3395,7 @@ mod tests {
         );
     }
 
-    // The save chooser itself is the system's and is never opened by a test (D19); what is ours is
+    // The save chooser itself is the system's and is never opened by a test; what is ours is
     // the name it offers: the characters of an ordinary file name, never a path.
     #[test]
     fn the_file_name_the_save_chooser_offers_is_an_ordinary_one() {
@@ -4121,7 +4121,7 @@ mod tests {
         }
     }
 
-    // The file chooser itself is the system's and is never opened by a test (D19); what is ours is
+    // The file chooser itself is the system's and is never opened by a test; what is ours is
     // the text the page puts on it and the kinds of file it lists.
     #[test]
     fn the_text_on_the_file_chooser_is_clean_and_short() {
@@ -4471,7 +4471,7 @@ mod tests {
     #[test]
     fn the_effect_is_set_from_the_main_window_with_a_browser_pane_open() {
         // Tauri stops calling a window a webview window while a web view of a pane is a child of it,
-        // and refused the command when it asked for a `WebviewWindow` (finding 259). The mock paints
+        // and refused the command when it asked for a `WebviewWindow`. The mock paints
         // nothing, so what is checked is that the call is answered and not refused, and that the
         // answer names what was asked.
         let dir = TempDir::new("effect-with-a-pane");
@@ -5846,7 +5846,7 @@ mod tests {
 
     #[test]
     fn a_tab_of_an_ssh_profile_starts_what_the_profile_says_and_nothing_of_this_machine() {
-        // Finding 198, all the way from the call the page makes: it passes the folder of the space
+        // All the way from the call the page makes: it passes the folder of the space
         // and the environment of the tab, and none of it goes to the other machine.
         let daemon = FakeDaemon::new();
         let state = state_with_a_remote(&daemon, 5);

@@ -2,7 +2,7 @@ import { expect, test } from "./test";
 import { seedConfig } from "./settings-fixture";
 import { seedSidebarState } from "./sidebar-fixture";
 
-// Baselines are per operating system (Windows only, D7): `pnpm e2e:visual`.
+// Baselines are per operating system (Windows only): `pnpm e2e:visual`.
 
 for (const scheme of ["dark", "light"] as const) {
   test.describe(`${scheme} scheme`, () => {

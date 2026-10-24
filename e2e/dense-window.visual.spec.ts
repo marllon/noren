@@ -4,7 +4,7 @@ import { start } from "./glass-sidebar-fixture";
 import type { StartOptions } from "./glass-sidebar-fixture";
 import { SPLIT_FIXTURE } from "./sidebar-fixture";
 
-// Baselines are per operating system (Windows only, D7): `pnpm e2e:visual`.
+// Baselines are per operating system (Windows only): `pnpm e2e:visual`.
 // The main window of the dense style (NOR-F20-21a): the whole page with the title bar, the bar of the
 // favorites and the actions, the sidebar with its spaces, tabs, agents and settings, the split tab with a
 // command that runs and an agent that waits, and the status bar; in the dark theme, the light one in

@@ -40,7 +40,7 @@ fn unique_name() -> String {
 
 /// The tests take turns: on a Windows machine whose `conpty.dll` is not the system's, ending a
 /// session while another one is starting can block the first for as long as the second one lives
-/// (finding 168 of NOR-F14-01a). Each session below also waits for its first output before
+///. Each session below also waits for its first output before
 /// anything else is done to the daemon.
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 

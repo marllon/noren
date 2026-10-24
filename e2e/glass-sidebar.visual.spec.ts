@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { AGENT_STATES, start } from "./glass-sidebar-fixture";
 import type { StartOptions } from "./glass-sidebar-fixture";
 
-// Baselines are per operating system (Windows only, D7): `pnpm e2e:visual`.
+// Baselines are per operating system (Windows only): `pnpm e2e:visual`.
 // The content of the glass sidebar (NOR-F20-18b): the brand and the button that folds it, the search with
 // the keycap, the favorites as a grid of four with a dot on the tiles that wait and work, the card of the
 // project actions, the tabs with their dots and the second line (folder and branch), New tab and the foot

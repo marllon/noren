@@ -2,7 +2,7 @@ import { expect, test } from "./test";
 import type { Page } from "@playwright/test";
 import { ACTIONS_CWD, ACTIONS_TEXT, seedActionsFile, seedSidebarState } from "./sidebar-fixture";
 
-// Baselines are per operating system (Windows only, D7): `pnpm e2e:visual`.
+// Baselines are per operating system (Windows only): `pnpm e2e:visual`.
 
 const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
 const tab = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });

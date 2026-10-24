@@ -7,7 +7,7 @@ import { seedConfig } from "./settings-fixture";
 // The window with a picture behind the terminals: first with a solid interface (the picture shows
 // in the area of the terminal, which has no background of its own while a picture is on), then
 // with a see-through interface and a blurred picture (the sidebar lets it through). The fixture
-// picture is a small gradient. Baselines are per operating system (Windows only, D7):
+// picture is a small gradient. Baselines are per operating system (Windows only):
 // `pnpm e2e:visual`.
 
 const PICTURE = "fixtures/background.png";

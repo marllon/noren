@@ -213,9 +213,7 @@ test.describe("the Updates section", () => {
     await expect(statusLine(section)).toContainText("is installed");
   });
 
-  test("saves the state and the snapshots before the installer is asked for (finding 302)", async ({
-    page,
-  }) => {
+  test("saves the state and the snapshots before the installer is asked for", async ({ page }) => {
     await start(page, { release: RELEASE });
     const section = await openUpdates(page);
     await checkButton(section).click();

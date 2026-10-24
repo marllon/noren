@@ -1,4 +1,4 @@
-//! The focus of the system, which no smoke mode may ever take (NOR-F1-08-b, finding 310).
+//! The focus of the system, which no smoke mode may ever take (NOR-F1-08-b).
 //!
 //! A smoke run (`--smoke`, `--smoke-deeplink`, `--smoke-quick`, `--smoke-window`, `--smoke-api`,
 //! `--smoke-persist`, `--smoke-perf`, `--smoke-shot`) opens the real app on the machine of whoever

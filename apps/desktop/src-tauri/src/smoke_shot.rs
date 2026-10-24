@@ -1,4 +1,4 @@
-//! A picture of the real window (`noren --smoke-shot <png>`, NOR-F20-05, D22 item 1).
+//! A picture of the real window (`noren --smoke-shot <png>`, NOR-F20-05).
 //!
 //! Nothing visual had been seen in the real app: the pure parts were tested and the computed styles
 //! were read in a browser, but how the window looks in the web view of the app was never looked at.
@@ -39,7 +39,7 @@
 //!    (never a key of the system: no input reaches the window, which is disabled), reads the number
 //!    of panes of the tab from the page after each one and fails if it did not go up by exactly one;
 //!    the picture is of the tab as they left it;
-//!    With `--open-settings <section>` (NOR-F20-09b, finding 326) the run opens the settings screen in
+//!    With `--open-settings <section>` (NOR-F20-09b) the run opens the settings screen in
 //!    the page by calling `click()` on the settings button of the title bar (a DOM call inside the
 //!    page, like the key events above, never a mouse click of the system) and then on the button of
 //!    the section in the column of sections (NOR-F20-10a), failing if the screen, the section or its

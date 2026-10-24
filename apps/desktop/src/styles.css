@@ -3248,7 +3248,7 @@ ul.settings-models {
 
 /* The theme editor, a dialog of the themes section: the boxes of every group of a theme on the left (they scroll), a preview of the theme being edited on the right. */
 .space-dialog.theme-editor {
-  /* The unit the switch of the settings screen is drawn in (`.settings-switch`), which the editor uses too: set only on the settings dialog it left the switch 2 by 2 px (finding 352). */
+  /* The unit the switch of the settings screen is drawn in (`.settings-switch`), which the editor uses too: set only on the settings dialog it left the switch 2 by 2 px. */
   --su: 8px;
   width: min(1040px, 94%);
   max-height: 92vh;
@@ -5452,7 +5452,7 @@ ul.settings-models {
 }
 
 /*
- * The dense style: the main window (NOR-F20-21a, D23), as in the approved design (denso-janela). Everything
+ * The dense style: the main window (NOR-F20-21a), as in the approved design (denso-janela). Everything
  * below is under data-nr-style="dense", so the glass style does not move. Square corners, lines of 1px
  * (--nr-line), one monospaced font (--nr-font-ui is JetBrains Mono under dense), and the highlight, the
  * color of the active space (--nr-highlight; the style starts from #2EE6D6), where the design has its
@@ -5468,7 +5468,7 @@ ul.settings-models {
  * four worked out from the theme in style-tokens.css), so a theme, dark or light, works. Words in the
  * color of the highlight are pulled toward the text so they keep 4.5:1 on any color a space can have;
  * the highlight itself is for marks, lines and fills. Every row cuts what does not fit with an ellipsis
- * inside its own box: the sidebar is 200px wide by default and its font is wide (finding 343).
+ * inside its own box: the sidebar is 200px wide by default and its font is wide.
  */
 
 /* The title bar. */
@@ -6469,7 +6469,7 @@ ul.settings-models {
 }
 
 /*
- * The dense style: the settings screen (NOR-F20-21b, D23), as in the approved design (denso-configuracoes).
+ * The dense style: the settings screen (NOR-F20-21b), as in the approved design (denso-configuracoes).
  * Everything below is under data-nr-style="dense", so the glass style does not move. The screen fills the
  * window under its title bar (the title bar stays, with the buttons of the window) and reads like a page of
  * the dense window: a header of 32px (the title, the section the person is in as a crumb, and the word
@@ -7573,7 +7573,7 @@ ul.settings-models {
 }
 
 /*
- * The dense style: the theme editor (NOR-F20-21c, D23), as in the approved design (denso-editor-de-tema).
+ * The dense style: the theme editor (NOR-F20-21c), as in the approved design (denso-editor-de-tema).
  * Everything below is under data-nr-style="dense" and starts from the editor, which is a portal outside the
  * settings screen: no rule here reaches a thing that is not inside it (the test of this section lists the
  * selectors that do not name the editor). Like the settings screen the editor is a page of the window under
@@ -8569,7 +8569,7 @@ ul.settings-models {
 }
 
 /*
- * The glass style: the surfaces of the main window (NOR-F20-18a, D23). Everything below is under
+ * The glass style: the surfaces of the main window (NOR-F20-18a). Everything below is under
  * data-nr-style="glass" (the default style), so the dense style keeps the surfaces above as they are.
  * The values are the tokens of style-tokens.css, which come from the approved design of the window:
  *
@@ -8818,7 +8818,7 @@ ul.settings-models {
 }
 
 /*
- * The glass sidebar, part by part (NOR-F20-18b, D23): the brand and the button that folds it, the
+ * The glass sidebar, part by part (NOR-F20-18b): the brand and the button that folds it, the
  * search with its keycap, the favorites as a grid of four with a state dot, the card of the project
  * actions, the tree with a dot and a second line on every tab, and the foot with the spaces and the
  * settings. The numbers are the ones of the approved design of the window; the colors are the tokens
@@ -9351,7 +9351,7 @@ ul.settings-models {
 }
 
 /*
- * The glass pane, part by part (NOR-F20-18c, D23): the header of a terminal pane with its folder, the
+ * The glass pane, part by part (NOR-F20-18c): the header of a terminal pane with its folder, the
  * git branch, the command and the buttons that split and zoom it, the ring in the color of the space
  * on the pane in focus (above, with the card of the pane), and the ring and the badge of an agent that
  * waits for you. The numbers are the ones of the approved design of the window; the colors are the
@@ -9624,7 +9624,7 @@ ul.settings-models {
 }
 
 /*
- * The glass settings screen (NOR-F20-19, D23), as in the approved design (vidro-configuracoes). Under
+ * The glass settings screen (NOR-F20-19), as in the approved design (vidro-configuracoes). Under
  * data-nr-style="glass" (the default style) the screen is one big card over the window, like the
  * sidebar and the panes are: the glass of the sheet (--nr-glass-sheet, a little more opaque than a pane
  * because it is all text, and blur(28px)), 14px corners, a line at 10%, and a header of 60px with the
@@ -10383,7 +10383,7 @@ ul.settings-models {
 }
 
 /*
- * The glass theme editor (NOR-F20-20, D23), as in the approved design (vidro-editor-de-tema). Under
+ * The glass theme editor (NOR-F20-20), as in the approved design (vidro-editor-de-tema). Under
  * data-nr-style="glass" (the default style) the dialog is a card of glass like the settings screen (the
  * sheet fill and blur, 14px corners, a line and a shadow) with a header of 60px: the title, the name of
  * the theme in a box with its label inside, and at the right end the buttons (the one that saves is

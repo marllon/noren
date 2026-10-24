@@ -68,7 +68,7 @@ mod tests {
         // The mock window never has the focus, so what tells "found" from "not found" is `Some`.
         // The web view of a pane makes Tauri stop calling the main window a webview window; it must
         // be found all the same, or the notification would be decided on a focus nobody read
-        // (finding 256).
+        //.
         let app = tauri::test::mock_app();
         assert_eq!(main_window_focus(app.handle()), Ok(None));
         WebviewWindowBuilder::new(&app, "other", WebviewUrl::default())

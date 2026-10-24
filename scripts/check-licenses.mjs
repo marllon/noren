@@ -1,4 +1,4 @@
-// License gate for npm dependencies (see _loop/REGRAS.md, "Licenças permitidas").
+// License gate for npm dependencies (see the project license policy).
 // Reads `pnpm licenses list --json` and fails when a package carries a license outside the lists:
 //   - production dependencies (`--prod`): PROD_ALLOWED
 //   - everything else (dev tooling): PROD_ALLOWED plus DEV_EXTRA
@@ -76,7 +76,7 @@ export function evaluate(expression, allowed) {
     }
     if (token === ")") throw new Error(`unexpected ")" in "${expression}"`);
     // "<id> WITH <exception>" is matched as one literal entry, so only the WITH expressions
-    // listed in the allow set pass (D15: Apache-2.0 WITH LLVM-exception).
+    // listed in the allow set pass (for example Apache-2.0 WITH LLVM-exception).
     if (tokens[pos]?.toUpperCase() === "WITH") {
       const exception = tokens[pos + 1];
       if (exception === undefined || exception === "(" || exception === ")") {

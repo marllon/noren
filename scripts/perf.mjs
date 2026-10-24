@@ -8,7 +8,7 @@
 //   3. the real app (NOR-F11-01b, Windows): a release build without installer, then the hidden mode
 //      `noren --smoke-perf` 5 times over a workspace of 1 tab (time to the first prompt) and 5
 //      times over 30 tabs (memory of the process tree with the 30 shells alive), the runs
-//      alternating. The window stays hidden (D19); the memory is read with a PowerShell query of
+//      alternating. The window stays hidden; the memory is read with a PowerShell query of
 //      the process list (no dependency).
 // and prints the lines `docs/PERF.md` quotes. Nothing here opens a window or touches the keyboard.
 //

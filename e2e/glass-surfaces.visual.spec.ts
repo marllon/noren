@@ -2,7 +2,7 @@ import { expect, test } from "./test";
 import { seedConfig } from "./settings-fixture";
 import { SPLIT_FIXTURE, seedSidebarState } from "./sidebar-fixture";
 
-// Baselines are per operating system (Windows only, D7): `pnpm e2e:visual`.
+// Baselines are per operating system (Windows only): `pnpm e2e:visual`.
 // The glass window (NOR-F20-18a): the illustrated backdrop behind the cards, the sidebar and the panes as
 // cards of glass with the gap between them, in the dark theme and in the light one, and a tab split into
 // two panes. The terminal is never part of a screenshot (its layers are hidden: what it draws is a font and

@@ -1,4 +1,4 @@
-// Game mode (NOR-F11-04, D20) and the fixed ceiling (NOR-F20-22, D25): the heavy commands of the
+// Game mode (NOR-F11-04) and the fixed ceiling (NOR-F20-22): the heavy commands of the
 // repository never run with more than 8 workers or cargo jobs, and while the user is playing, with
 // no more than 4. The Windows watcher keeps a signal file while a game is open (contract in
 // D:/Projetos/_modo-jogo/LEIA-ME.md); this is the only reader of it in the repository.
@@ -13,7 +13,7 @@ export const SIGNAL_PATH = "D:/Projetos/.modo-jogo";
 export const SIGNAL_ENV = "NOREN_MODO_JOGO_ARQUIVO";
 export const MAX_AGE_MS = 60_000;
 
-/** The ceiling that always applies (D25): at most 8 of each, signal or not. */
+/** The ceiling that always applies: at most 8 of each, signal or not. */
 export const NORMAL_LIMITS = { vitestWorkers: 8, playwrightWorkers: 8, cargoJobs: 8 };
 
 /** The lighter ceiling that applies while game mode is on. */
@@ -37,7 +37,7 @@ export function gameModeActive(env = process.env, now = Date.now()) {
 
 /**
  * Whether the signal file exists, of any age. The mode that draws the real window out of sight
- * (`pnpm shot`, NOR-F20-05, D22) refuses to run while it does, even when the watcher left it behind
+ * (`pnpm shot`, NOR-F20-05) refuses to run while it does, even when the watcher left it behind
  * long ago: a window that draws costs a game a frame, so only a clear "not playing" lets it go. A
  * file that cannot be looked at for another reason than being absent counts as there.
  */

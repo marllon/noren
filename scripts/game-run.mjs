@@ -1,4 +1,4 @@
-// Runs a command with the cargo ceiling (NOR-F20-22, D25): `CARGO_BUILD_JOBS=8`, or 4 while the
+// Runs a command with the cargo ceiling (NOR-F20-22): `CARGO_BUILD_JOBS=8`, or 4 while the
 // game mode signal is valid. Used by the package.json scripts that call cargo, directly or through Tauri:
 //   node scripts/game-run.mjs cargo clippy ...
 //   node scripts/game-run.mjs pnpm --filter @noren/desktop exec tauri build

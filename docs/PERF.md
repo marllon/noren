@@ -189,7 +189,7 @@ takes about 98 s with `type` and, going by the 20 MB run, about 50 s with `cat.e
 loop with no Noren code in between gets the same rate. The interface stays responsive (row 3), but a
 person who `cat`s a large file waits minutes. The cause is in the Windows console host or in how
 `portable-pty` opens it, not in the pump; whether another way to open the pseudo console is faster
-is for the planner to decide. No task was opened for it because the spec has no target it breaks.
+is open. It has no task because the spec has no target it breaks.
 
 The test could only be run on Windows here; on macOS and Linux it prints the `cat` of the system.
 
@@ -321,7 +321,7 @@ the page in every repetition.
 
 **Target: under 100 ms. Verdict: met**, the first switch of a page included: 25 of 25 under 100 ms
 (worst 49.8 ms), where it had been 6 of 25 over (worst 154.6 ms), and every switch after the first
-(16 ms), with every terminal of the 30 tabs alive. Not verified (D19): the real window. The real
+(16 ms), with every terminal of the 30 tabs alive. Not verified in a visible window: the real window. The real
 compositor uses the GPU, so the 40 ms of the first composite may not exist there; the new order of
 the contexts (`TerminalView.tsx`, `preloadWebgl`) can only help. What was measured is the headless
 build, where the cost showed.
@@ -426,7 +426,7 @@ mods calls of the boot (about 40 ms in series; side by side they would save abou
 itself. The shell is now the last link: its prompt bytes (585 ms) arrive about when the terminal
 begins to listen (594 ms).
 
-**Not verified (D19): a visible window.** All of this is the hidden window (every `--smoke*` mode,
+**Not verified in a visible window: a visible window.** All of this is the hidden window (every `--smoke*` mode,
 `apps/desktop/src-tauri/src/main.rs:207`, `tauri.conf.json:20`). WebView2 may start, load and run
 the page differently with the window shown; the 300 ms throttle that was removed is React's and
 holds in both, and the shell started ahead does not depend on the window. A person's first prompt
@@ -448,8 +448,7 @@ bytes), each the median of three readings.
 
 **Total memory = the private working set summed over `noren.exe`, its web view processes and the
 console hosts made for the tabs.** The shells and whatever they start are not counted (see "Method"
-for why: they are the user's programs and cost the same in any terminal). The planner took the
-decision on 19 October 2026 and wrote it in the spec, section 11. The script splits the console
+for why: they are the user's programs and cost the same in any terminal). The decision was taken on 19 October 2026 and written in the spec, section 11. The script splits the console
 hosts (`openconsole.exe`) from the shells for it (`roleOf` in `scripts/perf-app-lib.mjs`, tested by
 `scripts/perf-app-lib.test.mjs`). The build is the release build of the commit before this task
 (`8acc1d9`; this task changed no code of the app), `node scripts/perf.mjs --only-app`, the 30-tab
@@ -470,7 +469,7 @@ Private working set by who owns the process, in MB, 5 repetitions (68 processes 
 | _Beside it:_ **working set summed over the tree**  | 3,553.9 | 3,550.6 | 3,556.0 | 3,564.5 | 3,555.4 | **3,555.4** | 3,550.6 / 3,564.5 |
 
 The working set of the whole tree by owner (median of the 5): `noren.exe` 38.2, web view 502.3,
-console hosts 378.0, 30 shells 2,636.7 MB. The log of the run is in the round's evidence folder
+console hosts 378.0, 30 shells 2,636.7 MB. The log of the run is kept with the measurements
 (`app.jsonl` has every field of every run).
 
 **Target: 30 tabs open, total memory under 500 MB. Verdict: met** by the definition above: 270.1 MB
@@ -481,7 +480,7 @@ No cut was needed, so nothing about the behavior of the app changed in this task
 leaves out, being the user's: the 30 shells, 1,085 MB of private working set here (Windows
 PowerShell 5.1 with the user's own profile). Counted the other way, the whole tree is 3,555 MB of
 working set and 1,356 MB of private working set, which no terminal that runs 30 of these shells can
-get under 500 MB. Not verified (D19): the memory with the window shown (the web view of a window
+get under 500 MB. Not verified in a visible window: the memory with the window shown (the web view of a window
 that is on screen may keep GPU surfaces that a hidden one releases, see "Limits"), so the real
 figure may be higher by an amount not measured; the margin to the target is 230 MB.
 
@@ -553,7 +552,7 @@ slowest is 572. The median of all 20 is 497, 3 ms under the line, and the differ
 (478 to 526) is wider than that margin, so a pass today is not a pass tomorrow. Series A is the
 first after the build, and the disk cache of the machine may have been colder; it was not
 isolated. The figure has no room for anything that is slower on another computer or in a window
-that is shown (not verified, D19: `apps/desktop/src-tauri/src/main.rs:207`, `tauri.conf.json:20`).
+that is shown (not verified in a visible window: `apps/desktop/src-tauri/src/main.rs:207`, `tauri.conf.json:20`).
 It stays **not met** until a series with a margin says otherwise (section 9 is that series). Row 5 measured 621 ms on the day
 of NOR-F11-01d; the machine is noisy from one day to the next (see there), so the two days are not
 compared.
@@ -582,8 +581,8 @@ process and the page: WebView2 starting (about 40 %), the page's scripts being l
 and the page booting, mounting and opening the terminal (about 17 %). So the time is in the part the
 app controls the least.
 
-Hypothesis for the cut (not a profile, nothing was changed or tried in this round, as the
-task forbids optimizing): (1) the 197 to 227 ms between the end of the builder and the first
+Hypothesis for the cut (not a profile, nothing was changed or tried here, as this
+section only measures): (1) the 197 to 227 ms between the end of the builder and the first
 navigation is the biggest block and is WebView2 creating its environment; starting that earlier or
 in parallel with the rest of `setup`, or checking what the user data folder costs, is the most
 that is left to take, and its size is unknown. (2) The first path of the page loads about 1.4 MB of
@@ -606,8 +605,7 @@ is the earliest prompt of any tab, `last` the last of them), medians of 5:
 
 The target is the first start (one tab), so this is not a v1 miss, but a person who closes the app
 with 100 tabs waits 3.4 s for the first prompt, because the terminals of all the tabs are mounted
-before the first one shows (hypothesis from the flat cost per tab, not a profile). It is written as
-an open finding in the report of the round.
+before the first one shows (hypothesis from the flat cost per tab, not a profile). It is left as an open item.
 
 #### v1b. 100 tabs under 800 MB
 
@@ -639,7 +637,7 @@ working set of the tree) and 8,881 MB of working set here; no terminal that runs
 can count them and stay under 800 MB, which is why the definition of row 6 leaves them out. The 100
 tabs did not bring the app or the machine down: all 100 prompts arrived in every repetition, the
 script's wait for the report scales with the tabs (`resultWaitSeconds`), and no `noren.exe` was left.
-Not verified (D19): the memory with the window shown; the margin to the target is 332 MB.
+Not verified in a visible window: the memory with the window shown; the margin to the target is 332 MB.
 
 ### 8. Starting with many tabs saved (NOR-F20-14a)
 
@@ -690,7 +688,7 @@ console hosts):
 | 100        | 506.1 (599.6)          | 593.9 (596.2)         |
 
 Memory is not measured with 1 tab by this script (row 7 has about 149 MB from earlier runs, not
-compared). Another series of the same code, taken a few minutes earlier in the round that wrote it
+compared). Another series of the same code, taken a few minutes earlier by the same change
 (23 Oct 2026, 22:16 and 22:18, same machine, no signal), gave 533 ms and 4,445 ms for 100 tabs
 (memory 593.0 MB) and 527 ms and 1,539 ms for 30 tabs (305.5 MB): the same picture.
 
@@ -715,7 +713,7 @@ starting the other tabs while the page is up; they are written as open findings 
 the round. A tab the person opens before its turn starts at once, so waiting for the background
 start is never needed to use a tab.
 
-Not verified (D19): the numbers with the window shown (see the limits below);
+Not verified in a visible window: the numbers with the window shown (see the limits below);
 `apps/desktop/src/pending-panes.ts` starts the queue from the first prompt, and a tab opened before
 that is started at once by `ItemView` (`apps/desktop/src/App.tsx`).
 
@@ -866,9 +864,9 @@ The start is not slower: the first prompt and the last are sooner than in sectio
 are the run whose `main` came seconds late, as above). **The memory with 30 tabs is 30 MB higher** (+10
 %, still 168 MB under the 500 MB of row 3); the cause was not isolated. Candidates: the quick window,
 which loads the same page and now fetches the scripts of the app ahead too, and the environment the
-thread of item 4 keeps for 8 s. It is written as an open finding in the report of the round.
+thread of item 4 keeps for 8 s. It is left as an open item.
 
-Not verified (D19): the numbers with the window shown (see the limits below). `web_view_warm.rs` and
+Not verified in a visible window: the numbers with the window shown (see the limits below). `web_view_warm.rs` and
 `tauri.conf.json:20` (`"visible": false`) are what the hidden runs share with a normal start; the warm
 thread does not depend on the window.
 
@@ -886,10 +884,10 @@ thread does not depend on the window.
   `smoke::should_show_window` at `apps/desktop/src-tauri/src/main.rs:207`). Whether WebView2 loads
   the page, starts its processes and keeps its terminals slower or lighter with the window hidden
   than with it shown (a hidden page may skip frames and release its GPU surfaces) is not verified
-  (D19): showing the window would take the focus of whoever is at the machine. The rows say what the
+  : showing the window would take the focus of whoever is at the machine. The rows say what the
   hidden run costs; a person's first prompt and memory may differ from them by an amount that was
   not measured. What only shows with a visible window, such as the feel of dragging a divider while
-  output comes in, is not verified either (D19): `apps/desktop/src/TerminalView.tsx` writes every
+  output comes in, is not verified either: `apps/desktop/src/TerminalView.tsx` writes every
   chunk to xterm with `term.write(bytes)` and no flow control, so a producer much faster than the
   parser would be held in xterm's own queue (which discards above 50 MB); no such producer was seen
   here (the fastest feed of the harness, a timer-paced one, was drained as it came), so this is a

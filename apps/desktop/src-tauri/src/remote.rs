@@ -13,11 +13,11 @@
 //! - **Ids.** The daemon there numbers its sessions from 1, as the one here does, so a session of
 //!   the page has an id of its own, from [`REMOTE_ID_BASE`] up, and this module keeps which session
 //!   of which link it is. [`is_remote`] tells which side an id belongs to.
-//! - **What a remote `Create` carries** is what the profile says and nothing else (finding 198, see
+//! - **What a remote `Create` carries** is what the profile says and nothing else (see
 //!   `Profile::remote_spec`): the caller builds the spec, and this module sends it as it is. No
 //!   environment of this machine is added, as `daemon_link` does for the local daemon, and no
 //!   folder.
-//! - **Output after a reconnection** (finding 197). The daemon answers an attach with everything it
+//! - **Output after a reconnection**. The daemon answers an attach with everything it
 //!   kept, which includes what the tab already shows. Each session remembers the latest bytes it
 //!   handed over ([`DeliveredTail`]) and hands over only what follows them, or, when the daemon no
 //!   longer reaches back that far, resets the terminal and hands over the whole replay (see
@@ -683,7 +683,7 @@ impl Cell {
     }
 
     /// The session was attached again after the connection came back: shows what is new in the
-    /// replay (finding 197).
+    /// replay.
     fn reattached(&mut self, replay: &[u8]) {
         match plan_replay(self.delivered.as_slice(), replay) {
             ReplayPlan::Continue(new) => {
@@ -882,7 +882,7 @@ mod tests {
 
     #[test]
     fn a_remote_session_is_created_with_the_spec_it_was_given_and_nothing_of_this_machine() {
-        // Finding 198: the daemon on the other machine gets the program, the arguments and the
+        // The daemon on the other machine gets the program, the arguments and the
         // size, and no environment and no folder, whatever this process has.
         assert!(
             std::env::vars_os().count() > 0 && std::env::current_dir().is_ok(),
@@ -1039,7 +1039,7 @@ mod tests {
 
     #[test]
     fn what_was_shown_before_the_break_is_not_shown_again_and_what_came_meanwhile_is() {
-        // Finding 197. The daemon answers the new attach with everything it kept, which includes
+        // The daemon answers the new attach with everything it kept, which includes
         // what the tab already shows: only what follows it may reach the terminal.
         let daemon = FakeDaemon::new();
         let remote = sessions(&daemon, 50);

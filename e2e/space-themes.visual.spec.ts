@@ -4,7 +4,7 @@ import { seedSidebarState } from "./sidebar-fixture";
 
 // The window with the theme of a space, in three themes: Noren Dusk, Noren Paper and one of the
 // ports (Noren Fjord). The theme is given to the active space in its menu, so this also holds the
-// path from the menu to the colors. Baselines are per operating system (Windows only, D7):
+// path from the menu to the colors. Baselines are per operating system (Windows only):
 // `pnpm e2e:visual`.
 
 const THEMES = [

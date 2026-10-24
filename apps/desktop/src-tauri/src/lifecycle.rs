@@ -335,7 +335,7 @@ mod tests {
     #[test]
     fn the_main_window_is_found_with_a_browser_pane_open_and_only_the_main_one() {
         // `main.rs` (the show at the start) and the smoke checks look the window up the same way as
-        // the tray, the links and the focus do (finding 256).
+        // the tray, the links and the focus do.
         let app = tauri::test::mock_app();
         assert!(main_window(app.handle()).is_none());
         tauri::WebviewWindowBuilder::new(&app, "other", tauri::WebviewUrl::default())

@@ -24,8 +24,7 @@ import { fieldDescription } from "./i18n/names";
 import type { SettingsSection } from "./settings-nav";
 
 /**
- * The parts of the settings screen that the two styles draw each their way (NOR-F20-19 and NOR-F20-21b,
- * D23): an icon on each section of the column (the glass has them, the dense one numbers its sections
+ * The parts of the settings screen that the two styles draw each their way (NOR-F20-19 and NOR-F20-21b): an icon on each section of the column (the glass has them, the dense one numbers its sections
  * with a counter of the style sheet), the mark of the search (the magnifier under glass, the slash of the
  * design under dense), and the two cards that choose the interface style (both screens have them). The
  * cards are radio buttons like the buttons of the other choices: the input is the control (the click, the

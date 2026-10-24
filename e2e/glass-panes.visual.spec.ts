@@ -4,7 +4,7 @@ import { start } from "./glass-sidebar-fixture";
 import type { StartOptions } from "./glass-sidebar-fixture";
 import { SPLIT_FIXTURE } from "./sidebar-fixture";
 
-// Baselines are per operating system (Windows only, D7): `pnpm e2e:visual`.
+// Baselines are per operating system (Windows only): `pnpm e2e:visual`.
 // The pane of the glass style (NOR-F20-18c): the split tab of the fixture, the pane on the left in focus
 // (the ring in the color of the space) with its folder, its branch and a command that runs, and the pane
 // on the right with its own folder and branch and an agent that waits for you (the amber ring and the

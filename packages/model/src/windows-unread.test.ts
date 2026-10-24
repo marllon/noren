@@ -5,7 +5,7 @@ import { applyChecked, testContext } from "./test-helpers";
 import type { Space, Workspace } from "./types";
 import { isMarked } from "./unread";
 
-// Unread marks are read per window (finding 241): the tab a window shows is on screen there, as the
+// Unread marks are read per window: the tab a window shows is on screen there, as the
 // tab of the main window is on its own, so showing a tab in a window reads it. The property test of
 // the reducer (`reducer.property.test.ts`) holds the same rule over random sequences of actions.
 

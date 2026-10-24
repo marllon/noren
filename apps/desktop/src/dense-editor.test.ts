@@ -232,7 +232,7 @@ describe("the dense theme editor section of the stylesheet", () => {
 // The words of the editor that are drawn in a color of the state (the green of the reading that holds, the amber of
 // the one that does not and of what is unsaved) or in the gray of the theme keep their contrast, whatever theme is on.
 // The tokens are the ones of style-tokens.css (mixes of the state color and the text color); the arithmetic is done
-// here, over the real themes. The gray of a theme (muted) is only held to 3:1 by the model (finding 359), so the two
+// here, over the real themes. The gray of a theme (muted) is only held to 3:1 by the model, so the two
 // themes the app starts with (the ones the e2e spec runs axe over) are held to 4.5:1 and the rest to 3:1.
 
 type Rgb = [number, number, number];

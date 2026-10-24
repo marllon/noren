@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { seedConfig } from "./settings-fixture";
 import { ACTIONS_CWD, ACTIONS_TEXT, seedActionsFile, seedSidebarState } from "./sidebar-fixture";
 
-// Baselines are per operating system (Windows only, D7): `pnpm e2e:visual`. The favorites bar at the
+// Baselines are per operating system (Windows only): `pnpm e2e:visual`. The favorites bar at the
 // top of the window (`appearance.favorites` "top"), with the three kinds of tile: next to a docked
 // sidebar, and under the tab bar with the tabs on top (the sidebar hidden).
 

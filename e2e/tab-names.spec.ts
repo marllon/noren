@@ -5,7 +5,7 @@ import { numberTheTabs } from "./numbered-tabs";
 import { seedConfig } from "./settings-fixture";
 import { openCommandPalette } from "./palette-fixture";
 
-// The name of a tab nobody named (NOR-F20-12, D22 item 9): the folder its shell reports, from the first
+// The name of a tab nobody named (NOR-F20-12): the folder its shell reports, from the first
 // one (the fake shell starts in `/home/fake`, which is `~`), and the program of the command after it
 // while one runs (`api · sleep`); the placeholder (`Tab 1`) only while no folder is known. What the
 // person typed always wins. The same words are in the sidebar, the bar of the top tabs, the favorites,

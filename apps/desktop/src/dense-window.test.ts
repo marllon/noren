@@ -97,7 +97,7 @@ describe("the dense window section of the stylesheet", () => {
     expect(text).toMatch(/\.status-bar \{[^}]*min-height: 24px/);
   });
 
-  it("gives a long name an ellipsis inside its own box (finding 343)", () => {
+  it("gives a long name an ellipsis inside its own box", () => {
     const text = section();
     for (const selector of [
       ".titlebar-crumb-text",

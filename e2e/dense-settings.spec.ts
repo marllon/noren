@@ -3,7 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { expectNoAxeViolations } from "./axe-fixture";
 import { closeSettings, configText, seedConfig } from "./settings-fixture";
 
-// The settings screen of the dense style (NOR-F20-21b, D23), as in the approved design
+// The settings screen of the dense style (NOR-F20-21b), as in the approved design
 // (`denso-configuracoes`): the screen fills the window under its title bar; a header of 32 px with the title
 // and the section the person is in, and the word that closes it with its key; a column of sections with a
 // number on each; a search with a slash over the content; the sections as headings over a box of rows; the
@@ -297,7 +297,7 @@ test.describe("the column of sections", () => {
           found.clientHeight,
         );
       }
-      // The one that broke in Portuguese (finding 343), by name.
+      // The one that broke in Portuguese, by name.
       if (language === "pt-BR") {
         await expect(navItem(screen, "archive")).toHaveText("Arquivamento automático");
       }
@@ -559,7 +559,7 @@ test.describe("the interface style: two cards, each with the picture of its styl
     await expect.poll(written(page)).toMatch(/"style":\s*"dense"/);
   });
 
-  test("the highlight is the color of the space after the style is switched, not the accent of the theme (finding 355)", async ({
+  test("the highlight is the color of the space after the style is switched, not the accent of the theme", async ({
     page,
   }) => {
     const screen = await start(page, { style: "glass" });

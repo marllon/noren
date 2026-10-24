@@ -3,7 +3,7 @@ import { z } from "zod";
 // The task suite of the model bench (NOR-F16-01): the format of one task, the check that decides
 // whether an answer is right, and the validator of the whole suite. Pure: no DOM, no Tauri, no
 // files (the test reads `bench/tasks`) and no network. The check NEVER runs a command: it compares
-// text, so a model's answer is read and never executed (D8).
+// text, so a model's answer is read and never executed.
 
 export type BenchShell = "pwsh" | "bash";
 export type BenchKind = "command" | "explain" | "summarize";
@@ -348,7 +348,7 @@ function checkText(
 /**
  * Decides whether `answer` is a right answer to `task`. A command answer is compared with the
  * accepted forms; an explanation or a summary is checked for its required and forbidden terms.
- * It only reads text: it never runs the command (D8).
+ * It only reads text: it never runs the command.
  */
 export function checkBenchAnswer(task: BenchTask, answer: string): BenchResult {
   return task.kind === "command" ? checkCommand(task, answer) : checkText(task.check, answer);

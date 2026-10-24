@@ -726,7 +726,7 @@ describe("splits.create", () => {
 });
 
 describe("terminal.send", () => {
-  it("writes the text as it is and nothing more: no Enter is added (D8)", async () => {
+  it("writes the text as it is and nothing more: no Enter is added", async () => {
     const r = rig();
     const tab = await newTab(r, "w1");
     const result = resultOf(

@@ -10,7 +10,7 @@ import { openCommandPalette } from "./palette-fixture";
 // new session; the key in the settings and the command of the palette flip it. One live region,
 // polite and assertive (errors only), says what changed: the tab or the space switched to, a command
 // that ended with its exit code, the bell, a shell that ended, the result of Pull and Push.
-// What a real screen reader says is not checked here (D19); the text it is given is.
+// What a real screen reader says is not checked here; the text it is given is.
 
 interface Hook {
   paneIds(): string[];

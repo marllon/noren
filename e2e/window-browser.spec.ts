@@ -252,22 +252,65 @@ async function areaBounds(area: Locator): Promise<Bounds> {
   };
 }
 
+/** The requests of each page that failed (an asset the page did not get), for `expectOnArea` to say. */
+const failedRequests = new WeakMap<Page, string[]>();
+
+function watchRequests(page: Page): void {
+  const failed: string[] = [];
+  failedRequests.set(page, failed);
+  page.on("requestfailed", (request) => {
+    failed.push(`${request.url()} ${request.failure()?.errorText ?? ""}`.trim());
+  });
+}
+
+/**
+ * What a page that never got its stylesheet looks like here (finding 381): the area of a browser
+ * pane is a block with nothing in it, so it has no height and no web view is ever laid on it. The
+ * failure says so, with the requests that failed, so it is not read as a layout that did not settle.
+ */
+async function pageFacts(page: Page, paneId: string, scope: Locator): Promise<string> {
+  const rules = await page
+    .evaluate(() =>
+      [...document.styleSheets].reduce((n, sheet) => {
+        try {
+          return n + sheet.cssRules.length;
+        } catch {
+          return n;
+        }
+      }, 0),
+    )
+    .catch(() => -1);
+  const where = await areaBounds(areaIn(scope).first()).catch((error: unknown) => String(error));
+  const view = await viewOf(page, paneId).catch(() => undefined);
+  return JSON.stringify({
+    styleRules: rules,
+    failedRequests: failedRequests.get(page) ?? [],
+    area: where,
+    view: view ?? null,
+  });
+}
+
 /** The web view sits exactly on the area of the pane in `scope`, wherever the layout has put it by now. */
 async function expectOnArea(page: Page, paneId: string, scope: Locator): Promise<void> {
-  await expect
-    .poll(
-      async () => {
-        const where = await areaBounds(areaIn(scope).first());
-        const view = (await views(page)).find((v) => v.paneId === paneId);
-        return (
-          view !== undefined &&
-          !isHidden(where) &&
-          JSON.stringify(view.bounds) === JSON.stringify(where)
-        );
-      },
-      { message: `the web view of ${paneId} is on the area of its pane` },
-    )
-    .toBe(true);
+  const message = `the web view of ${paneId} is on the area of its pane`;
+  try {
+    await expect
+      .poll(
+        async () => {
+          const where = await areaBounds(areaIn(scope).first());
+          const view = (await views(page)).find((v) => v.paneId === paneId);
+          return (
+            view !== undefined &&
+            !isHidden(where) &&
+            JSON.stringify(view.bounds) === JSON.stringify(where)
+          );
+        },
+        { message },
+      )
+      .toBe(true);
+  } catch (error) {
+    throw new Error(`${message}: ${await pageFacts(page, paneId, scope)}`, { cause: error });
+  }
 }
 
 /** Presses on a tab of the main sidebar, drags it out of the page and lets go there. */
@@ -285,6 +328,7 @@ async function dragOut(page: Page, name: string): Promise<void> {
 }
 
 async function open(page: Page): Promise<void> {
+  watchRequests(page);
   await seed(page);
   await page.goto("/?window-preview");
   await expect(row(page, "plain")).toBeVisible();

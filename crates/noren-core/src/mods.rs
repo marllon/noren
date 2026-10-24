@@ -24,8 +24,9 @@ use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::Duration;
 
@@ -248,6 +249,8 @@ impl ModStore {
         // now closes that gap.
         let _ = signal.send(());
         let dir = self.dir.clone();
+        let stopped = Arc::new(AtomicBool::new(false));
+        let stop = Arc::clone(&stopped);
         thread::spawn(move || {
             let mut last = initial;
             // The senders live in the watcher: when it is dropped the loop ends.
@@ -256,13 +259,21 @@ impl ModStore {
                 let Ok(files) = list_dir(&dir, true) else {
                     continue;
                 };
+                // The watching of the OS stops a moment after the drop; what it still reports
+                // must not reach the caller.
+                if stop.load(Ordering::Acquire) {
+                    continue;
+                }
                 if files != last {
                     last = files.clone();
                     on_change(files);
                 }
             }
         });
-        Ok(ModWatcher { _watcher: watcher })
+        Ok(ModWatcher {
+            _watcher: watcher,
+            stopped,
+        })
     }
 }
 
@@ -309,6 +320,13 @@ fn list_dir(dir: &Path, patient: bool) -> Result<Vec<ModFile>, ModError> {
 /// Keeps the watching of a [`ModStore`] alive; dropping it stops it.
 pub struct ModWatcher {
     _watcher: RecommendedWatcher,
+    stopped: Arc<AtomicBool>,
+}
+
+impl Drop for ModWatcher {
+    fn drop(&mut self) {
+        self.stopped.store(true, Ordering::Release);
+    }
 }
 
 impl fmt::Debug for ModWatcher {

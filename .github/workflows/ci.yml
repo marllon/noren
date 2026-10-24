@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -109,11 +111,19 @@ jobs:
 
       - name: Rust tests
         if: ${{ !cancelled() }}
-        run: cargo test --workspace
+        run: cargo test --workspace --no-fail-fast
 
       - name: End-to-end tests
         if: ${{ !cancelled() }}
         run: pnpm e2e
+        env:
+          NOREN_E2E_SKIP_PERF: "1"
+
+      # The throughput floor of the terminal runs alone: with other workers on the same cores the
+      # number says how busy the runner is, not how fast the terminal is.
+      - name: Throughput floor
+        if: ${{ !cancelled() }}
+        run: pnpm exec playwright test -c e2e/playwright.config.ts perf.spec.ts --workers=1
 
       - name: Licenses
         if: ${{ !cancelled() }}

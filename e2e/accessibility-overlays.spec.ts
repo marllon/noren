@@ -214,8 +214,8 @@ test.describe("more dialogs", () => {
     await page.goto("/");
     await expect(tab(page, "api")).toBeVisible();
     await page
-      .getByRole("region", { name: "Project actions", exact: true })
-      .getByRole("button", { name: "Start Loop", exact: true })
+      .getByRole("region", { name: "Projects", exact: true })
+      .getByRole("button", { name: "Start Loop in Main", exact: true })
       .click();
     await expect(
       page.getByRole("alertdialog", { name: "Run project action", exact: true }),

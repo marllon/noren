@@ -197,7 +197,7 @@ test.describe("the title bar", () => {
 });
 
 test.describe("the bar of the favorites and the actions", () => {
-  test("is under the title bar, the width of the window, with the favorites as chips of 22 px and the actions at the right", async ({
+  test("is under the title bar, the width of the window, with the favorites as chips of 22 px", async ({
     page,
   }) => {
     await openDense(page, { bar: true });
@@ -223,11 +223,8 @@ test.describe("the bar of the favorites and the actions", () => {
       "Dev server",
       "Loop",
     ]);
-    // The actions are after the favorites, at the right end.
-    const last = await box(chips.last());
-    const actions = await box(bar.getByRole("region", { name: "Project actions", exact: true }));
-    expect(actions.x).toBeGreaterThanOrEqual(last.x);
-    expect(actions.x + actions.width).toBeGreaterThan(at.width - 24);
+    // The project actions are not here: they are the Projects section of the sidebar.
+    await expect(bar.getByRole("region", { name: "Projects", exact: true })).toHaveCount(0);
   });
 
   test("the chips are named by what they do, say their state with a square, and open what they did before", async ({
@@ -274,26 +271,26 @@ test.describe("the bar of the favorites and the actions", () => {
     expect(await style(hint, "white-space")).toBe("nowrap");
   });
 
-  test("has the actions as buttons with their mark and label, and no actions label without them", async ({
+  test("has the project actions in the sidebar, not in the bar, with a start button of the style", async ({
     page,
   }) => {
     await openDense(page);
-    const loop = toolbar(page).getByRole("button", { name: "Start Loop", exact: true });
-    await expect(loop).toHaveText("Loop");
+    await expect(toolbar(page).getByRole("button", { name: /^Start Loop/ })).toHaveCount(0);
+    const projects = side(page).locator('[data-nr-part="projects"]');
+    const loop = projects.getByRole("button", { name: /^Start Loop in / });
+    await expect(loop).toBeVisible();
     // The mark is a filled triangle: a start; the border is the one of the style.
     expect(await style(loop.locator("svg"), "fill")).not.toBe("none");
     expect(await style(loop, "border-top-width")).toBe("1px");
     expect(await style(loop, "border-top-left-radius")).toBe("3px");
-    await expect(toolbar(page).locator('[data-nr-part="space-header-label"]')).toHaveText(
-      "actions",
-    );
+    await expect(projects.locator(".projects-title")).toHaveText("Projects");
   });
 
-  test("a space with no actions file has no actions at the right end, and the tiles of its actions are kept, dimmed", async ({
+  test("a space with no actions file has no Projects section, and the tiles of its actions are kept, dimmed", async ({
     page,
   }) => {
     await openDense(page, { bar: true, actions: false });
-    await expect(toolbar(page).getByRole("region", { name: "Project actions" })).toHaveCount(0);
+    await expect(page.locator('[data-nr-part="projects"]')).toHaveCount(0);
     await expect(toolbar(page).locator('[data-nr-part="favorite"]')).toHaveCount(5);
     const gone = toolbar(page).locator('[data-nr-part="favorite"][data-nr-state="unavailable"]');
     await expect(gone).toHaveCount(2);
@@ -515,7 +512,7 @@ test.describe("the sidebar", () => {
     for (const name of ["sidebar-head", "sidebar-search", "sidebar-base", "sidebar-brand"]) {
       await expect(page.locator(`[data-nr-part="${name}"]`)).toHaveCount(0);
     }
-    await expect(page.locator('[data-nr-part="space-header"] .space-header-mark')).toHaveCount(0);
+    await expect(page.locator('[data-nr-part="space-header"]')).toHaveCount(0);
   });
 });
 

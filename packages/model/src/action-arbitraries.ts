@@ -394,6 +394,8 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
     ),
     weighted(1, fc.record({ type: tag("space/set-mods"), spaceId, modIds: arbModIds })),
     weighted(1, fc.record({ type: tag("space/set-ai"), spaceId, enabled: fc.boolean() })),
+    weighted(1, fc.record({ type: tag("space/set-in-projects"), spaceId, listed: fc.boolean() })),
+    weighted(1, fc.record({ type: tag("space/set-projects-open"), spaceId, open: fc.boolean() })),
     weighted(1, fc.record({ type: tag("space/move"), spaceId, index: arbIndex })),
     weighted(2, fc.record({ type: tag("space/activate"), spaceId })),
     // Windows

@@ -43,14 +43,16 @@ async function openSplitSidebar(page: Page): Promise<void> {
   await page.mouse.move(900, 500);
 }
 
-const header = (page: Page) => page.getByRole("region", { name: "Project actions", exact: true });
+const header = (page: Page) => page.getByRole("region", { name: "Projects", exact: true });
 
 /** Loads the space "Main" with a folder and an `.noren/actions.json`. Ends on "api", nothing hovered. */
 async function openActionsSidebar(page: Page): Promise<void> {
   await seedSidebarState(page, { cwd: ACTIONS_CWD });
   await seedActionsFile(page, ACTIONS_CWD, ACTIONS_TEXT);
   await page.goto("/");
-  await expect(header(page).getByRole("button", { name: "Start Loop", exact: true })).toBeVisible();
+  await expect(
+    header(page).getByRole("button", { name: "Start Loop in Main", exact: true }),
+  ).toBeVisible();
   await expect(tab(page, "api")).toBeVisible();
 }
 
@@ -98,13 +100,13 @@ for (const scheme of ["dark", "light"] as const) {
 
     test(`@visual the space header with one action running (${scheme})`, async ({ page }) => {
       await openActionsSidebar(page);
-      await header(page).getByRole("button", { name: "Start Dev server", exact: true }).click();
+      await header(page).getByRole("button", { name: "Start Loop in Main", exact: true }).click();
       await page
         .getByRole("alertdialog", { name: "Run project action", exact: true })
         .getByRole("button", { name: "Run", exact: true })
         .click();
       await expect(
-        header(page).getByRole("button", { name: "Stop Dev server", exact: true }),
+        header(page).getByRole("button", { name: "Stop Loop in Main", exact: true }),
       ).toBeVisible();
       await settleCapture(page);
       await expect(header(page)).toHaveScreenshot(`space-header-running-${scheme}.png`, {

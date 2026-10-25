@@ -35,6 +35,8 @@ interface SpaceMenuProps {
   aiOn: boolean;
   /** The user turned the AI on or off for this space; the menu stays open. */
   onAi(enabled: boolean): void;
+  /** The user listed the space in the Projects section or took it out; the menu stays open. */
+  onInProjects(listed: boolean): void;
   onEdit(): void;
   onMove(delta: -1 | 1): void;
   onDelete(): void;
@@ -56,6 +58,7 @@ export function SpaceMenu({
   onClearBackground,
   aiOn,
   onAi,
+  onInProjects,
   onEdit,
   onMove,
   onDelete,
@@ -148,6 +151,17 @@ export function SpaceMenu({
           onClick={() => onAi(!space.aiEnabled)}
         >
           {t("spaceMenu.aiInSpace")}
+        </button>
+        <div className="menu-heading" role="presentation">
+          {t("spaceMenu.projects")}
+        </div>
+        <button
+          type="button"
+          role="menuitemcheckbox"
+          aria-checked={space.inProjects !== false}
+          onClick={() => onInProjects(space.inProjects === false)}
+        >
+          {t("spaceMenu.showInProjects")}
         </button>
         {/* Nothing is drawn for a folder with no mods, so the menu stays as it was. */}
         {mods.length > 0 && (

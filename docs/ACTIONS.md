@@ -10,7 +10,7 @@ The file is `.noren/actions.json`, inside the default folder of the space.
 {
   "actions": [
     { "id": "loop", "label": "Loop", "command": "loop", "stop": "loop parar", "tab": "loop" },
-    { "id": "dev", "label": "Dev server", "command": "pnpm dev", "tab": "dev" }
+    { "id": "dev", "label": "Dev server", "command": "pnpm dev", "tab": "dev", "main": true }
   ]
 }
 ```
@@ -23,8 +23,9 @@ The file is `.noren/actions.json`, inside the default folder of the space.
 | `command` | yes      | Command line typed into the tab, followed by Enter.                            |
 | `stop`    | no       | Command line that stops the action. Without it, stopping ends the tab's shell. |
 | `tab`     | yes      | Name of the tab the action runs in.                                            |
+| `main`    | no       | `true` marks the action the one-line block of the space runs (see below).      |
 
-Every text field must be a non-empty string (surrounding spaces are trimmed). Unknown fields are ignored.
+Every text field must be a non-empty string (surrounding spaces are trimmed); `main` must be `true` or `false`. Unknown fields are ignored.
 
 A file that is not valid JSON, misses a field, has a field of the wrong type or repeats an `id` is refused as a whole. Noren reports why (for example `actions[1].tab: tab must be a string`, or `Duplicate action id "dev"`) and runs nothing from it.
 
@@ -36,9 +37,9 @@ A file that is not valid JSON, misses a field, has a field of the wrong type or 
 
 ## In the interface
 
-- **Space header.** The sidebar shows a header above the tabs, with the name of the space and one row per action: a running indicator, the label and a **Start** or **Stop** button. It shows only for the active space, and only when that space has a default folder and a valid file with at least one action. A missing, unreadable or invalid file shows no header and no error. The header follows the file: it appears, changes or goes away within about 2 seconds of the file changing. Only the folder of the active space is watched.
+- **Projects section.** The sidebar shows a section above the tabs with one block for each space that has a default folder and a valid file with at least one action, in the order of the space switcher (not only the space on screen). A closed block is one row: a state dot (lit while any action of the space runs), the name of the space and the **Start** or **Stop** button of its main action: the first action marked `"main": true`, else the first action of the file. A click on the name opens the block, which lists the other actions, each with its own button; another click closes it. Whether a block is open is kept per space in `state.json` (`projectsOpen`). A button works on the space of its block and does not change the space on screen: the tab named by `tab` is opened in that space when it is missing and made the tab that space shows, and the command is typed there. The first run still asks, as below. The space on screen is drawn lit. A missing, unreadable or invalid file, and a file with no action, give no block and no error. The file of every listed space is read again about every 2 seconds, so a block appears, changes or goes away within about 2 seconds of its file changing. The menu of a space has **Show in Projects** (on by default): turning it off takes the space out of the list (`inProjects: false` in `state.json`) and its file is no longer read for it.
 - **Tab menu.** The context menu of the tab an action runs in starts with **Run _label_** or **Stop _label_**.
-- **Favorites bar.** The right click of an action row of the header offers **Add to favorites** (**Remove from favorites** when it is there), and the action gets a tile in the Favorites bar, shown in every space. A click on the tile runs the action through the same first-run question (**Show _label_** while it runs, which only shows its tab). The tile names the action by its space and its `id`: when the file of the space no longer declares that `id` (or the file is missing, not valid or unreadable, or the space lost its folder) the tile stays, dimmed, and a click says why and runs nothing, never another action of the file. The file of every space that has an action in the bar is watched like the one of the active space.
+- **Favorites bar.** The right click of an action row of the Projects section (the line of a block, or a row of an open block) offers **Add to favorites** (**Remove from favorites** when it is there), and the action gets a tile in the Favorites bar, shown in every space. A click on the tile runs the action through the same first-run question (**Show _label_** while it runs, which only shows its tab). The tile names the action by its space and its `id`: when the file of the space no longer declares that `id` (or the file is missing, not valid or unreadable, or the space lost its folder) the tile stays, dimmed, and a click says why and runs nothing, never another action of the file. The file of every space that has an action in the bar is watched like the one of the active space.
 - **First run.** The first run of an action in a space asks first. The dialog shows the label and the exact command, and the stop command on a second line when there is one. **Cancel** (or Esc) runs nothing. The answer is remembered per space and action, together with the confirmed text: if the file later changes the `command` or the `stop`, Noren asks again. Changing only the label or the tab does not. Stopping never asks. The answer is kept in the browser storage of the app under `noren.ui.actionConsent` until the settings file (NOR-F8-01) takes it over.
 - **Links.** A `noren://action?path=<folder>&id=<id>` link runs an action of the file through the same first-run question; see [DEEP_LINKS.md](DEEP_LINKS.md).
 - **Web mode and tests.** The web build reads the file texts from the browser storage key `noren.web.actions`, a JSON object from folder to text, so tests can seed a file before the page loads and change it while it runs.

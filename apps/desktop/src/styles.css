@@ -3991,8 +3991,8 @@ ul.settings-models {
   padding: 1px 6px;
 }
 
-/* The header of the active space in the sidebar: the project actions, with Start or Stop. */
-.space-header {
+/* The Projects section of the sidebar: one block for each space that has project actions. */
+.projects {
   display: flex;
   flex: none;
   flex-direction: column;
@@ -4001,7 +4001,7 @@ ul.settings-models {
   border-bottom: 1px solid var(--nr-border);
 }
 
-.space-header-title {
+.projects-title {
   margin: 0;
   overflow: hidden;
   color: var(--nr-muted);
@@ -4013,7 +4013,7 @@ ul.settings-models {
   white-space: nowrap;
 }
 
-.space-actions {
+.projects-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -4022,7 +4022,13 @@ ul.settings-models {
   list-style: none;
 }
 
-.space-action {
+.project {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.project-line {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -4030,21 +4036,108 @@ ul.settings-models {
   padding: 2px 0;
 }
 
-.action-dot {
+.project[aria-current="true"] .project-line {
+  box-shadow: inset 2px 0 0 var(--nr-project-color, var(--nr-accent));
+  background: color-mix(in srgb, var(--nr-project-color, var(--nr-accent)) 14%, transparent);
+}
+
+.project-dot {
   flex: none;
   box-sizing: border-box;
   width: 8px;
   height: 8px;
+  margin-left: 6px;
   border: 1px solid var(--nr-muted);
   border-radius: 50%;
 }
 
-.action-dot[data-nr-indicator="running"] {
-  border-color: var(--nr-space-color);
-  background: var(--nr-space-color);
+.project-dot[data-nr-indicator="running"] {
+  border-color: var(--nr-state-running);
+  background: var(--nr-state-running);
 }
 
-.action-label {
+.project-name {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: calc(var(--nr-radius) * 0.6);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-name:hover {
+  background: color-mix(in srgb, var(--nr-text) 7%, transparent);
+}
+
+.project-chevron {
+  flex: none;
+  transition: transform 120ms;
+}
+
+.project[data-nr-open="true"] .project-chevron {
+  transform: rotate(90deg);
+}
+
+.project-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project[aria-current="true"] .project-name-text {
+  font-weight: 600;
+}
+
+.project-run {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--nr-border);
+  border-radius: calc(var(--nr-radius) * 0.6);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.project-run:hover:not(:disabled) {
+  border-color: var(--nr-accent);
+}
+
+.project-run:disabled {
+  color: var(--nr-muted);
+  cursor: default;
+}
+
+.project-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0 0 4px 12px;
+  list-style: none;
+}
+
+.project-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.project-action-label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -4052,28 +4145,10 @@ ul.settings-models {
   white-space: nowrap;
 }
 
-.action-button {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border: 1px solid var(--nr-border);
-  border-radius: calc(var(--nr-radius) * 0.6);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.action-button:hover:not(:disabled) {
-  border-color: var(--nr-accent);
-}
-
-.action-button:disabled {
+.project-none {
+  padding: 2px 6px;
   color: var(--nr-muted);
-  cursor: default;
+  font-size: 12px;
 }
 
 .dialog-detail {
@@ -5689,61 +5764,6 @@ ul.settings-models {
   background: var(--nr-state-waiting);
 }
 
-:root[data-nr-style="dense"] .app .dense-toolbar .space-header {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px 8px;
-  padding: 0;
-  border: 0;
-}
-
-:root[data-nr-style="dense"] .app .dense-toolbar .space-header-label {
-  color: var(--nr-muted);
-}
-
-:root[data-nr-style="dense"] .app .dense-toolbar .space-actions {
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-:root[data-nr-style="dense"] .app .dense-toolbar .space-action {
-  padding: 0;
-}
-
-:root[data-nr-style="dense"] .app .dense-toolbar .action-button {
-  gap: 6px;
-  height: 22px;
-  padding: 0 8px;
-  border-color: var(--nr-line-strong);
-  border-radius: var(--nr-radius-control);
-  background: var(--nr-bar-bg);
-  color: var(--nr-text);
-  font-size: var(--nr-font-size);
-}
-
-:root[data-nr-style="dense"] .app .dense-toolbar .action-button svg {
-  fill: currentColor;
-}
-
-:root[data-nr-style="dense"] .app .dense-toolbar .action-button:hover:not(:disabled) {
-  border-color: var(--nr-highlight);
-}
-
-:root[data-nr-style="dense"]
-  .app
-  .dense-toolbar
-  .space-action[data-nr-state="running"]
-  .action-button {
-  border-color: color-mix(in srgb, var(--nr-state-running) 45%, transparent);
-  background: color-mix(in srgb, var(--nr-state-running) 14%, var(--nr-bg));
-  color: var(--nr-running-text);
-}
-
 /* The sidebar: a column of rows with no padding of its own, a line on the side of the content. */
 :root[data-nr-style="dense"] .app-body .sidebar {
   gap: 0;
@@ -6023,6 +6043,81 @@ ul.settings-models {
   color: var(--nr-muted);
   font-size: var(--nr-font-size-small);
   white-space: nowrap;
+}
+
+/* The projects: a title, then the blocks; the current one has a bar of the color of its space. */
+:root[data-nr-style="dense"] .app-body .projects {
+  gap: 0;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--nr-line);
+}
+
+:root[data-nr-style="dense"] .app-body .projects-title {
+  padding: 0 10px 4px;
+  color: var(--nr-muted);
+  font-size: var(--nr-font-size-small);
+  font-weight: 400;
+  letter-spacing: 1px;
+}
+
+:root[data-nr-style="dense"] .app-body .projects-list {
+  gap: 0;
+}
+
+:root[data-nr-style="dense"] .app-body .project-line {
+  box-sizing: border-box;
+  gap: 6px;
+  min-height: var(--nr-row-height);
+  padding: 0 10px 0 8px;
+}
+
+:root[data-nr-style="dense"] .app-body .project[aria-current="true"] .project-line {
+  box-shadow: inset 2px 0 0 var(--nr-project-color, var(--nr-highlight));
+  background: color-mix(in srgb, var(--nr-project-color, var(--nr-highlight)) 14%, transparent);
+}
+
+:root[data-nr-style="dense"] .app-body .project-dot {
+  margin-left: 0;
+  border-radius: 0;
+}
+
+:root[data-nr-style="dense"] .app-body .project-name {
+  padding: 0 2px;
+  border-radius: 0;
+}
+
+:root[data-nr-style="dense"] .app-body .project-run {
+  width: 24px;
+  height: 20px;
+  border-color: var(--nr-line-strong);
+  border-radius: var(--nr-radius-control);
+  background: var(--nr-bar-bg);
+  color: var(--nr-text);
+}
+
+:root[data-nr-style="dense"] .app-body .project-run svg {
+  fill: currentColor;
+}
+
+:root[data-nr-style="dense"] .app-body .project-run:hover:not(:disabled) {
+  border-color: var(--nr-highlight);
+}
+
+:root[data-nr-style="dense"] .app-body .project-run[data-nr-state="running"] {
+  border-color: color-mix(in srgb, var(--nr-state-running) 45%, transparent);
+  background: color-mix(in srgb, var(--nr-state-running) 14%, var(--nr-bg));
+  color: var(--nr-running-text);
+}
+
+:root[data-nr-style="dense"] .app-body .project-actions {
+  gap: 0;
+  padding: 0 0 2px 22px;
+}
+
+:root[data-nr-style="dense"] .app-body .project-action {
+  box-sizing: border-box;
+  min-height: var(--nr-row-height);
+  padding-right: 10px;
 }
 
 /* The agents of every space: a diamond, the name, how it is and for how long. */
@@ -9004,110 +9099,75 @@ ul.settings-models {
   color: var(--nr-side-muted);
 }
 
-/* The card of the project actions: the mark of the space, its name, "project actions", and the actions as buttons side by side. */
-:root[data-nr-style="glass"] .app-body .space-header {
-  gap: 8px;
-  padding: 10px;
+/* The projects: a card of the glass, a row of 30 px for each space (the current one is lit in the color of its space), the other actions below it. */
+:root[data-nr-style="glass"] .app-body .projects {
+  gap: 4px;
+  padding: 8px;
   border-bottom: 0;
   border-radius: 12px;
   background: color-mix(in srgb, var(--nr-text) 5%, transparent);
 }
 
-:root[data-nr-style="glass"] .app-body .space-header-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-:root[data-nr-style="glass"] .app-body .space-header-mark {
-  flex: none;
-  width: 9px;
-  height: 9px;
-  border-radius: 3px;
-  background: var(--nr-highlight);
-}
-
-:root[data-nr-style="glass"] .app-body .space-header-title {
-  flex: 0 1 auto;
-  color: var(--nr-text);
-  font-size: var(--nr-font-size);
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-:root[data-nr-style="glass"] .app-body .space-header-note {
-  flex: 0 100 auto;
-  min-width: 0;
-  overflow: hidden;
+:root[data-nr-style="glass"] .app-body .projects-title {
+  padding: 0 4px;
   color: var(--nr-side-muted);
   font-size: var(--nr-font-size-small);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  letter-spacing: 0.04em;
 }
 
-/* One button per line on the sidebar of the default width, side by side when it is wide enough for two of them (the design). */
-:root[data-nr-style="glass"] .app-body .space-actions {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
-  gap: 6px;
-}
-
-:root[data-nr-style="glass"] .app-body .space-action {
-  display: flex;
-  min-width: 0;
-  padding: 0;
-}
-
-:root[data-nr-style="glass"] .app-body .action-button {
-  position: relative;
-  flex: 1;
-  justify-content: center;
+:root[data-nr-style="glass"] .app-body .project-line {
   box-sizing: border-box;
-  gap: 6px;
-  min-width: 0;
-  height: 30px;
-  padding: 0 8px;
+  min-height: 30px;
+  padding: 0 4px 0 8px;
+  border-radius: 8px;
+}
+
+:root[data-nr-style="glass"] .app-body .project[aria-current="true"] .project-line {
+  box-shadow: none;
+  background: color-mix(in srgb, var(--nr-project-color, var(--nr-highlight)) 18%, transparent);
+}
+
+:root[data-nr-style="glass"] .app-body .project-dot {
+  margin-left: 0;
+  border-color: var(--nr-side-muted);
+}
+
+:root[data-nr-style="glass"] .app-body .project-dot[data-nr-indicator="running"] {
+  border-color: var(--nr-state-running);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--nr-state-running) 70%, transparent);
+}
+
+:root[data-nr-style="glass"] .app-body .project-run {
+  width: 28px;
+  height: 24px;
   border-color: color-mix(in srgb, var(--nr-text) 12%, transparent);
   border-radius: 8px;
   background: color-mix(in srgb, var(--nr-text) 6%, transparent);
   color: var(--nr-text);
-  font-size: var(--nr-font-size-small);
 }
 
-:root[data-nr-style="glass"] .app-body .action-button svg {
-  flex: none;
-}
-
-:root[data-nr-style="glass"] .app-body .action-button:hover:not(:disabled) {
+:root[data-nr-style="glass"] .app-body .project-run:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--nr-text) 22%, transparent);
   background: color-mix(in srgb, var(--nr-text) 11%, transparent);
 }
 
-:root[data-nr-style="glass"] .app-body .action-button .action-label {
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-/* A running action: the button is green, with the mark of a stop, and a dot on its corner; an idle one has no dot. */
-:root[data-nr-style="glass"] .app-body .space-action[data-nr-state="running"] .action-button {
+:root[data-nr-style="glass"] .app-body .project-run[data-nr-state="running"] {
   border-color: color-mix(in srgb, var(--nr-state-running) 40%, transparent);
   background: color-mix(in srgb, var(--nr-state-running) 14%, transparent);
   color: color-mix(in srgb, var(--nr-state-running) 55%, var(--nr-text));
 }
 
-:root[data-nr-style="glass"] .app-body .action-button .action-dot {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 5px;
-  height: 5px;
-  border: 0;
-  background: var(--nr-state-running);
+:root[data-nr-style="glass"] .app-body .project-actions {
+  padding: 0 0 4px 22px;
 }
 
-:root[data-nr-style="glass"] .app-body .action-button .action-dot[data-nr-indicator="idle"] {
-  display: none;
+:root[data-nr-style="glass"] .app-body .project-action {
+  min-height: 28px;
+  padding: 0 4px 0 8px;
+}
+
+:root[data-nr-style="glass"] .app-body .project-none {
+  color: var(--nr-side-muted);
 }
 
 /* The tabs: a state dot, the title, a second line with the folder and the branch; the active one is a lit row. */

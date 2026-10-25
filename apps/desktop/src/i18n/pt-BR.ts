@@ -36,12 +36,10 @@ export const ptBR: Dictionary = {
   "sidebar.dock": "Manter a barra lateral aberta",
   "sidebar.search": "Buscar ou rodar comando",
   "sidebar.searchShort": "Buscar",
-  "sidebar.actionsNote": "ações do projeto",
 
   // The dense window: the title bar, the toolbar, the foot of the sidebar and the status bar
   "chrome.palette": "comandos",
   "chrome.crumbs": "Onde você está",
-  "toolbar.actions": "ações",
   "tree.waitingShort": "espera",
   "agents.waitingShort": "esperando",
   "agents.rowShort": "{name} {state} {elapsed}, {where}. Ir até ele.",
@@ -73,6 +71,8 @@ export const ptBR: Dictionary = {
   "spaceMenu.removeBackground": "Remover imagem de fundo",
   "spaceMenu.ai": "IA",
   "spaceMenu.aiInSpace": "IA neste espaço",
+  "spaceMenu.projects": "Projetos",
+  "spaceMenu.showInProjects": "Mostrar em Projetos",
   "spaceMenu.aiOff":
     "A IA está desligada nas configurações, então está desligada em todos os espaços",
   "spaceMenu.mods": "Mods",
@@ -782,11 +782,11 @@ export const ptBR: Dictionary = {
   "demo.download": "Baixe o app:",
 
   // O cabeçalho de ações da barra lateral
-  "actions.label": "Ações do projeto",
-  "actions.start": "Iniciar",
-  "actions.stop": "Parar",
-  "actions.startNamed": "Iniciar {name}",
-  "actions.stopNamed": "Parar {name}",
+  "projects.label": "Projetos",
+  "projects.title": "Projetos",
+  "projects.startNamed": "Iniciar {name} em {space}",
+  "projects.stopNamed": "Parar {name} em {space}",
+  "projects.noOthers": "Nenhuma outra ação",
   "actions.running": "Em execução",
   "actions.idle": "Parada",
 

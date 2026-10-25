@@ -104,6 +104,18 @@ export type Action =
    * changes nothing.
    */
   | { type: "space/set-ai"; spaceId: Id; enabled: boolean }
+  /**
+   * Lists the space in the Projects section of the sidebar or takes it out (`Space.inProjects`;
+   * listed for a new space). A value that is not a boolean, or the one the space already has,
+   * changes nothing.
+   */
+  | { type: "space/set-in-projects"; spaceId: Id; listed: boolean }
+  /**
+   * Opens or closes the block of the space in the Projects section (`Space.projectsOpen`; closed
+   * for a new space). A value that is not a boolean, or the one the space already has, changes
+   * nothing.
+   */
+  | { type: "space/set-projects-open"; spaceId: Id; open: boolean }
   | { type: "space/move"; spaceId: Id; index: number }
   /**
    * Shows the space in the main window. A space another window shows cannot be shown here too (a

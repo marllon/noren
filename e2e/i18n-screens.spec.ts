@@ -148,11 +148,12 @@ test.describe("the sidebar and the notices", () => {
     await page.goto("/");
     await expect(tabNamed(page, "api")).toBeVisible();
 
-    const header = page.getByRole("region", { name: "Ações do projeto", exact: true });
+    const header = page.getByRole("region", { name: "Projetos", exact: true });
     await expect(header).toBeVisible();
-    await expect(button(header, "Iniciar Loop")).toBeVisible();
-    await expect(button(header, "Iniciar Dev server")).toBeVisible();
-    await expect(header.getByTitle("Parada")).toHaveCount(2);
+    await expect(button(header, "Iniciar Loop em Main")).toBeVisible();
+    await expect(header.getByTitle("Parada")).toHaveCount(1);
+    await header.getByRole("button", { name: "Main", exact: true }).click();
+    await expect(button(header, "Iniciar Dev server em Main")).toBeVisible();
 
     // A favorite gives the grid, whose label is a word of the interface.
     await tabNamed(page, "api").click({ button: "right" });

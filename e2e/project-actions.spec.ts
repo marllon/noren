@@ -20,7 +20,13 @@ type HookWindow = Window & { __norenTest?: Hook };
 
 const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
 const tab = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
-const header = (page: Page) => page.getByRole("region", { name: "Project actions", exact: true });
+const header = (page: Page) => page.getByRole("region", { name: "Projects", exact: true });
+/** The state dot of the one-line block of each space (the rows of an open block have their own). */
+const runningDots = (page: Page) =>
+  header(page).locator('.project-line [data-nr-indicator="running"]');
+/** Opens the block of "Main", which then lists its other actions (here "Dev server"). */
+const openMain = (page: Page) =>
+  header(page).getByRole("button", { name: "Actions of Main", exact: true }).click();
 const button = (page: Page, name: string) =>
   header(page).getByRole("button", { name, exact: true });
 const confirm = (page: Page) =>
@@ -38,15 +44,20 @@ async function openWithActions(page: Page, text: string = ACTIONS_TEXT): Promise
 const commandRuns = (page: Page) =>
   page.evaluate(() => (window as HookWindow).__norenTest?.commandRuns() ?? []);
 
-test("a space with a folder and a valid file shows its actions, each with Start and an idle indicator", async ({
+test("a space with a folder and a valid file shows a line with its main action, and the block opens to the others", async ({
   page,
 }) => {
   await openWithActions(page);
   await expect(header(page)).toBeVisible();
-  await expect(header(page).getByRole("heading", { name: "Main", exact: true })).toBeVisible();
-  await expect(button(page, "Start Loop")).toBeVisible();
-  await expect(button(page, "Start Dev server")).toBeVisible();
-  await expect(header(page).locator('[data-nr-indicator="running"]')).toHaveCount(0);
+  await expect(
+    header(page).getByRole("button", { name: "Actions of Main", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await expect(button(page, "Start Loop in Main")).toBeVisible();
+  await expect(button(page, "Start Dev server in Main")).toHaveCount(0);
+  await expect(runningDots(page)).toHaveCount(0);
+  await openMain(page);
+  await expect(button(page, "Start Dev server in Main")).toBeVisible();
+  await expect(button(page, "Start Loop in Main")).toBeVisible();
   // Nothing ran just because the file was read.
   await expect(tab(page, "loop")).toHaveCount(0);
 });
@@ -60,18 +71,26 @@ test("without a folder the file is never looked up and there is no header", asyn
   await expect(header(page)).toHaveCount(0);
 });
 
-test("the header belongs to the active space only", async ({ page }) => {
+test("the block stays when another space is on screen, and the space on screen is marked", async ({
+  page,
+}) => {
   await seedSidebarState(page, { cwd: ACTIONS_CWD, secondSpace: true });
   await seedActionsFile(page, ACTIONS_CWD, ACTIONS_TEXT);
   await page.goto("/");
-  await expect(button(page, "Start Loop")).toBeVisible();
+  await expect(button(page, "Start Loop in Main")).toBeVisible();
+
+  const mainBlock = header(page).locator('[data-nr-part="project"]');
+  await expect(mainBlock).toHaveAttribute("aria-current", "true");
 
   await page.getByRole("button", { name: "Other", exact: true }).click();
   await expect(tab(page, "elsewhere")).toBeVisible();
-  await expect(header(page)).toHaveCount(0);
+  // "Other" has no folder, so no block of its own; the one of "Main" is still there, no longer marked.
+  await expect(header(page).locator('[data-nr-part="project"]')).toHaveCount(1);
+  await expect(button(page, "Start Loop in Main")).toBeVisible();
+  await expect(mainBlock).not.toHaveAttribute("aria-current", "true");
 
   await page.getByRole("button", { name: "Main", exact: true }).click();
-  await expect(button(page, "Start Loop")).toBeVisible();
+  await expect(mainBlock).toHaveAttribute("aria-current", "true");
 });
 
 test("an invalid file shows no header and no error, and the header appears when the file is fixed", async ({
@@ -86,7 +105,7 @@ test("an invalid file shows no header and no error, and the header appears when 
   await expect(tab(page, "api")).toBeVisible();
 
   await changeActionsFile(page, ACTIONS_CWD, ACTIONS_TEXT);
-  await expect(button(page, "Start Loop")).toBeVisible({ timeout: 8000 });
+  await expect(button(page, "Start Loop in Main")).toBeVisible({ timeout: 8000 });
 });
 
 test("a folder with no file shows no header", async ({ page }) => {
@@ -100,7 +119,8 @@ test("Start asks once: the dialog shows the label and the exact command, confirm
   page,
 }) => {
   await openWithActions(page);
-  await button(page, "Start Dev server").click();
+  await openMain(page);
+  await button(page, "Start Dev server in Main").click();
 
   const dialog = confirm(page);
   await expect(dialog).toBeVisible();
@@ -112,8 +132,8 @@ test("Start asks once: the dialog shows the label and the exact command, confirm
   await expect(dialog).toBeHidden();
   await expect(tab(page, "dev")).toBeVisible();
   await expect(tab(page, "dev")).toHaveAttribute("aria-current", "true");
-  await expect(button(page, "Stop Dev server")).toBeVisible();
-  await expect(header(page).locator('[data-nr-indicator="running"]')).toHaveCount(1);
+  await expect(button(page, "Stop Dev server in Main")).toBeVisible();
+  await expect(runningDots(page)).toHaveCount(1);
   // The command was typed into the new tab.
   await expect
     .poll(() => page.evaluate(() => (window as HookWindow).__norenTest?.lines().join("\n") ?? ""))
@@ -122,13 +142,13 @@ test("Start asks once: the dialog shows the label and the exact command, confirm
 
 test("Cancel runs nothing and the next Start asks again", async ({ page }) => {
   await openWithActions(page);
-  await button(page, "Start Loop").click();
+  await button(page, "Start Loop in Main").click();
   await confirm(page).getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(confirm(page)).toBeHidden();
   await expect(tab(page, "loop")).toHaveCount(0);
-  await expect(button(page, "Start Loop")).toBeVisible();
+  await expect(button(page, "Start Loop in Main")).toBeVisible();
 
-  await button(page, "Start Loop").click();
+  await button(page, "Start Loop in Main").click();
   await expect(confirm(page)).toBeVisible();
   // Esc cancels too.
   await page.keyboard.press("Escape");
@@ -140,20 +160,20 @@ test("Stop with a stop command runs it and the button returns to Start; a second
   page,
 }) => {
   await openWithActions(page);
-  await button(page, "Start Loop").click();
+  await button(page, "Start Loop in Main").click();
   await confirm(page).getByRole("button", { name: "Run", exact: true }).click();
-  await expect(button(page, "Stop Loop")).toBeVisible();
+  await expect(button(page, "Stop Loop in Main")).toBeVisible();
   await expect(tab(page, "loop")).toBeVisible();
 
-  await button(page, "Stop Loop").click();
-  await expect(button(page, "Start Loop")).toBeVisible();
-  await expect(header(page).locator('[data-nr-indicator="running"]')).toHaveCount(0);
+  await button(page, "Stop Loop in Main").click();
+  await expect(button(page, "Start Loop in Main")).toBeVisible();
+  await expect(runningDots(page)).toHaveCount(0);
   expect(await commandRuns(page)).toEqual([{ cwd: ACTIONS_CWD, command: "loop parar" }]);
 
   // The shell of the tab ended with the stop, so the next Start opens the tab again, no question.
-  await button(page, "Start Loop").click();
+  await button(page, "Start Loop in Main").click();
   await expect(confirm(page)).toHaveCount(0);
-  await expect(button(page, "Stop Loop")).toBeVisible();
+  await expect(button(page, "Stop Loop in Main")).toBeVisible();
   await expect(tab(page, "loop")).toHaveCount(1);
 });
 
@@ -161,12 +181,15 @@ test("Stop without a stop command ends the tab's shell and the button returns to
   page,
 }) => {
   await openWithActions(page);
-  await button(page, "Start Dev server").click();
+  await openMain(page);
+  await button(page, "Start Dev server in Main").click();
   await confirm(page).getByRole("button", { name: "Run", exact: true }).click();
-  await expect(button(page, "Stop Dev server")).toBeVisible();
+  await expect(button(page, "Stop Dev server in Main")).toBeVisible();
+  // A running action lights the dot of the line, though the main one is not the one running.
+  await expect(runningDots(page)).toHaveCount(1);
 
-  await button(page, "Stop Dev server").click();
-  await expect(button(page, "Start Dev server")).toBeVisible();
+  await button(page, "Stop Dev server in Main").click();
+  await expect(button(page, "Start Dev server in Main")).toBeVisible();
   expect(await commandRuns(page)).toEqual([]);
   expect(
     await page.evaluate(() => (window as HookWindow).__norenTest?.killedSessions().length ?? 0),
@@ -183,29 +206,29 @@ test("the context menu of the action tab offers Stop while it runs and Run after
   await expect(page.getByRole("menuitem", { name: /^(Run|Stop) / })).toHaveCount(0);
   await page.keyboard.press("Escape");
 
-  await button(page, "Start Loop").click();
+  await button(page, "Start Loop in Main").click();
   await confirm(page).getByRole("button", { name: "Run", exact: true }).click();
-  await expect(button(page, "Stop Loop")).toBeVisible();
+  await expect(button(page, "Stop Loop in Main")).toBeVisible();
 
   await tab(page, "loop").click({ button: "right" });
   await menuItem(page, "Stop Loop").click();
-  await expect(button(page, "Start Loop")).toBeVisible();
+  await expect(button(page, "Start Loop in Main")).toBeVisible();
 
   // Confirmed before, so the menu runs it without asking.
   await tab(page, "loop").click({ button: "right" });
   await menuItem(page, "Run Loop").click();
   await expect(confirm(page)).toHaveCount(0);
-  await expect(button(page, "Stop Loop")).toBeVisible();
+  await expect(button(page, "Stop Loop in Main")).toBeVisible();
 });
 
 test("the menu entry asks too when the command changed since it was confirmed", async ({
   page,
 }) => {
   await openWithActions(page);
-  await button(page, "Start Loop").click();
+  await button(page, "Start Loop in Main").click();
   await confirm(page).getByRole("button", { name: "Run", exact: true }).click();
-  await button(page, "Stop Loop").click();
-  await expect(button(page, "Start Loop")).toBeVisible();
+  await button(page, "Stop Loop in Main").click();
+  await expect(button(page, "Start Loop in Main")).toBeVisible();
 
   await changeActionsFile(
     page,
@@ -215,7 +238,7 @@ test("the menu entry asks too when the command changed since it was confirmed", 
     }),
   );
   // The new label shows once the file was read again (about 2 seconds).
-  await expect(button(page, "Start Loop fast")).toBeVisible({ timeout: 8000 });
+  await expect(button(page, "Start Loop fast in Main")).toBeVisible({ timeout: 8000 });
 
   await tab(page, "loop").click({ button: "right" });
   await menuItem(page, "Run Loop fast").click();
@@ -224,11 +247,13 @@ test("the menu entry asks too when the command changed since it was confirmed", 
 
 test("a changed command asks again", async ({ page }) => {
   await openWithActions(page);
-  await button(page, "Start Loop").click();
+  await button(page, "Start Loop in Main").click();
   await confirm(page).getByRole("button", { name: "Run", exact: true }).click();
-  await button(page, "Stop Loop").click();
-  await expect(button(page, "Start Loop")).toBeVisible();
+  await button(page, "Stop Loop in Main").click();
+  await expect(button(page, "Start Loop in Main")).toBeVisible();
 
+  await openMain(page);
+  await expect(button(page, "Start Dev server in Main")).toBeVisible();
   // The file changes on disk; it is read again within about 2 seconds.
   await changeActionsFile(
     page,
@@ -239,36 +264,37 @@ test("a changed command asks again", async ({ page }) => {
       ],
     }),
   );
-  await expect(button(page, "Start Dev server")).toHaveCount(0, { timeout: 8000 });
-  await button(page, "Start Loop").click();
+  await expect(button(page, "Start Dev server in Main")).toHaveCount(0, { timeout: 8000 });
+  await expect(header(page)).toContainText("No other actions");
+  await button(page, "Start Loop in Main").click();
   await expect(confirm(page).locator("pre")).toHaveText("loop --fast\nloop parar");
 });
 
 test("a failing stop command keeps the action running and says why", async ({ page }) => {
   await openWithActions(page);
-  await button(page, "Start Loop").click();
+  await button(page, "Start Loop in Main").click();
   await confirm(page).getByRole("button", { name: "Run", exact: true }).click();
-  await expect(button(page, "Stop Loop")).toBeVisible();
+  await expect(button(page, "Stop Loop in Main")).toBeVisible();
 
   await page.evaluate(() => (window as HookWindow).__norenTest?.failCommands(7));
-  await button(page, "Stop Loop").click();
+  await button(page, "Stop Loop in Main").click();
   await expect(page.locator('[data-nr-part="pane-notice"]')).toContainText("ended with code 7");
-  await expect(button(page, "Stop Loop")).toBeVisible();
+  await expect(button(page, "Stop Loop in Main")).toBeVisible();
 });
 
 test("axe: the header of the actions, idle, running and with a failure showing, has no violation", async ({
   page,
 }) => {
   await openWithActions(page);
-  await expect(button(page, "Start Loop")).toBeVisible();
+  await expect(button(page, "Start Loop in Main")).toBeVisible();
   await expectNoAxeViolations(page, "project actions header, idle");
-  await button(page, "Start Loop").click();
+  await button(page, "Start Loop in Main").click();
   await confirm(page).getByRole("button", { name: "Run", exact: true }).click();
-  await expect(button(page, "Stop Loop")).toBeVisible();
-  await expect(header(page).locator('[data-nr-indicator="running"]')).toHaveCount(1);
+  await expect(button(page, "Stop Loop in Main")).toBeVisible();
+  await expect(runningDots(page)).toHaveCount(1);
   await expectNoAxeViolations(page, "project actions header, running");
   await page.evaluate(() => (window as HookWindow).__norenTest?.failCommands(7));
-  await button(page, "Stop Loop").click();
+  await button(page, "Stop Loop in Main").click();
   await expect(page.locator('[data-nr-part="pane-notice"]')).toContainText("ended with code 7");
   await expectNoAxeViolations(page, "project actions header, with a notice");
 });

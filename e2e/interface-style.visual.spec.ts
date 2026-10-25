@@ -9,7 +9,7 @@ import { ACTIONS_CWD, ACTIONS_TEXT, seedActionsFile, seedSidebarState } from "./
 
 const list = (page: Page) => page.getByRole("tree", { name: "Tabs", exact: true });
 const tab = (page: Page, name: string) => list(page).getByRole("treeitem", { name, exact: true });
-const header = (page: Page) => page.getByRole("region", { name: "Project actions", exact: true });
+const header = (page: Page) => page.getByRole("region", { name: "Projects", exact: true });
 
 /** The sidebar of the space "Main" with its actions, in the dense style. Ends on "api", nothing hovered. */
 async function openDenseSidebar(page: Page): Promise<void> {
@@ -17,7 +17,9 @@ async function openDenseSidebar(page: Page): Promise<void> {
   await seedSidebarState(page, { cwd: ACTIONS_CWD });
   await seedActionsFile(page, ACTIONS_CWD, ACTIONS_TEXT);
   await page.goto("/");
-  await expect(header(page).getByRole("button", { name: "Start Loop", exact: true })).toBeVisible();
+  await expect(
+    header(page).getByRole("button", { name: "Start Loop in Main", exact: true }),
+  ).toBeVisible();
   await expect(tab(page, "api")).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("data-nr-style", "dense");
   // The type is the packaged one before the picture is taken, not the fallback it starts with.

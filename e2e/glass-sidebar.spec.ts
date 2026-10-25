@@ -57,7 +57,7 @@ async function expectNothingLeavesTheCard(page: Page): Promise<void> {
     // The card is not a scroll box on the horizontal axis, and no row is wider than what holds it.
     const wide: string[] = [];
     for (const element of aside.querySelectorAll<HTMLElement>(
-      ".tab-button, .group-button, .action-button, .favorite-button, .sidebar-search, .new-tab, .space-header, .sidebar-head",
+      ".tab-button, .group-button, .project-run, .favorite-button, .sidebar-search, .new-tab, .projects, .sidebar-head",
     )) {
       if (element.scrollWidth > element.clientWidth + 1) {
         // A text cut by an ellipsis is inside its own box; the box itself must not overflow.
@@ -335,8 +335,8 @@ test.describe("the favorites: a grid of four tiles with a state dot", () => {
     page,
   }) => {
     await start(page, { bar: true });
-    const header = page.getByRole("region", { name: "Project actions", exact: true });
-    await header.getByRole("button", { name: "Start Loop", exact: true }).click();
+    const header = page.getByRole("region", { name: "Projects", exact: true });
+    await header.getByRole("button", { name: "Start Loop in Main", exact: true }).click();
     await page
       .getByRole("alertdialog", { name: "Run project action", exact: true })
       .getByRole("button", { name: "Run", exact: true })
@@ -346,7 +346,7 @@ test.describe("the favorites: a grid of four tiles with a state dot", () => {
     );
     await expect(running).toHaveCount(1);
     await expect(running.locator(".favorite-dot")).toHaveAttribute("data-nr-dot", "running");
-    await header.getByRole("button", { name: "Stop Loop", exact: true }).click();
+    await header.getByRole("button", { name: "Stop Loop in Main", exact: true }).click();
     await expect(
       part(page, "favorites").locator('[data-nr-kind="action"] .favorite-dot'),
     ).toHaveCount(0);
@@ -379,84 +379,82 @@ test.describe("the favorites: a grid of four tiles with a state dot", () => {
   });
 });
 
-test.describe("the card of the project actions", () => {
-  test("the card has the mark of the space, its name, the words, and one button per action", async ({
+test.describe("the Projects section", () => {
+  const projects = (page: Page) => part(page, "projects");
+  const run = (page: Page, name: string) =>
+    projects(page).getByRole("button", { name, exact: true });
+  const openMain = (page: Page) =>
+    projects(page).getByRole("button", { name: "Actions of Main", exact: true }).click();
+
+  test("the card has its title, and a one-line block with the dot, the name and the button of the main action", async ({
     page,
   }) => {
     await start(page);
-    const card = part(page, "space-header");
+    const card = projects(page);
     await expect(card).toBeVisible();
-    await expect(card.getByRole("heading", { name: "Main", exact: true })).toBeVisible();
-    await expect(card.locator(".space-header-note")).toHaveText("· project actions");
-    expect(await style(card.locator(".space-header-mark"), "background-color")).toBe(
-      "rgb(107, 138, 253)",
-    );
+    await expect(card.locator(".projects-title")).toHaveText("Projects");
     expect(await style(card, "border-top-left-radius")).toBe("12px");
-    expect(await style(card, "padding-top")).toBe("10px");
-    const loop = card.getByRole("button", { name: "Start Loop", exact: true });
-    const dev = card.getByRole("button", { name: "Start Dev server", exact: true });
-    for (const button of [loop, dev]) {
-      const at = await box(button);
-      expect(at.height).toBe(30);
-      expect(await style(button, "border-top-left-radius")).toBe("8px");
-    }
-    // The label is the visible word of each button; the verb is in its name.
-    await expect(loop).toContainText("Loop");
-    await expect(dev).toContainText("Dev server");
+    expect(await style(card, "padding-top")).toBe("8px");
+    const line = card.locator(".project-line");
+    await expect(line).toHaveCount(1);
+    expect((await box(line)).height).toBe(30);
+    await expect(line.locator(".project-name-text")).toHaveText("Main");
+    await expect(line.locator(".project-dot")).toHaveAttribute("data-nr-indicator", "idle");
+    const button = run(page, "Start Loop in Main");
+    const at = await box(button);
+    expect(at.height).toBe(24);
+    expect(await style(button, "border-top-left-radius")).toBe("8px");
+    // The button is at the right end of the line, inside it.
+    const edge = await box(line);
+    expect(at.x + at.width).toBeLessThanOrEqual(edge.x + edge.width);
+    expect(at.x + at.width).toBeGreaterThan(edge.x + edge.width - 12);
+    // The block is the current one, so it is drawn lit, and only the line is shown while it is closed.
+    await expect(card.locator('[data-nr-part="project"]')).toHaveAttribute("aria-current", "true");
+    await expect(card.locator(".project-action")).toHaveCount(0);
     await expectNothingLeavesTheCard(page);
   });
 
-  test("at the default width the buttons are one to a line, and side by side when there is room for two", async ({
+  test("a click on the name opens the block under it, with the other actions each with its own button in the same column", async ({
     page,
   }) => {
     await start(page);
-    const loop = await box(part(page, "space-header").getByRole("button", { name: "Start Loop" }));
-    const dev = await box(
-      part(page, "space-header").getByRole("button", { name: "Start Dev server" }),
-    );
-    expect(dev.x).toBeCloseTo(loop.x, 0);
-    expect(dev.y).toBeGreaterThan(loop.y + loop.height);
-    expect(dev.y - (loop.y + loop.height)).toBeCloseTo(6, 0);
+    await openMain(page);
+    const dev = run(page, "Start Dev server in Main");
+    await expect(dev).toBeVisible();
+    const loop = await box(run(page, "Start Loop in Main"));
+    const at = await box(dev);
+    expect(at.x + at.width).toBeCloseTo(loop.x + loop.width, 0);
+    expect(at.y).toBeGreaterThan(loop.y + loop.height);
+    await expect(projects(page).locator(".project-action-label")).toHaveText(["Dev server"]);
+    await expectNothingLeavesTheCard(page);
   });
 
-  test("with a wide sidebar the two buttons share the line, like the design", async ({ page }) => {
-    await start(page, { appearance: '"sidebar": { "width": 300 }' });
-    const loop = await box(part(page, "space-header").getByRole("button", { name: "Start Loop" }));
-    const dev = await box(
-      part(page, "space-header").getByRole("button", { name: "Start Dev server" }),
-    );
-    expect(dev.y).toBeCloseTo(loop.y, 0);
-    expect(dev.x).toBeGreaterThan(loop.x + loop.width);
-    expect(loop.width).toBeCloseTo(dev.width, 0);
-  });
-
-  test("a running action is a green button with a stop mark and a dot, named Stop; idle has no dot", async ({
+  test("a running action is a green button with a stop mark and a lit dot, named Stop; idle has neither", async ({
     page,
   }) => {
     await start(page);
-    const card = page.getByRole("region", { name: "Project actions", exact: true });
-    await expect(card.locator(".action-dot[data-nr-indicator='running']")).toHaveCount(0);
-    await expect(card.locator(".action-dot:visible")).toHaveCount(0);
-    await card.getByRole("button", { name: "Start Dev server", exact: true }).click();
+    const card = projects(page);
+    await expect(card.locator('[data-nr-indicator="running"]')).toHaveCount(0);
+    const idle = run(page, "Start Loop in Main");
+    const idleBorder = await style(idle, "border-top-color");
+    await idle.click();
     await page
       .getByRole("alertdialog", { name: "Run project action", exact: true })
       .getByRole("button", { name: "Run", exact: true })
       .click();
-    const stop = card.getByRole("button", { name: "Stop Dev server", exact: true });
+    const stop = run(page, "Stop Loop in Main");
     await expect(stop).toBeVisible();
-    await expect(card.locator(".action-dot[data-nr-indicator='running']")).toHaveCount(1);
-    await expect(card.locator(".action-dot[data-nr-indicator='running']")).toBeVisible();
-    await expect(card.locator("li[data-nr-state='running']")).toHaveCount(1);
-    // The mark of the button turned into a stop (the square), and the border is green, not a gray line.
-    expect(await style(stop, "border-top-color")).not.toBe(
-      await style(
-        card.getByRole("button", { name: "Start Loop", exact: true }),
-        "border-top-color",
-      ),
+    await expect(stop).toHaveAttribute("data-nr-state", "running");
+    await expect(card.locator('.project-line [data-nr-indicator="running"]')).toHaveCount(1);
+    await expect(card.locator('[data-nr-part="project"]')).toHaveAttribute(
+      "data-nr-state",
+      "running",
     );
+    // The border is green, not the gray line of an idle button.
+    expect(await style(stop, "border-top-color")).not.toBe(idleBorder);
     await stop.click();
-    await expect(card.getByRole("button", { name: "Start Dev server", exact: true })).toBeVisible();
-    await expect(card.locator(".action-dot[data-nr-indicator='running']")).toHaveCount(0);
+    await expect(run(page, "Start Loop in Main")).toBeVisible();
+    await expect(card.locator('[data-nr-indicator="running"]')).toHaveCount(0);
   });
 
   test("a long name of an action and of the space stays inside the card, cut by an ellipsis in its own box", async ({
@@ -464,6 +462,7 @@ test.describe("the card of the project actions", () => {
   }) => {
     const long = JSON.stringify({
       actions: [
+        { id: "first", label: "First", command: "echo first", tab: "first" },
         {
           id: "long",
           label: "A label of an action that is much longer than the sidebar is wide",
@@ -473,32 +472,32 @@ test.describe("the card of the project actions", () => {
       ],
     });
     await start(page, { actions: long, longNames: true });
-    await expect(part(page, "space-header")).toBeVisible();
-    await expectNothingLeavesTheCard(page);
-    const label = part(page, "space-header").locator(".action-label");
+    const card = projects(page);
+    await expect(card).toBeVisible();
+    const name = card.locator(".project-name-text");
+    expect(await style(name, "text-overflow")).toBe("ellipsis");
+    expect(await name.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
+    await card.locator('[data-nr-part="project-name"]').click();
+    const label = card.locator(".project-action-label");
     expect(await style(label, "text-overflow")).toBe("ellipsis");
     expect(await label.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
-    const title = part(page, "space-header").locator(".space-header-title");
-    expect(await style(title, "text-overflow")).toBe("ellipsis");
+    await expectNothingLeavesTheCard(page);
   });
 
-  test("the dense style puts the actions in the bar under the title bar: a button with its mark and its label, after the word actions", async ({
+  test("the dense style puts the section in the sidebar too: a title, rows of one line and a small button of its own", async ({
     page,
   }) => {
     await start(page, { style: "dense" });
     await expect(side(page).locator('[data-nr-part="space-header"]')).toHaveCount(0);
-    const card = page
-      .locator('[data-nr-part="dense-toolbar"]')
-      .getByRole("region", { name: "Project actions", exact: true });
-    await expect(card.locator(".space-header-mark")).toHaveCount(0);
-    await expect(card.locator(".space-header-note")).toHaveCount(0);
-    await expect(card.getByRole("heading")).toHaveCount(0);
-    await expect(card.locator(".space-header-label")).toHaveText("actions");
-    const loop = card.getByRole("button", { name: "Start Loop", exact: true });
-    await expect(loop).toHaveText("Loop");
+    await expect(
+      page.locator('[data-nr-part="dense-toolbar"] [data-nr-part="projects"]'),
+    ).toHaveCount(0);
+    const card = projects(page);
+    await expect(card.locator(".projects-title")).toHaveText("Projects");
+    const loop = card.getByRole("button", { name: "Start Loop in Main", exact: true });
     await expect(loop.locator("svg")).toHaveCount(1);
-    await expect(card.locator(".action-dot")).toHaveCount(0);
-    expect((await box(loop)).height).toBe(22);
+    expect((await box(loop)).height).toBe(20);
+    await expect(card.locator(".project-line")).toHaveCount(1);
   });
 });
 
@@ -877,7 +876,7 @@ test.describe("the sidebar as a whole", () => {
       (await box(part(page, "sidebar-head"))).y,
       (await box(part(page, "sidebar-search"))).y,
       (await box(part(page, "favorites"))).y,
-      (await box(part(page, "space-header"))).y,
+      (await box(part(page, "projects"))).y,
       (await box(side(page).locator('[data-nr-part="item"]').first())).y,
       (await box(side(page).getByRole("button", { name: "New tab", exact: true }))).y,
       (await box(part(page, "sidebar-base"))).y,
@@ -926,10 +925,10 @@ for (const lang of ["en", "pt-BR"] as const) {
         page,
       }) => {
         await start(page, { lang, mode, appearance: '"sidebar": { "width": 320 }' });
-        const card = page.locator('[data-nr-part="space-header"]');
-        await card.getByRole("button").first().click();
+        const card = page.locator('[data-nr-part="projects"]');
+        await card.locator(".project-run").first().click();
         await page.getByRole("alertdialog").getByRole("button").last().click();
-        await expect(card.locator(".action-dot[data-nr-indicator='running']")).toHaveCount(1);
+        await expect(card.locator('.project-line [data-nr-indicator="running"]')).toHaveCount(1);
         await expectNoAxeViolations(page, `the glass sidebar, wide, ${lang}, ${mode}`);
       });
 

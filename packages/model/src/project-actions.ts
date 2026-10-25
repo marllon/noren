@@ -13,6 +13,14 @@ export type ActionStatus = "running" | "idle";
  */
 export type RunResult = "started" | "focused" | "abandoned";
 
+export interface RunOptions {
+  /**
+   * Bring the space onto the screen as well as its tab (the default). With `false` the tab is
+   * opened and made the one its space shows, but the space on screen stays the one it is.
+   */
+  reveal?: boolean;
+}
+
 export interface ProjectActionsOptions {
   getWorkspace(): Workspace;
   /** Called after every change of the workspace. */
@@ -33,7 +41,7 @@ export interface ProjectActions {
    * `command` followed by Enter into its session. An action that is already running only has its
    * tab shown. Rejects for an unknown space.
    */
-  run(spaceId: Id, action: ProjectAction): Promise<RunResult>;
+  run(spaceId: Id, action: ProjectAction, options?: RunOptions): Promise<RunResult>;
   /**
    * With a `stop` command: runs it through `runStop` in the folder of the space, and once it ends
    * with code 0 ends the sessions of the tab too. Without one: ends the sessions of the tab. A
@@ -125,8 +133,8 @@ export function createProjectActions(options: ProjectActionsOptions): ProjectAct
     return sessions.length > 0 && sessions.every((id) => exited.has(id));
   };
 
-  const show = (spaceId: Id, itemId: Id) => {
-    dispatch({ type: "space/activate", spaceId });
+  const show = (spaceId: Id, itemId: Id, reveal: boolean) => {
+    if (reveal) dispatch({ type: "space/activate", spaceId });
     dispatch({ type: "space/set-active-item", spaceId, itemId });
   };
 
@@ -155,10 +163,10 @@ export function createProjectActions(options: ProjectActionsOptions): ProjectAct
       if (settled) off?.();
     });
 
-  const open = async (space: Space, action: ProjectAction): Promise<RunResult> => {
+  const open = async (space: Space, action: ProjectAction, reveal: boolean): Promise<RunResult> => {
     let item = findTab(space, action);
     if (item && liveSessions(item).length > 0) {
-      show(space.id, item.id);
+      show(space.id, item.id, reveal);
       return "focused";
     }
     if (item && isDead(item)) {
@@ -178,7 +186,7 @@ export function createProjectActions(options: ProjectActionsOptions): ProjectAct
       tabs.set(keyOf(space.id, action), item.id);
       dispatch({ type: "item/rename", itemId: item.id, title: action.tab });
     }
-    show(space.id, item.id);
+    show(space.id, item.id, reveal);
     const session = await waitForSession(space.id, item.id);
     if (session === undefined) return "abandoned";
     await backend.write(Number(session), action.command + ENTER);
@@ -186,14 +194,14 @@ export function createProjectActions(options: ProjectActionsOptions): ProjectAct
   };
 
   return {
-    run(spaceId, action) {
+    run(spaceId, action, runOptions) {
       const key = keyOf(spaceId, action);
       // A second run while the first waits for the session must not type the command twice.
       const inFlight = runs.get(key);
       if (inFlight) return inFlight;
       let started: Promise<RunResult>;
       try {
-        started = open(spaceOf(spaceId), action);
+        started = open(spaceOf(spaceId), action, runOptions?.reveal !== false);
       } catch (error) {
         return Promise.reject(error instanceof Error ? error : new Error(String(error)));
       }

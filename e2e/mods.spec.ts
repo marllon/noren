@@ -119,7 +119,10 @@ const modItem = (inMenu: Locator, name: string): Locator =>
 
 /** Every mod in the menu of a space; the switch of the AI of the space is a checkbox item too, and is not one. */
 const modItems = (inMenu: Locator): Locator =>
-  inMenu.getByRole("menuitemcheckbox").filter({ hasNotText: "AI in this space" });
+  inMenu
+    .getByRole("menuitemcheckbox")
+    .filter({ hasNotText: "AI in this space" })
+    .filter({ hasNotText: "Show in Projects" });
 
 /** Two spaces, "Main" and "Work", with "Work" active. */
 async function addWorkSpace(page: Page): Promise<void> {

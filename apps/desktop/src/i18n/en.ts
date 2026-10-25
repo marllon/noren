@@ -35,12 +35,10 @@ export const en = {
   "sidebar.dock": "Keep the sidebar open",
   "sidebar.search": "Search or run a command",
   "sidebar.searchShort": "Search",
-  "sidebar.actionsNote": "project actions",
 
   // The dense window: the title bar, the toolbar, the foot of the sidebar and the status bar
   "chrome.palette": "commands",
   "chrome.crumbs": "Where you are",
-  "toolbar.actions": "actions",
   "tree.waitingShort": "waiting",
   "agents.waitingShort": "waiting",
   "agents.rowShort": "{name} {state} {elapsed}, {where}. Go to it.",
@@ -72,6 +70,8 @@ export const en = {
   "spaceMenu.removeBackground": "Remove background image",
   "spaceMenu.ai": "AI",
   "spaceMenu.aiInSpace": "AI in this space",
+  "spaceMenu.projects": "Projects",
+  "spaceMenu.showInProjects": "Show in Projects",
   "spaceMenu.aiOff": "The AI is off in the settings, so it is off in every space",
   "spaceMenu.mods": "Mods",
   "spaceMenu.modGlobal": "On for every space; turn it off in the settings",
@@ -766,12 +766,13 @@ export const en = {
     "Simulated shell: this demo runs in your browser and no real terminal is behind it. Try echo, ls or pwd.",
   "demo.download": "Download the app:",
 
-  // The actions header of the sidebar
-  "actions.label": "Project actions",
-  "actions.start": "Start",
-  "actions.stop": "Stop",
-  "actions.startNamed": "Start {name}",
-  "actions.stopNamed": "Stop {name}",
+  // The Projects section of the sidebar
+  "projects.label": "Projects",
+  "projects.title": "Projects",
+  "projects.startNamed": "Start {name} in {space}",
+  "projects.stopNamed": "Stop {name} in {space}",
+  "projects.noOthers": "No other actions",
+  "projects.toggle": "Actions of {name}",
   "actions.running": "Running",
   "actions.idle": "Not running",
 

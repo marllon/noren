@@ -278,6 +278,9 @@ function checkSpace(value: unknown, path: string): void {
   list(space["modIds"], `${path}.modIds`, str);
   bool(space["aiEnabled"], `${path}.aiEnabled`);
   bool(space["saveScrollback"], `${path}.saveScrollback`);
+  // A state saved before the Projects section has neither.
+  optional(space, "inProjects", path, bool);
+  optional(space, "projectsOpen", path, bool);
   list(space["pinned"], `${path}.pinned`, str);
   optional(space, "activeItemId", path, str);
 

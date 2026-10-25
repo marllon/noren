@@ -102,11 +102,14 @@ export type {
 } from "./actions-watcher";
 export { findSpaceByFolder, parseDeepLink, sameFolder, spaceNameForFolder } from "./deep-link";
 export type { DeepLink, ParseDeepLinkResult } from "./deep-link";
+export { anyRunning, listProjects, mainAction } from "./projects";
+export type { ProjectEntry } from "./projects";
 export { createProjectActions, createRunStop } from "./project-actions";
 export type {
   ActionStatus,
   ProjectActions,
   ProjectActionsOptions,
+  RunOptions,
   RunResult,
 } from "./project-actions";
 export {

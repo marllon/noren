@@ -67,6 +67,8 @@ describe("the dense window section of the stylesheet", () => {
       // Set by the page: the color of the active space, the surface at the opacity of the window.
       "--nr-space-color",
       "--nr-surface-glass",
+      // Set inline on each block of the Projects section: the color of its space.
+      "--nr-project-color",
       // Set by a rule of the section itself, for the agent ring of a pane.
       "--agent-color",
     ]);

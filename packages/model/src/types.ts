@@ -94,6 +94,13 @@ export interface Space {
   defaults: SpaceDefaults;
   aiEnabled: boolean;
   saveScrollback: boolean;
+  /**
+   * Whether the Projects section of the sidebar may list the space (when it has a valid actions file
+   * with an action). Absent means yes; `false` takes the space out of the list.
+   */
+  inProjects?: boolean;
+  /** Whether the block of the space in the Projects section is open. Absent means closed. */
+  projectsOpen?: boolean;
   /** Item ids, visual order. */
   pinned: Id[];
   /** Sidebar below the pinned items. */

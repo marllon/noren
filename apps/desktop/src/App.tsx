@@ -13,6 +13,7 @@ import {
   findGroup,
   findItemSlot,
   layoutPanes,
+  listProjects,
   mainWindowSpaces,
   paneLimitOf,
   previewPathProblem,
@@ -61,7 +62,6 @@ import { consentText } from "./action-consent";
 import { loadHome } from "./home";
 import { realClock } from "./real-clock";
 import { recentFolders, recordFolder } from "./recent-folders-store";
-import { ActionsHeader } from "./ActionsHeader";
 import { SidebarAgents, SidebarSettingsRow, StatusBar } from "./DenseChrome";
 import { setPaletteOpener, setWindowCrumbs } from "./window-chrome";
 import { handleDeepLink, setDeepLinkHandler } from "./deep-link";
@@ -102,6 +102,7 @@ import { FavoritesGrid } from "./FavoritesGrid";
 import { actionToRun, itemLabel, itemTitle, resolveBar } from "./favorites";
 import type { BarTile } from "./favorites";
 import { useFavoriteActionFiles } from "./use-favorite-actions";
+import { useProjectFiles } from "./use-project-files";
 import {
   clickSelection,
   menuTargets,
@@ -145,6 +146,7 @@ import { applyColorScheme, applyInterfaceStyle } from "./interface-style";
 import { SettingsDialog } from "./SettingsDialog";
 import { closeSettings, openSettings, useSettingsOpen } from "./settings-ui";
 import { SidebarHead, SidebarSearch, SidebarSettings, Keycap } from "./SidebarGlass";
+import { SidebarProjects } from "./SidebarProjects";
 import { SidebarResizer } from "./SidebarResizer";
 import { SidebarTree } from "./SidebarTree";
 import { TabBar } from "./TabBar";
@@ -1261,6 +1263,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
     }
   }, [profilesProblem, showNotice]);
   const projectActions = useProjectActions(store, backend, space, showNotice);
+  // The Projects section of the sidebar: the actions file of every listed space, not only the active one.
+  const projectFiles = useProjectFiles(backend, listedSpaces);
+  const projectEntries = listProjects(listedSpaces, projectFiles);
   // The Favorites bar: the favorite tabs, then the profiles and project actions kept next to them.
   // The actions file of every space that has an action in it is watched, not only the active one.
   const favoriteLinks = favoriteLinksOf(workspace);
@@ -2847,6 +2852,9 @@ function Shell({ store }: { store: WorkspaceStore }) {
         onAi={(enabled) => {
           dispatch({ type: "space/set-ai", spaceId: overlaySpace.id, enabled });
         }}
+        onInProjects={(listed) => {
+          dispatch({ type: "space/set-in-projects", spaceId: overlaySpace.id, listed });
+        }}
         onEdit={() => setOverlay({ kind: "edit", spaceId: overlaySpace.id })}
         onMove={(delta) => {
           moveSpace(overlaySpace.id, workspace.spaces.indexOf(overlaySpace) + delta);
@@ -2992,19 +3000,20 @@ function Shell({ store }: { store: WorkspaceStore }) {
       onMenu={(spaceId, point) => setOverlay({ kind: "menu", spaceId, point })}
     />
   );
-  const actionsHeader = (
-    <ActionsHeader
-      spaceName={space.name}
-      ui={projectActions}
-      onMenu={(action, point) =>
+  const projectsSection = (
+    <SidebarProjects
+      entries={projectEntries}
+      activeSpaceId={space.id}
+      isRunning={(spaceId, action) => projectActions.statusIn(spaceId, action) === "running"}
+      isBusy={projectActions.isBusyIn}
+      onToggle={(spaceId, open) => dispatch({ type: "space/set-projects-open", spaceId, open })}
+      // The space on screen stays as it is: the tab opens and runs in the space of the block.
+      onRun={(spaceId, action) => projectActions.runIn(spaceId, action, { reveal: false })}
+      onStop={projectActions.stopIn}
+      onMenu={(spaceId, action, point) =>
         setOverlay({
           kind: "link-menu",
-          link: {
-            kind: "action",
-            spaceId: space.id,
-            actionId: action.id,
-            label: action.label,
-          },
+          link: { kind: "action", spaceId, actionId: action.id, label: action.label },
           point,
         })
       }
@@ -3045,7 +3054,6 @@ function Shell({ store }: { store: WorkspaceStore }) {
         {denseOn && (
           <div className="dense-toolbar" data-nr-part="dense-toolbar">
             {favoritesBar}
-            {actionsHeader}
           </div>
         )}
         <div
@@ -3090,7 +3098,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
               </>
             )}
             {!favoritesOnTop && favoritesBar}
-            {!denseOn && actionsHeader}
+            {projectsSection}
             {!tabsOnTop && (
               <SidebarTree
                 {...treeProps}

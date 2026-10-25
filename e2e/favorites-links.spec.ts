@@ -59,7 +59,7 @@ const WORDS: Record<Words["lang"], Words> = {
     profile: "New PowerShell tab",
     run: "Run Dev server",
     show: "Show Dev server",
-    start: "Start Dev server",
+    start: "Start Dev server in Main",
     runButton: "Run",
   },
   "pt-BR": {
@@ -70,7 +70,7 @@ const WORDS: Record<Words["lang"], Words> = {
     profile: "Nova aba PowerShell",
     run: "Executar Dev server",
     show: "Mostrar Dev server",
-    start: "Iniciar Dev server",
+    start: "Iniciar Dev server em Main",
     runButton: "Executar",
   },
 };
@@ -94,9 +94,10 @@ const menuItem = (page: Page, name: string) => page.getByRole("menuitem", { name
 const palette = (page: Page): Locator => page.locator('[data-nr-part="palette"]');
 const notice = (page: Page) => page.locator('[data-nr-part="pane-notice"]');
 const dialog = (page: Page) => page.getByRole("alertdialog");
-const header = (page: Page) => page.locator('[data-nr-part="space-header"]');
+const header = (page: Page) => page.locator('[data-nr-part="projects"]');
+/** A row of an action in the open block of "Main" (the page opens it; the main action has no row). */
 const actionRow = (page: Page, label: string) =>
-  header(page).locator(".space-action").filter({ hasText: label });
+  header(page).locator(".project-action").filter({ hasText: label });
 
 /** What `state.json` holds, as the web backend keeps it. */
 async function saved(page: Page): Promise<{
@@ -181,6 +182,11 @@ async function start(page: Page, lang: Words["lang"], options: StartOptions = {}
   }
   await page.goto("/");
   await expect(tabRow(page, "api")).toBeVisible();
+  // "Dev server" is not the main action of "Main", so its row shows once the block is open.
+  await header(page)
+    .getByRole("button", { name: /^(Actions of|Ações de) Main$/ })
+    .click();
+  await expect(actionRow(page, "Dev server")).toBeVisible();
   return WORDS[lang];
 }
 

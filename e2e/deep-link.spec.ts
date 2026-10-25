@@ -27,7 +27,10 @@ const space = (page: Page, name: string) =>
     name,
     exact: true,
   });
-const header = (page: Page) => page.getByRole("region", { name: "Project actions", exact: true });
+const header = (page: Page) => page.getByRole("region", { name: "Projects", exact: true });
+/** The block of a space in the Projects section. */
+const blockOf = (page: Page, name: string) =>
+  header(page).locator(".project-name-text", { hasText: name });
 const button = (page: Page, name: string) =>
   header(page).getByRole("button", { name, exact: true });
 const confirm = (page: Page) =>
@@ -75,7 +78,7 @@ test("open on a new folder makes a space there, named after the folder", async (
   await openApp(page);
   await openUrl(page, "noren://open?path=/srv/new%20dir");
   await expect(space(page, "new dir")).toHaveAttribute("data-nr-state", "active");
-  await expect(header(page)).toHaveCount(0);
+  await expect(blockOf(page, "new dir")).toHaveCount(0);
   await expect
     .poll(() =>
       page.evaluate(() => (window as HookWindow).__norenTest?.sessionStarts().map((s) => s.cwd)),
@@ -108,7 +111,7 @@ test("action asks once, then runs the declared command and the header shows Stop
 }) => {
   await openApp(page);
   await space(page, "Other").click();
-  await expect(header(page)).toHaveCount(0);
+  await expect(blockOf(page, "Other")).toHaveCount(0);
 
   await openUrl(page, `noren://action?path=${ACTIONS_CWD}&id=dev`);
   const dialog = confirm(page);
@@ -120,16 +123,18 @@ test("action asks once, then runs the declared command and the header shows Stop
   await dialog.getByRole("button", { name: "Run", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(tab(page, "dev")).toBeVisible();
-  await expect(button(page, "Stop Dev server")).toBeVisible();
+  // The link brought "Main" on screen; its block lists "Dev server" once it is opened.
+  await header(page).getByRole("button", { name: "Actions of Main", exact: true }).click();
+  await expect(button(page, "Stop Dev server in Main")).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => (window as HookWindow).__norenTest?.lines().join("\n") ?? ""))
     .toContain("pnpm dev");
 
   // Confirmed once: the same link after a stop runs without asking.
-  await button(page, "Stop Dev server").click();
-  await expect(button(page, "Start Dev server")).toBeVisible();
+  await button(page, "Stop Dev server in Main").click();
+  await expect(button(page, "Start Dev server in Main")).toBeVisible();
   await openUrl(page, `noren://action?path=${ACTIONS_CWD}&id=dev`);
-  await expect(button(page, "Stop Dev server")).toBeVisible();
+  await expect(button(page, "Stop Dev server in Main")).toBeVisible();
   await expect(confirm(page)).toHaveCount(0);
 });
 
@@ -153,7 +158,7 @@ test("action on a folder with no space makes the space, reads its file and asks"
   const dialog = confirm(page);
   await expect(dialog.locator("pre")).toHaveText("loop\nloop parar");
   await dialog.getByRole("button", { name: "Run", exact: true }).click();
-  await expect(button(page, "Stop Loop")).toBeVisible();
+  await expect(button(page, "Stop Loop in fresh")).toBeVisible();
 });
 
 test("an id the file does not declare shows the notice and nothing runs", async ({ page }) => {

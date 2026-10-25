@@ -300,7 +300,7 @@ for (const place of [undefined, "sidebar"] as const) {
     const at = await box(bar(page));
     expect(at.x).toBeGreaterThanOrEqual(side.x);
     expect(at.x + at.width).toBeLessThanOrEqual(side.x + side.width);
-    const header = await box(sidebar(page).locator('[data-nr-part="space-header"]'));
+    const header = await box(sidebar(page).locator('[data-nr-part="projects"]'));
     expect(at.y + at.height).toBeLessThanOrEqual(header.y);
     // The terminal is the whole column beside the sidebar, with no bar over it.
     const terminal = await box(content(page));
@@ -326,7 +326,7 @@ test("the bar on top is above the terminal, edge to edge, with its line on one r
   expect(bounds.height).toBeLessThan(56);
   // The sidebar is the sidebar of always: the tree, the actions, the switcher, no favorites.
   await expect(tree(page)).toBeVisible();
-  await expect(sidebar(page).locator('[data-nr-part="space-header"]')).toBeVisible();
+  await expect(sidebar(page).locator('[data-nr-part="projects"]')).toBeVisible();
   // It is the bar of every space, not of one.
   await spaceButton(page, "Other").click();
   await expect(treeRow(page, "elsewhere")).toBeVisible();

@@ -243,6 +243,41 @@ describe("project actions: run", () => {
   });
 });
 
+describe("project actions: run without revealing the space", () => {
+  /** Two spaces; the second is on screen, and the action belongs to the first. */
+  function twoSpaces() {
+    const t = setup();
+    t.dispatch({ type: "space/create", name: "Second" });
+    const second = must(t.ws().spaces.find((space) => space.id !== t.spaceId));
+    t.dispatch({ type: "space/activate", spaceId: second.id });
+    return { t, secondId: second.id };
+  }
+
+  it("opens and runs the tab in its own space and leaves the space on screen as it is", async () => {
+    const { t, secondId } = twoSpaces();
+    const run = t.actions.run(t.spaceId, dev, { reveal: false });
+    await settle();
+    await t.mount();
+    expect(await run).toBe("started");
+    const [tab] = t.tabsTitled("dev");
+    expect(t.space().activeItemId).toBe(tab?.id);
+    expect(t.ws().activeSpaceId).toBe(secondId);
+    expect(t.backend.callsTo("write").map((call) => call.args)).toEqual([
+      [t.sessionOf("dev"), "pnpm dev\r"],
+    ]);
+    expect(t.actions.status(t.spaceId, dev)).toBe("running");
+  });
+
+  it("brings the space on screen when it is not told otherwise", async () => {
+    const { t } = twoSpaces();
+    const run = t.actions.run(t.spaceId, dev);
+    await settle();
+    await t.mount();
+    await run;
+    expect(t.ws().activeSpaceId).toBe(t.spaceId);
+  });
+});
+
 describe("project actions: stop", () => {
   async function running(action: ProjectAction) {
     const t = setup();

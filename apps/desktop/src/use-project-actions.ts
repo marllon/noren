@@ -1,5 +1,13 @@
 import { createProjectActions, createRunStop, watchActionsFile } from "@noren/model";
-import type { ActionStatus, Backend, Id, ProjectAction, ProjectActions, Space } from "@noren/model";
+import type {
+  ActionStatus,
+  Backend,
+  Id,
+  ProjectAction,
+  ProjectActions,
+  RunOptions,
+  Space,
+} from "@noren/model";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { confirmAction, isConfirmed, loadConsent, saveConsent } from "./action-consent";
 import type { ActionConsent } from "./action-consent";
@@ -10,6 +18,8 @@ import type { WorkspaceStore } from "./workspace-store";
 export interface PendingRun {
   spaceId: Id;
   action: ProjectAction;
+  /** Whether the run brings the space onto the screen once confirmed (see `RunOptions`). */
+  options?: RunOptions;
 }
 
 export interface ProjectActionsUi {
@@ -20,6 +30,8 @@ export interface ProjectActionsUi {
   statusIn(spaceId: Id, action: ProjectAction): ActionStatus;
   /** True while a run or a stop of the action is still going on. */
   isBusy(action: ProjectAction): boolean;
+  /** The same, for the action of any space. */
+  isBusyIn(spaceId: Id, action: ProjectAction): boolean;
   /** The action the tab belongs to, if the tab is one an action runs in. */
   actionOfTab(itemId: Id): ProjectAction | undefined;
   /** Runs the action, after asking when this exact command was never confirmed in the space. */
@@ -28,8 +40,10 @@ export interface ProjectActionsUi {
    * The same as `run`, for any space (a link can name a space that is not on screen yet). The
    * action must come from the file of that space.
    */
-  runIn(spaceId: Id, action: ProjectAction): void;
+  runIn(spaceId: Id, action: ProjectAction, options?: RunOptions): void;
   stop(action: ProjectAction): void;
+  /** The same as `stop`, for the action of any space. */
+  stopIn(spaceId: Id, action: ProjectAction): void;
   /** Set while the confirmation dialog is open. */
   pending: PendingRun | null;
   confirmPending(): void;
@@ -131,39 +145,43 @@ export function useProjectActions(
   }, []);
 
   const start = useCallback(
-    (id: Id, action: ProjectAction) => {
+    (id: Id, action: ProjectAction, options?: RunOptions) => {
       const current = executorRef.current;
-      if (current) track(busyKey(id, action), current.run(id, action));
+      if (current) track(busyKey(id, action), current.run(id, action, options));
     },
     [track],
   );
 
   const runIn = useCallback(
-    (id: Id, action: ProjectAction) => {
-      if (isConfirmed(consent.current, id, action)) start(id, action);
-      else setPending({ spaceId: id, action });
+    (id: Id, action: ProjectAction, options?: RunOptions) => {
+      if (isConfirmed(consent.current, id, action)) start(id, action, options);
+      else setPending({ spaceId: id, action, ...(options !== undefined ? { options } : {}) });
     },
     [start],
   );
+
+  const stopIn = (id: Id, action: ProjectAction) => {
+    if (executor) track(busyKey(id, action), executor.stop(id, action));
+  };
 
   return {
     actions,
     statusOf: (action) => executor?.status(spaceId, action) ?? "idle",
     statusIn: (id, action) => executor?.status(id, action) ?? "idle",
     isBusy: (action) => busy.has(busyKey(spaceId, action)),
+    isBusyIn: (id, action) => busy.has(busyKey(id, action)),
     actionOfTab: (itemId) => actions.find((action) => executor?.tabOf(spaceId, action) === itemId),
     run: (action) => runIn(spaceId, action),
     runIn,
-    stop: (action) => {
-      if (executor) track(busyKey(spaceId, action), executor.stop(spaceId, action));
-    },
+    stop: (action) => stopIn(spaceId, action),
+    stopIn,
     pending,
     confirmPending: () => {
       if (!pending) return;
       consent.current = confirmAction(consent.current, pending.spaceId, pending.action);
       saveConsent(storage(), consent.current);
       setPending(null);
-      start(pending.spaceId, pending.action);
+      start(pending.spaceId, pending.action, pending.options);
     },
     cancelPending: () => setPending(null),
   };

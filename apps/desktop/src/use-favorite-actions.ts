@@ -12,29 +12,15 @@ interface Reading {
 const folderKey = (spaceId: Id, cwd: string) => `${spaceId}\u0000${cwd}`;
 
 /**
- * The actions file of every space that has an action in the Favorites bar. The bar is shown in every
- * space, so its tiles cannot wait for a space to be the active one: each folder is watched as long as
- * the bar holds an action of its space (the same polling as the header of the active space), and
- * the watcher goes when the last action of the space leaves the bar or the folder changes. A space
- * with no folder is not read (its tiles say so). A reading made in a folder that is not the space's
- * folder any more is never handed back.
+ * The actions file of each wanted space (space id to its folder), read now and again every time it
+ * changes: one watcher per folder, gone when the space leaves `wanted` or the folder changes. A
+ * reading made in a folder that is not the space's folder any more is never handed back.
  */
-export function useFavoriteActionFiles(
+export function useWatchedActionFiles(
   backend: Pick<Backend, "readActionsFile">,
-  spaces: readonly Space[],
-  links: readonly FavoriteLink[],
+  wanted: ReadonlyMap<Id, string>,
 ): ReadonlyMap<Id, ActionsFileState> {
   const [readings, setReadings] = useState<ReadonlyMap<Id, Reading>>(new Map());
-
-  const wanted = useMemo(() => {
-    const folders = new Map<Id, string>();
-    for (const link of links) {
-      if (link.kind !== "action" || folders.has(link.spaceId)) continue;
-      const cwd = spaces.find((space) => space.id === link.spaceId)?.defaults.cwd;
-      if (cwd !== undefined) folders.set(link.spaceId, cwd);
-    }
-    return folders;
-  }, [spaces, links]);
   const wantedKey = [...wanted].map(([spaceId, cwd]) => folderKey(spaceId, cwd)).join("\n");
 
   useEffect(() => {
@@ -61,4 +47,28 @@ export function useFavoriteActionFiles(
     }
     return current;
   }, [wanted, readings]);
+}
+
+/**
+ * The actions file of every space that has an action in the Favorites bar. The bar is shown in every
+ * space, so its tiles cannot wait for a space to be the active one: each folder is watched as long as
+ * the bar holds an action of its space (the same polling as the Projects section), and
+ * the watcher goes when the last action of the space leaves the bar or the folder changes. A space
+ * with no folder is not read (its tiles say so).
+ */
+export function useFavoriteActionFiles(
+  backend: Pick<Backend, "readActionsFile">,
+  spaces: readonly Space[],
+  links: readonly FavoriteLink[],
+): ReadonlyMap<Id, ActionsFileState> {
+  const wanted = useMemo(() => {
+    const folders = new Map<Id, string>();
+    for (const link of links) {
+      if (link.kind !== "action" || folders.has(link.spaceId)) continue;
+      const cwd = spaces.find((space) => space.id === link.spaceId)?.defaults.cwd;
+      if (cwd !== undefined) folders.set(link.spaceId, cwd);
+    }
+    return folders;
+  }, [spaces, links]);
+  return useWatchedActionFiles(backend, wanted);
 }

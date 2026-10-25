@@ -165,6 +165,25 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       return updateSpace(ws, action.spaceId, (space) =>
         space.aiEnabled === action.enabled ? undefined : { ...space, aiEnabled: action.enabled },
       );
+    case "space/set-in-projects":
+      if (typeof action.listed !== "boolean") return ws;
+      // The default (listed) is the absence of the field, so a state never carries a needless `true`.
+      return updateSpace(ws, action.spaceId, (space) => {
+        if ((space.inProjects ?? true) === action.listed) return undefined;
+        const next = { ...space };
+        if (action.listed) delete next.inProjects;
+        else next.inProjects = false;
+        return next;
+      });
+    case "space/set-projects-open":
+      if (typeof action.open !== "boolean") return ws;
+      return updateSpace(ws, action.spaceId, (space) => {
+        if ((space.projectsOpen ?? false) === action.open) return undefined;
+        const next = { ...space };
+        if (action.open) next.projectsOpen = true;
+        else delete next.projectsOpen;
+        return next;
+      });
     case "space/set-background": {
       if (action.background === null) {
         return updateSpace(ws, action.spaceId, (space) => {
@@ -809,8 +828,13 @@ function reimportSpace(
     if (item) entries.push({ item: withoutSessions(item), spaceId: old.id, closedAt: now });
   }
   // The picture behind the terminals is a path of this computer: the file never carries one.
-  const space: Space =
-    old.background === undefined ? made.space : { ...made.space, background: old.background };
+  // How this computer lists the space in the Projects section is not in the file either.
+  const space: Space = {
+    ...made.space,
+    ...(old.background !== undefined ? { background: old.background } : {}),
+    ...(old.inProjects !== undefined ? { inProjects: old.inProjects } : {}),
+    ...(old.projectsOpen !== undefined ? { projectsOpen: old.projectsOpen } : {}),
+  };
   return {
     ...ws,
     spaces: ws.spaces.map((s) => (s.id === old.id ? space : s)),

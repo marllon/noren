@@ -18,6 +18,8 @@ const actionSchema = z.object({
   stop: text("stop").optional(),
   /** Name of the tab the action runs in. */
   tab: text("tab"),
+  /** The action the Start and Stop button of the space's one-line block in the sidebar runs. */
+  main: z.boolean({ error: "main must be true or false" }).optional(),
 });
 
 const fileSchema = z.object({

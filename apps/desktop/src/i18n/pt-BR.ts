@@ -787,6 +787,7 @@ export const ptBR: Dictionary = {
   "projects.startNamed": "Iniciar {name} em {space}",
   "projects.stopNamed": "Parar {name} em {space}",
   "projects.noOthers": "Nenhuma outra ação",
+  "projects.toggle": "Ações de {name}",
   "actions.running": "Em execução",
   "actions.idle": "Parada",
 

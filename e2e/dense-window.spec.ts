@@ -298,11 +298,11 @@ test.describe("the bar of the favorites and the actions", () => {
   });
 
   test("wraps in a narrow window and nothing leaves it", async ({ page }) => {
-    await page.setViewportSize({ width: 520, height: 600 });
+    await page.setViewportSize({ width: 400, height: 600 });
     await openDense(page, { bar: true });
     const at = await box(toolbar(page));
     expect(at.height).toBeGreaterThan(30);
-    expect(at.width).toBe(520);
+    expect(at.width).toBe(400);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

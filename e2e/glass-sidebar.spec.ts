@@ -384,7 +384,7 @@ test.describe("the Projects section", () => {
   const run = (page: Page, name: string) =>
     projects(page).getByRole("button", { name, exact: true });
   const openMain = (page: Page) =>
-    projects(page).getByRole("button", { name: "Main", exact: true }).click();
+    projects(page).getByRole("button", { name: "Actions of Main", exact: true }).click();
 
   test("the card has its title, and a one-line block with the dot, the name and the button of the main action", async ({
     page,

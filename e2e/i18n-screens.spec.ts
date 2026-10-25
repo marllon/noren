@@ -152,7 +152,7 @@ test.describe("the sidebar and the notices", () => {
     await expect(header).toBeVisible();
     await expect(button(header, "Iniciar Loop em Main")).toBeVisible();
     await expect(header.getByTitle("Parada")).toHaveCount(1);
-    await header.getByRole("button", { name: "Main", exact: true }).click();
+    await header.getByRole("button", { name: "Ações de Main", exact: true }).click();
     await expect(button(header, "Iniciar Dev server em Main")).toBeVisible();
 
     // A favorite gives the grid, whose label is a word of the interface.

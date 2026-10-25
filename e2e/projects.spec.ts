@@ -295,7 +295,7 @@ for (const style of ["glass", "dense"] as const) {
         await spaceButton(page, "Beta").click({ button: "right" });
         const menu = page.getByRole("menu", { name: words.menu("Beta"), exact: true });
         await expect(menu).toBeVisible();
-        const item = menu.getByRole("menuitemcheckbox", { name: words.showIn, exact: true });
+        const item = menu.getByRole("menuitemcheckbox", { name: new RegExp(`${words.showIn}$`) });
         await expect(item).toHaveAttribute("aria-checked", "true");
         await item.click();
         await expect(item).toHaveAttribute("aria-checked", "false");
@@ -306,7 +306,7 @@ for (const style of ["glass", "dense"] as const) {
         await expect(blocks(page).locator(".project-name-text")).toHaveText(["Alpha", "Gamma"]);
 
         await spaceButton(page, "Beta").click({ button: "right" });
-        await menu.getByRole("menuitemcheckbox", { name: words.showIn, exact: true }).click();
+        await menu.getByRole("menuitemcheckbox", { name: new RegExp(`${words.showIn}$`) }).click();
         await page.keyboard.press("Escape");
         await expect(blocks(page).locator(".project-name-text")).toHaveText([
           "Alpha",

@@ -124,7 +124,7 @@ test("action asks once, then runs the declared command and the header shows Stop
   await expect(dialog).toBeHidden();
   await expect(tab(page, "dev")).toBeVisible();
   // The link brought "Main" on screen; its block lists "Dev server" once it is opened.
-  await header(page).getByRole("button", { name: "Main", exact: true }).click();
+  await header(page).getByRole("button", { name: "Actions of Main", exact: true }).click();
   await expect(button(page, "Stop Dev server in Main")).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => (window as HookWindow).__norenTest?.lines().join("\n") ?? ""))

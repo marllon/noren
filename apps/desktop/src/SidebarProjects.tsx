@@ -109,6 +109,7 @@ export function SidebarProjects({
                   type="button"
                   className="project-name"
                   data-nr-part="project-name"
+                  aria-label={t("projects.toggle", { name: entry.space.name })}
                   aria-expanded={entry.open}
                   aria-controls={entry.open ? bodyId : undefined}
                   onClick={() => onToggle(spaceId, !entry.open)}

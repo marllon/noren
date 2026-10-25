@@ -4078,7 +4078,6 @@ ul.settings-models {
 
 .project-chevron {
   flex: none;
-  transition: transform 120ms;
 }
 
 .project[data-nr-open="true"] .project-chevron {

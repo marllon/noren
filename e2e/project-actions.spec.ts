@@ -26,7 +26,7 @@ const runningDots = (page: Page) =>
   header(page).locator('.project-line [data-nr-indicator="running"]');
 /** Opens the block of "Main", which then lists its other actions (here "Dev server"). */
 const openMain = (page: Page) =>
-  header(page).getByRole("button", { name: "Main", exact: true }).click();
+  header(page).getByRole("button", { name: "Actions of Main", exact: true }).click();
 const button = (page: Page, name: string) =>
   header(page).getByRole("button", { name, exact: true });
 const confirm = (page: Page) =>
@@ -49,10 +49,9 @@ test("a space with a folder and a valid file shows a line with its main action, 
 }) => {
   await openWithActions(page);
   await expect(header(page)).toBeVisible();
-  await expect(header(page).getByRole("button", { name: "Main", exact: true })).toHaveAttribute(
-    "aria-expanded",
-    "false",
-  );
+  await expect(
+    header(page).getByRole("button", { name: "Actions of Main", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
   await expect(button(page, "Start Loop in Main")).toBeVisible();
   await expect(button(page, "Start Dev server in Main")).toHaveCount(0);
   await expect(runningDots(page)).toHaveCount(0);

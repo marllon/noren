@@ -772,6 +772,7 @@ export const en = {
   "projects.startNamed": "Start {name} in {space}",
   "projects.stopNamed": "Stop {name} in {space}",
   "projects.noOthers": "No other actions",
+  "projects.toggle": "Actions of {name}",
   "actions.running": "Running",
   "actions.idle": "Not running",
 

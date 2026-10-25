@@ -771,9 +771,9 @@ body {
   white-space: nowrap;
 }
 
-/* The accent alone is 3.75:1 on the tint of a selected row: pulled toward the text color it reaches 4.5:1. */
+/* The accent alone is 3.75:1 on the tint of a selected row: pulled well toward the text color it keeps 4.5:1 wherever the row sits over the picture behind the glass. */
 [data-nr-state="failed"] > .command-code {
-  color: color-mix(in srgb, var(--nr-accent) 70%, var(--nr-text));
+  color: color-mix(in srgb, var(--nr-accent) 55%, var(--nr-text));
 }
 
 /*

@@ -183,7 +183,9 @@ async function start(page: Page, lang: Words["lang"], options: StartOptions = {}
   await page.goto("/");
   await expect(tabRow(page, "api")).toBeVisible();
   // "Dev server" is not the main action of "Main", so its row shows once the block is open.
-  await header(page).getByRole("button", { name: "Actions of Main", exact: true }).click();
+  await header(page)
+    .getByRole("button", { name: /^(Actions of|Ações de) Main$/ })
+    .click();
   await expect(actionRow(page, "Dev server")).toBeVisible();
   return WORDS[lang];
 }

@@ -112,7 +112,12 @@ export function SpaceMenu({
         className="space-menu"
         role="menu"
         aria-label={t("spaceMenu.label", { name: space.name })}
-        style={{ left: point.x, bottom: window.innerHeight - point.y }}
+        style={{
+          left: point.x,
+          bottom: window.innerHeight - point.y,
+          // The menu grows upward from its anchor: it never reaches over the top of the window, it scrolls.
+          maxHeight: Math.max(120, point.y - 8),
+        }}
         onMouseDown={(event) => event.stopPropagation()}
         onContextMenu={(event) => event.preventDefault()}
         onKeyDown={onKeyDown}

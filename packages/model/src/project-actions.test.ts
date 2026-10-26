@@ -200,6 +200,14 @@ describe("project actions: run", () => {
     await settle();
     await t.mount();
     await run;
+    // The shell reports the command it runs, as the saved state of a session kept alive does.
+    const [tab] = t.tabsTitled("dev");
+    t.dispatch({
+      type: "pane/command-start",
+      itemId: must(tab).id,
+      paneId: must(tab).focusedPaneId,
+      text: "pnpm dev",
+    });
     // A second executor over the same workspace has no memory of the tab, as after a restart.
     const again = createProjectActions({
       getWorkspace: t.ws,
@@ -394,7 +402,7 @@ describe("project actions: stop that waits (stopWaits)", () => {
     expect(t.backend.callsTo("kill")).toHaveLength(0);
   });
 
-  it("stays stopping until the last session of a split tab ends", async () => {
+  it("waits for the session of the pane of the action, not for the other panes of a split tab", async () => {
     const t = await running();
     const tab = must(t.tabsTitled("loop")[0]);
     t.dispatch({
@@ -406,14 +414,15 @@ describe("project actions: stop that waits (stopWaits)", () => {
     });
     await t.mount();
     await t.actions.stop(t.spaceId, calm);
+    expect(t.actions.status(t.spaceId, calm)).toBe("stopping");
 
-    const sessions = layoutPanes(must(t.tabsTitled("loop")[0]).layout).map((pane) =>
+    const [own, split] = layoutPanes(must(t.tabsTitled("loop")[0]).layout).map((pane) =>
       Number(pane.sessionId),
     );
-    expect(sessions).toHaveLength(2);
-    await t.backend.write(must(sessions[0]), "exit 0\r");
+    // The split pane ending changes nothing; the pane of the action ending is what ends the wait.
+    await t.backend.write(must(split), "exit 0\r");
     expect(t.actions.status(t.spaceId, calm)).toBe("stopping");
-    await t.backend.write(must(sessions[1]), "exit 0\r");
+    await t.backend.write(must(own), "exit 0\r");
     expect(t.actions.status(t.spaceId, calm)).toBe("idle");
   });
 
@@ -511,6 +520,290 @@ describe("project actions: stop that waits (stopWaits)", () => {
     await t.actions.stop(t.spaceId, calm);
     expect(t.actions.status(t.spaceId, calm)).toBe("stopping");
     expect(t.actions.status(t.spaceId, dev)).toBe("running");
+  });
+});
+
+describe("project actions: the pane of the action", () => {
+  const noren: ProjectAction = {
+    id: "noren",
+    label: "Noren loop",
+    command: "loop noren",
+    stop: "loop noren parar",
+    tab: "noren",
+  };
+  type Fixture = ReturnType<typeof setup>;
+
+  async function running(...actions: ProjectAction[]): Promise<Fixture> {
+    const t = setup();
+    for (const action of actions) {
+      const run = t.actions.run(t.spaceId, action);
+      await settle();
+      await t.mount();
+      await run;
+    }
+    return t;
+  }
+
+  const panesIn = (t: Fixture, title: string) => layoutPanes(must(t.tabsTitled(title)[0]).layout);
+
+  /** Splits the focused pane of the tab and gives the new pane a session; returns the new pane. */
+  async function split(t: Fixture, title: string) {
+    const tab = must(t.tabsTitled(title)[0]);
+    t.dispatch({
+      type: "pane/split",
+      itemId: tab.id,
+      paneId: tab.focusedPaneId,
+      dir: "row",
+      side: "after",
+    });
+    await t.mount();
+    return must(panesIn(t, title)[1]);
+  }
+
+  /** The shell of the pane reports that it runs `text`, as the integration does. */
+  const typed = (t: Fixture, title: string, paneId: string, text: string) =>
+    t.dispatch({
+      type: "pane/command-start",
+      itemId: must(t.tabsTitled(title)[0]).id,
+      paneId,
+      text,
+    });
+
+  it("follows the pane the command went into: A open, split, B in the new pane, A's pane closed", async () => {
+    const t = await running(loop);
+    const own = must(panesIn(t, "loop")[0]);
+    const fresh = await split(t, "loop");
+    typed(t, "loop", fresh.id, noren.command);
+    expect(t.actions.status(t.spaceId, loop)).toBe("running");
+    expect(t.actions.status(t.spaceId, noren)).toBe("running");
+
+    t.dispatch({ type: "pane/close", itemId: must(t.tabsTitled("loop")[0]).id, paneId: own.id });
+    expect(t.actions.status(t.spaceId, loop)).toBe("idle");
+    expect(t.actions.status(t.spaceId, noren)).toBe("running");
+
+    await t.actions.stop(t.spaceId, noren);
+    expect(t.stops).toEqual([{ cwd: "/proj", command: "loop noren parar" }]);
+    expect(t.backend.callsTo("kill").map((call) => call.args)).toEqual([[Number(fresh.sessionId)]]);
+    expect(t.backend.session(Number(own.sessionId))?.alive).toBe(true);
+    expect(t.actions.status(t.spaceId, noren)).toBe("idle");
+  });
+
+  it("stop and stop now end only the session of the pane of the action", async () => {
+    const t = await running(dev);
+    const own = must(panesIn(t, "dev")[0]);
+    const fresh = await split(t, "dev");
+
+    await t.actions.stop(t.spaceId, dev);
+    expect(t.backend.callsTo("kill").map((call) => call.args)).toEqual([[Number(own.sessionId)]]);
+    expect(t.backend.session(Number(fresh.sessionId))?.alive).toBe(true);
+
+    const again = await running(dev);
+    await split(again, "dev");
+    await again.actions.stopNow(again.spaceId, dev);
+    expect(again.backend.callsTo("kill")).toHaveLength(1);
+  });
+
+  it("a split does not inherit the action, nor its name", async () => {
+    const t = await running(loop);
+    const fresh = await split(t, "loop");
+    expect(fresh.name).toBeUndefined();
+    expect(fresh.runningCommand).toBeUndefined();
+    expect(panesIn(t, "loop").map((pane) => pane.name)).toEqual(["Loop", undefined]);
+    expect(t.actions.status(t.spaceId, loop)).toBe("running");
+
+    // The split pane coming and going is no news to the action.
+    t.dispatch({ type: "pane/close", itemId: must(t.tabsTitled("loop")[0]).id, paneId: fresh.id });
+    expect(t.actions.status(t.spaceId, loop)).toBe("running");
+    await t.backend.write(Number(fresh.sessionId), "exit 0\r");
+    expect(t.actions.status(t.spaceId, loop)).toBe("running");
+  });
+
+  it("is idle once the pane of the action is closed, though the tab stays open with other panes", async () => {
+    const t = await running(loop);
+    const own = must(panesIn(t, "loop")[0]);
+    const fresh = await split(t, "loop");
+    t.dispatch({ type: "pane/close", itemId: must(t.tabsTitled("loop")[0]).id, paneId: own.id });
+
+    expect(t.tabsTitled("loop")).toHaveLength(1);
+    expect(panesIn(t, "loop").map((pane) => pane.id)).toEqual([fresh.id]);
+    expect(t.actions.status(t.spaceId, loop)).toBe("idle");
+    expect(t.backend.callsTo("kill")).toHaveLength(0);
+  });
+
+  it("is idle once the session of the pane of the action ends, though the tab has live panes", async () => {
+    const t = await running(loop);
+    const own = must(panesIn(t, "loop")[0]);
+    await split(t, "loop");
+    await t.backend.write(Number(own.sessionId), "exit 0\r");
+    expect(t.actions.status(t.spaceId, loop)).toBe("idle");
+  });
+
+  it("starts again in a free pane of its tab, naming it, and in a new tab when every pane is busy", async () => {
+    const t = await running(loop);
+    const own = must(panesIn(t, "loop")[0]);
+    const fresh = await split(t, "loop");
+    t.dispatch({ type: "pane/close", itemId: must(t.tabsTitled("loop")[0]).id, paneId: own.id });
+
+    const next = t.actions.run(t.spaceId, loop);
+    expect(await next).toBe("started");
+    expect(t.tabsTitled("loop")).toHaveLength(1);
+    expect(t.backend.callsTo("write").at(-1)?.args).toEqual([Number(fresh.sessionId), "loop\r"]);
+    expect(panesIn(t, "loop").map((pane) => pane.name)).toEqual(["Loop"]);
+    expect(t.actions.status(t.spaceId, loop)).toBe("running");
+
+    // The same again, but the pane left is busy with another command.
+    const busy = await running(loop);
+    const spare = await split(busy, "loop");
+    typed(busy, "loop", spare.id, "tail -f log");
+    busy.dispatch({
+      type: "pane/close",
+      itemId: must(busy.tabsTitled("loop")[0]).id,
+      paneId: must(panesIn(busy, "loop")[0]).id,
+    });
+    const other = busy.actions.run(busy.spaceId, loop);
+    await settle();
+    await busy.mount();
+    expect(await other).toBe("started");
+    expect(busy.tabsTitled("loop")).toHaveLength(2);
+    expect(busy.actions.status(busy.spaceId, loop)).toBe("running");
+  });
+
+  it("keeps the action on its pane when the pane is moved to a tab of its own", async () => {
+    const t = await running(loop);
+    await split(t, "loop");
+    const own = must(panesIn(t, "loop")[0]);
+    t.dispatch({ type: "pane/detach", itemId: must(t.tabsTitled("loop")[0]).id, paneId: own.id });
+    expect(t.actions.status(t.spaceId, loop)).toBe("running");
+    const holder = Object.values(t.space().items).find((item) =>
+      layoutPanes(item.layout).some((pane) => pane.id === own.id),
+    );
+    expect(t.actions.tabOf(t.spaceId, loop)).toBe(holder?.id);
+  });
+
+  describe("a command started by hand", () => {
+    it("lights the action, ignoring surrounding and repeated spaces, and stop ends that pane", async () => {
+      const t = setup();
+      await t.mount();
+      expect(t.actions.status(t.spaceId, dev)).toBe("idle");
+      const item = must(Object.values(t.space().items)[0]);
+      const pane = must(layoutPanes(item.layout)[0]);
+
+      t.dispatch({
+        type: "pane/command-start",
+        itemId: item.id,
+        paneId: pane.id,
+        text: "  pnpm \t dev ",
+      });
+      expect(t.actions.status(t.spaceId, dev)).toBe("running");
+      expect(t.actions.status(t.spaceId, loop)).toBe("idle");
+      expect(t.actions.tabOf(t.spaceId, dev)).toBe(item.id);
+      // Running the action only shows the pane it is already in.
+      expect(await t.actions.run(t.spaceId, dev)).toBe("focused");
+      expect(t.backend.callsTo("write")).toHaveLength(0);
+
+      await t.actions.stop(t.spaceId, dev);
+      expect(t.backend.callsTo("kill").map((call) => call.args)).toEqual([
+        [Number(pane.sessionId)],
+      ]);
+      expect(t.actions.status(t.spaceId, dev)).toBe("idle");
+    });
+
+    it("goes out when the command ends, and a different command does not light it", async () => {
+      const t = setup();
+      await t.mount();
+      const item = must(Object.values(t.space().items)[0]);
+      const pane = must(layoutPanes(item.layout)[0]);
+      t.dispatch({
+        type: "pane/command-start",
+        itemId: item.id,
+        paneId: pane.id,
+        text: "pnpm dev:x",
+      });
+      expect(t.actions.status(t.spaceId, dev)).toBe("idle");
+      t.dispatch({
+        type: "pane/command-start",
+        itemId: item.id,
+        paneId: pane.id,
+        text: "pnpm dev",
+      });
+      expect(t.actions.status(t.spaceId, dev)).toBe("running");
+      t.dispatch({ type: "pane/command-end", itemId: item.id, paneId: pane.id, exitCode: 0 });
+      expect(t.actions.status(t.spaceId, dev)).toBe("idle");
+    });
+
+    it("is found again by a new executor, as after a restart, wherever the pane is", async () => {
+      const t = await running(dev);
+      const own = must(panesIn(t, "dev")[0]);
+      typed(t, "dev", own.id, "pnpm dev");
+      const again = createProjectActions({
+        getWorkspace: t.ws,
+        subscribe: () => () => undefined,
+        dispatch: t.dispatch,
+        backend: t.backend,
+        runStop: async () => undefined,
+      });
+      expect(again.status(t.spaceId, dev)).toBe("running");
+      await again.stop(t.spaceId, dev);
+      expect(t.backend.callsTo("kill").map((call) => call.args)).toEqual([[Number(own.sessionId)]]);
+      again.dispose();
+    });
+
+    it("does not light an action whose command a pane of another action runs", async () => {
+      const twin: ProjectAction = { ...dev, id: "twin", label: "Twin", tab: "twin" };
+      const t = await running(dev);
+      typed(t, "dev", must(panesIn(t, "dev")[0]).id, "pnpm dev");
+      expect(t.actions.status(t.spaceId, dev)).toBe("running");
+      expect(t.actions.status(t.spaceId, twin)).toBe("idle");
+    });
+  });
+
+  describe("a command running in two panes", () => {
+    it("the pane the action started wins, then the other takes over when it goes", async () => {
+      const t = await running(dev);
+      const own = must(panesIn(t, "dev")[0]);
+      const fresh = await split(t, "dev");
+      typed(t, "dev", fresh.id, "pnpm dev");
+      expect(t.actions.status(t.spaceId, dev)).toBe("running");
+
+      await t.actions.stop(t.spaceId, dev);
+      expect(t.backend.callsTo("kill").map((call) => call.args)).toEqual([[Number(own.sessionId)]]);
+      // The pane it started is gone; the other one runs the command, so it is still lit.
+      expect(t.actions.status(t.spaceId, dev)).toBe("running");
+      await t.actions.stop(t.spaceId, dev);
+      expect(t.backend.callsTo("kill").map((call) => call.args)).toEqual([
+        [Number(own.sessionId)],
+        [Number(fresh.sessionId)],
+      ]);
+      expect(t.actions.status(t.spaceId, dev)).toBe("idle");
+    });
+
+    it("with none started by the action, the one seen running it last wins", async () => {
+      const t = setup();
+      await t.mount();
+      const item = must(Object.values(t.space().items)[0]);
+      t.dispatch({
+        type: "pane/split",
+        itemId: item.id,
+        paneId: item.focusedPaneId,
+        dir: "row",
+        side: "after",
+      });
+      await t.mount();
+      const [first, second] = layoutPanes(must(t.space().items[item.id]).layout);
+      const at = (paneId: string) =>
+        t.dispatch({ type: "pane/command-start", itemId: item.id, paneId, text: dev.command });
+
+      // The first pane is seen running it last, though the second one was running it before.
+      at(must(second).id);
+      expect(t.actions.status(t.spaceId, dev)).toBe("running");
+      at(must(first).id);
+      expect(t.actions.status(t.spaceId, dev)).toBe("running");
+
+      await t.actions.stop(t.spaceId, dev);
+      expect(t.backend.callsTo("kill").map((call) => call.args)).toEqual([
+        [Number(must(first).sessionId)],
+      ]);
+    });
   });
 });
 

@@ -11277,15 +11277,21 @@ ul.settings-models {
   white-space: nowrap;
 }
 
-/* A named pane row has two lines under the glass style: the name and folder, then command and status. */
-:root[data-nr-style="glass"] .app-body .item-pane:has(.item-pane-name, .item-pane-program) {
+/* A named pane row, or one with a program title, has two lines under the glass style: the name and folder, then command and status. */
+:root[data-nr-style="glass"] .app-body .item-pane:has(.item-pane-name) {
   flex-wrap: wrap;
   row-gap: 1px;
 }
 
-:root[data-nr-style="glass"]
-  .app-body
-  .item-pane:has(.item-pane-name, .item-pane-program)
-  .item-pane-title {
+:root[data-nr-style="glass"] .app-body .item-pane:has(.item-pane-program) {
+  flex-wrap: wrap;
+  row-gap: 1px;
+}
+
+:root[data-nr-style="glass"] .app-body .item-pane:has(.item-pane-name) .item-pane-title {
+  flex: 1 1 100%;
+}
+
+:root[data-nr-style="glass"] .app-body .item-pane:has(.item-pane-program) .item-pane-title {
   flex: 1 1 100%;
 }

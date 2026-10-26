@@ -5563,8 +5563,27 @@ ul.settings-models {
   font-weight: 600;
 }
 
-.item-pane-name + .item-pane-folder {
+/* The title a program set stands where the name would: in the text color, a step under a name. */
+.item-pane-program {
+  margin-inline-end: 6px;
+  color: var(--nr-text);
+  font-weight: 500;
+}
+
+.item-pane-name + .item-pane-folder,
+.item-pane-program + .item-pane-folder {
   color: var(--nr-muted);
+}
+
+.pane-bar-program {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 50%;
+  overflow: hidden;
+  color: var(--nr-text);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 :root[data-nr-style="dense"] .app .pane-bar-name {
@@ -11258,12 +11277,21 @@ ul.settings-models {
   white-space: nowrap;
 }
 
-/* A named pane row has two lines under the glass style: the name and folder, then command and status. */
+/* A named pane row, or one with a program title, has two lines under the glass style: the name and folder, then command and status. */
 :root[data-nr-style="glass"] .app-body .item-pane:has(.item-pane-name) {
   flex-wrap: wrap;
   row-gap: 1px;
 }
 
+:root[data-nr-style="glass"] .app-body .item-pane:has(.item-pane-program) {
+  flex-wrap: wrap;
+  row-gap: 1px;
+}
+
 :root[data-nr-style="glass"] .app-body .item-pane:has(.item-pane-name) .item-pane-title {
+  flex: 1 1 100%;
+}
+
+:root[data-nr-style="glass"] .app-body .item-pane:has(.item-pane-program) .item-pane-title {
   flex: 1 1 100%;
 }

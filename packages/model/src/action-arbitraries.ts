@@ -612,6 +612,17 @@ export function arbAction(ws: Workspace): fc.Arbitrary<Action> {
       ),
     ),
     weighted(
+      2,
+      target.chain(({ itemId, paneId }) =>
+        fc.record({
+          type: tag("pane/set-title"),
+          itemId: fc.constant(itemId),
+          paneId: fc.constant(paneId),
+          title: fc.constantFrom("loop Noren", "~/api", "  vim  ", " ", "", "y".repeat(120)),
+        }),
+      ),
+    ),
+    weighted(
       4,
       target.map(({ itemId, paneId }): Action => ({ type: "pane/close", itemId, paneId })),
     ),

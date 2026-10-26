@@ -160,6 +160,11 @@ export interface WorkspaceState {
    */
   setPaneFolder(paneId: Id, cwd: string): void;
   /**
+   * Records the title the program of a pane set for the terminal (`Pane.title`; blank takes it away).
+   * Found by the id of the pane; a pane that is gone, or a title it already has, changes nothing.
+   */
+  setPaneTitle(paneId: Id, title: string): void;
+  /**
    * Records that the command of a pane started or ended (see `PaneCommandEvent`). Like
    * `setPaneLocation`, the pane is found by its id and a report that changes nothing changes nothing.
    */
@@ -668,6 +673,13 @@ export function createWorkspaceStore(options: WorkspaceStoreOptions): WorkspaceS
         if (itemId === undefined) return;
         dispatch({ type: "pane/set-shell-folder", itemId, paneId, cwd });
         retitle(itemId);
+      },
+
+      setPaneTitle(paneId, title) {
+        const { workspace, dispatch } = get();
+        const itemId = findItemOfPane(workspace, paneId);
+        if (itemId === undefined) return;
+        dispatch({ type: "pane/set-title", itemId, paneId, title });
       },
 
       setPaneCommand(paneId, event) {

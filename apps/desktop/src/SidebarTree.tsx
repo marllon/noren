@@ -359,6 +359,11 @@ export function PaneList({ itemId, label, entries, rowProps, onPaneClick, naming
                     {entry.name}
                   </b>
                 )}
+                {entry.programTitle !== undefined && (
+                  <b className="item-pane-program" data-nr-part="item-pane-program">
+                    {entry.programTitle}
+                  </b>
+                )}
                 <span className="item-pane-folder">{entry.title}</span>
               </span>
               {entry.command !== undefined && (

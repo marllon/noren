@@ -215,6 +215,13 @@ export interface Pane {
    */
   name?: string;
   /**
+   * The title the program in the pane set for the terminal (the title sequences OSC 0 and OSC 2),
+   * cut at `MAX_PANE_TITLE`. Shown before the folder when the pane has no `name`. It belongs to the
+   * running program: it is never saved in `state.json`, a restored pane starts without it and a
+   * shell that exits takes it away.
+   */
+  title?: string;
+  /**
    * The page of a browser pane: an `http://` or `https://` address (`browserUrlProblem`). Present on
    * every browser pane and on no other. The web view that shows it belongs to the running app and is
    * made again from this address at the start.
@@ -306,6 +313,8 @@ export interface ArchivedItem {
 
 /** Longest name a pane keeps, in characters; a longer one is cut (`Pane.name`). */
 export const MAX_PANE_NAME = 80;
+/** Longest title a pane keeps from its program, in characters; a longer one is cut (`Pane.title`). */
+export const MAX_PANE_TITLE = MAX_PANE_NAME;
 /** Closed stack limit. */
 export const MAX_CLOSED = 50;
 /**

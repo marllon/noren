@@ -669,6 +669,7 @@ function StartedPaneTerminal({
       }}
       currentCwd={() => paneRef.current.cwd}
       onCwd={recordFolder}
+      onTitle={(title) => store.getState().setPaneTitle(pane.id, title)}
       {...(onExplain !== undefined ? { onExplain } : {})}
       onInput={() => {
         resumeService.cancel(pane.id);

@@ -4,7 +4,7 @@ import { t } from "./i18n";
 import { browserTitle } from "./browser-address";
 import { diffTitle } from "./diff-view";
 import { previewTitle } from "./preview-view";
-import { commandInfo, shortCwd } from "./pane-info";
+import { commandInfo, programTitle, shortCwd } from "./pane-info";
 import type { CommandInfo } from "./pane-info";
 
 /** A pane of the thumbnail: its box inside the layout, in percent of the whole (0 to 100). */
@@ -78,12 +78,25 @@ export function paneTitleText(pane: Pane, defaultCwd?: string, home?: string): s
 }
 
 /**
- * The title of a pane header: the name of the pane first, then the title it goes by (`Loop · ~/api`);
- * with no name, the title alone.
+ * The title the program of a terminal pane set, when the row or header should write it before the
+ * folder: none when the pane has a name (the name wins) or the title only repeats the folder.
+ */
+export function paneProgramTitle(
+  pane: Pane,
+  defaultCwd?: string,
+  home?: string,
+): string | undefined {
+  return programTitle(pane, [paneTitleText(pane, defaultCwd, home), pane.cwd ?? defaultCwd]);
+}
+
+/**
+ * The title of a pane header: the name of the pane first, else the title its program set, then the
+ * title it goes by (`Loop · ~/api`, `vim · ~/api`); with neither, the title alone.
  */
 export function paneHeaderTitle(pane: Pane, defaultCwd?: string, home?: string): string {
   const title = paneTitleText(pane, defaultCwd, home);
-  return pane.name !== undefined ? `${pane.name} · ${title}` : title;
+  const first = pane.name ?? paneProgramTitle(pane, defaultCwd, home);
+  return first !== undefined ? `${first} · ${title}` : title;
 }
 
 /** One line of the pane list under a split item. */
@@ -91,6 +104,8 @@ export interface PaneEntry {
   paneId: Id;
   /** The name of the pane, when it has one: the row writes it before `title`. */
   name?: string;
+  /** The title the program set, written before `title` when the pane has no name (see `paneProgramTitle`). */
+  programTitle?: string;
   title: string;
   status: string;
   /** The command the pane runs now, else the last one it ran. */
@@ -105,9 +120,11 @@ export function paneEntries(item: Item, defaultCwd?: string, home?: string): Pan
   if (panes.length < 2) return [];
   return panes.map((pane) => {
     const command = commandInfo(pane);
+    const program = paneProgramTitle(pane, defaultCwd, home);
     return {
       paneId: pane.id,
       ...(pane.name !== undefined ? { name: pane.name } : {}),
+      ...(program !== undefined ? { programTitle: program } : {}),
       title: paneTitleText(pane, defaultCwd, home),
       status: paneStatusText(pane),
       ...(command !== undefined ? { command } : {}),

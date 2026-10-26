@@ -1,4 +1,10 @@
-import { FakeBackend, createSequentialIds, layoutPanes, restoreWorkspace } from "@noren/model";
+import {
+  FakeBackend,
+  createSequentialIds,
+  layoutPanes,
+  restoreWorkspace,
+  serializeWorkspace,
+} from "@noren/model";
 import type { Id, Item, Space } from "@noren/model";
 import type { ReactElement, ReactNode } from "react";
 import { isValidElement } from "react";
@@ -39,6 +45,10 @@ interface Rig {
   item(): Item;
   paneIds(): Id[];
   rename(paneId: Id, name: string): void;
+  /** The program of the pane sets (or clears, with an empty text) the title of its terminal. */
+  title(paneId: Id, title: string): void;
+  /** The text `state.json` would hold now. */
+  saved(): string;
 }
 
 /** A store with the one tab of a new workspace split in two panes. */
@@ -70,6 +80,8 @@ async function openRig(): Promise<Rig> {
     paneIds: () => layoutPanes(item().layout).map((pane) => pane.id),
     rename: (paneId, name) =>
       store.getState().dispatch({ type: "pane/rename", itemId: item().id, paneId, name }),
+    title: (paneId, title) => store.getState().setPaneTitle(paneId, title),
+    saved: () => serializeWorkspace(store.getState().workspace),
   };
 }
 
@@ -254,5 +266,58 @@ describe("a pane row asks to be renamed", () => {
     (must(row).props["onKeyDown"] as (event: unknown) => void)({ key: "F2", preventDefault });
     (must(row).props["onContextMenu"] as (event: unknown) => void)({ preventDefault });
     expect(preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+describe("the pane rows of a split tab with a title from the program", () => {
+  it("write the title before the folder of a pane that has no name", async () => {
+    const rig = await openRig();
+    rig.title(must(rig.paneIds()[0]), "loop Noren");
+    const html = renderTree(rig, naming());
+    expect(html).toContain(
+      '<b class="item-pane-program" data-nr-part="item-pane-program">loop Noren</b>',
+    );
+    expect(html).toMatch(/item-pane-program[^>]*>loop Noren<\/b><span class="item-pane-folder">/);
+    // The other pane has no title: its row is the folder alone.
+    expect(html.match(/data-nr-part="item-pane-program"/g)).toHaveLength(1);
+    expect(html.match(/class="item-pane-folder"/g)).toHaveLength(2);
+  });
+
+  it("give way to the name of the pane", async () => {
+    const rig = await openRig();
+    const first = must(rig.paneIds()[0]);
+    rig.title(first, "loop Noren");
+    rig.rename(first, "Loop");
+    const html = renderTree(rig, naming());
+    expect(html).toContain(">Loop</b>");
+    expect(html).not.toContain("loop Noren");
+    // Taking the name away brings the title back.
+    rig.rename(first, "");
+    expect(renderTree(rig, naming())).toContain(">loop Noren</b>");
+  });
+
+  it("go back to the folder when the program clears the title", async () => {
+    const rig = await openRig();
+    const first = must(rig.paneIds()[0]);
+    rig.title(first, "vim");
+    rig.title(first, "");
+    expect(renderTree(rig, naming())).not.toContain("item-pane-program");
+  });
+
+  it("are not saved in state.json", async () => {
+    const rig = await openRig();
+    rig.title(must(rig.paneIds()[0]), "loop Noren");
+    rig.rename(must(rig.paneIds()[1]), "Dev server");
+    const saved = rig.saved();
+    expect(saved).not.toContain("loop Noren");
+    expect(saved).toContain("Dev server");
+  });
+
+  it("start the text field of a rename empty, not with the title", async () => {
+    const rig = await openRig();
+    const first = must(rig.paneIds()[0]);
+    rig.title(first, "loop Noren");
+    const html = renderTree(rig, naming({ editing: { itemId: rig.item().id, paneId: first } }));
+    expect(html).toContain('value=""');
   });
 });

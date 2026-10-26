@@ -641,6 +641,7 @@ export {
   MAX_EXTRA_WINDOWS,
   MAX_GROUP_DEPTH,
   MAX_PANE_NAME,
+  MAX_PANE_TITLE,
 } from "./types";
 export {
   WINDOW_LABEL_PREFIX,

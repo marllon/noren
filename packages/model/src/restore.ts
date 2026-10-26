@@ -242,6 +242,7 @@ function withoutSession(pane: Pane): Pane {
   delete fresh.exitCode;
   delete fresh.runningCommand;
   delete fresh.shellCwd;
+  delete fresh.title;
   return fresh;
 }
 

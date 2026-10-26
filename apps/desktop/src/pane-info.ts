@@ -78,12 +78,32 @@ export function commandWords(info: CommandInfo): string {
 export interface PaneBarInfo {
   /** The name of the pane (`Pane.name`), written in bold before the folder; absent when it has none. */
   name?: string;
+  /**
+   * The title the program set for the terminal (`Pane.title`), written before the folder when the pane
+   * has no name; absent when it has a name, none, or only repeats the folder.
+   */
+  title?: string;
   /** The folder as the header writes it (`~/site/api`); empty when no folder is known. */
   folder: string;
   /** The folder in full, for the tooltip. */
   cwd?: string;
   branch?: string;
   command?: CommandInfo;
+}
+
+/**
+ * The title the program of a terminal pane set (`Pane.title`), when it is worth showing: a pane with a
+ * name of its own shows that name instead, and a title that only says the folder (written in any of
+ * the `folders` forms) adds nothing to it.
+ */
+export function programTitle(
+  pane: Pane,
+  folders: readonly (string | undefined)[],
+): string | undefined {
+  if (pane.type !== "terminal" || pane.name !== undefined) return undefined;
+  const title = pane.title?.trim();
+  if (title === undefined || title === "" || folders.includes(title)) return undefined;
+  return title;
 }
 
 /** How many segments of the folder the header keeps: `~/projects/noren`, `…/site/api/src`. */
@@ -103,9 +123,12 @@ export function paneBarInfo(
   const found = pane.cwd ?? defaultCwd;
   const cwd = found !== undefined && found.trim() !== "" ? found : undefined;
   const command = commandInfo(pane);
+  const folder = cwd !== undefined ? shortCwd(cwd, home, BAR_SEGMENTS) : "";
+  const title = programTitle(pane, [folder, cwd, cwd !== undefined ? shortCwd(cwd, home) : ""]);
   return {
     ...(pane.name !== undefined ? { name: pane.name } : {}),
-    folder: cwd !== undefined ? shortCwd(cwd, home, BAR_SEGMENTS) : "",
+    ...(title !== undefined ? { title } : {}),
+    folder,
     ...(cwd !== undefined ? { cwd } : {}),
     ...(pane.gitBranch !== undefined && pane.gitBranch !== "" ? { branch: pane.gitBranch } : {}),
     ...(command !== undefined ? { command } : {}),

@@ -11295,3 +11295,13 @@ ul.settings-models {
 :root[data-nr-style="glass"] .app-body .item-pane:has(.item-pane-program) .item-pane-title {
   flex: 1 1 100%;
 }
+
+/* A pane row with a command and neither a name nor a title has two lines too: the folder, then command, duration and state. On one line the folder was cut to "/srv…" and the duration ran into the state. */
+:root[data-nr-style="glass"] .app-body .item-pane:has(.item-pane-command) {
+  flex-wrap: wrap;
+  row-gap: 1px;
+}
+
+:root[data-nr-style="glass"] .app-body .item-pane:has(.item-pane-command) .item-pane-title {
+  flex: 1 1 100%;
+}

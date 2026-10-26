@@ -298,3 +298,154 @@ test("axe: the header of the actions, idle, running and with a failure showing, 
   await expect(page.locator('[data-nr-part="pane-notice"]')).toContainText("ended with code 7");
   await expectNoAxeViolations(page, "project actions header, with a notice");
 });
+
+// An action with `stopWaits`: the stop command runs, the sessions of the tab are left to end on their
+// own and the action reads "stopping" until they do.
+const CALM_TEXT = JSON.stringify({
+  actions: [
+    {
+      id: "loop",
+      label: "Loop",
+      command: "loop",
+      stop: "loop parar",
+      stopWaits: true,
+      tab: "loop",
+    },
+    { id: "dev", label: "Dev server", command: "pnpm dev", tab: "dev" },
+  ],
+});
+
+const stoppingButton = (page: Page) => button(page, "Stopping Loop in Main: stop now?");
+const stoppingDots = (page: Page) =>
+  header(page).locator('.project-line [data-nr-indicator="stopping"]');
+const killed = (page: Page) =>
+  page.evaluate(() => (window as HookWindow).__norenTest?.killedSessions().length ?? 0);
+
+/** Starts Loop (confirming the first run) and stops it: the stop command ends with code 0. */
+async function startAndStopCalmly(page: Page): Promise<void> {
+  await openWithActions(page, CALM_TEXT);
+  await button(page, "Start Loop in Main").click();
+  await confirm(page).getByRole("button", { name: "Run", exact: true }).click();
+  await expect(button(page, "Stop Loop in Main")).toBeVisible();
+  await button(page, "Stop Loop in Main").click();
+  await expect(stoppingButton(page)).toBeVisible();
+}
+
+test("stopWaits: the stop command runs, the tab stays and the action reads stopping", async ({
+  page,
+}) => {
+  await startAndStopCalmly(page);
+  expect(await commandRuns(page)).toEqual([{ cwd: ACTIONS_CWD, command: "loop parar" }]);
+  expect(await killed(page)).toBe(0);
+  await expect(tab(page, "loop")).toBeVisible();
+  // The dot of the line is not the lit one of a running action: it has its own state and word.
+  await expect(stoppingDots(page)).toHaveCount(1);
+  await expect(runningDots(page)).toHaveCount(0);
+  await expect(header(page).locator('[data-nr-part="project"]')).toHaveAttribute(
+    "data-nr-state",
+    "stopping",
+  );
+  await expect(stoppingButton(page)).toHaveAttribute("title", "Stopping Loop in Main: stop now?");
+  await expect(stoppingDots(page)).toHaveAttribute("title", "Stopping");
+  await expect(stoppingButton(page)).toBeEnabled();
+});
+
+test("stopWaits: the action returns to idle when the session of the tab ends on its own", async ({
+  page,
+}) => {
+  await startAndStopCalmly(page);
+  await tab(page, "loop").click();
+  await page.getByRole("textbox", { name: "Terminal input", exact: true }).focus();
+  await page.keyboard.type("exit");
+  await page.keyboard.press("Enter");
+
+  await expect(button(page, "Start Loop in Main")).toBeVisible();
+  await expect(stoppingDots(page)).toHaveCount(0);
+  await expect(runningDots(page)).toHaveCount(0);
+  // Nobody ended it: the session left by itself, and the stop command ran once.
+  expect(await killed(page)).toBe(0);
+  expect(await commandRuns(page)).toEqual([{ cwd: ACTIONS_CWD, command: "loop parar" }]);
+});
+
+test("stopWaits: a click on stopping offers Stop now, which ends the session without running the stop command again", async ({
+  page,
+}) => {
+  await startAndStopCalmly(page);
+  await stoppingButton(page).click();
+  const menu = page.getByRole("menu", { name: "Stop Loop now", exact: true });
+  await expect(menu).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Stop now", exact: true }).click();
+
+  await expect(button(page, "Start Loop in Main")).toBeVisible();
+  await expect(stoppingDots(page)).toHaveCount(0);
+  expect(await killed(page)).toBe(1);
+  expect(await commandRuns(page)).toEqual([{ cwd: ACTIONS_CWD, command: "loop parar" }]);
+
+  // A new start opens the tab again, with no question and no leftover "stopping".
+  await button(page, "Start Loop in Main").click();
+  await expect(confirm(page)).toHaveCount(0);
+  await expect(button(page, "Stop Loop in Main")).toBeVisible();
+});
+
+test("stopWaits: Escape closes the Stop now menu and the action keeps stopping", async ({
+  page,
+}) => {
+  await startAndStopCalmly(page);
+  await stoppingButton(page).click();
+  await expect(page.getByRole("menu", { name: "Stop Loop now", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(stoppingButton(page)).toBeVisible();
+  expect(await killed(page)).toBe(0);
+});
+
+test("stopWaits: the tab menu offers Stop Loop now while it stops", async ({ page }) => {
+  await startAndStopCalmly(page);
+  await tab(page, "loop").click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Run Loop", exact: true })).toHaveCount(0);
+  await menuItem(page, "Stop Loop now").click();
+  await expect(button(page, "Start Loop in Main")).toBeVisible();
+  expect(await killed(page)).toBe(1);
+});
+
+test("stopWaits: a failing stop command keeps the action running, not stopping", async ({
+  page,
+}) => {
+  await openWithActions(page, CALM_TEXT);
+  await button(page, "Start Loop in Main").click();
+  await confirm(page).getByRole("button", { name: "Run", exact: true }).click();
+  await expect(button(page, "Stop Loop in Main")).toBeVisible();
+  await page.evaluate(() => (window as HookWindow).__norenTest?.failCommands(7));
+  await button(page, "Stop Loop in Main").click();
+  await expect(page.locator('[data-nr-part="pane-notice"]')).toContainText("ended with code 7");
+  await expect(button(page, "Stop Loop in Main")).toBeVisible();
+  await expect(stoppingDots(page)).toHaveCount(0);
+});
+
+test("without stopWaits the stop still ends the session at once", async ({ page }) => {
+  await openWithActions(page);
+  await button(page, "Start Loop in Main").click();
+  await confirm(page).getByRole("button", { name: "Run", exact: true }).click();
+  await button(page, "Stop Loop in Main").click();
+  await expect(button(page, "Start Loop in Main")).toBeVisible();
+  await expect(stoppingDots(page)).toHaveCount(0);
+  expect(await killed(page)).toBe(1);
+});
+
+test("stopWaits: a favorite tile of the action keeps showing its tab while it stops", async ({
+  page,
+}) => {
+  await startAndStopCalmly(page);
+  // Favorite the action from its row, then the tile is the one that names it.
+  await header(page)
+    .locator(".project-line")
+    .click({ button: "right", position: { x: 40, y: 8 } });
+  await page.getByRole("menuitem", { name: "Add to favorites", exact: true }).click();
+  const tile = page.getByRole("button", { name: "Show Loop", exact: true });
+  await expect(tile).toBeVisible();
+  await expect(tile).toHaveAttribute("data-nr-state", "running");
+  await tile.click();
+  await expect(confirm(page)).toHaveCount(0);
+  await expect(stoppingButton(page)).toBeVisible();
+  expect(await commandRuns(page)).toHaveLength(1);
+});

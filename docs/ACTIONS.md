@@ -9,23 +9,31 @@ The file is `.noren/actions.json`, inside the default folder of the space.
 ```json
 {
   "actions": [
-    { "id": "loop", "label": "Loop", "command": "loop", "stop": "loop parar", "tab": "loop" },
+    {
+      "id": "loop",
+      "label": "Loop",
+      "command": "loop",
+      "stop": "loop parar",
+      "stopWaits": true,
+      "tab": "loop"
+    },
     { "id": "dev", "label": "Dev server", "command": "pnpm dev", "tab": "dev", "main": true }
   ]
 }
 ```
 
-| Field     | Required | Meaning                                                                        |
-| --------- | -------- | ------------------------------------------------------------------------------ |
-| `actions` | yes      | List of actions. It may be empty.                                              |
-| `id`      | yes      | Identifier of the action. Unique in the file.                                  |
-| `label`   | yes      | Name shown on the button.                                                      |
-| `command` | yes      | Command line typed into the tab, followed by Enter.                            |
-| `stop`    | no       | Command line that stops the action. Without it, stopping ends the tab's shell. |
-| `tab`     | yes      | Name of the tab the action runs in.                                            |
-| `main`    | no       | `true` marks the action the one-line block of the space runs (see below).      |
+| Field       | Required | Meaning                                                                        |
+| ----------- | -------- | ------------------------------------------------------------------------------ |
+| `actions`   | yes      | List of actions. It may be empty.                                              |
+| `id`        | yes      | Identifier of the action. Unique in the file.                                  |
+| `label`     | yes      | Name shown on the button.                                                      |
+| `command`   | yes      | Command line typed into the tab, followed by Enter.                            |
+| `stop`      | no       | Command line that stops the action. Without it, stopping ends the tab's shell. |
+| `stopWaits` | no       | `true` leaves the shell of the tab to end on its own after `stop` (see below). |
+| `tab`       | yes      | Name of the tab the action runs in.                                            |
+| `main`      | no       | `true` marks the action the one-line block of the space runs (see below).      |
 
-Every text field must be a non-empty string (surrounding spaces are trimmed); `main` must be `true` or `false`. Unknown fields are ignored.
+Every text field must be a non-empty string (surrounding spaces are trimmed); `main` and `stopWaits` must be `true` or `false`. Unknown fields are ignored.
 
 A file that is not valid JSON, misses a field, has a field of the wrong type or repeats an `id` is refused as a whole. Noren reports why (for example `actions[1].tab: tab must be a string`, or `Duplicate action id "dev"`) and runs nothing from it.
 
@@ -33,7 +41,17 @@ A file that is not valid JSON, misses a field, has a field of the wrong type or 
 
 - **Run** shows the tab named by `tab` in the space, opening it first if it does not exist, and types `command` and Enter into it. If the action is already running, only the tab is shown.
 - **Stop** with a `stop` command runs that command in a short process with no tab, in the default folder of the space; when it ends with code 0, the sessions of the tab end too. If it fails, the sessions stay and Noren shows why. Without `stop`, it ends the session of the tab.
-- **Status** is _running_ while the session of the action's tab is alive, and _idle_ when there is no tab or its session has ended.
+- **Stop now** ends the sessions of the tab at once, without running the `stop` command. It is what a click on a _stopping_ action offers (see below).
+- **Status** is _running_ while the session of the action's tab is alive, _stopping_ while it is alive and the action waits for it to end (see below), and _idle_ when there is no tab or its session has ended.
+
+## A stop that waits
+
+Some actions stop in two steps: the `stop` command asks the program to finish (a loop that ends after its current round, a server that drains its requests), and the program then ends its own shell. With `"stopWaits": true` Noren waits for that instead of closing the tab's shell under it.
+
+- **Stop** runs the `stop` command as always. When it ends with code 0 the sessions of the tab stay, and the status is _stopping_ until every session of the tab has ended on its own; then it is _idle_, and the next start opens the tab again. If the `stop` command fails, the action stays _running_ and Noren shows why, as without the field.
+- **Stopping** shows in the Projects section as an amber dot, an hourglass and the word _Stopping_ on the button of the action (the dot of a closed block is amber when nothing runs but an action is stopping, and lit as usual while some other action runs). The tab, its terminal and the tile of the action in the Favorites bar stay as they are; a click on the tile still only shows the tab.
+- **Stop now.** A click on the button of a _stopping_ action opens a small menu with **Stop now**, which ends the sessions of the tab at once, as a plain stop does, without running the `stop` command again. The context menu of the tab offers **Stop _label_ now** in the same state. Stopping an action that is already stopping does nothing.
+- Without a `stop` command the field has no effect: stopping ends the shell of the tab at once. Without the field, or with `"stopWaits": false`, stopping works as described above.
 
 ## In the interface
 
@@ -48,7 +66,7 @@ A file that is not valid JSON, misses a field, has a field of the wrong type or 
 
 - **Reading.** The file is read from `.noren/actions.json` inside the default folder of the space, through the backend (`readActionsFile`): the desktop app reads the disk; the web build and the tests read an in-memory file. A folder with no file (or no `.noren` folder) simply has no actions. A file that cannot be read for another reason (a folder in its place, no permission) is reported as unreadable, with the reason. Bytes that are not valid UTF-8 are replaced, so such a file is reported as invalid instead of failing the read.
 - **Reload.** Noren reads the file again every 2 seconds (`ACTIONS_POLL_MS`) while a space is being watched, by polling: no file-watcher dependency. It reports the file when it is first read and after that only when its text changes, including when it appears, disappears, turns invalid or becomes valid again. The next read starts only after the previous one ended, and stopping the watcher drops a read in flight. A change shows up within about 2 seconds.
-- **Stop.** The `stop` command runs through the system shell (`cmd /S /C` on Windows, `sh -c` elsewhere) in the default folder of the space, as a short process with no tab: no terminal, no window, and its output is discarded. A code of 0 means the action was stopped; any other code is reported as an error naming the command and the code. A command that is still running after 30 seconds is killed, together with the processes it started, and reported as an error. A space with no default folder cannot run a `stop` command.
+- **Stop.** The `stop` command runs through the system shell (`cmd /S /C` on Windows, `sh -c` elsewhere) in the default folder of the space, as a short process with no tab: no terminal, no window, and its output is discarded. A code of 0 means the action was stopped; any other code is reported as an error naming the command and the code. A command that is still running after 30 seconds is killed, together with the processes it started, and reported as an error. A space with no default folder cannot run a `stop` command. With `"stopWaits": true`, a code of 0 leaves the sessions of the tab alone and the action waits for them to end (see [A stop that waits](#a-stop-that-waits)).
 
 The tab is followed by identity, not by name: once Noren opened it for an action, renaming the tab does not detach it from the action. After a restart Noren finds the tab again by its title.
 

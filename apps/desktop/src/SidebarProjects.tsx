@@ -1,6 +1,6 @@
 import { anyRunning } from "@noren/model";
-import type { Id, ProjectAction, ProjectEntry } from "@noren/model";
-import { ChevronRight, Play, Square } from "lucide-react";
+import type { ActionStatus, Id, ProjectAction, ProjectEntry } from "@noren/model";
+import { ChevronRight, Hourglass, Play, Square } from "lucide-react";
 import type { CSSProperties } from "react";
 import { menuPoint } from "./ContextMenu";
 import { useT } from "./i18n";
@@ -11,13 +11,15 @@ interface SidebarProjectsProps {
   entries: readonly ProjectEntry[];
   /** The space on screen, drawn as the current one. */
   activeSpaceId: Id;
-  /** Whether the action of the space runs, and whether a run or a stop of it is still going on. */
-  isRunning(spaceId: Id, action: ProjectAction): boolean;
+  /** How the action of the space is (running, waiting to stop, idle), and whether a run or a stop of it is still going on. */
+  statusOf(spaceId: Id, action: ProjectAction): ActionStatus;
   isBusy(spaceId: Id, action: ProjectAction): boolean;
   /** The user opened or closed the block of the space. */
   onToggle(spaceId: Id, open: boolean): void;
   onRun(spaceId: Id, action: ProjectAction): void;
   onStop(spaceId: Id, action: ProjectAction): void;
+  /** The button of an action that is stopping was clicked: the page offers to end it at once. */
+  onStopping(spaceId: Id, action: ProjectAction, point: MenuPoint): void;
   /** Right click (or the menu key) on the row of an action: the page offers to put it in the Favorites bar. */
   onMenu?(spaceId: Id, action: ProjectAction, point: MenuPoint): void;
 }
@@ -27,17 +29,19 @@ interface SidebarProjectsProps {
  * a valid `.noren/actions.json` with an action (`listProjects`). A closed block is one line: a
  * state dot (lit while some action of the space runs), the name of the space and the Start or Stop
  * button of its main action. The name opens and closes the block, which lists the other actions,
- * each with its own button. The buttons act on the space of their block; the space on screen does
+ * each with its own button. An action that waits for its session to end (`stopWaits`) shows an
+ * hourglass and an amber dot ("Stopping") until it does; its button offers to stop it now. The buttons act on the space of their block; the space on screen does
  * not change. Nothing renders when no space qualifies.
  */
 export function SidebarProjects({
   entries,
   activeSpaceId,
-  isRunning,
+  statusOf,
   isBusy,
   onToggle,
   onRun,
   onStop,
+  onStopping,
   onMenu,
 }: SidebarProjectsProps) {
   const t = useT();
@@ -47,22 +51,33 @@ export function SidebarProjects({
 
   const button = (entry: ProjectEntry, action: ProjectAction) => {
     const spaceId = entry.space.id;
-    const running = isRunning(spaceId, action);
-    const name = running
-      ? t("projects.stopNamed", { name: action.label, space: entry.space.name })
-      : t("projects.startNamed", { name: action.label, space: entry.space.name });
+    const status = statusOf(spaceId, action);
+    const words = { name: action.label, space: entry.space.name };
+    const name =
+      status === "stopping"
+        ? t("projects.stoppingNamed", words)
+        : status === "running"
+          ? t("projects.stopNamed", words)
+          : t("projects.startNamed", words);
     return (
       <button
         type="button"
         className="project-run"
         data-nr-part="project-run"
-        data-nr-state={running ? "running" : "idle"}
+        data-nr-state={status}
         aria-label={name}
+        aria-haspopup={status === "stopping" ? "menu" : undefined}
         title={name}
         disabled={isBusy(spaceId, action)}
-        onClick={() => (running ? onStop(spaceId, action) : onRun(spaceId, action))}
+        onClick={(event) => {
+          if (status === "stopping") onStopping(spaceId, action, menuPoint(event));
+          else if (status === "running") onStop(spaceId, action);
+          else onRun(spaceId, action);
+        }}
       >
-        {running ? (
+        {status === "stopping" ? (
+          <Hourglass size={size} aria-hidden="true" />
+        ) : status === "running" ? (
           <Square size={size} aria-hidden="true" />
         ) : (
           <Play size={size} aria-hidden="true" />
@@ -79,7 +94,11 @@ export function SidebarProjects({
       <ul className="projects-list">
         {entries.map((entry) => {
           const spaceId = entry.space.id;
-          const lit = anyRunning(entry, (action) => isRunning(spaceId, action));
+          const lit = anyRunning(entry, (action) => statusOf(spaceId, action) === "running");
+          // Nothing runs, but an action waits for its session to end: the dot says so.
+          const waiting =
+            !lit && anyRunning(entry, (action) => statusOf(spaceId, action) === "stopping");
+          const block = lit ? "running" : waiting ? "stopping" : "idle";
           const others = entry.actions.filter((action) => action !== entry.main);
           const bodyId = `project-actions-${spaceId}`;
           return (
@@ -87,7 +106,7 @@ export function SidebarProjects({
               key={spaceId}
               className="project"
               data-nr-part="project"
-              data-nr-state={lit ? "running" : "idle"}
+              data-nr-state={block}
               data-nr-open={entry.open ? "true" : "false"}
               aria-current={spaceId === activeSpaceId ? "true" : undefined}
               style={{ "--nr-project-color": entry.space.color } as CSSProperties}
@@ -102,8 +121,10 @@ export function SidebarProjects({
               >
                 <span
                   className="project-dot"
-                  data-nr-indicator={lit ? "running" : "idle"}
-                  title={lit ? t("actions.running") : t("actions.idle")}
+                  data-nr-indicator={block}
+                  title={
+                    lit ? t("actions.running") : waiting ? t("actions.stopping") : t("actions.idle")
+                  }
                 />
                 <button
                   type="button"
@@ -128,17 +149,14 @@ export function SidebarProjects({
                     <li
                       key={action.id}
                       className="project-action"
-                      data-nr-state={isRunning(spaceId, action) ? "running" : "idle"}
+                      data-nr-state={statusOf(spaceId, action)}
                       onContextMenu={(event) => {
                         if (onMenu === undefined) return;
                         event.preventDefault();
                         onMenu(spaceId, action, menuPoint(event));
                       }}
                     >
-                      <span
-                        className="project-dot"
-                        data-nr-indicator={isRunning(spaceId, action) ? "running" : "idle"}
-                      />
+                      <span className="project-dot" data-nr-indicator={statusOf(spaceId, action)} />
                       <span className="project-action-label">{action.label}</span>
                       {button(entry, action)}
                     </li>

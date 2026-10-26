@@ -41,8 +41,11 @@ export interface OutputActions {
 export interface ItemProjectAction {
   label: string;
   running: boolean;
+  /** The action waits for its session to end (`stopWaits`): the menu offers to stop it now. */
+  stopping: boolean;
   onRun(): void;
   onStop(): void;
+  onStopNow(): void;
 }
 
 /** What a right click on a tab (or on a multi-selection) offers. */
@@ -73,10 +76,18 @@ export function ItemContextMenu({
     ...(projectAction !== undefined && model.single
       ? [
           {
-            label: projectAction.running
-              ? t("menu.stop", { name: projectAction.label })
-              : t("menu.run", { name: projectAction.label }),
-            onSelect: run(projectAction.running ? projectAction.onStop : projectAction.onRun),
+            label: projectAction.stopping
+              ? t("projects.stopNowMenu", { name: projectAction.label })
+              : projectAction.running
+                ? t("menu.stop", { name: projectAction.label })
+                : t("menu.run", { name: projectAction.label }),
+            onSelect: run(
+              projectAction.stopping
+                ? projectAction.onStopNow
+                : projectAction.running
+                  ? projectAction.onStop
+                  : projectAction.onRun,
+            ),
           },
         ]
       : []),

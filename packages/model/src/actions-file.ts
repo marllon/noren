@@ -16,6 +16,11 @@ const actionSchema = z.object({
   command: text("command"),
   /** Run in a short process with no tab; without it, stopping ends the session of the tab. */
   stop: text("stop").optional(),
+  /**
+   * With a `stop` command: once it ends with code 0 the sessions of the tab are left alone and the
+   * action is "stopping" until they end on their own (the user can still end them at once).
+   */
+  stopWaits: z.boolean({ error: "stopWaits must be true or false" }).optional(),
   /** Name of the tab the action runs in. */
   tab: text("tab"),
   /** The action the Start and Stop button of the space's one-line block in the sidebar runs. */

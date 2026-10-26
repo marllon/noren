@@ -771,10 +771,14 @@ export const en = {
   "projects.title": "Projects",
   "projects.startNamed": "Start {name} in {space}",
   "projects.stopNamed": "Stop {name} in {space}",
+  "projects.stoppingNamed": "Stopping {name} in {space}: stop now?",
+  "projects.stopNow": "Stop now",
+  "projects.stopNowMenu": "Stop {name} now",
   "projects.noOthers": "No other actions",
   "projects.toggle": "Actions of {name}",
   "actions.running": "Running",
   "actions.idle": "Not running",
+  "actions.stopping": "Stopping",
 
   // The paste dialog
   "paste.title": "Paste {count} lines?",

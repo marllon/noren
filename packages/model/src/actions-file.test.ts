@@ -57,6 +57,22 @@ describe("parseActionsFile", () => {
     expect(reasonOf(file([{ ...loop, [field]: "   " }]))).toContain(`actions[0].${field}`);
   });
 
+  it("accepts stopWaits true or false, and keeps it only where it was given", () => {
+    const waits = { ...loop, stopWaits: true };
+    const result = parseActionsFile(file([waits, { ...dev, stopWaits: false }, loop]));
+    expect(result).toEqual({ ok: true, actions: [waits, { ...dev, stopWaits: false }, loop] });
+    if (result.ok) expect("stopWaits" in (result.actions[2] ?? {})).toBe(false);
+  });
+
+  it.each([["true"], [1], [0], [null], [["true"]], [{}]])(
+    "refuses a stopWaits that is not true or false (%j)",
+    (value) => {
+      const reason = reasonOf(file([{ ...loop, stopWaits: value }]));
+      expect(reason).toContain("actions[0].stopWaits");
+      expect(reason).toContain("stopWaits must be true or false");
+    },
+  );
+
   it("refuses a repeated id and names it", () => {
     const reason = reasonOf(file([loop, dev, { ...dev, label: "Again", tab: "other" }]));
     expect(reason).toContain('Duplicate action id "dev"');

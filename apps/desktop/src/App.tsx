@@ -81,11 +81,11 @@ import { tauriBridge } from "./tauri-backend";
 import { AskPanel } from "./AskPanel";
 import { PluginPanel } from "./PluginPanel";
 import { BrowserPane } from "./BrowserPane";
-import { browserTitle } from "./browser-address";
 import { DiffPane } from "./DiffPane";
-import { badFolderNotice, diffLimitNotice, diffTitle, noFolderNotice } from "./diff-view";
+import { badFolderNotice, diffLimitNotice, noFolderNotice } from "./diff-view";
 import { PreviewPane } from "./PreviewPane";
-import { openPathNotice, previewLimitNotice, previewTitle } from "./preview-view";
+import { openPathNotice, previewLimitNotice } from "./preview-view";
+import { paneHeaderTitle } from "./item-panes";
 import { askOffNotice, shellNameOf } from "./ask-panel";
 import type { AskSources, ExplainRequest } from "./ask-panel";
 import { CommandAskDialog } from "./CommandAskDialog";
@@ -115,13 +115,7 @@ import type { ClickModifiers, Selection } from "./sidebar-tree";
 import { sidebarMode } from "./layout";
 import { useLanguage, t, tabCount } from "./i18n";
 import { refreshLiveGroups, worktreesGroupName } from "./live-groups-service";
-import {
-  agentStateLabel,
-  nothingUnreadNotice,
-  paneBarInfo,
-  shortCwd,
-  summarizeItem,
-} from "./pane-info";
+import { agentStateLabel, nothingUnreadNotice, paneBarInfo, summarizeItem } from "./pane-info";
 import { peekLinesOfItem } from "./peek-source";
 import { configManager, useConfigState } from "./config-store";
 import { AnnouncerRegion } from "./AnnouncerRegion";
@@ -713,6 +707,11 @@ interface ItemViewProps {
   onOpenBrowser(paneId: Id, url: string): boolean;
   /** A file path of the output of a pane was Ctrl+clicked: a preview opens beside it, or a notice says why not. */
   onOpenPreview(paneId: Id, path: string): void;
+  /** The pane of this tab whose name is a text field in its header now. */
+  renamingPaneId: Id | undefined;
+  /** Enter or leaving the field of the name of a pane. */
+  onRenamePane(itemId: Id, paneId: Id, value: string, restoreFocus: boolean): void;
+  onCancelRenamePane(): void;
 }
 
 /** The layout of one tab: its panes as nested resizable panels, a terminal in each. */
@@ -730,6 +729,9 @@ function ItemView({
   onSplitPane,
   onOpenBrowser,
   onOpenPreview,
+  renamingPaneId,
+  onRenamePane,
+  onCancelRenamePane,
 }: ItemViewProps) {
   const dispatch = useStore(store, (state) => state.dispatch);
   const { paneHeaders } = useLayout();
@@ -762,14 +764,7 @@ function ItemView({
       const place = layoutPanes(item.layout).findIndex((candidate) => candidate.id === pane.id);
       return place < 0 ? undefined : place + 1;
     },
-    paneTitle: (pane) => {
-      if (pane.type === "browser") return browserTitle(pane.url);
-      if (pane.type === "preview") return previewTitle(pane.path);
-      if (pane.type === "diff") return diffTitle(pane.cwd);
-      const cwd = pane.cwd ?? space.defaults.cwd;
-      const short = cwd !== undefined ? shortCwd(cwd, home) : "";
-      return short !== "" ? short : t("pane.title");
-    },
+    paneTitle: (pane) => paneHeaderTitle(pane, space.defaults.cwd, home),
     // A browser pane has no shell: it draws its address bar and the area its web view is laid over.
     // The pane is in view when its tab is on screen and no other pane of the tab is zoomed over it.
     renderPane: (pane) => {
@@ -831,6 +826,10 @@ function ItemView({
     onClosePane: (paneId) => dispatch({ type: "pane/close", itemId: item.id, paneId }),
     onDetachPane: (paneId) => dispatch({ type: "pane/detach", itemId: item.id, paneId }),
     onPaneMenu,
+    renamingPaneId,
+    onRenamePane: (paneId, value, restoreFocus) =>
+      onRenamePane(item.id, paneId, value, restoreFocus),
+    onCancelRenamePane,
     onResize: (path, sizes) => dispatch({ type: "pane/resize", itemId: item.id, path, sizes }),
     onSplitPane: (paneId, dir) => onSplitPane(item.id, paneId, dir),
     canSplit: layoutPanes(item.layout).length < paneLimit,
@@ -922,6 +921,16 @@ function runCommand(store: WorkspaceStore, command: ActionCommand): string | und
   }
 }
 
+/**
+ * The pane whose name is a text field now. `where` is the place of the field: the header of the pane
+ * or its row in the sidebar (only one of them at a time, so two fields never fight for the keyboard).
+ */
+interface PaneEditing {
+  itemId: Id;
+  paneId: Id;
+  where: "header" | "sidebar";
+}
+
 /** What covers the shell: a tab, group or space menu, or a dialog about one space (or a new one). */
 type Overlay =
   | { kind: "item-menu"; targets: Id[]; point: MenuPoint }
@@ -930,6 +939,7 @@ type Overlay =
   | { kind: "link-menu"; link: FavoriteLink; point: MenuPoint }
   | { kind: "stop-now"; spaceId: Id; action: ProjectAction; point: MenuPoint }
   | { kind: "pane-menu"; paneId: Id; point: MenuPoint }
+  | { kind: "pane-row-menu"; itemId: Id; paneId: Id; point: MenuPoint }
   | { kind: "terminal-menu"; itemId: Id; paneId: Id; request: TerminalMenuRequest }
   | { kind: "menu"; spaceId: Id; point: MenuPoint }
   | { kind: "new" }
@@ -967,6 +977,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const [overlay, setOverlay] = useState<Overlay | null>(null);
   const [selection, setSelection] = useState<SpaceSelection>({ spaceId: "", ids: [] });
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [paneEditing, setPaneEditing] = useState<PaneEditing | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // What the open palette lists: everything, or only the themes the active space can take.
   const [paletteMode, setPaletteMode] = useState<"all" | "space-theme">("all");
@@ -1099,6 +1110,44 @@ function Shell({ store }: { store: WorkspaceStore }) {
   const onCancelEdit = () => {
     if (editingHere) focusRow(editingHere.id);
     setEditing(null);
+  };
+
+  // A pane being renamed counts while its tab and the pane are still in the active space.
+  const editedItem = paneEditing !== null ? space.items[paneEditing.itemId] : undefined;
+  const paneEditingHere =
+    paneEditing !== null &&
+    editedItem !== undefined &&
+    layoutPanes(editedItem.layout).some((pane) => pane.id === paneEditing.paneId)
+      ? paneEditing
+      : null;
+
+  const startPaneEdit = (itemId: Id, paneId: Id, where: PaneEditing["where"]) => {
+    setOverlay(null);
+    setEditing(null);
+    setPaneEditing({ itemId, paneId, where });
+  };
+
+  /** Puts the keyboard back where the field of the name was: the row of the sidebar or the terminal. */
+  const focusPane = (paneId: Id, where: PaneEditing["where"]) => {
+    requestAnimationFrame(() => {
+      if (where === "header") {
+        handles.current.get(paneId)?.focus();
+      } else {
+        document.querySelector<HTMLElement>(`[data-nr-pane="${CSS.escape(paneId)}"]`)?.focus();
+      }
+    });
+  };
+
+  const onCommitPaneEdit = (itemId: Id, paneId: Id, value: string, restoreFocus: boolean) => {
+    const where = paneEditing?.where ?? "sidebar";
+    setPaneEditing(null);
+    dispatch({ type: "pane/rename", itemId, paneId, name: value });
+    if (restoreFocus) focusPane(paneId, where);
+  };
+
+  const onCancelPaneEdit = () => {
+    if (paneEditing !== null) focusPane(paneEditing.paneId, paneEditing.where);
+    setPaneEditing(null);
   };
 
   // The active space tinges the accent. After the theme's own effect, which sets the accent (and does
@@ -2750,12 +2799,34 @@ function Shell({ store }: { store: WorkspaceStore }) {
     );
   } else if (overlay?.kind === "pane-menu") {
     const { paneId } = overlay;
+    // The field of the name is in the header bar, which only a terminal pane has.
+    const owner = Object.values(space.items).find((candidate) =>
+      layoutPanes(candidate.layout).some((pane) => pane.id === paneId && pane.type === "terminal"),
+    );
     overlayNode = (
       <PaneContextMenu
         point={overlay.point}
         onClose={close}
         onSelect={() => terminalAction({ kind: "select-output" }, paneId)}
         onCopy={() => terminalAction({ kind: "copy-output" }, paneId)}
+        {...(owner !== undefined
+          ? { onRename: () => startPaneEdit(owner.id, paneId, "header") }
+          : {})}
+      />
+    );
+  } else if (overlay?.kind === "pane-row-menu") {
+    const { itemId, paneId } = overlay;
+    overlayNode = (
+      <ContextMenu
+        label={t("menu.pane")}
+        point={overlay.point}
+        entries={[
+          {
+            label: t("menu.renamePane"),
+            onSelect: () => startPaneEdit(itemId, paneId, "sidebar"),
+          },
+        ]}
+        onClose={close}
       />
     );
   } else if (overlay?.kind === "terminal-menu") {
@@ -2786,6 +2857,7 @@ function Shell({ store }: { store: WorkspaceStore }) {
           dispatch({ type: "pane/zoom", itemId, paneId });
           request.focus();
         }}
+        onRename={() => startPaneEdit(itemId, paneId, "header")}
       />
     );
   } else if (overlay?.kind === "favorite-menu" && targetInBar(overlay.target)) {
@@ -3132,6 +3204,17 @@ function Shell({ store }: { store: WorkspaceStore }) {
                 rows={rows}
                 home={home}
                 onPaneClick={onPaneClick}
+                paneNaming={{
+                  editing:
+                    paneEditingHere?.where === "sidebar"
+                      ? { itemId: paneEditingHere.itemId, paneId: paneEditingHere.paneId }
+                      : null,
+                  onStart: (itemId, paneId) => startPaneEdit(itemId, paneId, "sidebar"),
+                  onCommit: onCommitPaneEdit,
+                  onCancel: onCancelPaneEdit,
+                  onMenu: (itemId, paneId, point) =>
+                    setOverlay({ kind: "pane-row-menu", itemId, paneId, point }),
+                }}
                 onLiveEntryClick={(groupId, key) => {
                   clearSelection();
                   store.getState().openLiveEntry(groupId, key);
@@ -3193,6 +3276,14 @@ function Shell({ store }: { store: WorkspaceStore }) {
                           onSplitPane={splitFromMenu}
                           onOpenBrowser={openBrowserBeside}
                           onOpenPreview={openPreviewBeside}
+                          renamingPaneId={
+                            paneEditingHere?.where === "header" &&
+                            paneEditingHere.itemId === item.id
+                              ? paneEditingHere.paneId
+                              : undefined
+                          }
+                          onRenamePane={onCommitPaneEdit}
+                          onCancelRenamePane={onCancelPaneEdit}
                         />
                       ))}
                     </div>

@@ -67,6 +67,7 @@ const TERMINAL_ITEMS = [
   "Split down",
   "Close pane",
   "Maximize pane",
+  "Rename pane",
 ];
 
 /** Opens the app and waits for the first terminal to have drawn its prompt. */
@@ -358,6 +359,7 @@ test.describe("the menu of the terminal", () => {
       "Split down",
       "Close pane",
       "Restore pane",
+      "Rename pane",
     ]);
     await entry(menu, "Restore pane").click();
     await expect(panes(page)).toHaveCount(2);

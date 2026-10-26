@@ -77,9 +77,20 @@ export function paneTitleText(pane: Pane, defaultCwd?: string, home?: string): s
   return short !== "" ? short : t("pane.title");
 }
 
+/**
+ * The title of a pane header: the name of the pane first, then the title it goes by (`Loop · ~/api`);
+ * with no name, the title alone.
+ */
+export function paneHeaderTitle(pane: Pane, defaultCwd?: string, home?: string): string {
+  const title = paneTitleText(pane, defaultCwd, home);
+  return pane.name !== undefined ? `${pane.name} · ${title}` : title;
+}
+
 /** One line of the pane list under a split item. */
 export interface PaneEntry {
   paneId: Id;
+  /** The name of the pane, when it has one: the row writes it before `title`. */
+  name?: string;
   title: string;
   status: string;
   /** The command the pane runs now, else the last one it ran. */
@@ -96,6 +107,7 @@ export function paneEntries(item: Item, defaultCwd?: string, home?: string): Pan
     const command = commandInfo(pane);
     return {
       paneId: pane.id,
+      ...(pane.name !== undefined ? { name: pane.name } : {}),
       title: paneTitleText(pane, defaultCwd, home),
       status: paneStatusText(pane),
       ...(command !== undefined ? { command } : {}),

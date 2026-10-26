@@ -207,6 +207,14 @@ export function createProjectActions(options: ProjectActionsOptions): ProjectAct
       item = created;
       tabs.set(keyOf(space.id, action), item.id);
       dispatch({ type: "item/rename", itemId: item.id, title: action.tab });
+      // The pane the action opened is called by the action, so a split of several of them tells
+      // them apart.
+      dispatch({
+        type: "pane/rename",
+        itemId: item.id,
+        paneId: created.focusedPaneId,
+        name: action.label,
+      });
     }
     show(space.id, item.id, reveal);
     const session = await waitForSession(space.id, item.id);

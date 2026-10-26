@@ -71,6 +71,7 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "group/set-live": true,
   "pane/split": true,
   "pane/set-url": true,
+  "pane/rename": true,
   "pane/close": true,
   "pane/detach": true,
   "item/join": true,
@@ -132,6 +133,7 @@ interface Played {
 const PANE_ACTIONS = new Set<ActionType>([
   "pane/split",
   "pane/set-url",
+  "pane/rename",
   "pane/close",
   "pane/detach",
   "item/join",
@@ -275,6 +277,7 @@ function missingTarget(ws: Workspace, action: Action): boolean {
       return !groupIdsOf(ws).has(action.groupId);
     case "pane/split":
     case "pane/set-url":
+    case "pane/rename":
     case "pane/close":
     case "pane/detach":
     case "pane/focus":
@@ -589,6 +592,7 @@ function checkPaneDelta(ws: Workspace, next: Workspace, action: Action, where: (
     case "pane/focus":
     case "pane/focus-direction":
     case "pane/set-url":
+    case "pane/rename":
     case "pane/set-status":
     case "pane/set-location":
     case "pane/set-shell-folder":

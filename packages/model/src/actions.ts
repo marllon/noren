@@ -310,6 +310,12 @@ export type Action =
    * it is.
    */
   | { type: "pane/set-url"; itemId: Id; paneId: Id; url: string }
+  /**
+   * Gives the pane a name of its own (`Pane.name`), trimmed and cut at `MAX_PANE_NAME`; a blank
+   * `name` takes the name away, so the pane is shown as before. An unknown pane or a name the pane
+   * already has leave the workspace as it is.
+   */
+  | { type: "pane/rename"; itemId: Id; paneId: Id; name: string }
   /** Closes the pane and the layout collapses. Closing the only pane closes the item. */
   | { type: "pane/close"; itemId: Id; paneId: Id }
   /** Moves the pane, session included, to a new item right after the item it came from. */

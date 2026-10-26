@@ -2,7 +2,7 @@ import { DEFAULT_SPACE_COLOR, DEFAULT_SPACE_ICON } from "./factories";
 import { checkInvariants } from "./invariants";
 import type { InvariantOptions } from "./invariants";
 import { withoutSessions } from "./sessions";
-import type { Workspace } from "./types";
+import { MAX_PANE_NAME, type Workspace } from "./types";
 
 /** Version written to `state.json` today. Bump it together with a new entry in `MIGRATIONS`. */
 export const STATE_VERSION = 2;
@@ -395,6 +395,13 @@ function checkPane(value: unknown, path: string): void {
   optional(pane, "url", path, str);
   optional(pane, "path", path, str);
   str(pane["profileId"], `${path}.profileId`);
+  optional(pane, "name", path, (v, p) => {
+    str(v, p);
+    const name = v as string;
+    if (name.trim() === "" || Array.from(name).length > MAX_PANE_NAME) {
+      throw new ShapeError(p, `a name, not blank, up to ${MAX_PANE_NAME} characters`);
+    }
+  });
   optional(pane, "cwd", path, str);
   optional(pane, "shellCwd", path, str);
   optional(pane, "gitBranch", path, str);

@@ -11199,3 +11199,71 @@ ul.settings-models {
     grid-row: 3;
   }
 }
+
+/* The name of a pane: in bold before its folder in the pane header and on its row in the sidebar. */
+.item-pane-name {
+  margin-inline-end: 6px;
+  color: var(--nr-text);
+  font-weight: 600;
+}
+
+.item-pane-name + .item-pane-folder {
+  color: var(--nr-muted);
+}
+
+:root[data-nr-style="glass"] .app .pane-bar-name {
+  flex: 0 1 auto;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 50%;
+  padding: 2px 9px;
+  overflow: hidden;
+  border-radius: var(--nr-radius-chip);
+  background: color-mix(in srgb, var(--nr-space-color) 24%, transparent);
+  color: var(--nr-text);
+  font-size: var(--nr-font-size);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-nr-style="dense"] .app .pane-bar-name {
+  flex: 0 1 auto;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 50%;
+  padding: 0 6px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--nr-highlight) 22%, transparent);
+  color: var(--nr-text);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pane-bar .inline-name {
+  flex: 0 1 220px;
+  width: 220px;
+  min-width: 80px;
+  padding: 2px 8px;
+}
+
+/* A named pane row has two lines under the glass style: the name and folder, then command and status. */
+:root[data-nr-style="glass"] .app-body .item-pane:has(.item-pane-name) {
+  flex-wrap: wrap;
+  row-gap: 1px;
+}
+
+:root[data-nr-style="glass"] .app-body .item-pane:has(.item-pane-name) .item-pane-title {
+  flex: 1 1 100%;
+}
+
+.item-panes .inline-name {
+  width: calc(100% - 8px);
+  margin: 4px 4px 4px 2px;
+}
+
+.pane-bar .inline-name {
+  flex-basis: 170px;
+  width: 170px;
+}

@@ -2,6 +2,7 @@ import { Bot, Columns2, Folder, GitBranch, Maximize, Minimize, Rows2, X } from "
 import { useT } from "./i18n";
 import { commandWords, exitText, folderParts } from "./pane-info";
 import type { PaneBarInfo } from "./pane-info";
+import { InlineName } from "./SidebarTree";
 import { ariaShortcutOf, useChord } from "./shortcut-keys";
 import { formatChord } from "./shortcuts-screen";
 import type { SplitDir } from "./TreeMenus";
@@ -33,6 +34,35 @@ interface PaneBarProps {
   onClose?(): void;
   /** Draws the header of the dense style. */
   dense?: boolean;
+  /** The name of the pane is a text field now (it starts from `initial`); absent: it is shown as text. */
+  renaming?:
+    | {
+        initial: string;
+        onCommit(value: string, restoreFocus: boolean): void;
+        onCancel(): void;
+      }
+    | undefined;
+}
+
+/** The name of the pane in bold, before its folder; a text field while it is being renamed. */
+function PaneName({ info, renaming }: Pick<PaneBarProps, "info" | "renaming">) {
+  const t = useT();
+  if (renaming !== undefined) {
+    return (
+      <InlineName
+        label={t("pane.nameField")}
+        initial={renaming.initial}
+        onCommit={renaming.onCommit}
+        onCancel={renaming.onCancel}
+      />
+    );
+  }
+  if (info.name === undefined) return null;
+  return (
+    <b className="pane-bar-name" data-nr-part="pane-name" title={info.name}>
+      {info.name}
+    </b>
+  );
 }
 
 /** The title of a button with the shortcut of its action: `Split right (Ctrl+Shift+D)`. */
@@ -203,6 +233,7 @@ function DensePaneBar({
   onZoom,
   onClose,
   number,
+  renaming,
 }: PaneBarProps) {
   const t = useT();
   const command = info.command;
@@ -216,6 +247,7 @@ function DensePaneBar({
             {number}
           </span>
         )}
+        <PaneName info={info} renaming={renaming} />
         <span
           className="pane-bar-title"
           data-nr-part="pane-command"
@@ -267,11 +299,13 @@ function GlassPaneBar({
   canSplit,
   onSplit,
   onZoom,
+  renaming,
 }: PaneBarProps) {
   const t = useT();
   return (
     <div className="pane-bar" data-nr-part="pane-bar">
       <div className="pane-bar-info">
+        <PaneName info={info} renaming={renaming} />
         <FolderPath info={info} />
         {info.branch !== undefined && (
           <span

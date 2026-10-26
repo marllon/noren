@@ -70,6 +70,8 @@ Some actions stop in two steps: the `stop` command asks the program to finish (a
 
 The tab is followed by identity, not by name: once Noren opened it for an action, renaming the tab does not detach it from the action. After a restart Noren finds the tab again by its title.
 
+The pane that Noren opens for an action is named after the action: its `label` is the **name of the pane**, shown in bold before the folder in the header of the pane and on its row in the sidebar. The name belongs to the pane, so it stays with the pane when the tab is merged into a split of another tab and when the pane is taken out of it again, and it is kept in `state.json`. Renaming the pane (F2 on its row, or **Rename pane** in its menu) changes only that name: the action still finds its tab by the title of the tab. A tab that already exists keeps the name its pane has.
+
 ## Rules
 
 - Noren never runs a command that is not written in the file. The `command` and `stop` strings are the only things an action can execute; nothing is built from other input (a link, a pasted text, an AI suggestion).

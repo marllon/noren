@@ -76,6 +76,8 @@ export function commandWords(info: CommandInfo): string {
  * folder is left out when the pane has nothing to say about it.
  */
 export interface PaneBarInfo {
+  /** The name of the pane (`Pane.name`), written in bold before the folder; absent when it has none. */
+  name?: string;
   /** The folder as the header writes it (`~/site/api`); empty when no folder is known. */
   folder: string;
   /** The folder in full, for the tooltip. */
@@ -102,6 +104,7 @@ export function paneBarInfo(
   const cwd = found !== undefined && found.trim() !== "" ? found : undefined;
   const command = commandInfo(pane);
   return {
+    ...(pane.name !== undefined ? { name: pane.name } : {}),
     folder: cwd !== undefined ? shortCwd(cwd, home, BAR_SEGMENTS) : "",
     ...(cwd !== undefined ? { cwd } : {}),
     ...(pane.gitBranch !== undefined && pane.gitBranch !== "" ? { branch: pane.gitBranch } : {}),

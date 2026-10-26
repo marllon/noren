@@ -59,8 +59,10 @@ describe("parseActionsFile", () => {
 
   it("accepts stopWaits true or false, and keeps it only where it was given", () => {
     const waits = { ...loop, stopWaits: true };
-    const result = parseActionsFile(file([waits, { ...dev, stopWaits: false }, loop]));
-    expect(result).toEqual({ ok: true, actions: [waits, { ...dev, stopWaits: false }, loop] });
+    const off = { ...dev, stopWaits: false };
+    const plain = { ...dev, id: "plain", tab: "plain" };
+    const result = parseActionsFile(file([waits, off, plain]));
+    expect(result).toEqual({ ok: true, actions: [waits, off, plain] });
     if (result.ok) expect("stopWaits" in (result.actions[2] ?? {})).toBe(false);
   });
 

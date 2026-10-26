@@ -16,7 +16,14 @@ const WEB_ACTIONS_KEY = "noren.web.actions";
 const FILES: Record<string, string> = {
   "/srv/alpha": JSON.stringify({
     actions: [
-      { id: "loop", label: "Loop", command: "loop", stop: "loop parar", tab: "loop" },
+      {
+        id: "loop",
+        label: "Loop",
+        command: "loop",
+        stop: "loop parar",
+        stopWaits: true,
+        tab: "loop",
+      },
       { id: "dev", label: "Dev server", command: "pnpm dev", tab: "dev" },
     ],
   }),
@@ -39,6 +46,11 @@ interface Words {
   /** The name of the Start and Stop buttons, for an action of a space. */
   start(action: string, space: string): string;
   stop(action: string, space: string): string;
+  /** What the button of an action that waits to stop is called, says, and what its menu offers. */
+  stopping(action: string, space: string): string;
+  stoppingWord: string;
+  stopNowMenu(action: string): string;
+  stopNow: string;
   runButton: string;
   none: string;
   showIn: string;
@@ -51,6 +63,10 @@ const WORDS: Record<Words["lang"], Words> = {
     region: "Projects",
     start: (action, space) => `Start ${action} in ${space}`,
     stop: (action, space) => `Stop ${action} in ${space}`,
+    stopping: (action, space) => `Stopping ${action} in ${space}: stop now?`,
+    stoppingWord: "Stopping",
+    stopNowMenu: (action) => `Stop ${action} now`,
+    stopNow: "Stop now",
     runButton: "Run",
     none: "No other actions",
     showIn: "Show in Projects",
@@ -61,6 +77,10 @@ const WORDS: Record<Words["lang"], Words> = {
     region: "Projetos",
     start: (action, space) => `Iniciar ${action} em ${space}`,
     stop: (action, space) => `Parar ${action} em ${space}`,
+    stopping: (action, space) => `Parando ${action} em ${space}: parar agora?`,
+    stoppingWord: "Parando",
+    stopNowMenu: (action) => `Parar ${action} agora`,
+    stopNow: "Parar agora",
     runButton: "Executar",
     none: "Nenhuma outra ação",
     showIn: "Mostrar em Projetos",
@@ -241,6 +261,38 @@ for (const style of ["glass", "dense"] as const) {
         await expect(button(page, words.start("Web", "Gamma"))).toBeVisible();
         await expect(block(page, "Gamma")).toHaveAttribute("data-nr-state", "idle");
         await expect(spaceButton(page, "Alpha")).toHaveAttribute("aria-current", "true");
+      });
+
+      test("an action that waits to stop reads stopping on its one line, offers Stop now and ends on it", async ({
+        page,
+      }) => {
+        const words = await start(page, lang, style);
+        const before = await height(blocks(page).nth(0));
+        await button(page, words.start("Loop", "Alpha")).click();
+        await confirmRun(page, words);
+        await button(page, words.stop("Loop", "Alpha")).click();
+
+        const waiting = button(page, words.stopping("Loop", "Alpha"));
+        await expect(waiting).toBeVisible();
+        await expect(block(page, "Alpha").locator(".project-dot").first()).toHaveAttribute(
+          "title",
+          words.stoppingWord,
+        );
+        await expect(waiting).toHaveAttribute("data-nr-state", "stopping");
+        await expect(block(page, "Alpha")).toHaveAttribute("data-nr-state", "stopping");
+        await expect(
+          block(page, "Alpha").locator('[data-nr-indicator="stopping"]').first(),
+        ).toBeVisible();
+        // Still one line, and the other blocks are not touched.
+        expect(Math.abs((await height(blocks(page).nth(0))) - before)).toBeLessThanOrEqual(1);
+        await expect(block(page, "Beta")).toHaveAttribute("data-nr-state", "idle");
+
+        await waiting.click();
+        const menu = page.getByRole("menu", { name: words.stopNowMenu("Loop"), exact: true });
+        await expect(menu).toBeVisible();
+        await menu.getByRole("menuitem", { name: words.stopNow, exact: true }).click();
+        await expect(button(page, words.start("Loop", "Alpha"))).toBeVisible();
+        await expect(block(page, "Alpha")).toHaveAttribute("data-nr-state", "idle");
       });
 
       test("a click on the name opens the block with the other actions, and the choice is kept", async ({

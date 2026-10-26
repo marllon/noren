@@ -35,6 +35,7 @@ import type {
   Id,
   Item,
   Pane,
+  ProjectAction,
   SessionLink,
   SessionLinkState,
   Space,
@@ -188,6 +189,7 @@ import type { CommandMarkInfo } from "./command-marks-view";
 import { pictureUrl, showBackgroundImage, usePicture } from "./background-image-store";
 import { applySpaceColor, applyTheme, terminalTheme } from "./theme";
 import { DemoBanner } from "./demo/DemoBanner";
+import { ContextMenu } from "./ContextMenu";
 import { TitleBar } from "./TitleBar";
 import {
   FavoriteContextMenu,
@@ -926,6 +928,7 @@ type Overlay =
   | { kind: "group-menu"; groupId: Id; point: MenuPoint }
   | { kind: "favorite-menu"; target: FavoriteTarget; point: MenuPoint }
   | { kind: "link-menu"; link: FavoriteLink; point: MenuPoint }
+  | { kind: "stop-now"; spaceId: Id; action: ProjectAction; point: MenuPoint }
   | { kind: "pane-menu"; paneId: Id; point: MenuPoint }
   | { kind: "terminal-menu"; itemId: Id; paneId: Id; request: TerminalMenuRequest }
   | { kind: "menu"; spaceId: Id; point: MenuPoint }
@@ -1281,7 +1284,8 @@ function Shell({ store }: { store: WorkspaceStore }) {
     links: favoriteLinks,
     profiles,
     actionFiles: favoriteActionFiles,
-    isRunning: (spaceId, action) => projectActions.statusIn(spaceId, action) === "running",
+    // A tile whose action waits for its session to end still has a tab to show.
+    isRunning: (spaceId, action) => projectActions.statusIn(spaceId, action) !== "idle",
   });
   // A `noren://` link: the entry point stays the same while the run function (and so the hook's
   // state) changes on every render, so the handler reads it through a ref.
@@ -2735,8 +2739,10 @@ function Shell({ store }: { store: WorkspaceStore }) {
               projectAction: {
                 label: tabAction.label,
                 running: projectActions.statusOf(tabAction) === "running",
+                stopping: projectActions.statusOf(tabAction) === "stopping",
                 onRun: () => projectActions.run(tabAction),
                 onStop: () => projectActions.stop(tabAction),
+                onStopNow: () => projectActions.stopNow(tabAction),
               },
             }
           : {})}
@@ -2788,6 +2794,24 @@ function Shell({ store }: { store: WorkspaceStore }) {
         store={store}
         target={overlay.target}
         point={overlay.point}
+        onClose={close}
+      />
+    );
+  } else if (overlay?.kind === "stop-now") {
+    const { spaceId, action } = overlay;
+    overlayNode = (
+      <ContextMenu
+        label={t("projects.stopNowMenu", { name: action.label })}
+        point={overlay.point}
+        entries={[
+          {
+            label: t("projects.stopNow"),
+            onSelect: () => {
+              close();
+              projectActions.stopNowIn(spaceId, action);
+            },
+          },
+        ]}
         onClose={close}
       />
     );
@@ -3004,12 +3028,15 @@ function Shell({ store }: { store: WorkspaceStore }) {
     <SidebarProjects
       entries={projectEntries}
       activeSpaceId={space.id}
-      isRunning={(spaceId, action) => projectActions.statusIn(spaceId, action) === "running"}
+      statusOf={projectActions.statusIn}
       isBusy={projectActions.isBusyIn}
       onToggle={(spaceId, open) => dispatch({ type: "space/set-projects-open", spaceId, open })}
       // The space on screen stays as it is: the tab opens and runs in the space of the block.
       onRun={(spaceId, action) => projectActions.runIn(spaceId, action, { reveal: false })}
       onStop={projectActions.stopIn}
+      onStopping={(spaceId, action, point) =>
+        setOverlay({ kind: "stop-now", spaceId, action, point })
+      }
       onMenu={(spaceId, action, point) =>
         setOverlay({
           kind: "link-menu",

@@ -4056,6 +4056,11 @@ ul.settings-models {
   background: var(--nr-state-running);
 }
 
+.project-dot[data-nr-indicator="stopping"] {
+  border-color: var(--nr-state-waiting);
+  background: var(--nr-state-waiting);
+}
+
 .project-name {
   display: flex;
   flex: 1;
@@ -4118,6 +4123,12 @@ ul.settings-models {
 .project-run:disabled {
   color: var(--nr-muted);
   cursor: default;
+}
+
+/* An action that waits for its session to end: an hourglass in the amber of "waiting". */
+.project-run[data-nr-state="stopping"] {
+  border-color: color-mix(in srgb, var(--nr-state-waiting) 55%, transparent);
+  color: var(--nr-waiting-text);
 }
 
 .project-actions {
@@ -6106,6 +6117,22 @@ ul.settings-models {
   border-color: color-mix(in srgb, var(--nr-state-running) 45%, transparent);
   background: color-mix(in srgb, var(--nr-state-running) 14%, var(--nr-bg));
   color: var(--nr-running-text);
+}
+
+/* Waiting to stop: the same row and button, in the amber of "waiting", with an hourglass. */
+:root[data-nr-style="dense"] .app-body .project-dot[data-nr-indicator="stopping"] {
+  border-color: var(--nr-state-waiting);
+  background: var(--nr-state-waiting);
+}
+
+:root[data-nr-style="dense"] .app-body .project-run[data-nr-state="stopping"] {
+  border-color: color-mix(in srgb, var(--nr-state-waiting) 45%, transparent);
+  background: color-mix(in srgb, var(--nr-state-waiting) 14%, var(--nr-bg));
+  color: var(--nr-waiting-text);
+}
+
+:root[data-nr-style="dense"] .app-body .project-run[data-nr-state="stopping"] svg {
+  fill: none;
 }
 
 :root[data-nr-style="dense"] .app-body .project-actions {
@@ -9154,6 +9181,18 @@ ul.settings-models {
   border-color: color-mix(in srgb, var(--nr-state-running) 40%, transparent);
   background: color-mix(in srgb, var(--nr-state-running) 14%, transparent);
   color: color-mix(in srgb, var(--nr-state-running) 55%, var(--nr-text));
+}
+
+/* Waiting to stop: the same row and button, in the amber of "waiting", with an hourglass. */
+:root[data-nr-style="glass"] .app-body .project-dot[data-nr-indicator="stopping"] {
+  border-color: var(--nr-state-waiting);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--nr-state-waiting) 70%, transparent);
+}
+
+:root[data-nr-style="glass"] .app-body .project-run[data-nr-state="stopping"] {
+  border-color: color-mix(in srgb, var(--nr-state-waiting) 40%, transparent);
+  background: color-mix(in srgb, var(--nr-state-waiting) 14%, transparent);
+  color: var(--nr-waiting-text);
 }
 
 :root[data-nr-style="glass"] .app-body .project-actions {

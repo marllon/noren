@@ -344,6 +344,162 @@ describe("project actions: stop", () => {
   });
 });
 
+describe("project actions: stop that waits (stopWaits)", () => {
+  const calm: ProjectAction = { ...loop, stopWaits: true };
+
+  async function running(action: ProjectAction = calm) {
+    const t = setup();
+    const run = t.actions.run(t.spaceId, action);
+    await settle();
+    await t.mount();
+    await run;
+    return t;
+  }
+
+  it("runs the stop command, keeps the sessions and reports stopping", async () => {
+    const t = await running();
+    const changes: number[] = [];
+    t.actions.onExit(() => changes.push(changes.length));
+    expect(t.actions.status(t.spaceId, calm)).toBe("running");
+
+    await t.actions.stop(t.spaceId, calm);
+    expect(t.stops).toEqual([{ cwd: "/proj", command: "loop parar" }]);
+    expect(t.backend.callsTo("kill")).toHaveLength(0);
+    expect(t.actions.status(t.spaceId, calm)).toBe("stopping");
+    // The screen is told, so the button changes though no session ended.
+    expect(changes).toEqual([0]);
+  });
+
+  it("goes back to idle when the session ends on its own", async () => {
+    const t = await running();
+    await t.actions.stop(t.spaceId, calm);
+    expect(t.actions.status(t.spaceId, calm)).toBe("stopping");
+
+    await t.backend.write(t.sessionOf("loop"), "exit 0\r");
+    expect(t.actions.status(t.spaceId, calm)).toBe("idle");
+    expect(t.backend.callsTo("kill")).toHaveLength(0);
+  });
+
+  it("stays stopping until the last session of a split tab ends", async () => {
+    const t = await running();
+    const tab = must(t.tabsTitled("loop")[0]);
+    t.dispatch({
+      type: "pane/split",
+      itemId: tab.id,
+      paneId: tab.focusedPaneId,
+      dir: "row",
+      side: "after",
+    });
+    await t.mount();
+    await t.actions.stop(t.spaceId, calm);
+
+    const sessions = layoutPanes(must(t.tabsTitled("loop")[0]).layout).map((pane) =>
+      Number(pane.sessionId),
+    );
+    expect(sessions).toHaveLength(2);
+    await t.backend.write(must(sessions[0]), "exit 0\r");
+    expect(t.actions.status(t.spaceId, calm)).toBe("stopping");
+    await t.backend.write(must(sessions[1]), "exit 0\r");
+    expect(t.actions.status(t.spaceId, calm)).toBe("idle");
+  });
+
+  it("stop now ends the sessions without running the stop command again", async () => {
+    const t = await running();
+    const session = t.sessionOf("loop");
+    await t.actions.stop(t.spaceId, calm);
+    await t.actions.stopNow(t.spaceId, calm);
+
+    expect(t.stops).toHaveLength(1);
+    expect(t.backend.callsTo("kill").map((call) => call.args)).toEqual([[session]]);
+    expect(t.actions.status(t.spaceId, calm)).toBe("idle");
+  });
+
+  it("a second stop while stopping does nothing", async () => {
+    const t = await running();
+    await t.actions.stop(t.spaceId, calm);
+    await t.actions.stop(t.spaceId, calm);
+    expect(t.stops).toHaveLength(1);
+    expect(t.backend.callsTo("kill")).toHaveLength(0);
+    expect(t.actions.status(t.spaceId, calm)).toBe("stopping");
+  });
+
+  it("keeps the sessions and stays running when the stop command fails", async () => {
+    const t = setup(new Error('The stop command "loop parar" ended with code 3'));
+    const run = t.actions.run(t.spaceId, calm);
+    await settle();
+    await t.mount();
+    await run;
+    await expect(t.actions.stop(t.spaceId, calm)).rejects.toThrow(/code 3/);
+    expect(t.backend.callsTo("kill")).toHaveLength(0);
+    expect(t.actions.status(t.spaceId, calm)).toBe("running");
+  });
+
+  it("does not wait when the sessions ended while the stop command ran", async () => {
+    const t = setup();
+    const run = t.actions.run(t.spaceId, calm);
+    await settle();
+    await t.mount();
+    await run;
+    const session = t.sessionOf("loop");
+    const stopped = t.actions.stop(t.spaceId, calm);
+    await t.backend.write(session, "exit 0\r");
+    await stopped;
+    expect(t.actions.status(t.spaceId, calm)).toBe("idle");
+  });
+
+  it("showing the tab of a stopping action keeps it stopping, and a new run after it ended is running", async () => {
+    const t = await running();
+    await t.actions.stop(t.spaceId, calm);
+    expect(await t.actions.run(t.spaceId, calm)).toBe("focused");
+    expect(t.actions.status(t.spaceId, calm)).toBe("stopping");
+
+    await t.backend.write(t.sessionOf("loop"), "exit 0\r");
+    const next = t.actions.run(t.spaceId, calm);
+    await settle();
+    await t.mount();
+    expect(await next).toBe("started");
+    expect(t.actions.status(t.spaceId, calm)).toBe("running");
+  });
+
+  it("is a plain stop without a stop command: the sessions end at once", async () => {
+    const waits: ProjectAction = { ...dev, stopWaits: true };
+    const t = await running(waits);
+    const session = t.sessionOf("dev");
+    await t.actions.stop(t.spaceId, waits);
+    expect(t.stops).toHaveLength(0);
+    expect(t.backend.callsTo("kill").map((call) => call.args)).toEqual([[session]]);
+    expect(t.actions.status(t.spaceId, waits)).toBe("idle");
+  });
+
+  it("is the same as today without the field, and with stopWaits false", async () => {
+    for (const action of [loop, { ...loop, stopWaits: false }]) {
+      const t = await running(action);
+      const session = t.sessionOf("loop");
+      await t.actions.stop(t.spaceId, action);
+      expect(t.backend.callsTo("kill").map((call) => call.args)).toEqual([[session]]);
+      expect(t.actions.status(t.spaceId, action)).toBe("idle");
+    }
+  });
+
+  it("stop now does nothing without a tab and rejects for an unknown space", async () => {
+    const t = setup();
+    await t.actions.stopNow(t.spaceId, calm);
+    expect(t.backend.callsTo("kill")).toHaveLength(0);
+    await expect(t.actions.stopNow("nope", calm)).rejects.toThrow(/Unknown space/);
+  });
+
+  it("each action waits on its own: another action of the space keeps running", async () => {
+    const t = await running();
+    const other = t.actions.run(t.spaceId, dev);
+    await settle();
+    await t.mount();
+    await other;
+    await t.actions.stop(t.spaceId, calm);
+    expect(t.actions.status(t.spaceId, calm)).toBe("stopping");
+    expect(t.actions.status(t.spaceId, dev)).toBe("running");
+  });
+});
+
 describe("project actions: tabOf", () => {
   it("finds the tab the action opened, and nothing before there is one", async () => {
     const t = setup();

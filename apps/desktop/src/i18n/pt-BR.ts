@@ -786,10 +786,14 @@ export const ptBR: Dictionary = {
   "projects.title": "Projetos",
   "projects.startNamed": "Iniciar {name} em {space}",
   "projects.stopNamed": "Parar {name} em {space}",
+  "projects.stoppingNamed": "Parando {name} em {space}: parar agora?",
+  "projects.stopNow": "Parar agora",
+  "projects.stopNowMenu": "Parar {name} agora",
   "projects.noOthers": "Nenhuma outra ação",
   "projects.toggle": "Ações de {name}",
   "actions.running": "Em execução",
   "actions.idle": "Parada",
+  "actions.stopping": "Parando",
 
   // A caixa de colar
   "paste.title": "Colar {count} linhas?",

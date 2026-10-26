@@ -28,7 +28,7 @@ export interface ProjectActionsUi {
   statusOf(action: ProjectAction): ActionStatus;
   /** The same, for the action of any space (the Favorites bar holds actions of spaces that are not on screen). */
   statusIn(spaceId: Id, action: ProjectAction): ActionStatus;
-  /** True while a run or a stop of the action is still going on. */
+  /** True while a run or a stop (the stop command, not the wait that may follow it) is still going on. */
   isBusy(action: ProjectAction): boolean;
   /** The same, for the action of any space. */
   isBusyIn(spaceId: Id, action: ProjectAction): boolean;
@@ -44,6 +44,10 @@ export interface ProjectActionsUi {
   stop(action: ProjectAction): void;
   /** The same as `stop`, for the action of any space. */
   stopIn(spaceId: Id, action: ProjectAction): void;
+  /** Ends the sessions of an action that is stopping at once, without running its stop command again. */
+  stopNow(action: ProjectAction): void;
+  /** The same as `stopNow`, for the action of any space. */
+  stopNowIn(spaceId: Id, action: ProjectAction): void;
   /** Set while the confirmation dialog is open. */
   pending: PendingRun | null;
   confirmPending(): void;
@@ -164,6 +168,10 @@ export function useProjectActions(
     if (executor) track(busyKey(id, action), executor.stop(id, action));
   };
 
+  const stopNowIn = (id: Id, action: ProjectAction) => {
+    if (executor) track(busyKey(id, action), executor.stopNow(id, action));
+  };
+
   return {
     actions,
     statusOf: (action) => executor?.status(spaceId, action) ?? "idle",
@@ -175,6 +183,8 @@ export function useProjectActions(
     runIn,
     stop: (action) => stopIn(spaceId, action),
     stopIn,
+    stopNow: (action) => stopNowIn(spaceId, action),
+    stopNowIn,
     pending,
     confirmPending: () => {
       if (!pending) return;

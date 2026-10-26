@@ -635,7 +635,13 @@ export {
 export type { Migration, ParseStateResult } from "./state";
 export { STATE_SAVE_DELAY_MS, StateWriter } from "./state-writer";
 export type { StateWriterOptions } from "./state-writer";
-export { DEFAULT_MAX_PANES, MAX_CLOSED, MAX_EXTRA_WINDOWS, MAX_GROUP_DEPTH } from "./types";
+export {
+  DEFAULT_MAX_PANES,
+  MAX_CLOSED,
+  MAX_EXTRA_WINDOWS,
+  MAX_GROUP_DEPTH,
+  MAX_PANE_NAME,
+} from "./types";
 export {
   WINDOW_LABEL_PREFIX,
   canOpenWindow,

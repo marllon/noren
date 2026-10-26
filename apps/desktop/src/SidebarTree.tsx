@@ -68,6 +68,21 @@ export interface Editing {
   id: Id;
 }
 
+/**
+ * How the rows of the panes of a split tab are named: the pane being renamed on the spot, and what
+ * starts, ends and offers that (F2, a double click, the menu of the row). A tree without it (the
+ * window of a single tab) leaves the names as they are.
+ */
+export interface PaneNaming {
+  /** The pane whose row is a text field now. */
+  editing: { itemId: Id; paneId: Id } | null;
+  onStart(itemId: Id, paneId: Id): void;
+  /** Enter or leaving the field: the new text of the name; `restoreFocus` is set for Enter. */
+  onCommit(itemId: Id, paneId: Id, value: string, restoreFocus: boolean): void;
+  onCancel(): void;
+  onMenu(itemId: Id, paneId: Id, point: MenuPoint): void;
+}
+
 interface SidebarTreeProps {
   space: Space;
   rows: readonly TreeRow[];
@@ -80,6 +95,7 @@ interface SidebarTreeProps {
   onItemClick(itemId: Id, modifiers: ClickModifiers): void;
   /** A pane was clicked in the list of a split tab: show that tab and focus the pane. */
   onPaneClick(itemId: Id, paneId: Id): void;
+  paneNaming?: PaneNaming;
   onItemMenu(itemId: Id, point: MenuPoint): void;
   onGroupMenu(groupId: Id, point: MenuPoint): void;
   onToggleGroup(group: GroupNode): void;
@@ -278,17 +294,18 @@ function LayoutThumb({ item }: { item: Item }) {
   );
 }
 
-interface PaneListProps {
+export interface PaneListProps {
   itemId: Id;
   /** Name of the tab, for the name of the list. */
   label: string;
   entries: readonly PaneEntry[];
   rowProps: RowProps;
   onPaneClick(itemId: Id, paneId: Id): void;
+  naming?: PaneNaming | undefined;
 }
 
 /** The panes of a split tab, one row each; the pane that has the keyboard is marked. */
-function PaneList({ itemId, label, entries, rowProps, onPaneClick }: PaneListProps) {
+export function PaneList({ itemId, label, entries, rowProps, onPaneClick, naming }: PaneListProps) {
   return (
     <ul
       className="item-panes"
@@ -296,28 +313,64 @@ function PaneList({ itemId, label, entries, rowProps, onPaneClick }: PaneListPro
       role="group"
       aria-label={t("tree.panesOf", { name: label })}
     >
-      {entries.map((entry) => (
-        <li key={entry.paneId} role="none">
-          <button
-            type="button"
-            className="item-pane"
-            data-nr-part="item-pane"
-            data-nr-pane={entry.paneId}
-            {...rowProps(paneKey(entry.paneId))}
-            aria-selected={entry.focused}
-            aria-current={entry.focused ? "true" : undefined}
-            onClick={() => onPaneClick(itemId, entry.paneId)}
-          >
-            <span className="item-pane-title">{entry.title}</span>
-            {entry.command !== undefined && (
-              <CommandLine info={entry.command} part="item-pane-command" />
-            )}
-            <span className="item-pane-status" data-nr-part="item-pane-status">
-              {entry.status}
-            </span>
-          </button>
-        </li>
-      ))}
+      {entries.map((entry) => {
+        const renaming =
+          naming?.editing?.itemId === itemId && naming.editing.paneId === entry.paneId;
+        if (naming !== undefined && renaming) {
+          return (
+            <li key={entry.paneId} role="none">
+              <InlineName
+                label={t("pane.nameField")}
+                initial={entry.name ?? ""}
+                onCommit={(value, restoreFocus) =>
+                  naming.onCommit(itemId, entry.paneId, value, restoreFocus)
+                }
+                onCancel={naming.onCancel}
+              />
+            </li>
+          );
+        }
+        return (
+          <li key={entry.paneId} role="none">
+            <button
+              type="button"
+              className="item-pane"
+              data-nr-part="item-pane"
+              data-nr-pane={entry.paneId}
+              {...rowProps(paneKey(entry.paneId))}
+              aria-selected={entry.focused}
+              aria-current={entry.focused ? "true" : undefined}
+              onClick={() => onPaneClick(itemId, entry.paneId)}
+              onDoubleClick={() => naming?.onStart(itemId, entry.paneId)}
+              onKeyDown={(event) => {
+                if (naming === undefined || event.key !== "F2") return;
+                event.preventDefault();
+                naming.onStart(itemId, entry.paneId);
+              }}
+              onContextMenu={(event) => {
+                if (naming === undefined) return;
+                event.preventDefault();
+                naming.onMenu(itemId, entry.paneId, menuPoint(event));
+              }}
+            >
+              <span className="item-pane-title">
+                {entry.name !== undefined && (
+                  <b className="item-pane-name" data-nr-part="item-pane-name">
+                    {entry.name}
+                  </b>
+                )}
+                <span className="item-pane-folder">{entry.title}</span>
+              </span>
+              {entry.command !== undefined && (
+                <CommandLine info={entry.command} part="item-pane-command" />
+              )}
+              <span className="item-pane-status" data-nr-part="item-pane-status">
+                {entry.status}
+              </span>
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -402,6 +455,7 @@ export function SidebarTree({
   home,
   onItemClick,
   onPaneClick,
+  paneNaming,
   onItemMenu,
   onGroupMenu,
   onToggleGroup,
@@ -767,6 +821,7 @@ export function SidebarTree({
             entries={entries}
             rowProps={rowProps}
             onPaneClick={onPaneClick}
+            naming={paneNaming}
           />
         )}
       </>

@@ -4,6 +4,7 @@ import {
   isSplitItem,
   layoutThumbnail,
   paneEntries,
+  paneHeaderTitle,
   paneStatusText,
   paneTitleText,
 } from "./item-panes";
@@ -95,6 +96,50 @@ describe("paneTitleText", () => {
     expect(paneTitleText(pane("a"), "/srv/app", "/home/ada")).toBe("/srv/app");
     expect(paneTitleText(pane("a"))).toBe("Terminal");
     expect(paneTitleText(pane("a", { cwd: "  " }))).toBe("Terminal");
+  });
+});
+
+describe("paneHeaderTitle", () => {
+  it("is the folder title alone while the pane has no name", () => {
+    expect(paneHeaderTitle(pane("a", { cwd: "/home/ada/proj" }), "/srv", "/home/ada")).toBe(
+      "~/proj",
+    );
+    expect(paneHeaderTitle(pane("a"))).toBe("Terminal");
+  });
+
+  it("puts the name of the pane first, then the folder", () => {
+    expect(
+      paneHeaderTitle(pane("a", { name: "Loop", cwd: "/home/ada/proj" }), "/srv", "/home/ada"),
+    ).toBe("Loop · ~/proj");
+    expect(paneHeaderTitle(pane("a", { name: "Loop" }))).toBe("Loop · Terminal");
+  });
+
+  it("names a pane that is not a terminal too", () => {
+    expect(
+      paneHeaderTitle({
+        ...pane("a", { name: "Docs" }),
+        type: "browser",
+        url: "https://example.com/docs",
+      }),
+    ).toBe("Docs · example.com");
+  });
+});
+
+describe("paneEntries with names", () => {
+  it("carries the name of a pane next to its folder title", () => {
+    const named = item(
+      split(
+        "row",
+        [50, 50],
+        leaf("a", { name: "Loop", cwd: "/srv/api" }),
+        leaf("b", { cwd: "/srv/api" }),
+      ),
+      "a",
+    );
+    const [first, second] = paneEntries(named);
+    expect(first).toMatchObject({ paneId: "a", name: "Loop", title: "/srv/api" });
+    expect(second).toMatchObject({ paneId: "b", title: "/srv/api" });
+    expect(second).not.toHaveProperty("name");
   });
 });
 

@@ -67,6 +67,14 @@ export interface SplitLayoutContext {
   onSplitPane?(paneId: Id, dir: SplitDir): void;
   /** False when the tab already holds as many panes as it may: the split buttons of the header are off. */
   canSplit?: boolean;
+  /**
+   * The pane whose name is a text field in its header now, and what ends that: Enter or leaving the
+   * field gives the new text (`restoreFocus` is set for Enter), Escape cancels. A context without them
+   * (the page of a window of a space) never renames.
+   */
+  renamingPaneId?: Id | undefined;
+  onRenamePane?(paneId: Id, value: string, restoreFocus: boolean): void;
+  onCancelRenamePane?(): void;
 }
 
 interface SplitGroupProps {
@@ -253,6 +261,18 @@ function PaneFrame({ pane, context }: { pane: Pane; context: SplitLayoutContext 
           canSplit={context.canSplit !== false}
           {...(onSplit !== undefined ? { onSplit: (dir: SplitDir) => onSplit(pane.id, dir) } : {})}
           onZoom={() => context.onZoomPane(pane.id)}
+          {...(context.renamingPaneId === pane.id &&
+          context.onRenamePane !== undefined &&
+          context.onCancelRenamePane !== undefined
+            ? {
+                renaming: {
+                  initial: pane.name ?? "",
+                  onCommit: (value: string, restoreFocus: boolean) =>
+                    context.onRenamePane?.(pane.id, value, restoreFocus),
+                  onCancel: context.onCancelRenamePane,
+                },
+              }
+            : {})}
           {...(context.denseBar === true
             ? {
                 dense: true,

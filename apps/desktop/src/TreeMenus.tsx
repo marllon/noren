@@ -179,10 +179,18 @@ export function ItemContextMenu({
 interface PaneContextMenuProps extends OutputActions {
   point: MenuPoint;
   onClose(): void;
+  /** Rename pane: the name of the pane becomes a text field in its header; absent for a pane with no such field. */
+  onRename?(): void;
 }
 
 /** What the menu button of a pane header offers. */
-export function PaneContextMenu({ point, onClose, onSelect, onCopy }: PaneContextMenuProps) {
+export function PaneContextMenu({
+  point,
+  onClose,
+  onSelect,
+  onCopy,
+  onRename,
+}: PaneContextMenuProps) {
   const t = useT();
   const entries: MenuEntry[] = [
     {
@@ -199,6 +207,18 @@ export function PaneContextMenu({ point, onClose, onSelect, onCopy }: PaneContex
         onCopy();
       },
     },
+    ...(onRename !== undefined
+      ? [
+          {
+            label: t("menu.renamePane"),
+            separated: true,
+            onSelect: () => {
+              onClose();
+              onRename();
+            },
+          },
+        ]
+      : []),
   ];
   return <ContextMenu label={t("menu.pane")} point={point} entries={entries} onClose={onClose} />;
 }
@@ -218,6 +238,8 @@ interface TerminalContextMenuProps {
   onSplit(dir: SplitDir): void;
   onClosePane(): void;
   onZoom(): void;
+  /** Rename pane: the name of the pane becomes a text field in its header. */
+  onRename(): void;
 }
 
 /**
@@ -236,6 +258,7 @@ export function TerminalContextMenu({
   onSplit,
   onClosePane,
   onZoom,
+  onRename,
 }: TerminalContextMenuProps) {
   const t = useT();
   const entries: MenuEntry[] = [
@@ -267,6 +290,7 @@ export function TerminalContextMenu({
       disabled: !inSplit,
       onSelect: onZoom,
     },
+    { label: t("menu.renamePane"), separated: true, onSelect: onRename },
   ];
   return (
     <ContextMenu label={t("menu.terminal")} point={point} entries={entries} onClose={onClose} />

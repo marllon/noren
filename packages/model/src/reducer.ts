@@ -59,6 +59,7 @@ import {
   DEFAULT_MAX_PANES,
   MAX_CLOSED,
   MAX_GROUP_DEPTH,
+  MAX_PANE_NAME,
   type AppWindow,
   type ArchivedItem,
   type ClosedItem,
@@ -333,6 +334,8 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       return splitPane(ws, action, ctx);
     case "pane/set-url":
       return setPaneUrl(ws, action);
+    case "pane/rename":
+      return renamePane(ws, action);
     case "pane/close":
       return closePane(ws, action.itemId, action.paneId, ctx);
     case "pane/detach":
@@ -1453,6 +1456,27 @@ function setPaneUrl(ws: Workspace, action: Extract<Action, { type: "pane/set-url
   return replaceItem(ws, located.space, {
     ...located.item,
     layout: withPane(located.item.layout, { ...pane, url: action.url }),
+  });
+}
+
+function renamePane(ws: Workspace, action: Extract<Action, { type: "pane/rename" }>): Workspace {
+  if (typeof action.name !== "string") return ws;
+  const located = locate(ws, action.itemId);
+  const pane = located && findPane(located.item.layout, action.paneId);
+  if (!located || !pane) return ws;
+  const trimmed = clean(action.name);
+  const name =
+    trimmed === undefined ? undefined : Array.from(trimmed).slice(0, MAX_PANE_NAME).join("").trim();
+  if (name === pane.name) return ws;
+  const next: Pane = { ...pane };
+  if (name === undefined) {
+    delete next.name;
+  } else {
+    next.name = name;
+  }
+  return replaceItem(ws, located.space, {
+    ...located.item,
+    layout: withPane(located.item.layout, next),
   });
 }
 

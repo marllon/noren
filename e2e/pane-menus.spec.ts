@@ -67,6 +67,7 @@ const TERMINAL_ITEMS = [
   "Split down",
   "Close pane",
   "Maximize pane",
+  "Rename pane",
 ];
 
 /** Opens the app and waits for the first terminal to have drawn its prompt. */
@@ -196,7 +197,7 @@ test.describe("the menu of a tab", () => {
 });
 
 test.describe("the menu of the terminal", () => {
-  test("a right click opens it by default, with the six entries in order, and pastes nothing", async ({
+  test("a right click opens it by default, with the seven entries in order, and pastes nothing", async ({
     page,
   }) => {
     const first = await open(page);
@@ -213,7 +214,8 @@ test.describe("the menu of the terminal", () => {
     await page.keyboard.press("ArrowDown");
     await expect(entry(menu, "Split right")).toBeFocused();
     await page.keyboard.press("End");
-    await expect(entry(menu, "Split down")).toBeFocused();
+    await expect(entry(menu, "Rename pane")).toBeFocused();
+    await expect(entry(menu, "Rename pane")).toBeEnabled();
     await expect(entry(menu, "Split right")).toBeEnabled();
     await expect(entry(menu, "Split down")).toBeEnabled();
     expect((await lines(page)).some((row) => row.includes("not pasted"))).toBe(false);
@@ -358,6 +360,7 @@ test.describe("the menu of the terminal", () => {
       "Split down",
       "Close pane",
       "Restore pane",
+      "Rename pane",
     ]);
     await entry(menu, "Restore pane").click();
     await expect(panes(page)).toHaveCount(2);

@@ -150,6 +150,8 @@ export const ptBR: Dictionary = {
   "pane.restore": "Restaurar painel",
   "pane.zoom": "Ampliar painel",
   "pane.close": "Fechar painel",
+  "pane.nameField": "Nome do painel",
+  "menu.renamePane": "Renomear painel",
 
   // A pane that shows a web page
   "pane.browser": "página web",

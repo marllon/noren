@@ -136,6 +136,20 @@ describe("project actions: run", () => {
     expect(t.backend.session(t.sessionOf("dev"))?.cwd).toBe("/proj");
   });
 
+  it("names the pane it opens after the label of the action", async () => {
+    const t = setup();
+    const run = t.actions.run(t.spaceId, loop);
+    await settle();
+    await t.mount();
+    await run;
+    const [tab] = t.tabsTitled("loop");
+    const panes = layoutPanes(must(tab).layout);
+    expect(panes.map((pane) => pane.name)).toEqual(["Loop"]);
+    // The first tab of the space is not named by anything.
+    const other = must(Object.values(t.space().items).find((item) => item.title !== "loop"));
+    expect(layoutPanes(other.layout).every((pane) => pane.name === undefined)).toBe(true);
+  });
+
   it("focuses the tab of a running action instead of opening another", async () => {
     const t = setup();
     const first = t.actions.run(t.spaceId, dev);

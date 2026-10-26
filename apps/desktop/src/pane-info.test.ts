@@ -364,6 +364,14 @@ describe("paneBarInfo", () => {
     });
   });
 
+  it("carries the name of the pane, and leaves it out when the pane has none", () => {
+    const named = paneBarInfo(pane("p1", { name: "Loop", cwd: "/home/ada/api" }), undefined, "/h");
+    expect(named?.name).toBe("Loop");
+    expect(paneBarInfo(pane("p1", { cwd: "/home/ada/api" }), undefined, "/h")).not.toHaveProperty(
+      "name",
+    );
+  });
+
   it("keeps three segments of a long folder behind an ellipsis, and the whole path as the tooltip", () => {
     const info = paneBarInfo(
       pane("p1", { cwd: "/srv/builds/noren/release/linux" }),

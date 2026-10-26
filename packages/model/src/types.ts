@@ -209,6 +209,12 @@ export interface Pane {
    */
   profileId: string;
   /**
+   * The name the user (or the project action that opened the pane) gave it. Shown before the folder
+   * in the pane header and on the pane row of the sidebar; absent when the pane has none. It stays
+   * with the pane when its tab is joined into a split or the pane is taken out of one.
+   */
+  name?: string;
+  /**
    * The page of a browser pane: an `http://` or `https://` address (`browserUrlProblem`). Present on
    * every browser pane and on no other. The web view that shows it belongs to the running app and is
    * made again from this address at the start.
@@ -298,6 +304,8 @@ export interface ArchivedItem {
   place?: ClosedPlace;
 }
 
+/** Longest name a pane keeps, in characters; a longer one is cut (`Pane.name`). */
+export const MAX_PANE_NAME = 80;
 /** Closed stack limit. */
 export const MAX_CLOSED = 50;
 /**

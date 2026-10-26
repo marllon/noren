@@ -129,6 +129,45 @@ describe("PaneBar agent badge", () => {
   });
 });
 
+describe("PaneBar name", () => {
+  it("writes the name of the pane in bold before the folder, in both styles", () => {
+    const info = { name: "Loop", folder: "~/site/api", cwd: "/home/ada/site/api" };
+    for (const dense of [false, true]) {
+      const html = bar(info, { dense });
+      expect(html).toContain(
+        '<b class="pane-bar-name" data-nr-part="pane-name" title="Loop">Loop</b>',
+      );
+      expect(html.indexOf("pane-bar-name")).toBeLessThan(
+        html.indexOf('data-nr-part="pane-folder"'),
+      );
+    }
+  });
+
+  it("leaves it out for a pane that has no name", () => {
+    expect(bar({ folder: "~/x" })).not.toContain("pane-bar-name");
+    expect(bar({ folder: "~/x" }, { dense: true })).not.toContain("pane-bar-name");
+  });
+
+  it("shows the number of the pane before the name under the dense style", () => {
+    const html = bar({ name: "Loop", folder: "~/x" }, { dense: true, number: 2 });
+    expect(html.indexOf("pane-number")).toBeLessThan(html.indexOf("pane-bar-name"));
+  });
+
+  it("is a text field named for the pane while it is being renamed", () => {
+    const renaming = { initial: "Loop", onCommit: nothing, onCancel: nothing };
+    for (const dense of [false, true]) {
+      const html = bar({ name: "Loop", folder: "~/x" }, { dense, renaming });
+      expect(html).toContain('aria-label="Pane name"');
+      expect(html).toContain('value="Loop"');
+      expect(html).not.toContain("pane-bar-name");
+    }
+    setLanguage("pt-BR");
+    expect(bar({ folder: "~/x" }, { renaming: { ...renaming, initial: "" } })).toContain(
+      'aria-label="Nome do painel"',
+    );
+  });
+});
+
 describe("PaneBar buttons", () => {
   it("has the two split buttons, named and titled with their shortcut", () => {
     const html = bar({ folder: "~/x" });

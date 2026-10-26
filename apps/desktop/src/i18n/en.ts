@@ -147,6 +147,8 @@ export const en = {
   "pane.restore": "Restore pane",
   "pane.zoom": "Zoom pane",
   "pane.close": "Close pane",
+  "pane.nameField": "Pane name",
+  "menu.renamePane": "Rename pane",
 
   // A pane that shows a web page
   "pane.browser": "web page",

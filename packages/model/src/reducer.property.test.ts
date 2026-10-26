@@ -72,6 +72,7 @@ const ACTION_TYPES: Record<ActionType, true> = {
   "pane/split": true,
   "pane/set-url": true,
   "pane/rename": true,
+  "pane/set-title": true,
   "pane/close": true,
   "pane/detach": true,
   "item/join": true,
@@ -134,6 +135,7 @@ const PANE_ACTIONS = new Set<ActionType>([
   "pane/split",
   "pane/set-url",
   "pane/rename",
+  "pane/set-title",
   "pane/close",
   "pane/detach",
   "item/join",
@@ -278,6 +280,7 @@ function missingTarget(ws: Workspace, action: Action): boolean {
     case "pane/split":
     case "pane/set-url":
     case "pane/rename":
+    case "pane/set-title":
     case "pane/close":
     case "pane/detach":
     case "pane/focus":
@@ -593,6 +596,7 @@ function checkPaneDelta(ws: Workspace, next: Workspace, action: Action, where: (
     case "pane/focus-direction":
     case "pane/set-url":
     case "pane/rename":
+    case "pane/set-title":
     case "pane/set-status":
     case "pane/set-location":
     case "pane/set-shell-folder":

@@ -44,7 +44,10 @@ interface PaneBarProps {
     | undefined;
 }
 
-/** The name of the pane in bold, before its folder; a text field while it is being renamed. */
+/**
+ * The name of the pane in bold, before its folder; a text field while it is being renamed. A pane
+ * with no name writes the title its program set in the same place.
+ */
 function PaneName({ info, renaming }: Pick<PaneBarProps, "info" | "renaming">) {
   const t = useT();
   if (renaming !== undefined) {
@@ -57,7 +60,14 @@ function PaneName({ info, renaming }: Pick<PaneBarProps, "info" | "renaming">) {
       />
     );
   }
-  if (info.name === undefined) return null;
+  if (info.name === undefined) {
+    if (info.title === undefined) return null;
+    return (
+      <b className="pane-bar-program" data-nr-part="pane-program-title" title={info.title}>
+        {info.title}
+      </b>
+    );
+  }
   return (
     <b className="pane-bar-name" data-nr-part="pane-name" title={info.name}>
       {info.name}

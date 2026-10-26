@@ -2,7 +2,8 @@ import { DEFAULT_SPACE_COLOR, DEFAULT_SPACE_ICON } from "./factories";
 import { checkInvariants } from "./invariants";
 import type { InvariantOptions } from "./invariants";
 import { withoutSessions } from "./sessions";
-import { MAX_PANE_NAME, type Workspace } from "./types";
+import { MAX_PANE_NAME, type Item, type Pane, type Workspace } from "./types";
+import { mapPanes } from "./unread";
 
 /** Version written to `state.json` today. Bump it together with a new entry in `MIGRATIONS`. */
 export const STATE_VERSION = 2;
@@ -118,6 +119,26 @@ export function workspaceWithoutSessions(ws: Workspace): Workspace {
   };
 }
 
+/** A copy of the workspace without the titles programs set on its panes (`Pane.title`). */
+function workspaceWithoutTitles(ws: Workspace): Workspace {
+  const untitled = (pane: Pane): Pane => {
+    if (pane.title === undefined) return pane;
+    const next = { ...pane };
+    delete next.title;
+    return next;
+  };
+  const item = (it: Item): Item => ({ ...it, layout: mapPanes(it.layout, untitled) });
+  return {
+    ...ws,
+    spaces: ws.spaces.map((space) => ({
+      ...space,
+      items: Object.fromEntries(Object.entries(space.items).map(([id, it]) => [id, item(it)])),
+    })),
+    closed: ws.closed.map((entry) => ({ ...entry, item: item(entry.item) })),
+    archive: ws.archive.map((entry) => ({ ...entry, item: item(entry.item) })),
+  };
+}
+
 /** The text of `state.json` for the workspace, sessions left out. */
 export function serializeWorkspace(ws: Workspace): string {
   return JSON.stringify(workspaceWithoutSessions(ws));
@@ -152,7 +173,8 @@ export function parseState(text: string, options: InvariantOptions = {}): ParseS
         return fail(`migration from version ${version} did not produce version ${version + 1}`);
       }
     }
-    const workspace = checkShape(current);
+    // The title a program set belongs to the process that ran then: a file that holds one is not believed.
+    const workspace = workspaceWithoutTitles(checkShape(current));
     const violations = checkInvariants(workspace, options);
     if (violations.length > 0) {
       const shown = violations.slice(0, 3).map((v) => `${v.code} at ${v.path || "(root)"}`);

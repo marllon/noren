@@ -323,3 +323,31 @@ describe("PaneBar under the dense style", () => {
     expect(html).toContain('aria-label="Fechar painel"');
   });
 });
+
+describe("PaneBar program title", () => {
+  it("writes the title the program set before the folder when the pane has no name", () => {
+    const info = { title: "loop Noren", folder: "~/site/api", cwd: "/home/ada/site/api" };
+    for (const dense of [false, true]) {
+      const html = bar(info, { dense });
+      expect(html).toContain(
+        '<b class="pane-bar-program" data-nr-part="pane-program-title" title="loop Noren">loop Noren</b>',
+      );
+      expect(html.indexOf("pane-bar-program")).toBeLessThan(
+        html.indexOf('data-nr-part="pane-folder"'),
+      );
+      expect(html).not.toContain("pane-bar-name");
+    }
+  });
+
+  it("is left out of a header whose pane has no title", () => {
+    expect(bar({ folder: "~/x" })).not.toContain("pane-bar-program");
+    expect(bar({ folder: "~/x" }, { dense: true })).not.toContain("pane-bar-program");
+  });
+
+  it("gives way to the text field while the pane is being renamed", () => {
+    const renaming = { initial: "", onCommit: nothing, onCancel: nothing };
+    const html = bar({ title: "vim", folder: "~/x" }, { renaming });
+    expect(html).toContain('aria-label="Pane name"');
+    expect(html).not.toContain("pane-bar-program");
+  });
+});

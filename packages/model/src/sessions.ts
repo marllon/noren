@@ -5,13 +5,17 @@ export function layoutPanes(layout: LayoutNode): Pane[] {
   return layout.kind === "pane" ? [layout.pane] : layout.children.flatMap(layoutPanes);
 }
 
-/** A copy of the item with every pane stripped of its session. */
+/**
+ * A copy of the item with every pane stripped of its session and of the title its program set: both
+ * belong to the running process, so neither is saved nor kept in a closed item.
+ */
 export function withoutSessions(item: Item): Item {
   const strip = (layout: LayoutNode): LayoutNode => {
     if (layout.kind === "split") return { ...layout, children: layout.children.map(strip) };
-    if (layout.pane.sessionId === undefined) return layout;
+    if (layout.pane.sessionId === undefined && layout.pane.title === undefined) return layout;
     const pane = { ...layout.pane };
     delete pane.sessionId;
+    delete pane.title;
     return { kind: "pane", pane };
   };
   return { ...item, layout: strip(item.layout) };

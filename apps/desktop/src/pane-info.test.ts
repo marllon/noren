@@ -622,3 +622,26 @@ describe("summarizeItem with the connection of a shell on another machine", () =
     }
   });
 });
+
+describe("paneBarInfo with the title a program set", () => {
+  it("carries the title of a pane that has no name", () => {
+    const info = paneBarInfo(
+      pane("p1", { title: "loop Noren", cwd: "/home/ada/api" }),
+      undefined,
+      "/home/ada",
+    );
+    expect(info?.title).toBe("loop Noren");
+    expect(info).not.toHaveProperty("name");
+  });
+
+  it("leaves it out when the pane has a name, when it is blank and when it repeats the folder", () => {
+    const named = pane("p1", { name: "Loop", title: "vim", cwd: "/home/ada/api" });
+    expect(paneBarInfo(named, undefined, "/home/ada")).not.toHaveProperty("title");
+    const blank = pane("p1", { title: "  ", cwd: "/home/ada/api" });
+    expect(paneBarInfo(blank, undefined, "/home/ada")).not.toHaveProperty("title");
+    for (const title of ["~/api", "/home/ada/api"]) {
+      const same = pane("p1", { title, cwd: "/home/ada/api" });
+      expect(paneBarInfo(same, undefined, "/home/ada")).not.toHaveProperty("title");
+    }
+  });
+});

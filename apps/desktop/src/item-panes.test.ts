@@ -5,6 +5,7 @@ import {
   layoutThumbnail,
   paneEntries,
   paneHeaderTitle,
+  paneProgramTitle,
   paneStatusText,
   paneTitleText,
 } from "./item-panes";
@@ -190,5 +191,65 @@ describe("paneEntries", () => {
     expect(paneEntries(one)).toEqual([]);
     expect(isSplitItem(one)).toBe(false);
     expect(isSplitItem(two)).toBe(true);
+  });
+});
+
+describe("the title a program set", () => {
+  it("goes before the folder in the header of a pane with no name", () => {
+    expect(
+      paneHeaderTitle(
+        pane("a", { title: "loop Noren", cwd: "/home/ada/proj" }),
+        "/srv",
+        "/home/ada",
+      ),
+    ).toBe("loop Noren · ~/proj");
+    expect(paneHeaderTitle(pane("a", { title: "vim" }))).toBe("vim · Terminal");
+  });
+
+  it("loses to the name of the pane", () => {
+    expect(
+      paneHeaderTitle(
+        pane("a", { name: "Loop", title: "loop Noren", cwd: "/home/ada/proj" }),
+        "/srv",
+        "/home/ada",
+      ),
+    ).toBe("Loop · ~/proj");
+    expect(paneProgramTitle(pane("a", { name: "Loop", title: "vim" }))).toBeUndefined();
+  });
+
+  it("is not written twice when it only says the folder", () => {
+    const cwd = "/home/ada/proj";
+    for (const title of ["~/proj", cwd]) {
+      expect(paneHeaderTitle(pane("a", { title, cwd }), "/srv", "/home/ada")).toBe("~/proj");
+      expect(paneProgramTitle(pane("a", { title, cwd }), "/srv", "/home/ada")).toBeUndefined();
+    }
+  });
+
+  it("is ignored when blank, and by a pane that is not a terminal", () => {
+    expect(paneHeaderTitle(pane("a", { title: "   ", cwd: "/srv/api" }))).toBe("/srv/api");
+    expect(
+      paneHeaderTitle({
+        ...pane("a", { title: "vim" }),
+        type: "browser",
+        url: "https://example.com/docs",
+      }),
+    ).toBe("example.com");
+  });
+
+  it("is carried by the rows of a split next to the folder title", () => {
+    const titled = item(
+      split(
+        "row",
+        [50, 50],
+        leaf("a", { title: "loop Noren", cwd: "/srv/api" }),
+        leaf("b", { name: "Docs", title: "ignored", cwd: "/srv/api" }),
+      ),
+      "a",
+    );
+    const [first, second] = paneEntries(titled);
+    expect(first).toMatchObject({ paneId: "a", programTitle: "loop Noren", title: "/srv/api" });
+    expect(first).not.toHaveProperty("name");
+    expect(second).toMatchObject({ paneId: "b", name: "Docs", title: "/srv/api" });
+    expect(second).not.toHaveProperty("programTitle");
   });
 });

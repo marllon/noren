@@ -60,6 +60,7 @@ import {
   MAX_CLOSED,
   MAX_GROUP_DEPTH,
   MAX_PANE_NAME,
+  MAX_PANE_TITLE,
   type AppWindow,
   type ArchivedItem,
   type ClosedItem,
@@ -336,6 +337,8 @@ function applyAction(ws: Workspace, action: Action, ctx: ReducerContext): Worksp
       return setPaneUrl(ws, action);
     case "pane/rename":
       return renamePane(ws, action);
+    case "pane/set-title":
+      return setPaneTitle(ws, action);
     case "pane/close":
       return closePane(ws, action.itemId, action.paneId, ctx);
     case "pane/detach":
@@ -617,7 +620,8 @@ function withoutOldShell(pane: Pane): Pane {
     pane.status !== "exited" &&
     pane.exitCode === undefined &&
     pane.runningCommand === undefined &&
-    pane.shellCwd === undefined
+    pane.shellCwd === undefined &&
+    pane.title === undefined
   ) {
     return pane;
   }
@@ -625,6 +629,7 @@ function withoutOldShell(pane: Pane): Pane {
   delete next.exitCode;
   delete next.runningCommand;
   delete next.shellCwd;
+  delete next.title;
   return next;
 }
 
@@ -1480,6 +1485,32 @@ function renamePane(ws: Workspace, action: Extract<Action, { type: "pane/rename"
   });
 }
 
+function setPaneTitle(
+  ws: Workspace,
+  action: Extract<Action, { type: "pane/set-title" }>,
+): Workspace {
+  if (typeof action.title !== "string") return ws;
+  const located = locate(ws, action.itemId);
+  const pane = located && findPane(located.item.layout, action.paneId);
+  if (!located || !pane || pane.type !== "terminal") return ws;
+  const trimmed = clean(action.title);
+  const title =
+    trimmed === undefined
+      ? undefined
+      : Array.from(trimmed).slice(0, MAX_PANE_TITLE).join("").trim();
+  if (title === pane.title) return ws;
+  const next: Pane = { ...pane };
+  if (title === undefined) {
+    delete next.title;
+  } else {
+    next.title = title;
+  }
+  return replaceItem(ws, located.space, {
+    ...located.item,
+    layout: withPane(located.item.layout, next),
+  });
+}
+
 function closePane(ws: Workspace, itemId: Id, paneId: Id, ctx: ReducerContext): Workspace {
   const located = locate(ws, itemId);
   if (!located || !findPane(located.item.layout, paneId)) return ws;
@@ -1625,15 +1656,18 @@ function setPaneStatus(
   if (
     pane.status === status &&
     pane.exitCode === code &&
-    !(status === "exited" && pane.runningCommand)
+    !(status === "exited" && (pane.runningCommand || pane.title !== undefined))
   ) {
     return ws;
   }
   const next: Pane = { ...pane, status };
   delete next.exitCode;
   if (code !== undefined) next.exitCode = code;
-  // A shell that exited runs nothing.
-  if (status === "exited") delete next.runningCommand;
+  // A shell that exited runs nothing, so it has no title either.
+  if (status === "exited") {
+    delete next.runningCommand;
+    delete next.title;
+  }
   return replaceItem(ws, located.space, {
     ...located.item,
     layout: withPane(located.item.layout, next),

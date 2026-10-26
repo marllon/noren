@@ -176,6 +176,11 @@ interface TerminalViewProps {
   /** Called with the folder the shell reports through OSC 7 (at each prompt of an integrated shell). */
   onCwd?(path: string): void;
   /**
+   * Called with the title the program sets for the terminal (OSC 0 and OSC 2); an empty string when
+   * it clears it. The sequence is not consumed: xterm keeps its own title as well.
+   */
+  onTitle?(title: string): void;
+  /**
    * Called with every chunk of the session's output, in order, once it went to the terminal. The
    * first chunks are the ones the session printed before the view subscribed.
    */
@@ -276,6 +281,7 @@ export function TerminalView({
   onMenu,
   onReady,
   onCwd,
+  onTitle,
   onExplain,
   onOutput,
   onExit,
@@ -290,6 +296,7 @@ export function TerminalView({
   const onMenuRef = useRef(onMenu);
   const onReadyRef = useRef(onReady);
   const onCwdRef = useRef(onCwd);
+  const onTitleRef = useRef(onTitle);
   const onExplainRef = useRef(onExplain);
   const onOutputRef = useRef(onOutput);
   const onExitRef = useRef(onExit);
@@ -311,6 +318,7 @@ export function TerminalView({
     onMenuRef.current = onMenu;
     onReadyRef.current = onReady;
     onCwdRef.current = onCwd;
+    onTitleRef.current = onTitle;
     onExplainRef.current = onExplain;
     onOutputRef.current = onOutput;
     onExitRef.current = onExit;
@@ -584,6 +592,8 @@ export function TerminalView({
       if (path !== undefined) onCwdRef.current?.(path);
       return true;
     });
+    // The program names its window (OSC 0 and OSC 2); xterm reads the sequence and keeps it flowing.
+    const titleSub = term.onTitleChange((title) => onTitleRef.current?.(title));
     const keySub = term.onKey(() => onInputRef.current?.());
     const dataSub = term.onData((data) => {
       if (sessionId !== undefined) backend.write(sessionId, data).catch(() => undefined);
@@ -755,6 +765,7 @@ export function TerminalView({
       dataSub.dispose();
       keySub.dispose();
       cwdHandler.dispose();
+      titleSub.dispose();
       resizeSub.dispose();
       for (const cleanup of cleanups) cleanup();
       if (sessionId !== undefined && ownsSession)

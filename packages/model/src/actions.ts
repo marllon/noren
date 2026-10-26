@@ -316,6 +316,12 @@ export type Action =
    * already has leave the workspace as it is.
    */
   | { type: "pane/rename"; itemId: Id; paneId: Id; name: string }
+  /**
+   * Records the title the program of a terminal pane set (`Pane.title`), trimmed and cut at
+   * `MAX_PANE_TITLE`; a blank `title` takes it away. A pane that is not a terminal, an unknown pane
+   * or a title the pane already has leave the workspace as it is.
+   */
+  | { type: "pane/set-title"; itemId: Id; paneId: Id; title: string }
   /** Closes the pane and the layout collapses. Closing the only pane closes the item. */
   | { type: "pane/close"; itemId: Id; paneId: Id }
   /** Moves the pane, session included, to a new item right after the item it came from. */

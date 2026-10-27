@@ -484,7 +484,9 @@ export function TerminalView({
       const proposed = fit.proposeDimensions();
       const screen = term.element?.querySelector<HTMLElement>(".xterm-screen");
       const limited = planFit(proposed, {
-        visible: activeRef.current,
+        // Hidden by display (another tab shows, another pane is zoomed): no box in the layout. The
+        // `active` prop is not this: in a split it is the pane that has the focus.
+        visible: host.getClientRects().length > 0,
         documentHidden: document.visibilityState === "hidden",
         host: { width: host.clientWidth, height: host.clientHeight },
         cell: {

@@ -32,7 +32,7 @@ export const USEFUL_MINIMUM: Grid = { cols: 20, rows: 3 };
 
 /** What a fit of the terminal depends on, read when it runs. */
 export interface FitConditions {
-  /** False while the view is hidden (another tab shows). */
+  /** False while the view is not drawn (another tab shows, another pane is zoomed). */
   visible: boolean;
   /** `document.visibilityState` is "hidden": the window is minimized or covered, the page is not shown. */
   documentHidden: boolean;

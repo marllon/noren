@@ -23,6 +23,51 @@ export interface Extent {
 const MINIMUM: Grid = { cols: 2, rows: 1 };
 
 /**
+ * The fewest cells a fit may give a terminal and its session. A host with less room than this has no
+ * useful size (a pane folded away, a window minimized): the terminal keeps the size it had, and the
+ * pane cuts the picture instead of shrinking the session, which would wrap everything the program
+ * writes meanwhile in lines of two columns.
+ */
+export const USEFUL_MINIMUM: Grid = { cols: 20, rows: 3 };
+
+/** What a fit of the terminal depends on, read when it runs. */
+export interface FitConditions {
+  /** False while the view is hidden (another tab shows). */
+  visible: boolean;
+  /** `document.visibilityState` is "hidden": the window is minimized or covered, the page is not shown. */
+  documentHidden: boolean;
+  /** The size of the element that holds the terminal. */
+  host: Extent;
+  /** The size of a cell, in pixels (0 when not known). */
+  cell: Extent;
+  /** The window the terminal is shown in. */
+  area: Extent;
+}
+
+/**
+ * The grid a fit gives the terminal, or `undefined` when the fit must change nothing: the view is
+ * hidden, the page is hidden, the host has no size or has less room than `USEFUL_MINIMUM`, or the
+ * addon could not tell. The grid it returns is `proposed` cut to the window (see `limitGrid`) and is
+ * never smaller than `USEFUL_MINIMUM`.
+ */
+export function planFit(proposed: Grid | undefined, conditions: FitConditions): Grid | undefined {
+  const { visible, documentHidden, host, cell, area } = conditions;
+  if (!visible || documentHidden) return undefined;
+  if (!(host.width > 0) || !(host.height > 0)) return undefined;
+  if (
+    proposed === undefined ||
+    !Number.isFinite(proposed.cols) ||
+    !Number.isFinite(proposed.rows)
+  ) {
+    return undefined;
+  }
+  if (proposed.cols < USEFUL_MINIMUM.cols || proposed.rows < USEFUL_MINIMUM.rows) return undefined;
+  const limited = limitGrid(proposed, cell, area);
+  if (limited.cols < USEFUL_MINIMUM.cols || limited.rows < USEFUL_MINIMUM.rows) return undefined;
+  return limited;
+}
+
+/**
  * `proposed` cut to the cells that fit in `area` (the window), where a cell is `cell` pixels. A grid
  * that fits is returned as it is; a size that is not known (a cell of 0 pixels, a window not laid out)
  * cuts nothing.

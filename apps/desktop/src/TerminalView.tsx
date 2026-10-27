@@ -14,7 +14,7 @@ import { BELL_FLASH_MS, beep, beeps, flashes } from "./bell";
 import { attachCommandMarks, markColors } from "./command-marks-view";
 import type { CommandMarkInfo, CommandOutput, TerminalCommandMarks } from "./command-marks-view";
 import type { ExplainRequest } from "./ask-panel";
-import { limitGrid } from "./fit-limit";
+import { planFit } from "./fit-limit";
 import { requestExternalLink } from "./link-prompt";
 import { parseOsc7 } from "./osc7";
 import { decidePaste, insertableText } from "./paste";
@@ -365,9 +365,12 @@ export function TerminalView({
     refitRef.current?.();
   }, [options]);
 
-  // Showing a tab again gives it the keyboard.
+  // Showing a tab again gives it the keyboard, and one fit with the size it has now (a fit does
+  // nothing while the view is hidden).
   useEffect(() => {
-    if (active) termRef.current?.focus();
+    if (!active) return;
+    termRef.current?.focus();
+    refitRef.current?.();
   }, [active]);
 
   useEffect(() => {
@@ -475,18 +478,22 @@ export function TerminalView({
     // The grid that fits the host, never larger than the window. The host has the size of its pane
     // while the page is styled; without that (a stylesheet that did not load) it takes the size of the
     // terminal inside it, and every fit would make the terminal taller than the one before.
+    // A host with no useful size (the tab hidden, the pane folded away, the window minimized) changes
+    // nothing: the terminal and its session keep the last good size until the host is back (`planFit`).
     const fitInsideWindow = () => {
       const proposed = fit.proposeDimensions();
-      if (proposed === undefined || Number.isNaN(proposed.cols) || Number.isNaN(proposed.rows)) {
-        return;
-      }
       const screen = term.element?.querySelector<HTMLElement>(".xterm-screen");
-      const cell = {
-        width: screen === null || screen === undefined ? 0 : screen.offsetWidth / term.cols,
-        height: screen === null || screen === undefined ? 0 : screen.offsetHeight / term.rows,
-      };
-      const area = { width: window.innerWidth, height: window.innerHeight };
-      const limited = limitGrid(proposed, cell, area);
+      const limited = planFit(proposed, {
+        visible: activeRef.current,
+        documentHidden: document.visibilityState === "hidden",
+        host: { width: host.clientWidth, height: host.clientHeight },
+        cell: {
+          width: screen === null || screen === undefined ? 0 : screen.offsetWidth / term.cols,
+          height: screen === null || screen === undefined ? 0 : screen.offsetHeight / term.rows,
+        },
+        area: { width: window.innerWidth, height: window.innerHeight },
+      });
+      if (proposed === undefined || limited === undefined) return;
       if (limited.cols === proposed.cols && limited.rows === proposed.rows) fit.fit();
       else if (limited.cols !== term.cols || limited.rows !== term.rows) {
         term.resize(limited.cols, limited.rows);
@@ -585,6 +592,9 @@ export function TerminalView({
 
     const observer = new ResizeObserver(safeFit);
     observer.observe(host);
+    // The window comes back from minimized (or the page is shown again): one fit with the real size.
+    const onVisibility = () => safeFit();
+    document.addEventListener("visibilitychange", onVisibility);
 
     // The shell says which folder it is in (OSC 7); the sequence is consumed here, never drawn.
     const cwdHandler = term.parser.registerOscHandler(7, (data) => {
@@ -756,6 +766,7 @@ export function TerminalView({
       disposed = true;
       leaveQueue?.();
       observer.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
       refitRef.current = null;
       bellSub.dispose();
       clearTimeout(flashTimer);
